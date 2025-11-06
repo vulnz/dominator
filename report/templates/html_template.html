@@ -5,139 +5,139 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Web Vulnerability Scanner Report</title>
     <style>
-        body {
+        body {{
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             margin: 0;
             padding: 20px;
             background-color: #f5f5f5;
             color: #333;
-        }
-        .container {
+        }}
+        .container {{
             max-width: 1200px;
             margin: 0 auto;
             background-color: white;
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             overflow: hidden;
-        }
-        .header {
+        }}
+        .header {{
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             padding: 30px;
             text-align: center;
-        }
-        .header h1 {
+        }}
+        .header h1 {{
             margin: 0;
             font-size: 2.5em;
             font-weight: 300;
-        }
-        .summary {
+        }}
+        .summary {{
             background-color: #f8f9fa;
             padding: 20px 30px;
             border-bottom: 1px solid #e9ecef;
-        }
-        .summary-stats {
+        }}
+        .summary-stats {{
             display: flex;
             justify-content: space-around;
             text-align: center;
-        }
-        .stat {
+        }}
+        .stat {{
             flex: 1;
-        }
-        .stat-number {
+        }}
+        .stat-number {{
             font-size: 2em;
             font-weight: bold;
             color: #667eea;
-        }
-        .stat-label {
+        }}
+        .stat-label {{
             color: #6c757d;
             font-size: 0.9em;
             text-transform: uppercase;
             letter-spacing: 1px;
-        }
-        .vulnerabilities {
+        }}
+        .vulnerabilities {{
             padding: 30px;
-        }
-        .vulnerability {
+        }}
+        .vulnerability {{
             border: 1px solid #e9ecef;
             margin: 20px 0;
             border-radius: 8px;
             overflow: hidden;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        }
-        .vuln-header {
+        }}
+        .vuln-header {{
             padding: 20px;
             background-color: #f8f9fa;
             border-bottom: 1px solid #e9ecef;
-        }
-        .vuln-title {
+        }}
+        .vuln-title {{
             font-size: 1.3em;
             font-weight: 600;
             margin: 0 0 10px 0;
             color: #2c3e50;
-        }
-        .vuln-meta {
+        }}
+        .vuln-meta {{
             display: flex;
             gap: 20px;
             flex-wrap: wrap;
-        }
-        .meta-item {
+        }}
+        .meta-item {{
             display: flex;
             align-items: center;
             gap: 5px;
-        }
-        .meta-label {
+        }}
+        .meta-label {{
             font-weight: 600;
             color: #495057;
-        }
-        .severity-high { 
+        }}
+        .severity-high {{ 
             border-left: 5px solid #dc3545;
-        }
-        .severity-medium { 
+        }}
+        .severity-medium {{ 
             border-left: 5px solid #fd7e14;
-        }
-        .severity-low { 
+        }}
+        .severity-low {{ 
             border-left: 5px solid #ffc107;
-        }
-        .severity-info { 
+        }}
+        .severity-info {{ 
             border-left: 5px solid #17a2b8;
-        }
-        .severity-badge {
+        }}
+        .severity-badge {{
             padding: 4px 12px;
             border-radius: 20px;
             font-size: 0.8em;
             font-weight: 600;
             text-transform: uppercase;
-        }
-        .severity-high .severity-badge {
+        }}
+        .severity-high .severity-badge {{
             background-color: #dc3545;
             color: white;
-        }
-        .severity-medium .severity-badge {
+        }}
+        .severity-medium .severity-badge {{
             background-color: #fd7e14;
             color: white;
-        }
-        .severity-low .severity-badge {
+        }}
+        .severity-low .severity-badge {{
             background-color: #ffc107;
             color: #212529;
-        }
-        .severity-info .severity-badge {
+        }}
+        .severity-info .severity-badge {{
             background-color: #17a2b8;
             color: white;
-        }
-        .vuln-details {
+        }}
+        .vuln-details {{
             padding: 20px;
-        }
-        .detail-section {
+        }}
+        .detail-section {{
             margin-bottom: 20px;
-        }
-        .detail-title {
+        }}
+        .detail-title {{
             font-weight: 600;
             color: #495057;
             margin-bottom: 8px;
             font-size: 1.1em;
-        }
-        .code-block {
+        }}
+        .code-block {{
             background-color: #f8f9fa;
             border: 1px solid #e9ecef;
             border-radius: 4px;
@@ -147,43 +147,43 @@
             overflow-x: auto;
             white-space: pre-wrap;
             word-break: break-all;
-        }
-        .request-block {
+        }}
+        .request-block {{
             background-color: #e3f2fd;
             border-left: 4px solid #2196f3;
-        }
-        .response-block {
+        }}
+        .response-block {{
             background-color: #f3e5f5;
             border-left: 4px solid #9c27b0;
-        }
-        .detector-info {
+        }}
+        .detector-info {{
             background-color: #e8f5e8;
             border: 1px solid #c3e6c3;
             border-radius: 4px;
             padding: 10px;
             margin-top: 10px;
-        }
-        .detector-name {
+        }}
+        .detector-name {{
             font-weight: 600;
             color: #155724;
-        }
-        .no-vulns {
+        }}
+        .no-vulns {{
             text-align: center;
             padding: 60px 20px;
             color: #6c757d;
-        }
-        .no-vulns-icon {
+        }}
+        .no-vulns-icon {{
             font-size: 4em;
             margin-bottom: 20px;
-        }
-        .footer {
+        }}
+        .footer {{
             background-color: #f8f9fa;
             padding: 20px;
             text-align: center;
             color: #6c757d;
             font-size: 0.9em;
             border-top: 1px solid #e9ecef;
-        }
+        }}
     </style>
 </head>
 <body>

@@ -392,16 +392,16 @@ class VulnScanner:
         """Print results to console"""
         if not results:
             print("\n" + "="*60)
-            print("🛡️  SCAN RESULTS")
+            print("SCAN RESULTS")
             print("="*60)
-            print("✅ No vulnerabilities found")
+            print("No vulnerabilities found")
             print("="*60)
             return
         
         print("\n" + "="*60)
-        print("🛡️  SCAN RESULTS")
+        print("SCAN RESULTS")
         print("="*60)
-        print(f"🚨 Found {len(results)} vulnerabilities")
+        print(f"Found {len(results)} vulnerabilities")
         print("="*60)
         
         # Group by severity
@@ -410,17 +410,17 @@ class VulnScanner:
         low_vulns = [v for v in results if v.get('severity', '').lower() == 'low']
         
         if high_vulns:
-            print(f"\n🔴 HIGH SEVERITY ({len(high_vulns)} found):")
+            print(f"\nHIGH SEVERITY ({len(high_vulns)} found):")
             for i, result in enumerate(high_vulns, 1):
                 self._print_vulnerability(i, result)
         
         if medium_vulns:
-            print(f"\n🟡 MEDIUM SEVERITY ({len(medium_vulns)} found):")
+            print(f"\nMEDIUM SEVERITY ({len(medium_vulns)} found):")
             for i, result in enumerate(medium_vulns, 1):
                 self._print_vulnerability(i, result)
         
         if low_vulns:
-            print(f"\n🟢 LOW SEVERITY ({len(low_vulns)} found):")
+            print(f"\nLOW SEVERITY ({len(low_vulns)} found):")
             for i, result in enumerate(low_vulns, 1):
                 self._print_vulnerability(i, result)
         
@@ -429,17 +429,17 @@ class VulnScanner:
     def _print_vulnerability(self, index: int, result: Dict[str, Any]):
         """Print single vulnerability details"""
         print(f"\n  {index}. {result.get('vulnerability', 'Unknown')}")
-        print(f"     🎯 Target: {result.get('target', '')}")
-        print(f"     📍 Parameter: {result.get('parameter', '')}")
-        print(f"     🔧 Module: {result.get('module', '')}")
-        print(f"     🔍 Detector: {result.get('detector', 'Unknown')}")
-        print(f"     💉 Payload: {result.get('payload', '')[:100]}{'...' if len(str(result.get('payload', ''))) > 100 else ''}")
-        print(f"     📤 Request: {result.get('request_url', '')}")
+        print(f"     Target: {result.get('target', '')}")
+        print(f"     Parameter: {result.get('parameter', '')}")
+        print(f"     Module: {result.get('module', '')}")
+        print(f"     Detector: {result.get('detector', 'Unknown')}")
+        print(f"     Payload: {result.get('payload', '')[:100]}{'...' if len(str(result.get('payload', ''))) > 100 else ''}")
+        print(f"     Request: {result.get('request_url', '')}")
         
         # Show response snippet if available
         response_snippet = result.get('response_snippet', '')
         if response_snippet:
-            print(f"     📥 Response: ...{response_snippet[:80]}{'...' if len(response_snippet) > 80 else ''}")
+            print(f"     Response: ...{response_snippet[:80]}{'...' if len(response_snippet) > 80 else ''}")
         
-        print(f"     ✅ Evidence: {result.get('evidence', '')}")
+        print(f"     Evidence: {result.get('evidence', '')}")
         print("     " + "-"*50)

@@ -144,15 +144,13 @@ class FileHandler:
                     '''
                     vulnerabilities_content += vuln_html
             
-            # Replace template variables
-            html_content = template.format(
-                timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                total_vulns=total_vulns,
-                high_count=high_count,
-                medium_count=medium_count,
-                low_count=low_count,
-                vulnerabilities_content=vulnerabilities_content
-            )
+            # Replace template variables - use double braces for CSS
+            html_content = template.replace('{timestamp}', datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            html_content = html_content.replace('{total_vulns}', str(total_vulns))
+            html_content = html_content.replace('{high_count}', str(high_count))
+            html_content = html_content.replace('{medium_count}', str(medium_count))
+            html_content = html_content.replace('{low_count}', str(low_count))
+            html_content = html_content.replace('{vulnerabilities_content}', vulnerabilities_content)
             
             with open(filename, 'w', encoding='utf-8') as f:
                 f.write(html_content)

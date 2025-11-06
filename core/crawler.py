@@ -61,8 +61,8 @@ class WebCrawler:
                         # Check if URL has parameters
                         if parsed['query_params'] and url not in found_urls:
                             found_urls.append(url)
-                            print(f"    [CRAWLER] ✓ Found page with parameters: {url}")
-                            print(f"    [CRAWLER] ✓ Parameters: {list(parsed['query_params'].keys())}")
+                            print(f"    [CRAWLER] Found page with parameters: {url}")
+                            print(f"    [CRAWLER] Parameters: {list(parsed['query_params'].keys())}")
                         elif not parsed['query_params']:
                             print(f"    [CRAWLER] No parameters in URL: {url}")
                             
@@ -88,8 +88,8 @@ class WebCrawler:
                             parsed = self.url_parser.parse(sub_url)
                             if parsed['query_params'] and sub_url not in found_urls:
                                 found_urls.append(sub_url)
-                                print(f"    [CRAWLER] ✓ Found page with parameters: {sub_url}")
-                                print(f"    [CRAWLER] ✓ Parameters: {list(parsed['query_params'].keys())}")
+                                print(f"    [CRAWLER] Found page with parameters: {sub_url}")
+                                print(f"    [CRAWLER] Parameters: {list(parsed['query_params'].keys())}")
                 except Exception as e:
                     print(f"    [CRAWLER] Error crawling page {url}: {e}")
                     continue
