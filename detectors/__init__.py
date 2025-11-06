@@ -6,5 +6,6 @@ from .xss_detector import XSSDetector
 from .sqli_detector import SQLiDetector
 from .lfi_detector import LFIDetector
 from .csrf_detector import CSRFDetector
+from .dirbrute_detector import DirBruteDetector
 
-__all__ = ['XSSDetector', 'SQLiDetector', 'LFIDetector', 'CSRFDetector']
+__all__ = ['XSSDetector', 'SQLiDetector', 'LFIDetector', 'CSRFDetector', 'DirBruteDetector']

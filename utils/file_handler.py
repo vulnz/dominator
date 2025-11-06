@@ -103,6 +103,7 @@ class FileHandler:
                         'csrf': '🔄',
                         'idor': '🔑',
                         'ssrf': '🌍',
+                        'dirbrute': '📂',
                         'default': '⚠️'
                     }
                     

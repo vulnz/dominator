@@ -13,8 +13,8 @@ from core.config import Config
 from core.url_parser import URLParser
 from core.crawler import WebCrawler
 from utils.file_handler import FileHandler
-from payloads import XSSPayloads, SQLiPayloads, LFIPayloads, CSRFPayloads
-from detectors import XSSDetector, SQLiDetector, LFIDetector, CSRFDetector
+from payloads import XSSPayloads, SQLiPayloads, LFIPayloads, CSRFPayloads, DirBrutePayloads
+from detectors import XSSDetector, SQLiDetector, LFIDetector, CSRFDetector, DirBruteDetector
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -231,6 +231,8 @@ class VulnScanner:
                 results.extend(self._test_lfi(parsed_data))
             elif module_name == "csrf":
                 results.extend(self._test_csrf(parsed_data))
+            elif module_name == "dirbrute":
+                results.extend(self._test_dirbrute(parsed_data))
             # Add more modules as needed
                 
         except Exception as e:
@@ -651,17 +653,201 @@ class VulnScanner:
         
         return results
 
+    def _test_dirbrute(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for directory and file bruteforce"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # Remove query parameters from base URL
+        if '?' in base_url:
+            base_url = base_url.split('?')[0]
+        
+        # Ensure base URL ends with /
+        if not base_url.endswith('/'):
+            base_url += '/'
+        
+        try:
+            print(f"    [DIRBRUTE] Starting directory and file bruteforce...")
+            
+            # Get baseline response for 404 detection
+            baseline_response = None
+            try:
+                baseline_response = requests.get(
+                    f"{base_url}nonexistent_random_file_12345.txt",
+                    timeout=self.config.timeout,
+                    headers=self.config.headers,
+                    verify=False
+                )
+            except:
+                pass
+            
+            baseline_size = len(baseline_response.text) if baseline_response else 0
+            
+            # Test directories first
+            directories = DirBrutePayloads.get_all_directories()
+            found_directories = []
+            
+            print(f"    [DIRBRUTE] Testing {len(directories)} directories...")
+            
+            for directory in directories[:50]:  # Limit to first 50 directories
+                try:
+                    test_url = f"{base_url}{directory}/"
+                    
+                    response = requests.get(
+                        test_url,
+                        timeout=self.config.timeout,
+                        headers=self.config.headers,
+                        verify=False,
+                        allow_redirects=False
+                    )
+                    
+                    is_valid, evidence = DirBruteDetector.is_valid_response(
+                        response.text, response.status_code, len(response.text)
+                    )
+                    
+                    if is_valid:
+                        print(f"    [DIRBRUTE] DIRECTORY FOUND: {directory}/ - {evidence}")
+                        
+                        # Check for directory listing
+                        has_listing = DirBruteDetector.detect_directory_listing(response.text)
+                        severity = 'Medium' if has_listing else 'Low'
+                        
+                        results.append({
+                            'module': 'dirbrute',
+                            'target': test_url,
+                            'vulnerability': 'Directory Found' + (' with Listing' if has_listing else ''),
+                            'severity': severity,
+                            'parameter': f'directory: {directory}',
+                            'payload': directory,
+                            'evidence': evidence + (' - Directory listing enabled' if has_listing else ''),
+                            'request_url': test_url,
+                            'detector': 'DirBruteDetector.is_valid_response',
+                            'response_snippet': DirBruteDetector.get_response_snippet(response.text)
+                        })
+                        
+                        found_directories.append(directory)
+                        
+                        # If directory found, recursively test files in it
+                        self._test_files_in_directory(base_url, directory, results)
+                        
+                except Exception as e:
+                    continue
+            
+            # Test common files in root directory
+            files = DirBrutePayloads.get_all_files()
+            print(f"    [DIRBRUTE] Testing {len(files)} files in root directory...")
+            
+            for file in files[:50]:  # Limit to first 50 files
+                try:
+                    test_url = f"{base_url}{file}"
+                    
+                    response = requests.get(
+                        test_url,
+                        timeout=self.config.timeout,
+                        headers=self.config.headers,
+                        verify=False
+                    )
+                    
+                    is_valid, evidence = DirBruteDetector.is_valid_response(
+                        response.text, response.status_code, len(response.text)
+                    )
+                    
+                    if is_valid:
+                        print(f"    [DIRBRUTE] FILE FOUND: {file} - {evidence}")
+                        
+                        # Check for sensitive content
+                        is_sensitive, sensitive_evidence = DirBruteDetector.detect_sensitive_file(
+                            response.text, file
+                        )
+                        
+                        severity = 'High' if is_sensitive else 'Low'
+                        vuln_type = 'Sensitive File Found' if is_sensitive else 'File Found'
+                        
+                        results.append({
+                            'module': 'dirbrute',
+                            'target': test_url,
+                            'vulnerability': vuln_type,
+                            'severity': severity,
+                            'parameter': f'file: {file}',
+                            'payload': file,
+                            'evidence': evidence + (f' - {sensitive_evidence}' if is_sensitive else ''),
+                            'request_url': test_url,
+                            'detector': 'DirBruteDetector.is_valid_response',
+                            'response_snippet': DirBruteDetector.get_response_snippet(response.text)
+                        })
+                        
+                except Exception as e:
+                    continue
+            
+            if results:
+                print(f"    [DIRBRUTE] Found {len(results)} directories/files")
+            else:
+                print(f"    [DIRBRUTE] No directories or files found")
+                
+        except Exception as e:
+            print(f"    [DIRBRUTE] Error during directory bruteforce: {e}")
+        
+        return results
+    
+    def _test_files_in_directory(self, base_url: str, directory: str, results: List[Dict[str, Any]]):
+        """Test files in a found directory"""
+        files = DirBrutePayloads.get_all_files()
+        
+        print(f"    [DIRBRUTE] Testing files in directory: {directory}/")
+        
+        for file in files[:20]:  # Limit to first 20 files per directory
+            try:
+                test_url = f"{base_url}{directory}/{file}"
+                
+                response = requests.get(
+                    test_url,
+                    timeout=self.config.timeout,
+                    headers=self.config.headers,
+                    verify=False
+                )
+                
+                is_valid, evidence = DirBruteDetector.is_valid_response(
+                    response.text, response.status_code, len(response.text)
+                )
+                
+                if is_valid:
+                    print(f"    [DIRBRUTE] FILE FOUND: {directory}/{file} - {evidence}")
+                    
+                    # Check for sensitive content
+                    is_sensitive, sensitive_evidence = DirBruteDetector.detect_sensitive_file(
+                        response.text, file
+                    )
+                    
+                    severity = 'High' if is_sensitive else 'Low'
+                    vuln_type = 'Sensitive File Found' if is_sensitive else 'File Found'
+                    
+                    results.append({
+                        'module': 'dirbrute',
+                        'target': test_url,
+                        'vulnerability': vuln_type,
+                        'severity': severity,
+                        'parameter': f'file: {directory}/{file}',
+                        'payload': f"{directory}/{file}",
+                        'evidence': evidence + (f' - {sensitive_evidence}' if is_sensitive else ''),
+                        'request_url': test_url,
+                        'detector': 'DirBruteDetector.is_valid_response',
+                        'response_snippet': DirBruteDetector.get_response_snippet(response.text)
+                    })
+                    
+            except Exception as e:
+                continue
+
     def _get_important_pages(self) -> List[str]:
         """Get list of important pages that might contain forms"""
-        return [
-            '/login.php', '/login', '/signin.php', '/signin',
-            '/register.php', '/register', '/signup.php', '/signup', 
-            '/guestbook.php', '/guestbook', '/contact.php', '/contact',
-            '/admin.php', '/admin', '/profile.php', '/profile',
-            '/settings.php', '/settings', '/account.php', '/account',
-            '/user.php', '/users.php', '/member.php', '/members.php',
-            '/dashboard.php', '/panel.php', '/cp.php', '/control.php'
-        ]
+        # Use DirBrutePayloads to get common files instead of hardcoded list
+        common_files = DirBrutePayloads.get_common_files()
+        important_pages = []
+        
+        for file in common_files:
+            if any(keyword in file.lower() for keyword in ['login', 'admin', 'register', 'contact', 'guestbook']):
+                important_pages.append(f'/{file}')
+        
+        return important_pages[:20]  # Limit to first 20 important pages
     
     def _normalize_form_action(self, form_action: str) -> str:
         """Normalize form action to group similar forms together"""

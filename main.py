@@ -87,6 +87,7 @@ def show_modules():
     print("- csrf: Cross-Site Request Forgery")
     print("- idor: Insecure Direct Object Reference")
     print("- ssrf: Server-Side Request Forgery")
+    print("- dirbrute: Directory and File Bruteforce")
 
 def main():
     """Main function"""
