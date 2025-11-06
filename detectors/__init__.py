@@ -19,5 +19,8 @@ from .blind_xss_detector import BlindXSSDetector
 from .password_over_http_detector import PasswordOverHTTPDetector
 from .outdated_software_detector import OutdatedSoftwareDetector
 from .database_error_detector import DatabaseErrorDetector
+from .phpinfo_detector import PHPInfoDetector
+from .ssl_tls_detector import SSLTLSDetector
+from .httponly_cookie_detector import HttpOnlyCookieDetector
 
-__all__ = ['XSSDetector', 'SQLiDetector', 'LFIDetector', 'CSRFDetector', 'DirBruteDetector', 'Real404Detector', 'GitDetector', 'DirectoryTraversalDetector', 'SecurityHeadersDetector', 'SSRFDetector', 'RFIDetector', 'VersionDisclosureDetector', 'ClickjackingDetector', 'BlindXSSDetector', 'PasswordOverHTTPDetector', 'OutdatedSoftwareDetector', 'DatabaseErrorDetector']
+__all__ = ['XSSDetector', 'SQLiDetector', 'LFIDetector', 'CSRFDetector', 'DirBruteDetector', 'Real404Detector', 'GitDetector', 'DirectoryTraversalDetector', 'SecurityHeadersDetector', 'SSRFDetector', 'RFIDetector', 'VersionDisclosureDetector', 'ClickjackingDetector', 'BlindXSSDetector', 'PasswordOverHTTPDetector', 'OutdatedSoftwareDetector', 'DatabaseErrorDetector', 'PHPInfoDetector', 'SSLTLSDetector', 'HttpOnlyCookieDetector']

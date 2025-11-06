@@ -13,8 +13,8 @@ from core.config import Config
 from core.url_parser import URLParser
 from core.crawler import WebCrawler
 from utils.file_handler import FileHandler
-from payloads import XSSPayloads, SQLiPayloads, LFIPayloads, CSRFPayloads, DirBrutePayloads, GitPayloads, DirectoryTraversalPayloads, SSRFPayloads, RFIPayloads, BlindXSSPayloads
-from detectors import XSSDetector, SQLiDetector, LFIDetector, CSRFDetector, DirBruteDetector, Real404Detector, GitDetector, DirectoryTraversalDetector, SecurityHeadersDetector, SSRFDetector, RFIDetector, VersionDisclosureDetector, ClickjackingDetector, BlindXSSDetector, PasswordOverHTTPDetector, OutdatedSoftwareDetector, DatabaseErrorDetector
+from payloads import XSSPayloads, SQLiPayloads, LFIPayloads, CSRFPayloads, DirBrutePayloads, GitPayloads, DirectoryTraversalPayloads, SSRFPayloads, RFIPayloads, BlindXSSPayloads, PHPInfoPayloads
+from detectors import XSSDetector, SQLiDetector, LFIDetector, CSRFDetector, DirBruteDetector, Real404Detector, GitDetector, DirectoryTraversalDetector, SecurityHeadersDetector, SSRFDetector, RFIDetector, VersionDisclosureDetector, ClickjackingDetector, BlindXSSDetector, PasswordOverHTTPDetector, OutdatedSoftwareDetector, DatabaseErrorDetector, PHPInfoDetector, SSLTLSDetector, HttpOnlyCookieDetector
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -255,6 +255,12 @@ class VulnScanner:
                 results.extend(self._test_outdated_software(parsed_data))
             elif module_name == "databaseerrors":
                 results.extend(self._test_database_errors(parsed_data))
+            elif module_name == "phpinfo":
+                results.extend(self._test_phpinfo(parsed_data))
+            elif module_name == "ssltls":
+                results.extend(self._test_ssl_tls(parsed_data))
+            elif module_name == "httponlycookies":
+                results.extend(self._test_httponly_cookies(parsed_data))
             # Add more modules as needed
                 
         except Exception as e:
@@ -1649,6 +1655,251 @@ class VulnScanner:
                 except Exception as e:
                     print(f"    [DATABASEERRORS] Error testing payload: {e}")
                     continue
+        
+        return results
+
+    def _test_phpinfo(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for PHPInfo exposure"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # Remove query parameters from base URL
+        if '?' in base_url:
+            base_url = base_url.split('?')[0]
+        
+        # Get the base directory URL
+        if base_url.endswith('.php') or base_url.endswith('.html') or base_url.endswith('.asp'):
+            # For file URLs, use the directory containing the file
+            base_dir = '/'.join(base_url.split('/')[:-1]) + '/'
+        else:
+            # Ensure base URL ends with /
+            if not base_url.endswith('/'):
+                base_url += '/'
+            base_dir = base_url
+        
+        try:
+            print(f"    [PHPINFO] Testing for PHPInfo exposure...")
+            print(f"    [PHPINFO] Base directory: {base_dir}")
+            
+            # Get PHPInfo paths to test
+            phpinfo_paths = PHPInfoPayloads.get_all_phpinfo_payloads()
+            
+            print(f"    [PHPINFO] Testing {len(phpinfo_paths)} PHPInfo paths...")
+            
+            for phpinfo_path in phpinfo_paths[:30]:  # Limit to first 30 paths
+                try:
+                    test_url = f"{base_dir}{phpinfo_path}"
+                    
+                    response = requests.get(
+                        test_url,
+                        timeout=self.config.timeout,
+                        headers=self.config.headers,
+                        verify=False,
+                        allow_redirects=False
+                    )
+                    
+                    print(f"    [PHPINFO] Testing: {phpinfo_path} -> {response.status_code} ({len(response.text)} bytes)")
+                    
+                    # Use PHPInfo detector
+                    is_exposed, evidence, severity = PHPInfoDetector.detect_phpinfo_exposure(
+                        response.text, response.status_code, test_url
+                    )
+                    
+                    if is_exposed:
+                        print(f"    [PHPINFO] PHPINFO EXPOSURE FOUND: {phpinfo_path} - {evidence}")
+                        
+                        # Get detailed evidence and response snippet
+                        detailed_evidence = PHPInfoDetector.get_evidence(
+                            PHPInfoDetector.get_phpinfo_indicators(), response.text
+                        )
+                        response_snippet = PHPInfoDetector.get_response_snippet(response.text)
+                        remediation = PHPInfoDetector.get_remediation_advice()
+                        
+                        results.append({
+                            'module': 'phpinfo',
+                            'target': test_url,
+                            'vulnerability': 'PHPInfo Page Exposed',
+                            'severity': severity,
+                            'parameter': f'phpinfo_path: {phpinfo_path}',
+                            'payload': phpinfo_path,
+                            'evidence': detailed_evidence,
+                            'request_url': test_url,
+                            'detector': 'PHPInfoDetector.detect_phpinfo_exposure',
+                            'response_snippet': response_snippet,
+                            'remediation': remediation
+                        })
+                    else:
+                        print(f"    [PHPINFO] No exposure: {phpinfo_path} - {evidence}")
+                        
+                except Exception as e:
+                    print(f"    [PHPINFO] Error testing {phpinfo_path}: {e}")
+                    continue
+            
+            # Also test for PHPInfo via parameters
+            if parsed_data['query_params']:
+                print(f"    [PHPINFO] Testing PHPInfo via parameters...")
+                
+                phpinfo_params = PHPInfoPayloads.get_phpinfo_parameters()
+                phpinfo_values = PHPInfoPayloads.get_phpinfo_parameter_values()
+                
+                for param in list(parsed_data['query_params'].keys())[:5]:  # Test first 5 parameters
+                    for value in phpinfo_values[:10]:  # Test first 10 values
+                        try:
+                            # Create test URL
+                            test_params = parsed_data['query_params'].copy()
+                            test_params[param] = [value]
+                            
+                            # Build query string
+                            query_parts = []
+                            for k, v_list in test_params.items():
+                                for v in v_list:
+                                    query_parts.append(f"{k}={v}")
+                            
+                            test_url = f"{parsed_data['url'].split('?')[0]}?{'&'.join(query_parts)}"
+                            
+                            response = requests.get(
+                                test_url,
+                                timeout=self.config.timeout,
+                                headers=self.config.headers,
+                                verify=False
+                            )
+                            
+                            # Use PHPInfo detector
+                            is_exposed, evidence, severity = PHPInfoDetector.detect_phpinfo_exposure(
+                                response.text, response.status_code, test_url
+                            )
+                            
+                            if is_exposed:
+                                print(f"    [PHPINFO] PHPINFO VIA PARAMETER FOUND: {param}={value}")
+                                
+                                detailed_evidence = PHPInfoDetector.get_evidence(
+                                    PHPInfoDetector.get_phpinfo_indicators(), response.text
+                                )
+                                response_snippet = PHPInfoDetector.get_response_snippet(response.text)
+                                remediation = PHPInfoDetector.get_remediation_advice()
+                                
+                                results.append({
+                                    'module': 'phpinfo',
+                                    'target': test_url,
+                                    'vulnerability': 'PHPInfo via Parameter',
+                                    'severity': severity,
+                                    'parameter': param,
+                                    'payload': value,
+                                    'evidence': detailed_evidence,
+                                    'request_url': test_url,
+                                    'detector': 'PHPInfoDetector.detect_phpinfo_exposure',
+                                    'response_snippet': response_snippet,
+                                    'remediation': remediation
+                                })
+                                break  # Found PHPInfo, no need to test more values for this param
+                                
+                        except Exception as e:
+                            continue
+            
+            if results:
+                print(f"    [PHPINFO] Found {len(results)} PHPInfo exposures")
+            else:
+                print(f"    [PHPINFO] No PHPInfo exposures found")
+                
+        except Exception as e:
+            print(f"    [PHPINFO] Error during PHPInfo testing: {e}")
+        
+        return results
+    
+    def _test_ssl_tls(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for SSL/TLS implementation"""
+        results = []
+        base_url = parsed_data['url']
+        
+        try:
+            print(f"    [SSLTLS] Testing SSL/TLS implementation...")
+            
+            # Use SSL/TLS detector
+            has_ssl, evidence, severity, details = SSLTLSDetector.detect_ssl_tls_implementation(base_url)
+            
+            if not has_ssl or severity in ['High', 'Medium']:
+                print(f"    [SSLTLS] SSL/TLS ISSUE FOUND: {evidence}")
+                
+                issue_type = details.get('issue', 'ssl_issue')
+                remediation = SSLTLSDetector.get_remediation_advice(issue_type)
+                
+                vulnerability_name = "SSL/TLS Not Implemented"
+                if has_ssl:
+                    if 'weak' in evidence.lower():
+                        vulnerability_name = "Weak SSL/TLS Configuration"
+                    elif 'not enforced' in evidence.lower():
+                        vulnerability_name = "SSL/TLS Not Enforced"
+                
+                results.append({
+                    'module': 'ssltls',
+                    'target': base_url,
+                    'vulnerability': vulnerability_name,
+                    'severity': severity,
+                    'parameter': 'ssl_configuration',
+                    'payload': 'N/A',
+                    'evidence': evidence,
+                    'request_url': base_url,
+                    'detector': 'SSLTLSDetector.detect_ssl_tls_implementation',
+                    'response_snippet': f"TLS Version: {details.get('tls_version', 'N/A')}, Cipher: {details.get('cipher', 'N/A')}",
+                    'remediation': remediation
+                })
+            else:
+                print(f"    [SSLTLS] SSL/TLS properly configured")
+            
+        except Exception as e:
+            print(f"    [SSLTLS] Error during SSL/TLS testing: {e}")
+        
+        return results
+    
+    def _test_httponly_cookies(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for HttpOnly cookie security"""
+        results = []
+        base_url = parsed_data['url']
+        
+        try:
+            print(f"    [HTTPONLYCOOKIES] Testing HttpOnly cookie security...")
+            
+            # Make request to get cookies
+            response = requests.get(
+                base_url,
+                timeout=self.config.timeout,
+                headers=self.config.headers,
+                verify=False
+            )
+            
+            print(f"    [HTTPONLYCOOKIES] Response code: {response.status_code}")
+            
+            # Skip if error response
+            if response.status_code >= 400:
+                print(f"    [HTTPONLYCOOKIES] Skipping - error response ({response.status_code})")
+                return results
+            
+            # Check for insecure cookies
+            insecure_cookies = HttpOnlyCookieDetector.detect_httponly_cookies(dict(response.headers))
+            
+            if insecure_cookies:
+                print(f"    [HTTPONLYCOOKIES] Found {len(insecure_cookies)} insecure cookies")
+                
+                for cookie_info in insecure_cookies:
+                    for issue in cookie_info['issues']:
+                        results.append({
+                            'module': 'httponlycookies',
+                            'target': base_url,
+                            'vulnerability': f'Cookie Security Issue: {issue["issue"]}',
+                            'severity': issue['severity'],
+                            'parameter': f'cookie: {cookie_info["cookie_name"]}',
+                            'payload': 'N/A',
+                            'evidence': f'Cookie "{cookie_info["cookie_name"]}" {issue["description"]}',
+                            'request_url': base_url,
+                            'detector': 'HttpOnlyCookieDetector.detect_httponly_cookies',
+                            'response_snippet': cookie_info['cookie_header'],
+                            'remediation': HttpOnlyCookieDetector.get_remediation_advice(issue['issue'])
+                        })
+            else:
+                print(f"    [HTTPONLYCOOKIES] No insecure cookies found")
+            
+        except Exception as e:
+            print(f"    [HTTPONLYCOOKIES] Error during HttpOnly cookie testing: {e}")
         
         return results
 

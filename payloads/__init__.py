@@ -12,5 +12,6 @@ from .directory_traversal_payloads import DirectoryTraversalPayloads
 from .ssrf_payloads import SSRFPayloads
 from .rfi_payloads import RFIPayloads
 from .blind_xss_payloads import BlindXSSPayloads
+from .phpinfo_payloads import PHPInfoPayloads
 
-__all__ = ['XSSPayloads', 'SQLiPayloads', 'LFIPayloads', 'CSRFPayloads', 'DirBrutePayloads', 'GitPayloads', 'DirectoryTraversalPayloads', 'SSRFPayloads', 'RFIPayloads', 'BlindXSSPayloads']
+__all__ = ['XSSPayloads', 'SQLiPayloads', 'LFIPayloads', 'CSRFPayloads', 'DirBrutePayloads', 'GitPayloads', 'DirectoryTraversalPayloads', 'SSRFPayloads', 'RFIPayloads', 'BlindXSSPayloads', 'PHPInfoPayloads']
