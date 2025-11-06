@@ -814,20 +814,7 @@ class VulnScanner:
                             'detector': 'XSSDetector.detect_reflected_xss',
                             'response_snippet': response_snippet
                         }
-                    else:
-                        print(f"    [XSS] No XSS detected for payload: {payload[:30]}...")
                         
-                        # Debug: Check if payload is in response but not detected as XSS
-                        if payload in response.text:
-                            print(f"    [XSS] DEBUG: Payload found in response but not classified as XSS")
-                            # Show context around payload
-                            payload_pos = response.text.find(payload)
-                            if payload_pos >= 0:
-                                start = max(0, payload_pos - 50)
-                                end = min(len(response.text), payload_pos + len(payload) + 50)
-                                context = response.text[start:end].replace('\n', ' ').replace('\r', ' ')
-                                print(f"    [XSS] DEBUG: Context: ...{context}...")
-                            
                         # Filter false positives
                         try:
                             is_valid, filter_reason = self.false_positive_filter.filter_vulnerability(vulnerability)
@@ -860,6 +847,19 @@ class VulnScanner:
                             break  # Found XSS, no need to test more payloads for this param
                         else:
                             print(f"    [XSS] False positive filtered: {filter_reason}")
+                    else:
+                        print(f"    [XSS] No XSS detected for payload: {payload[:30]}...")
+                        
+                        # Debug: Check if payload is in response but not detected as XSS
+                        if payload in response.text:
+                            print(f"    [XSS] DEBUG: Payload found in response but not classified as XSS")
+                            # Show context around payload
+                            payload_pos = response.text.find(payload)
+                            if payload_pos >= 0:
+                                start = max(0, payload_pos - 50)
+                                end = min(len(response.text), payload_pos + len(payload) + 50)
+                                context = response.text[start:end].replace('\n', ' ').replace('\r', ' ')
+                                print(f"    [XSS] DEBUG: Context: ...{context}...")
                         
                 except Exception as e:
                     print(f"    [XSS] Error testing payload: {e}")
