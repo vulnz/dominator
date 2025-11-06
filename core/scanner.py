@@ -30,9 +30,20 @@ class VulnScanner:
         self.file_handler = FileHandler()
         self.results = []
         self.request_count = 0
+        self.scan_stats = {
+            'total_requests': 0,
+            'total_urls': 0,
+            'total_params': 0,
+            'scan_duration': '0s',
+            'start_time': None,
+            'end_time': None
+        }
         
     def scan(self) -> List[Dict[str, Any]]:
         """Main scanning method"""
+        import time
+        self.scan_stats['start_time'] = time.time()
+        
         targets = self.config.get_targets()
         
         if not targets:
@@ -63,6 +74,17 @@ class VulnScanner:
                 except Exception as e:
                     print(f"Scanning error: {e}")
         
+        # Calculate scan duration
+        self.scan_stats['end_time'] = time.time()
+        duration = self.scan_stats['end_time'] - self.scan_stats['start_time']
+        self.scan_stats['scan_duration'] = f"{duration:.1f}s"
+        self.scan_stats['total_requests'] = self.request_count
+        
+        # Add scan stats to results
+        if self.results:
+            for result in self.results:
+                result['scan_stats'] = self.scan_stats
+        
         return self.results
     
     def _scan_target(self, target: str) -> List[Dict[str, Any]]:
@@ -86,6 +108,10 @@ class VulnScanner:
             print(f"  [DEBUG] Path: {parsed_data['path']}")
             print(f"  [DEBUG] Query parameters: {list(parsed_data['query_params'].keys())}")
             
+            # Update stats
+            self.scan_stats['total_urls'] += 1
+            self.scan_stats['total_params'] += len(parsed_data['query_params'])
+            
             # If no parameters in URL, try to find pages with parameters
             if not parsed_data['query_params']:
                 print(f"  [DEBUG] No parameters found, starting crawler...")
@@ -99,6 +125,11 @@ class VulnScanner:
                     if crawled_data['query_params']:
                         print(f"  [DEBUG] Testing page: {url}")
                         print(f"  [DEBUG] Parameters to test: {list(crawled_data['query_params'].keys())}")
+                        
+                        # Update stats
+                        self.scan_stats['total_urls'] += 1
+                        self.scan_stats['total_params'] += len(crawled_data['query_params'])
+                        
                         for module_name in self.config.modules:
                             if self._should_stop():
                                 break
@@ -390,41 +421,58 @@ class VulnScanner:
     
     def print_results(self, results: List[Dict[str, Any]]):
         """Print results to console"""
-        if not results:
-            print("\n" + "="*60)
-            print("SCAN RESULTS")
-            print("="*60)
-            print("No vulnerabilities found")
-            print("="*60)
-            return
+        print("\n" + "="*80)
+        print("SCAN RESULTS SUMMARY".center(80))
+        print("="*80)
         
-        print("\n" + "="*60)
-        print("SCAN RESULTS")
-        print("="*60)
-        print(f"Found {len(results)} vulnerabilities")
-        print("="*60)
+        # Print scan statistics
+        stats = self.scan_stats
+        print(f"Scan Duration:        {stats['scan_duration']}")
+        print(f"Total Requests:       {stats['total_requests']}")
+        print(f"URLs Discovered:      {stats['total_urls']}")
+        print(f"Parameters Tested:    {stats['total_params']}")
+        print(f"Modules Used:         {', '.join(self.config.modules)}")
+        print(f"Threads:              {self.config.threads}")
+        print("-" * 80)
+        
+        if not results:
+            print("VULNERABILITY STATUS: CLEAN")
+            print("No vulnerabilities found during the scan.")
+            print("="*80)
+            return
         
         # Group by severity
         high_vulns = [v for v in results if v.get('severity', '').lower() == 'high']
         medium_vulns = [v for v in results if v.get('severity', '').lower() == 'medium']
         low_vulns = [v for v in results if v.get('severity', '').lower() == 'low']
         
+        print(f"VULNERABILITY STATUS: {len(results)} ISSUES FOUND")
+        print(f"High Severity:        {len(high_vulns)}")
+        print(f"Medium Severity:      {len(medium_vulns)}")
+        print(f"Low Severity:         {len(low_vulns)}")
+        print("="*80)
+        
         if high_vulns:
-            print(f"\nHIGH SEVERITY ({len(high_vulns)} found):")
+            print(f"\nHIGH SEVERITY VULNERABILITIES ({len(high_vulns)} found):")
+            print("-" * 50)
             for i, result in enumerate(high_vulns, 1):
                 self._print_vulnerability(i, result)
         
         if medium_vulns:
-            print(f"\nMEDIUM SEVERITY ({len(medium_vulns)} found):")
+            print(f"\nMEDIUM SEVERITY VULNERABILITIES ({len(medium_vulns)} found):")
+            print("-" * 50)
             for i, result in enumerate(medium_vulns, 1):
                 self._print_vulnerability(i, result)
         
         if low_vulns:
-            print(f"\nLOW SEVERITY ({len(low_vulns)} found):")
+            print(f"\nLOW SEVERITY VULNERABILITIES ({len(low_vulns)} found):")
+            print("-" * 50)
             for i, result in enumerate(low_vulns, 1):
                 self._print_vulnerability(i, result)
         
-        print("="*60)
+        print("="*80)
+        print("RECOMMENDATION: Review and remediate all vulnerabilities above.")
+        print("="*80)
     
     def _print_vulnerability(self, index: int, result: Dict[str, Any]):
         """Print single vulnerability details"""

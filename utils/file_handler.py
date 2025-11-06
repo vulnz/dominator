@@ -95,7 +95,10 @@ class FileHandler:
                     vuln_html = f'''
                     <div class="vulnerability severity-{severity}">
                         <div class="vuln-header">
-                            <div class="vuln-title">#{i} {vuln}</div>
+                            <div class="vuln-title">
+                                <span class="vuln-id">#{i}</span>
+                                {vuln}
+                            </div>
                             <div class="vuln-meta">
                                 <div class="meta-item">
                                     <span class="meta-label">Severity:</span>
@@ -113,30 +116,30 @@ class FileHandler:
                         </div>
                         <div class="vuln-details">
                             <div class="detail-section">
-                                <div class="detail-title">🎯 Target</div>
-                                <div class="code-block">{target}</div>
+                                <div class="detail-title">🎯 Target URL</div>
+                                <div class="code-block" data-lang="url">{target}</div>
                             </div>
                             
                             <div class="detail-section">
-                                <div class="detail-title">📤 Request</div>
-                                <div class="code-block request-block">{request_url}</div>
+                                <div class="detail-title">📤 HTTP Request</div>
+                                <div class="code-block request-block" data-lang="http">{request_url}</div>
                             </div>
                             
                             <div class="detail-section">
-                                <div class="detail-title">💉 Payload</div>
-                                <div class="code-block">{payload}</div>
+                                <div class="detail-title">💉 Malicious Payload</div>
+                                <div class="code-block" data-lang="payload">{payload}</div>
                             </div>
                             
                             <div class="detail-section">
-                                <div class="detail-title">📥 Response Snippet</div>
-                                <div class="code-block response-block">{response_snippet}</div>
+                                <div class="detail-title">📥 Server Response</div>
+                                <div class="code-block response-block" data-lang="html">{response_snippet}</div>
                             </div>
                             
                             <div class="detail-section">
-                                <div class="detail-title">🔍 Evidence</div>
-                                <div class="code-block">{evidence}</div>
+                                <div class="detail-title">🔍 Evidence & Analysis</div>
+                                <div class="code-block" data-lang="evidence">{evidence}</div>
                                 <div class="detector-info">
-                                    <span class="detector-name">Detector:</span> {detector}
+                                    <span class="detector-name">🤖 Detection Method:</span> {detector}
                                 </div>
                             </div>
                         </div>
@@ -150,6 +153,10 @@ class FileHandler:
             html_content = html_content.replace('{high_count}', str(high_count))
             html_content = html_content.replace('{medium_count}', str(medium_count))
             html_content = html_content.replace('{low_count}', str(low_count))
+            html_content = html_content.replace('{total_requests}', str(data[0].get('scan_stats', {}).get('total_requests', 0)) if data else '0')
+            html_content = html_content.replace('{total_urls}', str(data[0].get('scan_stats', {}).get('total_urls', 0)) if data else '0')
+            html_content = html_content.replace('{total_params}', str(data[0].get('scan_stats', {}).get('total_params', 0)) if data else '0')
+            html_content = html_content.replace('{scan_duration}', str(data[0].get('scan_stats', {}).get('scan_duration', '0s')) if data else '0s')
             html_content = html_content.replace('{vulnerabilities_content}', vulnerabilities_content)
             
             with open(filename, 'w', encoding='utf-8') as f:
