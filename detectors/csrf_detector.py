@@ -113,30 +113,34 @@ class CSRFDetector:
             evidence = "Response too short to analyze for CSRF vulnerabilities"
             return False, evidence
         
-        has_protection, protection_evidence = CSRFDetector.detect_csrf_protection(
-            response_text, response_headers, form_data
-        )
+        # Look for POST forms specifically
+        post_form_pattern = r'<form[^>]*method=["\']?post["\']?[^>]*>(.*?)</form>'
+        post_forms = re.findall(post_form_pattern, response_text, re.IGNORECASE | re.DOTALL)
         
-        # Look for forms that could be vulnerable
-        form_patterns = [
-            r'<form[^>]*method=["\']?post["\']?[^>]*>',
-            r'<form[^>]*action=["\'][^"\']*["\'][^>]*>',
-        ]
-        
-        forms_found = []
-        for pattern in form_patterns:
-            matches = re.findall(pattern, response_text, re.IGNORECASE)
-            forms_found.extend(matches)
-        
-        # Only report vulnerability if we have forms AND no protection
-        if not has_protection and forms_found:
-            evidence = f"Found {len(forms_found)} form(s) without CSRF protection. {protection_evidence}"
-            return True, evidence
-        elif not has_protection and forms_found:
-            evidence = f"No forms found that require CSRF protection. {protection_evidence}"
+        if not post_forms:
+            evidence = "No POST forms found - not vulnerable to CSRF"
             return False, evidence
+        
+        vulnerable_forms = 0
+        csrf_indicators = CSRFDetector.get_csrf_indicators()
+        
+        for form_content in post_forms:
+            has_csrf_token = False
+            
+            # Check for CSRF tokens in form
+            for indicator in csrf_indicators:
+                if indicator.lower() in form_content.lower():
+                    has_csrf_token = True
+                    break
+            
+            if not has_csrf_token:
+                vulnerable_forms += 1
+        
+        if vulnerable_forms > 0:
+            evidence = f"Found {vulnerable_forms} POST form(s) without CSRF protection out of {len(post_forms)} total POST forms"
+            return True, evidence
         else:
-            evidence = f"CSRF protection appears to be implemented or no vulnerable forms found. {protection_evidence}"
+            evidence = f"All {len(post_forms)} POST form(s) have CSRF protection"
             return False, evidence
     
     @staticmethod

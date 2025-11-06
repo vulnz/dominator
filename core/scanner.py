@@ -130,6 +130,28 @@ class VulnScanner:
                 if not crawled_urls:
                     print(f"  [DEBUG] No pages with parameters found by crawler")
                 
+                # Test important pages that might have forms
+                important_pages = [
+                    '/login.php', '/login', '/signin.php', '/signin',
+                    '/register.php', '/register', '/signup.php', '/signup',
+                    '/guestbook.php', '/guestbook', '/contact.php', '/contact',
+                    '/admin.php', '/admin', '/profile.php', '/profile',
+                    '/settings.php', '/settings', '/account.php', '/account'
+                ]
+                
+                if 'csrf' in self.config.modules:
+                    for page in important_pages:
+                        test_url = f"{parsed_data['scheme']}://{parsed_data['host']}{page}"
+                        try:
+                            test_response = requests.get(test_url, timeout=5, verify=False)
+                            if test_response.status_code == 200:
+                                print(f"  [DEBUG] Testing important page for CSRF: {test_url}")
+                                page_data = self.url_parser.parse(test_url)
+                                csrf_results = self._run_module('csrf', page_data)
+                                target_results.extend(csrf_results)
+                        except:
+                            continue
+                
                 for url in crawled_urls:
                     crawled_data = self.url_parser.parse(url)
                     if crawled_data['query_params']:
@@ -441,44 +463,83 @@ class VulnScanner:
                 print(f"    [CSRF] Skipping CSRF test - error response ({response.status_code})")
                 return results
             
-            # Check for CSRF protection on the page
-            is_vulnerable, evidence = CSRFDetector.detect_csrf_vulnerability(
-                response.text, 
-                dict(response.headers)
-            )
+            # Extract all forms from the page
+            import re
+            form_pattern = r'<form[^>]*>(.*?)</form>'
+            forms = re.findall(form_pattern, response.text, re.IGNORECASE | re.DOTALL)
             
-            if is_vulnerable:
-                response_snippet = CSRFDetector.get_response_snippet(response.text)
+            if not forms:
+                print(f"    [CSRF] No forms found on page")
+                return results
+            
+            print(f"    [CSRF] Found {len(forms)} form(s) to analyze")
+            
+            # Analyze each form individually
+            form_action_pattern = r'<form[^>]*action=["\']?([^"\'>\s]+)["\']?[^>]*>'
+            form_method_pattern = r'<form[^>]*method=["\']?([^"\'>\s]+)["\']?[^>]*>'
+            
+            form_actions = re.findall(form_action_pattern, response.text, re.IGNORECASE)
+            form_methods = re.findall(form_method_pattern, response.text, re.IGNORECASE)
+            
+            vulnerable_forms = []
+            
+            for i, form_content in enumerate(forms):
+                form_action = form_actions[i] if i < len(form_actions) else ''
+                form_method = form_methods[i].upper() if i < len(form_methods) else 'GET'
                 
-                # Create unique identifier for deduplication
-                # Use form actions found in the response to create unique key
-                import re
-                form_actions = re.findall(r'<form[^>]*action=["\']?([^"\'>\s]+)["\']?[^>]*>', response.text, re.IGNORECASE)
-                unique_forms = set(form_actions)
+                print(f"    [CSRF] Analyzing form {i+1}: action='{form_action}', method='{form_method}'")
                 
-                # Create deduplication key based on forms found
-                dedup_key = f"csrf_missing_{','.join(sorted(unique_forms))}"
+                # Skip GET forms (not vulnerable to CSRF)
+                if form_method == 'GET':
+                    print(f"    [CSRF] Skipping GET form")
+                    continue
                 
-                if dedup_key not in self.found_vulnerabilities:
-                    self.found_vulnerabilities.add(dedup_key)
-                    print(f"    [CSRF] VULNERABILITY FOUND! Missing CSRF protection")
+                # Check if form has CSRF protection
+                has_csrf_protection = False
+                csrf_indicators = CSRFDetector.get_csrf_indicators()
+                
+                for indicator in csrf_indicators:
+                    if indicator.lower() in form_content.lower():
+                        has_csrf_protection = True
+                        print(f"    [CSRF] Form {i+1} has CSRF protection: {indicator}")
+                        break
+                
+                if not has_csrf_protection:
+                    print(f"    [CSRF] Form {i+1} is VULNERABLE - no CSRF protection found")
+                    
+                    # Create unique form identifier
+                    form_id = f"{base_url}_{form_action}_{form_method}"
+                    
+                    if form_id not in self.found_vulnerabilities:
+                        self.found_vulnerabilities.add(form_id)
+                        
+                        vulnerable_forms.append({
+                            'action': form_action,
+                            'method': form_method,
+                            'content': form_content[:200] + '...' if len(form_content) > 200 else form_content
+                        })
+            
+            # Report vulnerabilities
+            if vulnerable_forms:
+                for form_info in vulnerable_forms:
+                    evidence = f"Form with action '{form_info['action']}' and method '{form_info['method']}' lacks CSRF protection"
                     
                     results.append({
                         'module': 'csrf',
                         'target': base_url,
                         'vulnerability': 'Missing CSRF Protection',
                         'severity': 'Medium',
-                        'parameter': 'N/A',
+                        'parameter': f"form_action: {form_info['action']}",
                         'payload': 'N/A',
                         'evidence': evidence,
                         'request_url': base_url,
-                        'detector': 'CSRFDetector.detect_csrf_vulnerability',
-                        'response_snippet': response_snippet
+                        'detector': 'CSRFDetector.form_analysis',
+                        'response_snippet': form_info['content']
                     })
-                else:
-                    print(f"    [CSRF] Duplicate vulnerability suppressed (same forms already found)")
+                
+                print(f"    [CSRF] VULNERABILITY FOUND! {len(vulnerable_forms)} vulnerable form(s)")
             else:
-                print(f"    [CSRF] {evidence}")
+                print(f"    [CSRF] All forms have CSRF protection or no POST forms found")
             
             # Test CSRF bypass techniques if we have forms
             csrf_payloads = CSRFPayloads.get_all_payloads()
