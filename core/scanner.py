@@ -7,6 +7,7 @@ import json
 import re
 import requests
 import urllib3
+from urllib.parse import quote_plus
 from typing import List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -148,6 +149,15 @@ class VulnScanner:
         """Cleanup resources"""
         if hasattr(self, 'screenshot_handler'):
             self.screenshot_handler.cleanup()
+    
+    def _build_test_url(self, base_url: str, test_params: Dict[str, List[str]]) -> str:
+        """Build properly encoded test URL"""
+        query_parts = []
+        for k, v_list in test_params.items():
+            for v in v_list:
+                query_parts.append(f"{quote_plus(k)}={quote_plus(str(v))}")
+        
+        return f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
     
     def _scan_target(self, target: str) -> List[Dict[str, Any]]:
         """Scan single target"""
@@ -381,13 +391,14 @@ class VulnScanner:
                     test_params = parsed_data['query_params'].copy()
                     test_params[param] = [payload]
                     
-                    # Build query string
+                    # Build query string with proper URL encoding
+                    from urllib.parse import urlencode, quote_plus
                     query_parts = []
                     for k, v_list in test_params.items():
                         for v in v_list:
-                            query_parts.append(f"{k}={v}")
+                            query_parts.append(f"{quote_plus(k)}={quote_plus(str(v))}")
                     
-                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    test_url = self._build_test_url(base_url, test_params)
                     print(f"    [XSS] Request URL: {test_url}")
                     
                     response = requests.get(
@@ -465,13 +476,14 @@ class VulnScanner:
                     test_params = parsed_data['query_params'].copy()
                     test_params[param] = [payload]
                     
-                    # Build query string
+                    # Build query string with proper URL encoding
+                    from urllib.parse import urlencode, quote_plus
                     query_parts = []
                     for k, v_list in test_params.items():
                         for v in v_list:
-                            query_parts.append(f"{k}={v}")
+                            query_parts.append(f"{quote_plus(k)}={quote_plus(str(v))}")
                     
-                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    test_url = self._build_test_url(base_url, test_params)
                     print(f"    [SQLI] Request URL: {test_url}")
                     
                     response = requests.get(
@@ -531,13 +543,14 @@ class VulnScanner:
                     test_params = parsed_data['query_params'].copy()
                     test_params[param] = [payload]
                     
-                    # Build query string
+                    # Build query string with proper URL encoding
+                    from urllib.parse import urlencode, quote_plus
                     query_parts = []
                     for k, v_list in test_params.items():
                         for v in v_list:
-                            query_parts.append(f"{k}={v}")
+                            query_parts.append(f"{quote_plus(k)}={quote_plus(str(v))}")
                     
-                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    test_url = self._build_test_url(base_url, test_params)
                     print(f"    [LFI] Request URL: {test_url}")
                     
                     response = requests.get(
