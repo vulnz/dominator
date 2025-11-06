@@ -970,6 +970,157 @@ class VulnScanner:
             print(f"    [GITEXPOSED] Error during git exposure testing: {e}")
         
         return results
+    
+    def _test_directory_traversal(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for directory traversal vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # Get directory traversal payloads
+        traversal_payloads = DirectoryTraversalPayloads.get_all_payloads()
+        
+        # Test GET parameters
+        for param, values in parsed_data['query_params'].items():
+            print(f"    [DIRTRAVERSAL] Testing parameter: {param}")
+            
+            # Create deduplication key for this parameter
+            param_key = f"dirtraversal_{base_url.split('?')[0]}_{param}"
+            if param_key in self.found_vulnerabilities:
+                print(f"    [DIRTRAVERSAL] Skipping parameter {param} - already tested")
+                continue
+            
+            for payload in traversal_payloads[:20]:  # Test first 20 payloads
+                try:
+                    print(f"    [DIRTRAVERSAL] Trying payload: {payload[:50]}...")
+                    
+                    # Create test URL
+                    test_params = parsed_data['query_params'].copy()
+                    test_params[param] = [payload]
+                    
+                    # Build query string
+                    query_parts = []
+                    for k, v_list in test_params.items():
+                        for v in v_list:
+                            query_parts.append(f"{k}={v}")
+                    
+                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    print(f"    [DIRTRAVERSAL] Request URL: {test_url}")
+                    
+                    response = requests.get(
+                        test_url,
+                        timeout=self.config.timeout,
+                        headers=self.config.headers,
+                        verify=False
+                    )
+                    
+                    print(f"    [DIRTRAVERSAL] Response code: {response.status_code}")
+                    
+                    # Skip if response looks like 404
+                    if self._is_likely_404_response(response.text, response.status_code):
+                        print(f"    [DIRTRAVERSAL] Skipping - response appears to be 404")
+                        continue
+                    
+                    # Use Directory Traversal detector
+                    if DirectoryTraversalDetector.detect_directory_traversal(response.text, response.status_code, payload):
+                        evidence = DirectoryTraversalDetector.get_evidence(payload, response.text)
+                        response_snippet = DirectoryTraversalDetector.get_response_snippet(payload, response.text)
+                        print(f"    [DIRTRAVERSAL] VULNERABILITY FOUND! Parameter: {param}")
+                        
+                        # Mark as found to prevent duplicates
+                        self.found_vulnerabilities.add(param_key)
+                        
+                        results.append({
+                            'module': 'dirtraversal',
+                            'target': base_url,
+                            'vulnerability': 'Directory Traversal',
+                            'severity': 'High',
+                            'parameter': param,
+                            'payload': payload,
+                            'evidence': evidence,
+                            'request_url': test_url,
+                            'detector': 'DirectoryTraversalDetector.detect_directory_traversal',
+                            'response_snippet': response_snippet
+                        })
+                        break  # Found traversal, no need to test more payloads for this param
+                        
+                except Exception as e:
+                    print(f"    [DIRTRAVERSAL] Error testing payload: {e}")
+                    continue
+        
+        return results
+    
+    def _test_security_headers(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for missing security headers and insecure cookies"""
+        results = []
+        base_url = parsed_data['url']
+        
+        try:
+            print(f"    [SECHEADERS] Testing security headers...")
+            
+            # Make request to get headers
+            response = requests.get(
+                base_url,
+                timeout=self.config.timeout,
+                headers=self.config.headers,
+                verify=False
+            )
+            
+            print(f"    [SECHEADERS] Response code: {response.status_code}")
+            
+            # Skip if error response
+            if response.status_code >= 400:
+                print(f"    [SECHEADERS] Skipping - error response ({response.status_code})")
+                return results
+            
+            # Check for missing security headers
+            missing_headers = SecurityHeadersDetector.detect_missing_security_headers(response.headers)
+            
+            if missing_headers:
+                print(f"    [SECHEADERS] Found {len(missing_headers)} missing security headers")
+                
+                for header_info in missing_headers:
+                    results.append({
+                        'module': 'secheaders',
+                        'target': base_url,
+                        'vulnerability': f'Missing Security Header: {header_info["header"]}',
+                        'severity': header_info['severity'],
+                        'parameter': f'header: {header_info["header"]}',
+                        'payload': 'N/A',
+                        'evidence': f'{header_info["description"]}. {header_info["recommendation"]}',
+                        'request_url': base_url,
+                        'detector': 'SecurityHeadersDetector.detect_missing_security_headers',
+                        'response_snippet': f'Current value: {header_info.get("current_value", "Not set")}'
+                    })
+            else:
+                print(f"    [SECHEADERS] All important security headers are present")
+            
+            # Check for insecure cookies
+            insecure_cookies = SecurityHeadersDetector.detect_insecure_cookies(response.headers)
+            
+            if insecure_cookies:
+                print(f"    [SECHEADERS] Found {len(insecure_cookies)} insecure cookies")
+                
+                for cookie_info in insecure_cookies:
+                    for issue in cookie_info['issues']:
+                        results.append({
+                            'module': 'secheaders',
+                            'target': base_url,
+                            'vulnerability': f'Insecure Cookie: {issue["issue"]}',
+                            'severity': issue['severity'],
+                            'parameter': f'cookie: {cookie_info["cookie_name"]}',
+                            'payload': 'N/A',
+                            'evidence': f'Cookie "{cookie_info["cookie_name"]}" {issue["description"]}',
+                            'request_url': base_url,
+                            'detector': 'SecurityHeadersDetector.detect_insecure_cookies',
+                            'response_snippet': cookie_info['cookie_header']
+                        })
+            else:
+                print(f"    [SECHEADERS] No insecure cookies found")
+            
+        except Exception as e:
+            print(f"    [SECHEADERS] Error during security headers testing: {e}")
+        
+        return results
 
     def _get_important_pages(self) -> List[str]:
         """Get list of important pages that might contain forms"""
