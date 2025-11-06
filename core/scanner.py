@@ -11,7 +11,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from core.config import Config
 from core.url_parser import URLParser
+from core.crawler import WebCrawler
 from utils.file_handler import FileHandler
+from payloads import XSSPayloads, SQLiPayloads, LFIPayloads
+from detectors import XSSDetector, SQLiDetector, LFIDetector
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -23,6 +26,7 @@ class VulnScanner:
         """Initialize scanner"""
         self.config = config
         self.url_parser = URLParser()
+        self.crawler = WebCrawler(config)
         self.file_handler = FileHandler()
         self.results = []
         self.request_count = 0
@@ -76,14 +80,25 @@ class VulnScanner:
                 print(f"  Cannot connect to {target}")
                 return target_results
             
+            # Debug: Show detected URL and parameters
+            print(f"  [DEBUG] Parsed URL: {parsed_data['url']}")
+            print(f"  [DEBUG] Host: {parsed_data['host']}")
+            print(f"  [DEBUG] Path: {parsed_data['path']}")
+            print(f"  [DEBUG] Query parameters: {list(parsed_data['query_params'].keys())}")
+            
             # If no parameters in URL, try to find pages with parameters
             if not parsed_data['query_params']:
-                print(f"  No parameters found, crawling for pages...")
-                crawled_urls = self._crawl_for_pages(parsed_data['url'])
+                print(f"  [DEBUG] No parameters found, starting crawler...")
+                crawled_urls = self.crawler.crawl_for_pages(parsed_data['url'])
+                
+                if not crawled_urls:
+                    print(f"  [DEBUG] No pages with parameters found by crawler")
+                
                 for url in crawled_urls:
                     crawled_data = self.url_parser.parse(url)
                     if crawled_data['query_params']:
-                        print(f"  Found page with parameters: {url}")
+                        print(f"  [DEBUG] Testing page: {url}")
+                        print(f"  [DEBUG] Parameters to test: {list(crawled_data['query_params'].keys())}")
                         for module_name in self.config.modules:
                             if self._should_stop():
                                 break
@@ -91,6 +106,7 @@ class VulnScanner:
                             target_results.extend(module_results)
             else:
                 # Scan with each module
+                print(f"  [DEBUG] Testing parameters: {list(parsed_data['query_params'].keys())}")
                 for module_name in self.config.modules:
                     if self._should_stop():
                         break
@@ -108,16 +124,20 @@ class VulnScanner:
         results = []
         
         try:
-            # Module loading and execution will be here
-            # Placeholder for now
-            print(f"  Module {module_name}: checking...")
+            print(f"  [MODULE] {module_name.upper()}: Starting scan...")
+            print(f"  [MODULE] {module_name.upper()}: Target URL: {parsed_data['url']}")
             
             # Perform actual HTTP requests and testing
             vulnerabilities = self._test_module(module_name, parsed_data)
             results.extend(vulnerabilities)
             
+            if vulnerabilities:
+                print(f"  [MODULE] {module_name.upper()}: Found {len(vulnerabilities)} vulnerabilities")
+            else:
+                print(f"  [MODULE] {module_name.upper()}: No vulnerabilities found")
+            
         except Exception as e:
-            print(f"Error in module {module_name}: {e}")
+            print(f"  [MODULE] {module_name.upper()}: Error - {e}")
         
         return results
     
@@ -159,19 +179,17 @@ class VulnScanner:
         results = []
         base_url = parsed_data['url']
         
-        # XSS payloads
-        xss_payloads = [
-            '<script>alert("XSS")</script>',
-            '"><script>alert("XSS")</script>',
-            "'><script>alert('XSS')</script>",
-            '<img src=x onerror=alert("XSS")>',
-            'javascript:alert("XSS")'
-        ]
+        # Get XSS payloads
+        xss_payloads = XSSPayloads.get_all_payloads()
         
         # Test GET parameters
         for param, values in parsed_data['query_params'].items():
+            print(f"    [XSS] Testing parameter: {param}")
+            
             for payload in xss_payloads:
                 try:
+                    print(f"    [XSS] Trying payload: {payload[:50]}...")
+                    
                     # Create test URL
                     test_params = parsed_data['query_params'].copy()
                     test_params[param] = [payload]
@@ -183,6 +201,7 @@ class VulnScanner:
                             query_parts.append(f"{k}={v}")
                     
                     test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    print(f"    [XSS] Request URL: {test_url}")
                     
                     response = requests.get(
                         test_url,
@@ -191,8 +210,13 @@ class VulnScanner:
                         verify=False
                     )
                     
-                    # Check if payload is reflected
-                    if payload in response.text and response.status_code == 200:
+                    print(f"    [XSS] Response code: {response.status_code}")
+                    
+                    # Use XSS detector
+                    if XSSDetector.detect_reflected_xss(payload, response.text, response.status_code):
+                        evidence = XSSDetector.get_evidence(payload, response.text)
+                        print(f"    [XSS] VULNERABILITY FOUND! Parameter: {param}")
+                        
                         results.append({
                             'module': 'xss',
                             'target': base_url,
@@ -200,12 +224,13 @@ class VulnScanner:
                             'severity': 'Medium',
                             'parameter': param,
                             'payload': payload,
-                            'evidence': f'Payload reflected in response',
+                            'evidence': evidence,
                             'request_url': test_url
                         })
                         break  # Found XSS, no need to test more payloads for this param
                         
                 except Exception as e:
+                    print(f"    [XSS] Error testing payload: {e}")
                     continue
         
         return results
@@ -215,35 +240,17 @@ class VulnScanner:
         results = []
         base_url = parsed_data['url']
         
-        # SQL injection payloads
-        sqli_payloads = [
-            "'",
-            "' OR '1'='1",
-            "' OR '1'='1' --",
-            "' OR '1'='1' /*",
-            "1' OR '1'='1",
-            "admin'--",
-            "' UNION SELECT NULL--"
-        ]
-        
-        # Error patterns that indicate SQL injection
-        error_patterns = [
-            "mysql_fetch_array",
-            "ORA-01756",
-            "Microsoft OLE DB Provider for ODBC Drivers",
-            "PostgreSQL query failed",
-            "Warning: mysql_",
-            "valid MySQL result",
-            "MySqlClient.",
-            "SQLException",
-            "ORA-00933",
-            "quoted string not properly terminated"
-        ]
+        # Get SQL injection payloads
+        sqli_payloads = SQLiPayloads.get_all_payloads()
         
         # Test GET parameters
         for param, values in parsed_data['query_params'].items():
+            print(f"    [SQLI] Testing parameter: {param}")
+            
             for payload in sqli_payloads:
                 try:
+                    print(f"    [SQLI] Trying payload: {payload[:50]}...")
+                    
                     # Create test URL
                     test_params = parsed_data['query_params'].copy()
                     test_params[param] = [payload]
@@ -255,6 +262,7 @@ class VulnScanner:
                             query_parts.append(f"{k}={v}")
                     
                     test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    print(f"    [SQLI] Request URL: {test_url}")
                     
                     response = requests.get(
                         test_url,
@@ -263,22 +271,29 @@ class VulnScanner:
                         verify=False
                     )
                     
-                    # Check for SQL error patterns
-                    for pattern in error_patterns:
-                        if pattern.lower() in response.text.lower():
-                            results.append({
-                                'module': 'sqli',
-                                'target': base_url,
-                                'vulnerability': 'SQL Injection',
-                                'severity': 'High',
-                                'parameter': param,
-                                'payload': payload,
-                                'evidence': f'SQL error pattern found: {pattern}',
-                                'request_url': test_url
-                            })
-                            break
+                    print(f"    [SQLI] Response code: {response.status_code}")
+                    
+                    # Use SQLi detector
+                    is_vulnerable, pattern = SQLiDetector.detect_error_based_sqli(response.text, response.status_code)
+                    
+                    if is_vulnerable:
+                        evidence = SQLiDetector.get_evidence(pattern)
+                        print(f"    [SQLI] VULNERABILITY FOUND! Parameter: {param}")
+                        
+                        results.append({
+                            'module': 'sqli',
+                            'target': base_url,
+                            'vulnerability': 'SQL Injection',
+                            'severity': 'High',
+                            'parameter': param,
+                            'payload': payload,
+                            'evidence': evidence,
+                            'request_url': test_url
+                        })
+                        break  # Found SQLi, no need to test more payloads for this param
                             
                 except Exception as e:
+                    print(f"    [SQLI] Error testing payload: {e}")
                     continue
         
         return results
@@ -288,28 +303,17 @@ class VulnScanner:
         results = []
         base_url = parsed_data['url']
         
-        # LFI payloads
-        lfi_payloads = [
-            "../../../etc/passwd",
-            "..\\..\\..\\windows\\system32\\drivers\\etc\\hosts",
-            "/etc/passwd",
-            "C:\\windows\\system32\\drivers\\etc\\hosts",
-            "....//....//....//etc/passwd",
-            "..%2F..%2F..%2Fetc%2Fpasswd"
-        ]
-        
-        # Patterns that indicate successful LFI
-        lfi_patterns = [
-            "root:x:0:0:",
-            "daemon:x:1:1:",
-            "# Copyright (c) 1993-2009 Microsoft Corp.",
-            "localhost"
-        ]
+        # Get LFI payloads
+        lfi_payloads = LFIPayloads.get_all_payloads()
         
         # Test GET parameters
         for param, values in parsed_data['query_params'].items():
+            print(f"    [LFI] Testing parameter: {param}")
+            
             for payload in lfi_payloads:
                 try:
+                    print(f"    [LFI] Trying payload: {payload[:50]}...")
+                    
                     # Create test URL
                     test_params = parsed_data['query_params'].copy()
                     test_params[param] = [payload]
@@ -321,6 +325,7 @@ class VulnScanner:
                             query_parts.append(f"{k}={v}")
                     
                     test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    print(f"    [LFI] Request URL: {test_url}")
                     
                     response = requests.get(
                         test_url,
@@ -329,60 +334,33 @@ class VulnScanner:
                         verify=False
                     )
                     
-                    # Check for LFI patterns
-                    for pattern in lfi_patterns:
-                        if pattern in response.text:
-                            results.append({
-                                'module': 'lfi',
-                                'target': base_url,
-                                'vulnerability': 'Local File Inclusion',
-                                'severity': 'High',
-                                'parameter': param,
-                                'payload': payload,
-                                'evidence': f'File content pattern found: {pattern}',
-                                'request_url': test_url
-                            })
-                            break
+                    print(f"    [LFI] Response code: {response.status_code}")
+                    
+                    # Use LFI detector
+                    is_vulnerable, pattern = LFIDetector.detect_lfi(response.text, response.status_code)
+                    
+                    if is_vulnerable:
+                        evidence = LFIDetector.get_evidence(pattern)
+                        print(f"    [LFI] VULNERABILITY FOUND! Parameter: {param}")
+                        
+                        results.append({
+                            'module': 'lfi',
+                            'target': base_url,
+                            'vulnerability': 'Local File Inclusion',
+                            'severity': 'High',
+                            'parameter': param,
+                            'payload': payload,
+                            'evidence': evidence,
+                            'request_url': test_url
+                        })
+                        break  # Found LFI, no need to test more payloads for this param
                             
                 except Exception as e:
+                    print(f"    [LFI] Error testing payload: {e}")
                     continue
         
         return results
 
-    def _crawl_for_pages(self, base_url: str) -> List[str]:
-        """Crawl website to find pages with parameters"""
-        found_urls = []
-        
-        try:
-            response = requests.get(
-                base_url,
-                timeout=self.config.timeout,
-                headers=self.config.headers,
-                verify=False
-            )
-            
-            if response.status_code == 200:
-                # Extract URLs from response
-                urls = self.url_parser.extract_urls_from_response(response.text, base_url)
-                print(f"    Found {len(urls)} URLs to check")
-                
-                # Filter URLs with parameters and same domain
-                for url in urls[:20]:  # Limit to first 20 URLs
-                    try:
-                        parsed = self.url_parser.parse(url)
-                        # Check if URL has parameters and is from same domain
-                        if (parsed['query_params'] and 
-                            url not in found_urls and 
-                            parsed['host'] in base_url):
-                            found_urls.append(url)
-                    except Exception as e:
-                        print(f"    Error parsing URL {url}: {e}")
-                        continue
-                        
-        except Exception as e:
-            print(f"    Error crawling: {e}")
-        
-        return found_urls
 
     def _should_stop(self) -> bool:
         """Check scan stop conditions"""
