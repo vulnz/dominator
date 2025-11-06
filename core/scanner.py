@@ -4,6 +4,7 @@ Main vulnerability scanner class
 
 import time
 import json
+import re
 import requests
 import urllib3
 from typing import List, Dict, Any
