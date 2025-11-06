@@ -33,6 +33,8 @@ try:
     from payloads.command_injection_payloads import CommandInjectionPayloads
     from payloads.idor_payloads import IDORPayloads
     from payloads.nosql_injection_payloads import NoSQLInjectionPayloads
+    from payloads.ssti_payloads import SSTIPayloads
+    from payloads.crlf_payloads import CRLFPayloads
 except ImportError as e:
     print(f"Warning: Could not import payload classes: {e}")
     # Create dummy classes to prevent crashes
@@ -45,6 +47,7 @@ except ImportError as e:
     DirBrutePayloads = GitPayloads = DirectoryTraversalPayloads = DummyPayloads
     SSRFPayloads = RFIPayloads = BlindXSSPayloads = PHPInfoPayloads = DummyPayloads
     XXEPayloads = CommandInjectionPayloads = IDORPayloads = NoSQLInjectionPayloads = DummyPayloads
+    SSTIPayloads = CRLFPayloads = DummyPayloads
 
 # Import detector classes
 from detectors.xss_detector import XSSDetector
@@ -79,6 +82,8 @@ from detectors.cors_detector import CORSDetector
 from detectors.jwt_detector import JWTDetector
 from detectors.insecure_deserialization_detector import InsecureDeserializationDetector
 from detectors.http_response_splitting_detector import HTTPResponseSplittingDetector
+from detectors.ssti_detector import SSTIDetector
+from detectors.crlf_detector import CRLFDetector
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -464,6 +469,10 @@ class VulnScanner:
                 results.extend(self._test_insecure_deserialization(parsed_data))
             elif module_name == "responsesplitting":
                 results.extend(self._test_http_response_splitting(parsed_data))
+            elif module_name == "ssti":
+                results.extend(self._test_ssti(parsed_data))
+            elif module_name == "crlf":
+                results.extend(self._test_crlf(parsed_data))
             else:
                 print(f"    [WARNING] Unknown module: {module_name}")
                 
@@ -3189,6 +3198,156 @@ class VulnScanner:
                         
                 except Exception as e:
                     print(f"    [RESPONSESPLITTING] Error testing payload: {e}")
+                    continue
+        
+        return results
+
+    def _test_ssti(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for SSTI vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # Get SSTI payloads
+        ssti_payloads = SSTIPayloads.get_all_payloads()
+        
+        # Test GET parameters
+        for param, values in parsed_data['query_params'].items():
+            print(f"    [SSTI] Testing parameter: {param}")
+            
+            # Create deduplication key for this parameter
+            param_key = f"ssti_{base_url.split('?')[0]}_{param}"
+            if param_key in self.found_vulnerabilities:
+                print(f"    [SSTI] Skipping parameter {param} - already tested")
+                continue
+            
+            for payload in ssti_payloads[:20]:  # Test first 20 payloads
+                try:
+                    print(f"    [SSTI] Trying payload: {payload[:50]}...")
+                    
+                    # Create test URL
+                    test_params = parsed_data['query_params'].copy()
+                    test_params[param] = [payload]
+                    
+                    # Build query string
+                    query_parts = []
+                    for k, v_list in test_params.items():
+                        for v in v_list:
+                            query_parts.append(f"{k}={v}")
+                    
+                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    print(f"    [SSTI] Request URL: {test_url}")
+                    
+                    response = requests.get(
+                        test_url,
+                        timeout=self.config.timeout,
+                        headers=self.config.headers,
+                        verify=False
+                    )
+                    
+                    print(f"    [SSTI] Response code: {response.status_code}")
+                    
+                    # Use SSTI detector
+                    if SSTIDetector.detect_ssti(response.text, response.status_code, payload):
+                        evidence = SSTIDetector.get_evidence(payload, response.text)
+                        response_snippet = SSTIDetector.get_response_snippet(payload, response.text)
+                        remediation = SSTIDetector.get_remediation_advice()
+                        print(f"    [SSTI] VULNERABILITY FOUND! Parameter: {param}")
+                        
+                        # Mark as found to prevent duplicates
+                        self.found_vulnerabilities.add(param_key)
+                        
+                        results.append({
+                            'module': 'ssti',
+                            'target': base_url,
+                            'vulnerability': 'Server-Side Template Injection',
+                            'severity': 'High',
+                            'parameter': param,
+                            'payload': payload,
+                            'evidence': evidence,
+                            'request_url': test_url,
+                            'detector': 'SSTIDetector.detect_ssti',
+                            'response_snippet': response_snippet,
+                            'remediation': remediation
+                        })
+                        break  # Found SSTI, no need to test more payloads for this param
+                        
+                except Exception as e:
+                    print(f"    [SSTI] Error testing payload: {e}")
+                    continue
+        
+        return results
+
+    def _test_crlf(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for CRLF injection vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # Get CRLF payloads
+        crlf_payloads = CRLFPayloads.get_all_payloads()
+        
+        # Test GET parameters
+        for param, values in parsed_data['query_params'].items():
+            print(f"    [CRLF] Testing parameter: {param}")
+            
+            # Create deduplication key for this parameter
+            param_key = f"crlf_{base_url.split('?')[0]}_{param}"
+            if param_key in self.found_vulnerabilities:
+                print(f"    [CRLF] Skipping parameter {param} - already tested")
+                continue
+            
+            for payload in crlf_payloads[:15]:  # Test first 15 payloads
+                try:
+                    print(f"    [CRLF] Trying payload: {payload[:50]}...")
+                    
+                    # Create test URL
+                    test_params = parsed_data['query_params'].copy()
+                    test_params[param] = [payload]
+                    
+                    # Build query string
+                    query_parts = []
+                    for k, v_list in test_params.items():
+                        for v in v_list:
+                            query_parts.append(f"{k}={v}")
+                    
+                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    print(f"    [CRLF] Request URL: {test_url}")
+                    
+                    response = requests.get(
+                        test_url,
+                        timeout=self.config.timeout,
+                        headers=self.config.headers,
+                        verify=False
+                    )
+                    
+                    print(f"    [CRLF] Response code: {response.status_code}")
+                    
+                    # Use CRLF detector
+                    if CRLFDetector.detect_crlf_injection(response.text, response.status_code, payload, dict(response.headers)):
+                        evidence = CRLFDetector.get_evidence(payload, response.text, dict(response.headers))
+                        response_snippet = CRLFDetector.get_response_snippet(payload, response.text)
+                        remediation = CRLFDetector.get_remediation_advice()
+                        print(f"    [CRLF] VULNERABILITY FOUND! Parameter: {param}")
+                        
+                        # Mark as found to prevent duplicates
+                        self.found_vulnerabilities.add(param_key)
+                        
+                        results.append({
+                            'module': 'crlf',
+                            'target': base_url,
+                            'vulnerability': 'CRLF Injection',
+                            'severity': 'Medium',
+                            'parameter': param,
+                            'payload': payload,
+                            'evidence': evidence,
+                            'request_url': test_url,
+                            'detector': 'CRLFDetector.detect_crlf_injection',
+                            'response_snippet': response_snippet,
+                            'remediation': remediation
+                        })
+                        break  # Found CRLF, no need to test more payloads for this param
+                        
+                except Exception as e:
+                    print(f"    [CRLF] Error testing payload: {e}")
                     continue
         
         return results

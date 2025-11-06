@@ -109,6 +109,8 @@ def show_modules():
     print("- jwt: JWT Vulnerabilities")
     print("- deserialization: Insecure Deserialization")
     print("- responsesplitting: HTTP Response Splitting")
+    print("- ssti: Server-Side Template Injection")
+    print("- crlf: CRLF Injection")
 
 def main():
     """Main function"""
