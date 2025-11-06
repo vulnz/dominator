@@ -13,8 +13,8 @@ from core.config import Config
 from core.url_parser import URLParser
 from core.crawler import WebCrawler
 from utils.file_handler import FileHandler
-from payloads import XSSPayloads, SQLiPayloads, LFIPayloads, CSRFPayloads, DirBrutePayloads, GitPayloads
-from detectors import XSSDetector, SQLiDetector, LFIDetector, CSRFDetector, DirBruteDetector, Real404Detector, GitDetector
+from payloads import XSSPayloads, SQLiPayloads, LFIPayloads, CSRFPayloads, DirBrutePayloads, GitPayloads, DirectoryTraversalPayloads
+from detectors import XSSDetector, SQLiDetector, LFIDetector, CSRFDetector, DirBruteDetector, Real404Detector, GitDetector, DirectoryTraversalDetector, SecurityHeadersDetector
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -235,6 +235,10 @@ class VulnScanner:
                 results.extend(self._test_dirbrute(parsed_data))
             elif module_name == "gitexposed":
                 results.extend(self._test_git_exposed(parsed_data))
+            elif module_name == "dirtraversal":
+                results.extend(self._test_directory_traversal(parsed_data))
+            elif module_name == "secheaders":
+                results.extend(self._test_security_headers(parsed_data))
             # Add more modules as needed
                 
         except Exception as e:
