@@ -22,7 +22,7 @@ def create_parser():
   python main.py -t 192.168.1.1:8080
   python main.py -t https://example.com/path
   python main.py -f targets.txt -m xss,sqli
-  python main.py -t example.com -c "session=abc123" -h "User-Agent: Custom"
+  python main.py -t example.com -c "session=abc123" -H "User-Agent: Custom"
   python main.py -t example.com -a jwt -o report.html --timeout 30
         """
     )
@@ -34,7 +34,7 @@ def create_parser():
                        help='Файл с целями для сканирования')
     
     # HTTP параметры
-    parser.add_argument('-h', '--headers', action='append',
+    parser.add_argument('-H', '--headers', action='append',
                        help='HTTP заголовки (можно использовать несколько раз)')
     parser.add_argument('-hf', '--headers-file',
                        help='Файл с HTTP заголовками')
