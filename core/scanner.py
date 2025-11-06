@@ -53,7 +53,7 @@ from detectors.database_error_detector import DatabaseErrorDetector
 from detectors.phpinfo_detector import PHPInfoDetector
 from detectors.ssl_tls_detector import SSLTLSDetector
 from detectors.httponly_cookie_detector import HttpOnlyCookieDetector
-from detectors.technology_detector import TechnologyDetector
+from Wappalyzer import Wappalyzer, WebPage
 from detectors.xxe_detector import XXEDetector
 from detectors.idor_detector import IDORDetector
 from detectors.command_injection_detector import CommandInjectionDetector
@@ -1462,12 +1462,26 @@ class VulnScanner:
         return results
     
     def _test_version_disclosure(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Test for version disclosure vulnerabilities"""
+        """Test for version disclosure vulnerabilities with deduplication"""
         results = []
         base_url = parsed_data['url']
         
+        # Extract domain for deduplication
+        from urllib.parse import urlparse
+        parsed_url = urlparse(base_url)
+        domain = parsed_url.hostname
+        
+        # Create deduplication key for this domain
+        domain_key = f"version_disclosure_{domain}"
+        if domain_key in self.found_vulnerabilities:
+            print(f"    [VERSIONDISCLOSURE] Skipping version disclosure test for {domain} - already tested")
+            return results
+        
         try:
             print(f"    [VERSIONDISCLOSURE] Testing version disclosure...")
+            
+            # Mark domain as tested
+            self.found_vulnerabilities.add(domain_key)
             
             # Make request to get headers and content
             response = requests.get(
@@ -1490,21 +1504,35 @@ class VulnScanner:
             if disclosures:
                 print(f"    [VERSIONDISCLOSURE] Found {len(disclosures)} version disclosures")
                 
+                # Deduplicate by software name and version
+                seen_versions = set()
+                
                 for disclosure in disclosures:
-                    severity = VersionDisclosureDetector.get_severity(disclosure['software'], disclosure['version'])
-                    evidence = f"Version disclosure: {disclosure['software']} {disclosure['version']} found in {disclosure['location']}"
+                    software = disclosure['software']
+                    version = disclosure['version']
+                    
+                    # Create deduplication key for this software version
+                    version_key = f"{software}_{version}"
+                    if version_key in seen_versions:
+                        print(f"    [VERSIONDISCLOSURE] Skipping duplicate {software} {version}")
+                        continue
+                    
+                    seen_versions.add(version_key)
+                    
+                    severity = VersionDisclosureDetector.get_severity(software, version)
+                    evidence = f"Version disclosure: {software} {version} found in {disclosure['location']}"
                     
                     results.append({
                         'module': 'versiondisclosure',
                         'target': base_url,
-                        'vulnerability': f'Version Disclosure ({disclosure["software"].title()})',
+                        'vulnerability': f'Version Disclosure ({software.title()})',
                         'severity': severity,
-                        'parameter': f'version: {disclosure["software"]}',
+                        'parameter': f'version: {software}',
                         'payload': 'N/A',
                         'evidence': evidence,
                         'request_url': base_url,
                         'detector': 'VersionDisclosureDetector.detect_version_disclosure',
-                        'response_snippet': f'Version: {disclosure["version"]}'
+                        'response_snippet': f'Version: {version}'
                     })
             else:
                 print(f"    [VERSIONDISCLOSURE] No version disclosures found")
@@ -1691,12 +1719,26 @@ class VulnScanner:
         return results
     
     def _test_outdated_software(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Test for outdated software versions"""
+        """Test for outdated software versions with deduplication"""
         results = []
         base_url = parsed_data['url']
         
+        # Extract domain for deduplication
+        from urllib.parse import urlparse
+        parsed_url = urlparse(base_url)
+        domain = parsed_url.hostname
+        
+        # Create deduplication key for this domain
+        domain_key = f"outdated_software_{domain}"
+        if domain_key in self.found_vulnerabilities:
+            print(f"    [OUTDATEDSOFTWARE] Skipping outdated software test for {domain} - already tested")
+            return results
+        
         try:
             print(f"    [OUTDATEDSOFTWARE] Testing outdated software...")
+            
+            # Mark domain as tested
+            self.found_vulnerabilities.add(domain_key)
             
             # Make request to get headers and content
             response = requests.get(
@@ -1716,11 +1758,22 @@ class VulnScanner:
             if detections:
                 print(f"    [OUTDATEDSOFTWARE] Found {len(detections)} outdated software components")
                 
+                # Deduplicate by software name and version
+                seen_versions = set()
+                
                 for detection in detections:
                     software = detection['software']
                     version = detection['version']
                     severity = detection['severity']
                     known_vulns = detection.get('known_vulnerabilities', [])
+                    
+                    # Create deduplication key for this software version
+                    version_key = f"{software}_{version}"
+                    if version_key in seen_versions:
+                        print(f"    [OUTDATEDSOFTWARE] Skipping duplicate {software} {version}")
+                        continue
+                    
+                    seen_versions.add(version_key)
                     
                     evidence = f"{software.upper()} version {version}"
                     if known_vulns:
@@ -2099,12 +2152,12 @@ class VulnScanner:
         return results
 
     def _test_technology_detection(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Test for technology detection"""
+        """Test for technology detection using Wappalyzer"""
         results = []
         base_url = parsed_data['url']
         
         try:
-            print(f"    [TECHNOLOGY] Detecting technologies...")
+            print(f"    [TECHNOLOGY] Detecting technologies with Wappalyzer...")
             
             # Make request to get headers and content
             response = requests.get(
@@ -2121,37 +2174,31 @@ class VulnScanner:
                 print(f"    [TECHNOLOGY] Skipping - error response ({response.status_code})")
                 return results
             
-            # Detect technologies
-            technologies = TechnologyDetector.detect_technologies(
-                response.text, dict(response.headers), base_url
-            )
+            # Use Wappalyzer to detect technologies
+            wappalyzer = Wappalyzer.latest()
+            webpage = WebPage.new_from_response(response)
+            technologies = wappalyzer.analyze(webpage)
             
             if technologies:
                 print(f"    [TECHNOLOGY] Found {len(technologies)} technologies")
                 
                 # Store technologies in scan stats
                 domain = parsed_data.get('host', 'unknown')
-                self.scan_stats['technologies'][domain] = technologies
+                self.scan_stats['technologies'][domain] = list(technologies)
                 
-                for tech in technologies:
-                    # Only report high-confidence detections as informational findings
-                    if tech['confidence'] >= 80:
-                        tech_name = tech['name']
-                        if tech['version']:
-                            tech_name += f" {tech['version']}"
-                        
-                        results.append({
-                            'module': 'technology',
-                            'target': base_url,
-                            'vulnerability': f'Technology Detected: {tech_name}',
-                            'severity': 'Info',
-                            'parameter': f'technology: {tech["category"]}',
-                            'payload': 'N/A',
-                            'evidence': f'{tech_name} detected with {tech["confidence"]}% confidence. Evidence: {"; ".join(tech["evidence"])}',
-                            'request_url': base_url,
-                            'detector': 'TechnologyDetector.detect_technologies',
-                            'response_snippet': f'Category: {tech["category"]}, Confidence: {tech["confidence"]}%'
-                        })
+                for tech_name in technologies:
+                    results.append({
+                        'module': 'technology',
+                        'target': base_url,
+                        'vulnerability': f'Technology Detected: {tech_name}',
+                        'severity': 'Info',
+                        'parameter': f'technology: {tech_name}',
+                        'payload': 'N/A',
+                        'evidence': f'Technology {tech_name} detected by Wappalyzer',
+                        'request_url': base_url,
+                        'detector': 'Wappalyzer.analyze',
+                        'response_snippet': f'Technology: {tech_name}'
+                    })
             else:
                 print(f"    [TECHNOLOGY] No technologies detected")
             
