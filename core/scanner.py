@@ -662,17 +662,25 @@ class VulnScanner:
         if '?' in base_url:
             base_url = base_url.split('?')[0]
         
-        # Ensure base URL ends with /
-        if not base_url.endswith('/'):
-            base_url += '/'
+        # Get the directory part for proper baseline generation
+        if base_url.endswith('.php') or base_url.endswith('.html') or base_url.endswith('.asp'):
+            # For file URLs like listproducts.php, use the directory containing the file
+            base_dir = '/'.join(base_url.split('/')[:-1]) + '/'
+        else:
+            # Ensure base URL ends with /
+            if not base_url.endswith('/'):
+                base_url += '/'
+            base_dir = base_url
         
         try:
             print(f"    [DIRBRUTE] Starting directory and file bruteforce...")
+            print(f"    [DIRBRUTE] Base URL: {base_url}")
+            print(f"    [DIRBRUTE] Base directory for 404 baseline: {base_dir}")
             
             # Get baseline 404 response for real 404 detection
             print(f"    [DIRBRUTE] Generating baseline 404 responses...")
             baseline_404_text, baseline_404_size = Real404Detector.generate_baseline_404(
-                base_url, None
+                base_dir, None
             )
             
             if baseline_404_text:
@@ -690,7 +698,11 @@ class VulnScanner:
             
             for directory in directories[:50]:  # Limit to first 50 directories
                 try:
-                    test_url = f"{base_url}{directory}/"
+                    if base_url.endswith('.php') or base_url.endswith('.html') or base_url.endswith('.asp'):
+                        # For file-based URLs, test as path info
+                        test_url = f"{base_url}/{directory}/"
+                    else:
+                        test_url = f"{base_url}{directory}/"
                     
                     response = requests.get(
                         test_url,
@@ -699,6 +711,8 @@ class VulnScanner:
                         verify=False,
                         allow_redirects=False
                     )
+                    
+                    print(f"    [DIRBRUTE] Testing directory: {directory} -> {response.status_code} ({len(response.text)} bytes)")
                     
                     is_valid, evidence = DirBruteDetector.is_valid_response(
                         response.text, response.status_code, len(response.text), baseline_404_text
@@ -728,17 +742,24 @@ class VulnScanner:
                         
                         # If directory found, recursively test files in it
                         self._test_files_in_directory(base_url, directory, results, baseline_404_text)
+                    else:
+                        print(f"    [DIRBRUTE] Directory not found: {directory} - {evidence}")
                         
                 except Exception as e:
+                    print(f"    [DIRBRUTE] Error testing directory {directory}: {e}")
                     continue
             
             # Test common files in root directory
             files = DirBrutePayloads.get_all_files()
-            print(f"    [DIRBRUTE] Testing {len(files)} files in root directory...")
+            print(f"    [DIRBRUTE] Testing {len(files)} files...")
             
             for file in files[:50]:  # Limit to first 50 files
                 try:
-                    test_url = f"{base_url}{file}"
+                    if base_url.endswith('.php') or base_url.endswith('.html') or base_url.endswith('.asp'):
+                        # For file-based URLs, test as path info
+                        test_url = f"{base_url}/{file}"
+                    else:
+                        test_url = f"{base_url}{file}"
                     
                     response = requests.get(
                         test_url,
@@ -746,6 +767,8 @@ class VulnScanner:
                         headers=self.config.headers,
                         verify=False
                     )
+                    
+                    print(f"    [DIRBRUTE] Testing file: {file} -> {response.status_code} ({len(response.text)} bytes)")
                     
                     is_valid, evidence = DirBruteDetector.is_valid_response(
                         response.text, response.status_code, len(response.text), baseline_404_text
@@ -774,8 +797,11 @@ class VulnScanner:
                             'detector': 'DirBruteDetector.is_valid_response',
                             'response_snippet': DirBruteDetector.get_response_snippet(response.text)
                         })
+                    else:
+                        print(f"    [DIRBRUTE] File not found: {file} - {evidence}")
                         
                 except Exception as e:
+                    print(f"    [DIRBRUTE] Error testing file {file}: {e}")
                     continue
             
             if results:
