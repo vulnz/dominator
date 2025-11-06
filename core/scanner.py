@@ -889,6 +889,19 @@ class VulnScanner:
         
         return important_pages[:20]  # Limit to first 20 important pages
     
+    def _is_likely_404_response(self, response_text: str, response_code: int) -> bool:
+        """Quick check if response is likely a 404 page"""
+        if response_code == 404:
+            return True
+        
+        response_lower = response_text.lower()
+        quick_404_indicators = [
+            'page not found', 'not found', '404', 'file not found',
+            'страница не найдена', 'файл не найден'
+        ]
+        
+        return any(indicator in response_lower for indicator in quick_404_indicators)
+    
     def _normalize_form_action(self, form_action: str) -> str:
         """Normalize form action to group similar forms together"""
         if not form_action:
