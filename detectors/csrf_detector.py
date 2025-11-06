@@ -89,6 +89,30 @@ class CSRFDetector:
         Detect CSRF vulnerability (absence of protection)
         Returns (is_vulnerable, evidence)
         """
+        # Check if this is an error page (404, 500, etc.) - not vulnerable
+        error_indicators = [
+            '404 not found',
+            '404 - not found',
+            'page not found',
+            '500 internal server error',
+            '403 forbidden',
+            'error 404',
+            'error 500',
+            'error 403',
+            'not found',
+            'file not found'
+        ]
+        
+        response_lower = response_text.lower()
+        if any(indicator in response_lower for indicator in error_indicators):
+            evidence = "Error page detected - not testing for CSRF vulnerabilities"
+            return False, evidence
+        
+        # Check if response is too short to contain meaningful content
+        if len(response_text.strip()) < 100:
+            evidence = "Response too short to analyze for CSRF vulnerabilities"
+            return False, evidence
+        
         has_protection, protection_evidence = CSRFDetector.detect_csrf_protection(
             response_text, response_headers, form_data
         )
@@ -104,14 +128,15 @@ class CSRFDetector:
             matches = re.findall(pattern, response_text, re.IGNORECASE)
             forms_found.extend(matches)
         
+        # Only report vulnerability if we have forms AND no protection
         if not has_protection and forms_found:
             evidence = f"Found {len(forms_found)} form(s) without CSRF protection. {protection_evidence}"
             return True, evidence
-        elif not has_protection:
-            evidence = f"No CSRF protection mechanisms detected. {protection_evidence}"
-            return True, evidence
+        elif not has_protection and forms_found:
+            evidence = f"No forms found that require CSRF protection. {protection_evidence}"
+            return False, evidence
         else:
-            evidence = f"CSRF protection appears to be implemented. {protection_evidence}"
+            evidence = f"CSRF protection appears to be implemented or no vulnerable forms found. {protection_evidence}"
             return False, evidence
     
     @staticmethod

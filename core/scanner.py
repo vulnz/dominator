@@ -424,6 +424,11 @@ class VulnScanner:
             
             print(f"    [CSRF] Initial response code: {response.status_code}")
             
+            # Skip CSRF testing for error responses
+            if response.status_code >= 400:
+                print(f"    [CSRF] Skipping CSRF test - error response ({response.status_code})")
+                return results
+            
             # Check for CSRF protection on the page
             is_vulnerable, evidence = CSRFDetector.detect_csrf_vulnerability(
                 response.text, 
@@ -447,7 +452,7 @@ class VulnScanner:
                     'response_snippet': response_snippet
                 })
             else:
-                print(f"    [CSRF] CSRF protection appears to be implemented")
+                print(f"    [CSRF] {evidence}")
             
             # Test CSRF bypass techniques if we have forms
             csrf_payloads = CSRFPayloads.get_all_payloads()
