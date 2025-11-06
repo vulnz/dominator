@@ -917,7 +917,7 @@ class VulnScanner:
                         found_directories.append(directory)
                         
                         # If directory found, recursively test files in it
-                        self._test_files_in_directory(base_url, directory, results, baseline_404_text, baseline_404_size)
+                        self._test_files_in_directory(base_url, directory, results, baseline_404_text, baseline_404_size, original_fingerprint)
                     else:
                         print(f"    [DIRBRUTE] Directory not found: {directory} - {evidence}")
                         
@@ -1009,7 +1009,7 @@ class VulnScanner:
         
         return results
     
-    def _test_files_in_directory(self, base_url: str, directory: str, results: List[Dict[str, Any]], baseline_404_text: str = None, baseline_404_size: int = 0):
+    def _test_files_in_directory(self, base_url: str, directory: str, results: List[Dict[str, Any]], baseline_404_text: str = None, baseline_404_size: int = 0, original_fingerprint: str = None):
         """Test files in a found directory"""
         files = DirBrutePayloads.get_all_files()
         
