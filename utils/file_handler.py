@@ -71,10 +71,10 @@ class FileHandler:
             # Generate vulnerabilities HTML
             if not data:
                 vulnerabilities_content = '''
-                <div class="no-vulns">
-                    <div class="no-vulns-icon">🛡️</div>
-                    <h2>Отличные новости!</h2>
-                    <p>Сканирование завершено успешно - уязвимости не обнаружены!</p>
+                <div class="no-vulnerabilities">
+                    <div class="no-vulnerabilities-icon">🛡️</div>
+                    <h2>Great News!</h2>
+                    <p>Scan completed successfully - no vulnerabilities found!</p>
                 </div>
                 '''
             else:
@@ -93,24 +93,29 @@ class FileHandler:
                     detector = self._escape_html(str(item.get('detector', 'Unknown')))
                     response_snippet = self._escape_html(str(item.get('response_snippet', '')))
                     
-                    # Определяем иконки для разных типов уязвимостей
+                    # Define icons for different vulnerability types
                     vuln_icons = {
                         'xss': '🚨',
                         'sqli': '💉', 
                         'lfi': '📁',
+                        'rfi': '🌐',
+                        'xxe': '📄',
+                        'csrf': '🔄',
+                        'idor': '🔑',
+                        'ssrf': '🌍',
                         'default': '⚠️'
                     }
                     
                     vuln_icon = vuln_icons.get(module.lower(), vuln_icons['default'])
                     
-                    # Форматируем название уязвимости в стиле Acunetix
+                    # Format vulnerability name
                     vuln_display = vuln
                     if 'vulnerability' in vuln.lower():
                         vuln_display = vuln.replace('vulnerability', '').replace('Vulnerability', '').strip()
                     if not vuln_display:
                         vuln_display = f"{module.upper()} Vulnerability"
                     
-                    # Определяем класс серьезности для стилизации
+                    # Determine severity class for styling
                     severity_class = severity
                     if severity == 'critical':
                         severity_class = 'critical'
@@ -122,64 +127,64 @@ class FileHandler:
                         severity_class = 'low'
                     
                     vuln_html = f'''
-                <div class="vulnerability" data-severity="{severity}" data-module="{module}">
-                    <div class="vuln-header">
-                        <div class="vuln-info">
-                            <div class="vuln-id">{i}</div>
-                            <div class="vuln-title">{vuln_icon} {vuln_display}</div>
+                <div class="vulnerability-item" data-severity="{severity}" data-module="{module}">
+                    <div class="vulnerability-header">
+                        <div class="vulnerability-main">
+                            <div class="vulnerability-id">{i}</div>
+                            <div class="vulnerability-title">{vuln_icon} {vuln_display}</div>
                         </div>
-                        <div class="vuln-badges">
+                        <div class="vulnerability-badges">
                             <span class="severity-badge severity-{severity_class}">{severity.upper()}</span>
                             <span class="module-badge">{module.upper()}</span>
                             <span class="expand-icon">▼</span>
                         </div>
                     </div>
-                    <div class="vuln-details">
+                    <div class="vulnerability-details">
                         <div class="details-content">
                             <div class="details-grid">
-                                <div class="detail-item">
-                                    <div class="detail-label">🌐 Целевой URL</div>
+                                <div class="detail-card">
+                                    <div class="detail-label">🌐 Target URL</div>
                                     <div class="detail-value">{target}</div>
                                 </div>
-                                <div class="detail-item">
-                                    <div class="detail-label">🎯 Уязвимый параметр</div>
+                                <div class="detail-card">
+                                    <div class="detail-label">🎯 Vulnerable Parameter</div>
                                     <div class="detail-value">{param or 'N/A'}</div>
                                 </div>
-                                <div class="detail-item">
-                                    <div class="detail-label">🔍 Метод обнаружения</div>
+                                <div class="detail-card">
+                                    <div class="detail-label">🔍 Detection Method</div>
                                     <div class="detail-value">{detector}</div>
                                 </div>
-                                <div class="detail-item">
-                                    <div class="detail-label">🛡️ Модуль безопасности</div>
+                                <div class="detail-card">
+                                    <div class="detail-label">🛡️ Security Module</div>
                                     <div class="detail-value">{module.upper()}</div>
                                 </div>
                             </div>
                             
                             {f'''
-                            <div class="code-section">
-                                <div class="code-header">📡 HTTP Запрос</div>
-                                <div class="code-content">{request_url or 'Данные запроса недоступны'}</div>
+                            <div class="code-block">
+                                <div class="code-header">📡 HTTP Request</div>
+                                <div class="code-content">{request_url or 'Request data not available'}</div>
                             </div>
                             ''' if request_url else ''}
                             
                             {f'''
-                            <div class="code-section">
-                                <div class="code-header">📥 Ответ сервера</div>
-                                <div class="code-content">{response_snippet or 'Данные ответа недоступны'}</div>
+                            <div class="code-block">
+                                <div class="code-header">📥 Server Response</div>
+                                <div class="code-content">{response_snippet or 'Response data not available'}</div>
                             </div>
                             ''' if response_snippet else ''}
                             
                             {f'''
-                            <div class="code-section">
-                                <div class="code-header">💣 Вредоносная нагрузка</div>
-                                <div class="code-content">{payload or 'Данные нагрузки недоступны'}</div>
+                            <div class="code-block">
+                                <div class="code-header">💣 Malicious Payload</div>
+                                <div class="code-content">{payload or 'Payload data not available'}</div>
                             </div>
                             ''' if payload else ''}
                             
                             {f'''
-                            <div class="code-section">
-                                <div class="code-header">🔍 Доказательства и анализ</div>
-                                <div class="code-content">{evidence or 'Данные анализа недоступны'}</div>
+                            <div class="code-block">
+                                <div class="code-header">🔍 Evidence & Analysis</div>
+                                <div class="code-content">{evidence or 'Evidence data not available'}</div>
                             </div>
                             ''' if evidence else ''}
                         </div>
