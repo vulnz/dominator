@@ -365,11 +365,17 @@ class VulnScanner:
                 # Extract URLs from response
                 urls = self.url_parser.extract_urls_from_response(response.text, base_url)
                 
-                # Filter URLs with parameters
+                # Filter URLs with parameters and same domain
                 for url in urls[:20]:  # Limit to first 20 URLs
-                    parsed = self.url_parser.parse(url)
-                    if parsed['query_params'] and url not in found_urls:
-                        found_urls.append(url)
+                    try:
+                        parsed = self.url_parser.parse(url)
+                        # Check if URL has parameters and is from same domain
+                        if (parsed['query_params'] and 
+                            url not in found_urls and 
+                            parsed['host'] in base_url):
+                            found_urls.append(url)
+                    except:
+                        continue
                         
         except Exception as e:
             print(f"    Error crawling: {e}")

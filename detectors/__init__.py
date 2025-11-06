@@ -1,5 +1,5 @@
 """
-Детекторы уязвимостей
+Vulnerability detectors
 """
 
-# Здесь будут импорты всех детекторов
+# Detector imports will be here

@@ -1,5 +1,5 @@
 """
-Пейлоады для тестирования уязвимостей
+Vulnerability testing payloads
 """
 
-# Здесь будут импорты всех пейлоадов
+# Payload imports will be here

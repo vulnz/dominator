@@ -1,3 +1,3 @@
 """
-Модули отчетности
+Reporting modules
 """

@@ -1,5 +1,5 @@
 """
-Утилиты для работы с файлами
+File handling utilities
 """
 
 import json
@@ -8,7 +8,7 @@ from typing import List, Dict, Any
 import os
 
 class FileHandler:
-    """Класс для работы с файлами"""
+    """File handling class"""
     
     def save_json(self, data: List[Dict[str, Any]], filename: str):
         """Save in JSON format"""

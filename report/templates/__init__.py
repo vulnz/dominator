@@ -1,3 +1,3 @@
 """
-HTML шаблоны для отчетов
+HTML templates for reports
 """

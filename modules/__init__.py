@@ -1,5 +1,5 @@
 """
-Модули сканирования уязвимостей
+Vulnerability scanning modules
 """
 
-# Здесь будут импорты всех модулей сканирования
+# Module imports will be here

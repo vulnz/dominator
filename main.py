@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Web Vulnerability Scanner
-Основной файл для запуска сканера
+Main file for running the scanner
 """
 
 import argparse
