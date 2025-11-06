@@ -406,7 +406,6 @@ class VulnScanner:
         
         return results
 
-
     def _test_csrf(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Test for CSRF vulnerabilities"""
         results = []
