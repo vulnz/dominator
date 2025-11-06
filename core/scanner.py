@@ -76,13 +76,27 @@ class VulnScanner:
                 print(f"  Cannot connect to {target}")
                 return target_results
             
-            # Scan with each module
-            for module_name in self.config.modules:
-                if self._should_stop():
-                    break
-                    
-                module_results = self._run_module(module_name, parsed_data)
-                target_results.extend(module_results)
+            # If no parameters in URL, try to find pages with parameters
+            if not parsed_data['query_params']:
+                print(f"  No parameters found, crawling for pages...")
+                crawled_urls = self._crawl_for_pages(parsed_data['url'])
+                for url in crawled_urls:
+                    crawled_data = self.url_parser.parse(url)
+                    if crawled_data['query_params']:
+                        print(f"  Found page with parameters: {url}")
+                        for module_name in self.config.modules:
+                            if self._should_stop():
+                                break
+                            module_results = self._run_module(module_name, crawled_data)
+                            target_results.extend(module_results)
+            else:
+                # Scan with each module
+                for module_name in self.config.modules:
+                    if self._should_stop():
+                        break
+                        
+                    module_results = self._run_module(module_name, parsed_data)
+                    target_results.extend(module_results)
             
         except Exception as e:
             print(f"Error scanning {target}: {e}")
@@ -334,6 +348,33 @@ class VulnScanner:
                     continue
         
         return results
+
+    def _crawl_for_pages(self, base_url: str) -> List[str]:
+        """Crawl website to find pages with parameters"""
+        found_urls = []
+        
+        try:
+            response = requests.get(
+                base_url,
+                timeout=self.config.timeout,
+                headers=self.config.headers,
+                verify=False
+            )
+            
+            if response.status_code == 200:
+                # Extract URLs from response
+                urls = self.url_parser.extract_urls_from_response(response.text, base_url)
+                
+                # Filter URLs with parameters
+                for url in urls[:20]:  # Limit to first 20 URLs
+                    parsed = self.url_parser.parse(url)
+                    if parsed['query_params'] and url not in found_urls:
+                        found_urls.append(url)
+                        
+        except Exception as e:
+            print(f"    Error crawling: {e}")
+        
+        return found_urls
 
     def _should_stop(self) -> bool:
         """Check scan stop conditions"""

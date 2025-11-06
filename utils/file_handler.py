@@ -49,8 +49,7 @@ class FileHandler:
     
     def save_html(self, data: List[Dict[str, Any]], filename: str):
         """Save in HTML format"""
-        html_template = """
-<!DOCTYPE html>
+        html_template = '''<!DOCTYPE html>
 <html>
 <head>
     <title>Web Vulnerability Scanner Report</title>
@@ -71,8 +70,7 @@ class FileHandler:
     </div>
     {vulnerabilities}
 </body>
-</html>
-        """
+</html>'''
         
         vulnerabilities_html = ""
         
@@ -81,7 +79,7 @@ class FileHandler:
         else:
             for item in data:
                 severity = item.get('severity', 'info').lower()
-                vuln_html = f"""
+                vuln_html = f'''
                 <div class="vulnerability {severity}">
                     <h3>{item.get('vulnerability', 'Unknown')}</h3>
                     <p><strong>Target:</strong> {item.get('target', '')}</p>
@@ -91,7 +89,7 @@ class FileHandler:
                     <p><strong>Payload:</strong> <code>{item.get('payload', '')}</code></p>
                     <p><strong>Evidence:</strong> {item.get('evidence', '')}</p>
                 </div>
-                """
+                '''
                 vulnerabilities_html += vuln_html
         
         final_html = html_template.format(
