@@ -7,8 +7,8 @@ Main file for running the scanner
 import argparse
 import sys
 import os
-import signal
 import time
+import threading
 from core.scanner import VulnScanner
 from core.config import Config
 from utils.file_handler import FileHandler
@@ -116,10 +116,32 @@ def show_modules():
     print("- ssti: Server-Side Template Injection")
     print("- crlf: CRLF Injection")
 
-def timeout_handler(signum, frame):
-    """Handle scan timeout"""
-    print("\n[!] Scan timeout reached, stopping...")
-    raise TimeoutError("Scan timeout reached")
+class ScanTimeout:
+    """Handle scan timeout using threading"""
+    def __init__(self, timeout_seconds):
+        self.timeout_seconds = timeout_seconds
+        self.timer = None
+        self.timed_out = False
+    
+    def timeout_handler(self):
+        """Handle scan timeout"""
+        self.timed_out = True
+        print("\n[!] Scan timeout reached, stopping...")
+    
+    def start(self):
+        """Start timeout timer"""
+        if self.timeout_seconds:
+            self.timer = threading.Timer(self.timeout_seconds, self.timeout_handler)
+            self.timer.start()
+    
+    def cancel(self):
+        """Cancel timeout timer"""
+        if self.timer:
+            self.timer.cancel()
+    
+    def is_timed_out(self):
+        """Check if timeout occurred"""
+        return self.timed_out
 
 def main():
     """Main function"""
@@ -143,9 +165,10 @@ def main():
     
     try:
         # Set up scan timeout if specified
+        timeout_handler = None
         if hasattr(args, 'scan_timeout') and args.scan_timeout:
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(args.scan_timeout)
+            timeout_handler = ScanTimeout(args.scan_timeout)
+            timeout_handler.start()
             print(f"Scan timeout set to {args.scan_timeout} seconds")
         
         # Create configuration
@@ -157,11 +180,17 @@ def main():
         # Start scanning
         start_time = time.time()
         print(f"Starting scan...")
-        results = scanner.scan()
+        
+        # Check for timeout during scan
+        results = []
+        if timeout_handler and timeout_handler.is_timed_out():
+            print("\nScan stopped due to timeout before starting")
+        else:
+            results = scanner.scan()
         
         # Cancel timeout if scan completed normally
-        if hasattr(args, 'scan_timeout') and args.scan_timeout:
-            signal.alarm(0)
+        if timeout_handler:
+            timeout_handler.cancel()
         
         scan_duration = time.time() - start_time
         print(f"\nScan completed in {scan_duration:.2f} seconds")
@@ -187,21 +216,15 @@ def main():
             
     except KeyboardInterrupt:
         print("\nScan interrupted by user")
-        sys.exit(1)
-    except TimeoutError:
-        print("\nScan stopped due to timeout")
-        # Try to save partial results if available
-        try:
-            if 'scanner' in locals() and args.output:
-                scanner.save_report([], args.output, args.format)
-                print(f"Partial results saved to {args.output}")
-        except:
-            pass
+        if 'timeout_handler' in locals() and timeout_handler:
+            timeout_handler.cancel()
         sys.exit(1)
     except Exception as e:
         print(f"Error: {e}")
         import traceback
         traceback.print_exc()
+        if 'timeout_handler' in locals() and timeout_handler:
+            timeout_handler.cancel()
         sys.exit(1)
 
 if __name__ == "__main__":
