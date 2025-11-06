@@ -69,6 +69,16 @@ Examples:
         elif hasattr(args, 'file') and args.file:
             args.target = args.file
         
+        # Add missing attributes that Config expects
+        if not hasattr(args, 'cookies'):
+            args.cookies = None
+        if not hasattr(args, 'proxy'):
+            args.proxy = None
+        if not hasattr(args, 'request_limit'):
+            args.request_limit = None
+        if not hasattr(args, 'use_all'):
+            args.use_all = False
+        
         # Create configuration
         config = Config(args)
         
