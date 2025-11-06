@@ -778,6 +778,11 @@ class VulnScanner:
                     
                     print(f"    [XSS] Response code: {response.status_code}")
                     
+                    # Check if we should stop due to request limit
+                    if self._should_stop():
+                        print(f"    [XSS] Stopping - reached request limit ({self.config.request_limit})")
+                        return results
+                    
                     # Skip if response looks like 404
                     if response.status_code == 404:
                         print(f"    [XSS] Skipping - response appears to be 404")
@@ -798,6 +803,7 @@ class VulnScanner:
                             evidence = XSSDetector.get_evidence(payload, response.text)
                             response_snippet = XSSDetector.get_response_snippet(payload, response.text)
                         except Exception as e:
+                            print(f"    [XSS] Error getting evidence: {e}")
                             evidence = f"XSS detected with payload: {payload}"
                             response_snippet = "Response analysis failed"
                             
@@ -1027,6 +1033,11 @@ class VulnScanner:
                     self.scan_stats['payload_stats']['sqli']['requests_made'] += 1
                     
                     print(f"    [SQLI] Response code: {response.status_code}")
+                    
+                    # Check if we should stop due to request limit
+                    if self._should_stop():
+                        print(f"    [SQLI] Stopping - reached request limit ({self.config.request_limit})")
+                        return results
                     
                     # Use SQLi detector
                     try:
@@ -3906,6 +3917,7 @@ class VulnScanner:
     def _should_stop(self) -> bool:
         """Check scan stop conditions"""
         if self.config.request_limit and self.request_count >= self.config.request_limit:
+            print(f"[LIMIT] Request limit reached: {self.request_count}/{self.config.request_limit}")
             return True
         return False
     
