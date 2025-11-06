@@ -25,7 +25,7 @@ class WebCrawler:
         self.ajax_endpoints: List[str] = []
         self.js_urls: List[str] = []
         
-    def crawl_for_pages(self, base_url: str, max_pages: int = 20) -> List[str]:
+    def crawl_for_pages(self, base_url: str, max_pages: int = 50) -> List[str]:
         """Crawl website to find pages with parameters"""
         found_urls = []
         
@@ -51,10 +51,11 @@ class WebCrawler:
                 # Add AJAX endpoints to URLs
                 urls.extend(self.ajax_endpoints)
                 
-                # Filter and normalize URLs
-                normalized_urls = self._normalize_and_filter_urls(urls, base_url, max_pages)
+                # Filter and normalize URLs - increase limit
+                normalized_urls = self._normalize_and_filter_urls(urls, base_url, max_pages * 2)
                 print(f"    [CRAWLER] Analyzing {len(normalized_urls)} normalized URLs for parameters...")
                 
+                # First pass - collect URLs with parameters
                 for i, url in enumerate(normalized_urls):
                     try:
                         print(f"    [CRAWLER] Checking URL {i+1}/{len(normalized_urls)}: {url}")
@@ -73,6 +74,11 @@ class WebCrawler:
                     except Exception as e:
                         print(f"    [CRAWLER] Error parsing URL {url}: {e}")
                         continue
+                
+                # Second pass - crawl individual pages to find more URLs
+                print(f"    [CRAWLER] Starting second pass crawling...")
+                additional_urls = self._crawl_individual_pages(normalized_urls[:20], base_url)
+                found_urls.extend(additional_urls)
                         
             else:
                 print(f"    [CRAWLER] HTTP {response.status_code} response from {base_url}")
@@ -80,7 +86,7 @@ class WebCrawler:
         except Exception as e:
             print(f"    [CRAWLER] Error crawling {base_url}: {e}")
         
-        # If no URLs with parameters found, try deep crawling
+        # If still no URLs with parameters found, try deep crawling
         if not found_urls:
             print(f"    [CRAWLER] No parameters found, starting deep crawl...")
             found_urls = self._deep_crawl(base_url, max_pages)
@@ -168,7 +174,7 @@ class WebCrawler:
     def _normalize_and_filter_urls(self, urls: List[str], base_url: str, max_urls: int) -> List[str]:
         """Normalize and filter URLs with smart logic"""
         normalized_urls = []
-        seen_patterns = set()
+        seen_urls = set()
         
         for url in urls:
             try:
@@ -186,16 +192,15 @@ class WebCrawler:
                 if not self._is_same_domain(full_url, base_url):
                     continue
                 
-                # Skip certain file types
+                # Skip certain file types but be less aggressive
                 if self._should_skip_url(full_url):
                     continue
                 
-                # Pattern-based deduplication
-                url_pattern = self._get_url_pattern(full_url)
-                if url_pattern in seen_patterns:
+                # Simple URL deduplication instead of pattern-based
+                if full_url in seen_urls:
                     continue
                 
-                seen_patterns.add(url_pattern)
+                seen_urls.add(full_url)
                 normalized_urls.append(full_url)
                 
                 if len(normalized_urls) >= max_urls:
@@ -246,14 +251,18 @@ class WebCrawler:
     
     def _should_skip_url(self, url: str) -> bool:
         """Check if URL should be skipped"""
+        # Only skip obvious static files, be less aggressive
         skip_extensions = [
             '.css', '.js', '.jpg', '.jpeg', '.png', '.gif', '.svg', '.ico',
-            '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.zip', '.rar',
-            '.mp3', '.mp4', '.avi', '.mov', '.wmv', '.flv'
+            '.pdf', '.zip', '.rar', '.mp3', '.mp4', '.avi', '.mov', '.wmv', '.flv'
         ]
         
         parsed = urlparse(url)
         path = parsed.path.lower()
+        
+        # Don't skip if URL has query parameters (might be dynamic)
+        if parsed.query:
+            return False
         
         return any(path.endswith(ext) for ext in skip_extensions)
     
@@ -285,6 +294,54 @@ class WebCrawler:
             return pattern
         except Exception:
             return url
+    
+    def _crawl_individual_pages(self, urls: List[str], base_url: str) -> List[str]:
+        """Crawl individual pages to find more URLs with parameters"""
+        found_urls = []
+        
+        for url in urls:
+            if url in self.visited_urls:
+                continue
+                
+            self.visited_urls.add(url)
+            
+            try:
+                print(f"    [CRAWLER] Crawling individual page: {url}")
+                
+                response = requests.get(
+                    url,
+                    timeout=self.config.timeout,
+                    headers=self.config.headers,
+                    verify=False
+                )
+                
+                if response.status_code == 200:
+                    # Extract all URLs from this page
+                    page_urls = self._extract_all_urls(response.text, url)
+                    
+                    for page_url in page_urls:
+                        clean_url = self._clean_url(page_url)
+                        full_url = self._resolve_url(clean_url, base_url)
+                        
+                        if (full_url and 
+                            self._is_same_domain(full_url, base_url) and 
+                            not self._should_skip_url(full_url)):
+                            
+                            # Check if has parameters
+                            try:
+                                parsed = self.url_parser.parse(full_url)
+                                if parsed['query_params'] and full_url not in found_urls:
+                                    found_urls.append(full_url)
+                                    print(f"    [CRAWLER] Individual crawl found page with parameters: {full_url}")
+                                    print(f"    [CRAWLER] Parameters: {list(parsed['query_params'].keys())}")
+                            except Exception as e:
+                                continue
+                
+            except Exception as e:
+                print(f"    [CRAWLER] Error crawling individual page {url}: {e}")
+                continue
+        
+        return found_urls
     
     def _deep_crawl(self, base_url: str, max_pages: int) -> List[str]:
         """Perform deep crawling when no parameters found initially"""

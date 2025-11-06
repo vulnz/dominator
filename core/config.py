@@ -27,7 +27,7 @@ class Config:
         # Crawler settings
         self.crawler_depth = getattr(args, 'crawler_depth', 3)
         self.enable_js_crawling = getattr(args, 'enable_js_crawling', True)
-        self.max_crawl_pages = getattr(args, 'max_crawl_pages', 50)
+        self.max_crawl_pages = getattr(args, 'max_crawl_pages', 100)
         
         # Directory paths
         self.modules_dir = "modules"

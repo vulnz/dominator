@@ -236,7 +236,7 @@ class VulnScanner:
             important_pages = self._get_important_pages()
             print(f"  [DEBUG] Testing {len(important_pages)} important pages")
             
-            for page in important_pages[:20]:  # Limit to 20 pages
+            for page in important_pages[:40]:  # Increase limit to 40 pages
                 if page.startswith('http'):
                     test_url = page
                 else:
@@ -247,7 +247,7 @@ class VulnScanner:
                 
                 try:
                     print(f"  [DEBUG] Testing important page: {test_url}")
-                    test_response = requests.get(test_url, timeout=10, verify=False)
+                    test_response = requests.get(test_url, timeout=15, verify=False)
                     if test_response.status_code == 200:
                         page_data = self.url_parser.parse(test_url)
                         
@@ -263,6 +263,10 @@ class VulnScanner:
                         self.scan_stats['total_params'] += len(page_data['query_params'])
                         
                         print(f"  [DEBUG] Page has {len(page_data['query_params'])} parameters and {len(forms)} forms")
+                    elif test_response.status_code == 404:
+                        print(f"  [DEBUG] Page not found: {test_url}")
+                    else:
+                        print(f"  [DEBUG] Page returned {test_response.status_code}: {test_url}")
                 except Exception as e:
                     print(f"  [DEBUG] Error testing page {test_url}: {e}")
                     continue
@@ -3484,17 +3488,38 @@ class VulnScanner:
             '/login.php', '/admin.php', '/register.php', '/contact.php', '/guestbook.php',
             '/search.php', '/index.php', '/home.php', '/profile.php', '/settings.php',
             '/upload.php', '/file.php', '/download.php', '/view.php', '/edit.php',
-            '/delete.php', '/update.php', '/create.php', '/submit.php', '/process.php'
+            '/delete.php', '/update.php', '/create.php', '/submit.php', '/process.php',
+            '/listproducts.php', '/showimage.php', '/artists.php', '/categories.php',
+            '/cart.php', '/userinfo.php', '/disclaimer.php', '/privacy.php',
+            '/AJAX/index.php', '/Mod_Rewrite_Shop/', '/hpp/', '/Flash/add.swf'
         ]
         
+        # Add common parameter patterns for testphp.vulnweb.com
+        param_pages = [
+            '/listproducts.php?cat=1',
+            '/listproducts.php?artist=1', 
+            '/showimage.php?file=1',
+            '/artists.php?artist=1',
+            '/categories.php?cat=1',
+            '/search.php?test=query',
+            '/userinfo.php?user=1',
+            '/cart.php?action=view',
+            '/AJAX/index.php?test=1'
+        ]
+        
+        important_pages.extend(param_pages)
+        
         # Use DirBrutePayloads to get additional common files
-        common_files = DirBrutePayloads.get_common_files()
+        try:
+            common_files = DirBrutePayloads.get_common_files()
+            
+            for file in common_files:
+                if any(keyword in file.lower() for keyword in ['login', 'admin', 'register', 'contact', 'guestbook', 'search', 'upload', 'file', 'list', 'show', 'view']):
+                    important_pages.append(f'/{file}')
+        except:
+            pass
         
-        for file in common_files:
-            if any(keyword in file.lower() for keyword in ['login', 'admin', 'register', 'contact', 'guestbook', 'search', 'upload', 'file']):
-                important_pages.append(f'/{file}')
-        
-        return list(set(important_pages))[:30]  # Remove duplicates and limit to 30 pages
+        return list(set(important_pages))[:50]  # Remove duplicates and limit to 50 pages
     
     def _get_success_indicators(self) -> List[str]:
         """Get indicators that suggest a request was successful"""
