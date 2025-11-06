@@ -10,40 +10,58 @@ class DirBruteDetector:
     
     @staticmethod
     def is_valid_response(response_text: str, response_code: int, content_length: int, 
-                         baseline_404: str = None) -> Tuple[bool, str]:
+                         baseline_404: str = None, baseline_size: int = 0) -> Tuple[bool, str]:
         """
-        Check if response indicates a valid directory/file using baseline 404 patterns
+        Check if response indicates a valid directory/file using enhanced 404 detection
         Returns (is_valid, evidence)
         """
         from .real404_detector import Real404Detector
         
-        # Use improved 404 detection with baseline patterns
+        # Use improved 404 detection with baseline patterns and size analysis
         is_404, real_404_evidence, confidence = Real404Detector.detect_real_404(
-            response_text, response_code, content_length, baseline_404
+            response_text, response_code, content_length, baseline_404, baseline_size
         )
+        
+        # Very high confidence 404 detection
+        if is_404 and confidence > 0.85:
+            return False, f"Real 404 detected (very high confidence: {confidence:.3f}): {real_404_evidence}"
         
         # High confidence 404 detection
         if is_404 and confidence > 0.7:
             return False, f"Real 404 detected (high confidence: {confidence:.3f}): {real_404_evidence}"
         
-        # Medium confidence 404 detection
+        # Medium confidence 404 detection - additional validation
         if is_404 and confidence > 0.5:
-            return False, f"Real 404 detected (medium confidence: {confidence:.3f}): {real_404_evidence}"
-        
-        # Low confidence 404 - be more careful
-        if is_404 and confidence > 0.3:
-            # Do additional validation for low confidence cases
+            # Check for strong valid content indicators
             if DirBruteDetector._has_strong_valid_content(response_text):
+                return True, f"Valid content overrides medium confidence 404 (confidence: {confidence:.3f})"
+            else:
+                return False, f"Real 404 detected (medium confidence: {confidence:.3f}): {real_404_evidence}"
+        
+        # Low confidence 404 - be very careful
+        if is_404 and confidence > 0.3:
+            # Multiple validation checks for low confidence cases
+            has_valid_content = DirBruteDetector._has_strong_valid_content(response_text)
+            has_dir_content = DirBruteDetector._has_directory_file_content(response_text)
+            
+            if has_valid_content or has_dir_content:
                 return True, f"Valid content overrides low confidence 404 (confidence: {confidence:.3f})"
             else:
                 return False, f"Real 404 detected (low confidence: {confidence:.3f}): {real_404_evidence}"
         
         # For 200 responses that don't match 404 patterns
         if response_code == 200:
-            # Additional validation for directory/file content
+            # Enhanced validation for directory/file content
             if DirBruteDetector._has_directory_file_content(response_text):
                 return True, f"HTTP 200 - Valid directory/file content found"
+            elif DirBruteDetector._has_strong_valid_content(response_text):
+                return True, f"HTTP 200 - Strong valid content indicators found"
+            elif content_length > 2000:  # Large responses are likely valid
+                return True, f"HTTP 200 - Large response likely valid ({content_length} bytes)"
             else:
+                # Small 200 responses need more scrutiny
+                if DirBruteDetector._looks_like_error_page(response_text):
+                    return False, f"HTTP 200 - Appears to be error page despite status code"
                 return True, f"HTTP 200 - Content appears valid (no 404 patterns matched)"
         
         # Success codes
@@ -84,15 +102,47 @@ class DirBruteDetector:
             'onclick', 'onsubmit', 'javascript:', 'ajax',
             
             # Media content
-            '<img', '<video', '<audio', '<iframe'
+            '<img', '<video', '<audio', '<iframe',
+            
+            # Navigation elements
+            '<nav', '<menu', '<ul class=', '<ol class=',
+            
+            # Content structure
+            '<article', '<section', '<main', '<header', '<footer'
         ]
         
         # Count strong indicators
         strong_count = sum(1 for indicator in strong_indicators 
                           if indicator in response_lower)
         
-        # If we have multiple strong indicators, it's likely valid content
-        return strong_count >= 3
+        # Enhanced threshold - need more indicators for high confidence
+        return strong_count >= 4
+    
+    @staticmethod
+    def _looks_like_error_page(response_text: str) -> bool:
+        """Check if response looks like an error page despite 200 status"""
+        response_lower = response_text.lower()
+        
+        error_indicators = [
+            'page not found', 'not found', '404', 'file not found',
+            'error occurred', 'something went wrong', 'oops',
+            'page does not exist', 'invalid request', 'access denied',
+            'страница не найдена', 'файл не найден', 'ошибка'
+        ]
+        
+        # Check title for error indicators
+        import re
+        title_match = re.search(r'<title[^>]*>(.*?)</title>', response_text, re.IGNORECASE | re.DOTALL)
+        if title_match:
+            title = title_match.group(1).strip().lower()
+            if any(indicator in title for indicator in error_indicators):
+                return True
+        
+        # Check main content for error indicators
+        error_count = sum(1 for indicator in error_indicators 
+                         if indicator in response_lower)
+        
+        return error_count >= 2
     
     @staticmethod
     def _has_directory_file_content(response_text: str) -> bool:

@@ -241,7 +241,7 @@ class VulnScanner:
         return results
     
     def _test_xss(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Test for XSS vulnerabilities"""
+        """Test for XSS vulnerabilities with enhanced validation"""
         results = []
         base_url = parsed_data['url']
         
@@ -251,6 +251,12 @@ class VulnScanner:
         # Test GET parameters
         for param, values in parsed_data['query_params'].items():
             print(f"    [XSS] Testing parameter: {param}")
+            
+            # Create deduplication key for this parameter
+            param_key = f"xss_{base_url.split('?')[0]}_{param}"
+            if param_key in self.found_vulnerabilities:
+                print(f"    [XSS] Skipping parameter {param} - already tested")
+                continue
             
             for payload in xss_payloads:
                 try:
@@ -278,11 +284,19 @@ class VulnScanner:
                     
                     print(f"    [XSS] Response code: {response.status_code}")
                     
+                    # Skip if response looks like 404
+                    if self._is_likely_404_response(response.text, response.status_code):
+                        print(f"    [XSS] Skipping - response appears to be 404")
+                        continue
+                    
                     # Use XSS detector
                     if XSSDetector.detect_reflected_xss(payload, response.text, response.status_code):
                         evidence = XSSDetector.get_evidence(payload, response.text)
                         response_snippet = XSSDetector.get_response_snippet(payload, response.text)
                         print(f"    [XSS] VULNERABILITY FOUND! Parameter: {param}")
+                        
+                        # Mark as found to prevent duplicates
+                        self.found_vulnerabilities.add(param_key)
                         
                         results.append({
                             'module': 'xss',
@@ -684,11 +698,12 @@ class VulnScanner:
             )
             
             if baseline_404_text:
-                print(f"    [DIRBRUTE] Baseline 404 generated: {baseline_404_size} bytes")
+                print(f"    [DIRBRUTE] Baseline 404 generated: {baseline_404_size} bytes (average)")
                 print(f"    [DIRBRUTE] Baseline fingerprint: {Real404Detector.get_response_fingerprint(baseline_404_text)}")
             else:
                 print(f"    [DIRBRUTE] Could not generate baseline 404 - proceeding without baseline")
                 baseline_404_text = None
+                baseline_404_size = 0
             
             # Test directories first
             directories = DirBrutePayloads.get_all_directories()
@@ -715,7 +730,7 @@ class VulnScanner:
                     print(f"    [DIRBRUTE] Testing directory: {directory} -> {response.status_code} ({len(response.text)} bytes)")
                     
                     is_valid, evidence = DirBruteDetector.is_valid_response(
-                        response.text, response.status_code, len(response.text), baseline_404_text
+                        response.text, response.status_code, len(response.text), baseline_404_text, baseline_404_size
                     )
                     
                     if is_valid:
@@ -741,7 +756,7 @@ class VulnScanner:
                         found_directories.append(directory)
                         
                         # If directory found, recursively test files in it
-                        self._test_files_in_directory(base_url, directory, results, baseline_404_text)
+                        self._test_files_in_directory(base_url, directory, results, baseline_404_text, baseline_404_size)
                     else:
                         print(f"    [DIRBRUTE] Directory not found: {directory} - {evidence}")
                         
@@ -771,7 +786,7 @@ class VulnScanner:
                     print(f"    [DIRBRUTE] Testing file: {file} -> {response.status_code} ({len(response.text)} bytes)")
                     
                     is_valid, evidence = DirBruteDetector.is_valid_response(
-                        response.text, response.status_code, len(response.text), baseline_404_text
+                        response.text, response.status_code, len(response.text), baseline_404_text, baseline_404_size
                     )
                     
                     if is_valid:
@@ -814,7 +829,7 @@ class VulnScanner:
         
         return results
     
-    def _test_files_in_directory(self, base_url: str, directory: str, results: List[Dict[str, Any]], baseline_404_text: str = None):
+    def _test_files_in_directory(self, base_url: str, directory: str, results: List[Dict[str, Any]], baseline_404_text: str = None, baseline_404_size: int = 0):
         """Test files in a found directory"""
         files = DirBrutePayloads.get_all_files()
         
@@ -832,7 +847,7 @@ class VulnScanner:
                 )
                 
                 is_valid, evidence = DirBruteDetector.is_valid_response(
-                    response.text, response.status_code, len(response.text), baseline_404_text
+                    response.text, response.status_code, len(response.text), baseline_404_text, baseline_404_size
                 )
                 
                 if is_valid:

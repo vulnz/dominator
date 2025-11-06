@@ -117,10 +117,10 @@ class Real404Detector:
     
     @staticmethod
     def detect_real_404(response_text: str, response_code: int, content_length: int, 
-                       baseline_response: str = None) -> Tuple[bool, str, float]:
+                       baseline_response: str = None, baseline_size: int = 0) -> Tuple[bool, str, float]:
         """
         Detect if response is actually a 404 page despite 200 status code
-        Uses baseline patterns from 10 fake requests for accurate detection
+        Uses baseline patterns and size analysis for accurate detection
         Returns (is_404, evidence, confidence_score)
         """
         if response_code == 404:
@@ -133,6 +133,11 @@ class Real404Detector:
         if not baseline_response:
             return Real404Detector._detect_without_baseline(response_text, content_length)
         
+        # Size-based detection (high priority)
+        size_confidence = Real404Detector._analyze_size_similarity(content_length, baseline_size)
+        if size_confidence > 0.9:
+            return True, f"Size match with 404 baseline: {content_length} bytes (baseline: {baseline_size})", size_confidence
+        
         # Primary method: Compare with established 404 baseline
         current_fingerprint = Real404Detector.get_response_fingerprint(response_text)
         baseline_fingerprint = Real404Detector.get_response_fingerprint(baseline_response)
@@ -144,13 +149,16 @@ class Real404Detector:
         # Calculate detailed similarity
         similarity = Real404Detector._calculate_similarity(response_text, baseline_response)
         
-        # High similarity = likely 404
-        if similarity > 0.9:
-            return True, f"Very high similarity to 404 baseline: {similarity:.3f}", 0.95
+        # Combine size and content similarity for better accuracy
+        combined_confidence = (similarity + size_confidence) / 2
+        
+        # High combined confidence = likely 404
+        if combined_confidence > 0.85:
+            return True, f"High combined confidence: content={similarity:.3f}, size={size_confidence:.3f}", combined_confidence
         elif similarity > 0.8:
-            return True, f"High similarity to 404 baseline: {similarity:.3f}", 0.85
+            return True, f"High content similarity to 404 baseline: {similarity:.3f}", 0.85
         elif similarity > 0.7:
-            return True, f"Moderate similarity to 404 baseline: {similarity:.3f}", 0.75
+            return True, f"Moderate content similarity to 404 baseline: {similarity:.3f}", 0.75
         
         # Use additional detection methods for edge cases
         methods_results = []
@@ -180,17 +188,17 @@ class Real404Detector:
         if methods_results:
             additional_confidence = additional_confidence / len(methods_results)
         
-        # Final decision combining baseline similarity and additional methods
-        if similarity > 0.5 and additional_confidence > 0.3:
-            final_confidence = min((similarity + additional_confidence) / 2, 1.0)
-            combined_evidence = f"Baseline similarity: {similarity:.3f} + Additional evidence: {'; '.join(evidence_parts)}"
+        # Final decision combining all factors
+        final_confidence = (similarity + size_confidence + additional_confidence) / 3
+        
+        if final_confidence > 0.6:
+            combined_evidence = f"Combined analysis: content={similarity:.3f}, size={size_confidence:.3f}, additional={additional_confidence:.3f}"
+            if evidence_parts:
+                combined_evidence += f" - {'; '.join(evidence_parts)}"
             return True, combined_evidence, final_confidence
-        elif additional_confidence > 0.6:  # Strong additional evidence
-            combined_evidence = f"Strong additional evidence: {'; '.join(evidence_parts)}"
-            return True, combined_evidence, additional_confidence
         
         # Not a 404
-        return False, f"Valid content (baseline similarity: {similarity:.3f}, no strong 404 indicators)", 0.0
+        return False, f"Valid content (similarity: {similarity:.3f}, size_match: {size_confidence:.3f})", 0.0
     
     @staticmethod
     def _calculate_similarity(text1: str, text2: str) -> float:
@@ -281,17 +289,23 @@ class Real404Detector:
         
         print(f"    [REAL404] Most common fingerprint: {most_common_fingerprint} (appears {fingerprint_counts[most_common_fingerprint]} times)")
         
+        # Calculate average size for size-based detection
+        sizes = [r['length'] for r in baseline_responses]
+        average_size = sum(sizes) / len(sizes) if sizes else 0
+        
+        print(f"    [REAL404] Size analysis: min={min(sizes)}, max={max(sizes)}, avg={average_size:.0f}")
+        
         # Find response with most common fingerprint
         for response_data in baseline_responses:
             if Real404Detector.get_response_fingerprint(response_data['text']) == most_common_fingerprint:
                 print(f"    [REAL404] Selected baseline: {response_data['status_code']} - {response_data['length']} bytes")
-                return response_data['text'], response_data['length']
+                return response_data['text'], int(average_size)
         
-        # Fallback: return first response
+        # Fallback: return first response with average size
         if baseline_responses:
             fallback = baseline_responses[0]
-            print(f"    [REAL404] Using fallback baseline: {fallback['status_code']} - {fallback['length']} bytes")
-            return fallback['text'], fallback['length']
+            print(f"    [REAL404] Using fallback baseline: {fallback['status_code']} - {int(average_size)} bytes (avg)")
+            return fallback['text'], int(average_size)
         
         return "", 0
     
@@ -368,6 +382,35 @@ class Real404Detector:
         return hashlib.md5(fingerprint_data.encode()).hexdigest()[:16]
     
     @staticmethod
+    def _analyze_size_similarity(current_size: int, baseline_size: int) -> float:
+        """
+        Analyze size similarity between current response and baseline 404
+        Returns confidence score (0.0 to 1.0)
+        """
+        if baseline_size == 0:
+            return 0.0
+        
+        # Calculate size difference percentage
+        size_diff = abs(current_size - baseline_size)
+        size_diff_percent = size_diff / baseline_size if baseline_size > 0 else 1.0
+        
+        # Very close sizes (within 5%) = high confidence
+        if size_diff_percent <= 0.05:
+            return 0.95
+        # Close sizes (within 10%) = good confidence  
+        elif size_diff_percent <= 0.10:
+            return 0.80
+        # Moderate difference (within 20%) = medium confidence
+        elif size_diff_percent <= 0.20:
+            return 0.60
+        # Large difference (within 50%) = low confidence
+        elif size_diff_percent <= 0.50:
+            return 0.30
+        # Very different sizes = no confidence
+        else:
+            return 0.0
+    
+    @staticmethod
     def _detect_without_baseline(response_text: str, content_length: int) -> Tuple[bool, str, float]:
         """
         Fallback detection method when no baseline is available
@@ -391,10 +434,24 @@ class Real404Detector:
             confidence += 0.8
             evidence_parts.append(f"PHP errors: {', '.join(found_php_errors[:2])}")
         
-        # Check content length
-        if content_length < 1000:
+        # Enhanced content length analysis
+        if content_length < 500:
+            confidence += 0.4
+            evidence_parts.append(f"Very short response: {content_length} bytes")
+        elif content_length < 1000:
             confidence += 0.2
             evidence_parts.append(f"Short response: {content_length} bytes")
+        elif content_length > 10000:
+            confidence -= 0.3  # Large responses are less likely to be 404
+            evidence_parts.append(f"Large response: {content_length} bytes (likely valid)")
+        
+        # Check for valid content indicators (reduce confidence)
+        valid_indicators = Real404Detector.get_valid_content_indicators()
+        found_valid = [ind for ind in valid_indicators if ind.lower() in response_text.lower()]
+        
+        if found_valid and len(found_valid) > 3:
+            confidence -= 0.4
+            evidence_parts.append(f"Valid content indicators: {len(found_valid)} found")
         
         is_404 = confidence > 0.5
         
@@ -403,7 +460,7 @@ class Real404Detector:
         else:
             evidence = "No baseline - no clear 404 indicators found"
         
-        return is_404, evidence, min(confidence, 1.0)
+        return is_404, evidence, max(0.0, min(confidence, 1.0))
     
     @staticmethod
     def _detect_by_similarity(response_text: str, baseline_response: str = None) -> Tuple[bool, str, float]:
