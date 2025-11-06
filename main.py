@@ -115,6 +115,9 @@ def show_modules():
     print("- responsesplitting: HTTP Response Splitting")
     print("- ssti: Server-Side Template Injection")
     print("- crlf: CRLF Injection")
+    print("- textinjection: Text Injection")
+    print("- contentreflection: Content Reflection")
+    print("- htmlinjection: HTML Injection")
 
 class ScanTimeout:
     """Handle scan timeout using threading"""

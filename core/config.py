@@ -69,7 +69,8 @@ class Config:
                 'outdatedsoftware', 'databaseerrors', 'phpinfo', 'ssltls',
                 'httponlycookies', 'technology', 'commandinjection', 'pathtraversal',
                 'ldapinjection', 'nosqlinjection', 'fileupload', 'cors', 'jwt',
-                'deserialization', 'responsesplitting'
+                'deserialization', 'responsesplitting', 'ssti', 'crlf',
+                'textinjection', 'contentreflection', 'htmlinjection'
             ]
         else:
             # If no modules specified and --all not used, use all modules by default
@@ -80,7 +81,8 @@ class Config:
                 'outdatedsoftware', 'databaseerrors', 'phpinfo', 'ssltls',
                 'httponlycookies', 'technology', 'commandinjection', 'pathtraversal',
                 'ldapinjection', 'nosqlinjection', 'fileupload', 'cors', 'jwt',
-                'deserialization', 'responsesplitting'
+                'deserialization', 'responsesplitting', 'ssti', 'crlf',
+                'textinjection', 'contentreflection', 'htmlinjection'
             ]
     
     def _parse_exclude(self, exclude_str: Optional[str]) -> List[str]:
