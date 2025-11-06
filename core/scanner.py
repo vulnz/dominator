@@ -106,10 +106,12 @@ class VulnScanner:
             'total_requests': 0,
             'total_urls': 0,
             'total_params': 0,
+            'total_forms': 0,
             'scan_duration': '0s',
             'start_time': None,
             'end_time': None,
-            'technologies': {}
+            'technologies': {},
+            'module_stats': {}
         }
         
     def scan(self) -> List[Dict[str, Any]]:
@@ -180,6 +182,7 @@ class VulnScanner:
     def _scan_target(self, target: str) -> List[Dict[str, Any]]:
         """Scan single target"""
         target_results = []
+        all_found_pages = []  # Collect all pages for comprehensive testing
         
         try:
             print(f"Scanning: {target}")
@@ -202,154 +205,109 @@ class VulnScanner:
             self.scan_stats['total_urls'] += 1
             self.scan_stats['total_params'] += len(parsed_data['query_params'])
             
-            # If no parameters in URL, try to find pages with parameters
-            if not parsed_data['query_params']:
-                print(f"  [DEBUG] No parameters found, starting crawler...")
-                crawled_urls = self.crawler.crawl_for_pages(parsed_data['url'])
-                
-                # For CSRF testing, also test pages without parameters (they might have forms)
-                if 'csrf' in self.config.modules:
-                    print(f"  [DEBUG] Testing main page for CSRF (no parameters needed)")
-                    csrf_results = self._run_module('csrf', parsed_data)
-                    target_results.extend(csrf_results)
-                
-                if not crawled_urls:
-                    print(f"  [DEBUG] No pages with parameters found by crawler")
-                else:
-                    # Try to crawl vulnerability pages deeper and test them directly
-                    vuln_pages = [url for url in crawled_urls if '/vulnerabilities/' in url]
-                    print(f"  [DEBUG] Found {len(vuln_pages)} vulnerability pages to test directly")
-                    
-                    for vuln_page in vuln_pages[:15]:  # Test first 15 vulnerability pages
-                        try:
-                            print(f"  [DEBUG] Testing vulnerability page: {vuln_page}")
-                            
-                            # Test the page directly first
-                            vuln_data = self.url_parser.parse(vuln_page)
-                            
-                            # Test all modules on this vulnerability page
-                            for module_name in self.config.modules:
-                                if self._should_stop():
-                                    break
-                                    
-                                # Skip parameter-dependent modules if no parameters, but test others
-                                param_dependent = ['xss', 'sqli', 'lfi', 'rfi', 'xxe', 'idor', 'ssrf', 
-                                                 'dirtraversal', 'blindxss', 'commandinjection', 'pathtraversal',
-                                                 'ldapinjection', 'nosqlinjection', 'deserialization', 'responsesplitting']
-                                
-                                if module_name in param_dependent and not vuln_data['query_params']:
-                                    # For parameter-dependent modules, try adding common test parameters
-                                    test_params = {'id': ['1'], 'name': ['test'], 'search': ['test'], 'file': ['test.txt']}
-                                    vuln_data_with_params = vuln_data.copy()
-                                    vuln_data_with_params['query_params'] = test_params
-                                    vuln_data_with_params['url'] = f"{vuln_page}?id=1&name=test"
-                                    
-                                    print(f"  [DEBUG] Testing {module_name} on {vuln_page} with test parameters")
-                                    module_results = self._run_module(module_name, vuln_data_with_params)
-                                    target_results.extend(module_results)
-                                else:
-                                    print(f"  [DEBUG] Testing {module_name} on {vuln_page}")
-                                    module_results = self._run_module(module_name, vuln_data)
-                                    target_results.extend(module_results)
-                            
-                            # Also try to crawl deeper for more URLs with parameters
-                            try:
-                                deep_crawled = self.crawler.crawl_for_pages(vuln_page, max_pages=3)
-                                for deep_url in deep_crawled:
-                                    deep_data = self.url_parser.parse(deep_url)
-                                    if deep_data['query_params']:
-                                        print(f"  [DEBUG] Found parameters in deep crawl: {deep_url}")
-                                        print(f"  [DEBUG] Parameters: {list(deep_data['query_params'].keys())}")
-                                        
-                                        # Update stats
-                                        self.scan_stats['total_urls'] += 1
-                                        self.scan_stats['total_params'] += len(deep_data['query_params'])
-                                        
-                                        # Test parameter-dependent modules on this page
-                                        for module_name in ['xss', 'sqli', 'lfi', 'rfi', 'xxe', 'idor', 'ssrf']:
-                                            if self._should_stop():
-                                                break
-                                            module_results = self._run_module(module_name, deep_data)
-                                            target_results.extend(module_results)
-                            except Exception as e:
-                                print(f"  [DEBUG] Error deep crawling {vuln_page}: {e}")
-                                        
-                        except Exception as e:
-                            print(f"  [DEBUG] Error testing vulnerability page {vuln_page}: {e}")
-                            continue
-                
-                # Test important pages that might have forms or vulnerabilities
-                important_pages = self._get_important_pages()
-                
-                # Also test all found vulnerability pages
-                vuln_pages = [url for url in crawled_urls if '/vulnerabilities/' in url]
-                all_test_pages = important_pages + [url.replace(f"{parsed_data['scheme']}://{parsed_data['host']}", "") for url in vuln_pages]
-                
-                print(f"  [DEBUG] Testing {len(all_test_pages)} important/vulnerability pages")
-                
-                for page in all_test_pages[:20]:  # Limit to 20 pages
-                    if page.startswith('http'):
-                        test_url = page
-                    else:
-                        # Build URL with correct port and base path
-                        port_part = f":{parsed_data['port']}" if parsed_data.get('port') and parsed_data['port'] != 80 else ""
-                        base_path = parsed_data.get('path', '/').rstrip('/')
-                        test_url = f"{parsed_data['scheme']}://{parsed_data['host']}{port_part}{base_path}{page}"
-                    
-                    try:
-                        print(f"  [DEBUG] Testing page: {test_url}")
-                        test_response = requests.get(test_url, timeout=10, verify=False)
-                        if test_response.status_code == 200:
-                            page_data = self.url_parser.parse(test_url)
-                            
-                            # Test all modules on this page, not just CSRF
-                            for module_name in self.config.modules:
-                                if self._should_stop():
-                                    break
-                                    
-                                # Skip parameter-dependent modules if no parameters
-                                param_dependent = ['xss', 'sqli', 'lfi', 'rfi', 'xxe', 'idor', 'ssrf', 
-                                                 'dirtraversal', 'blindxss', 'commandinjection', 'pathtraversal',
-                                                 'ldapinjection', 'nosqlinjection', 'deserialization', 'responsesplitting']
-                                
-                                if module_name in param_dependent and not page_data['query_params']:
-                                    continue
-                                    
-                                module_results = self._run_module(module_name, page_data)
-                                target_results.extend(module_results)
-                    except Exception as e:
-                        print(f"  [DEBUG] Error testing page {test_url}: {e}")
-                        continue
-                
+            # Add main page to testing list
+            all_found_pages.append(parsed_data)
+            
+            # Always crawl for additional pages
+            print(f"  [DEBUG] Starting crawler to find additional pages...")
+            crawled_urls = self.crawler.crawl_for_pages(parsed_data['url'])
+            
+            if crawled_urls:
+                print(f"  [DEBUG] Crawler found {len(crawled_urls)} additional pages")
                 for url in crawled_urls:
                     crawled_data = self.url_parser.parse(url)
-                    if crawled_data['query_params']:
-                        print(f"  [DEBUG] Testing page: {url}")
-                        print(f"  [DEBUG] Parameters to test: {list(crawled_data['query_params'].keys())}")
+                    all_found_pages.append(crawled_data)
+                    
+                    # Update stats
+                    self.scan_stats['total_urls'] += 1
+                    self.scan_stats['total_params'] += len(crawled_data['query_params'])
+            else:
+                print(f"  [DEBUG] No additional pages found by crawler")
+            
+            # Test important pages that might have forms or vulnerabilities
+            important_pages = self._get_important_pages()
+            print(f"  [DEBUG] Testing {len(important_pages)} important pages")
+            
+            for page in important_pages[:20]:  # Limit to 20 pages
+                if page.startswith('http'):
+                    test_url = page
+                else:
+                    # Build URL with correct port and base path
+                    port_part = f":{parsed_data['port']}" if parsed_data.get('port') and parsed_data['port'] != 80 else ""
+                    base_path = parsed_data.get('path', '/').rstrip('/')
+                    test_url = f"{parsed_data['scheme']}://{parsed_data['host']}{port_part}{base_path}{page}"
+                
+                try:
+                    print(f"  [DEBUG] Testing important page: {test_url}")
+                    test_response = requests.get(test_url, timeout=10, verify=False)
+                    if test_response.status_code == 200:
+                        page_data = self.url_parser.parse(test_url)
+                        
+                        # Extract forms from the page
+                        forms = self.url_parser.extract_forms(test_response.text)
+                        page_data['forms'] = forms
+                        self.scan_stats['total_forms'] += len(forms)
+                        
+                        all_found_pages.append(page_data)
                         
                         # Update stats
                         self.scan_stats['total_urls'] += 1
-                        self.scan_stats['total_params'] += len(crawled_data['query_params'])
+                        self.scan_stats['total_params'] += len(page_data['query_params'])
                         
-                        for module_name in self.config.modules:
-                            if self._should_stop():
-                                break
-                            module_results = self._run_module(module_name, crawled_data)
-                            target_results.extend(module_results)
-                    elif 'csrf' in self.config.modules:
-                        # Test pages without parameters for CSRF (they might have forms)
-                        print(f"  [DEBUG] Testing page for CSRF: {url}")
-                        csrf_results = self._run_module('csrf', crawled_data)
-                        target_results.extend(csrf_results)
-            else:
-                # Scan with each module
-                print(f"  [DEBUG] Testing parameters: {list(parsed_data['query_params'].keys())}")
+                        print(f"  [DEBUG] Page has {len(page_data['query_params'])} parameters and {len(forms)} forms")
+                except Exception as e:
+                    print(f"  [DEBUG] Error testing page {test_url}: {e}")
+                    continue
+            
+            # Now test ALL found pages with ALL modules
+            print(f"  [DEBUG] Testing {len(all_found_pages)} total pages with all modules")
+            
+            for page_data in all_found_pages:
+                # Extract forms if not already done
+                if 'forms' not in page_data:
+                    try:
+                        response = requests.get(page_data['url'], timeout=10, verify=False)
+                        if response.status_code == 200:
+                            forms = self.url_parser.extract_forms(response.text)
+                            page_data['forms'] = forms
+                            self.scan_stats['total_forms'] += len(forms)
+                    except:
+                        page_data['forms'] = []
+                
+                # Test each module on this page
                 for module_name in self.config.modules:
                     if self._should_stop():
                         break
-                        
-                    module_results = self._run_module(module_name, parsed_data)
+                    
+                    # Initialize module stats if not exists
+                    if module_name not in self.scan_stats['module_stats']:
+                        self.scan_stats['module_stats'][module_name] = {
+                            'pages_tested': 0,
+                            'parameters_tested': 0,
+                            'forms_tested': 0,
+                            'vulnerabilities_found': 0
+                        }
+                    
+                    # Update module stats
+                    self.scan_stats['module_stats'][module_name]['pages_tested'] += 1
+                    self.scan_stats['module_stats'][module_name]['parameters_tested'] += len(page_data['query_params'])
+                    self.scan_stats['module_stats'][module_name]['forms_tested'] += len(page_data.get('forms', []))
+                    
+                    print(f"  [DEBUG] Testing {module_name.upper()} on {page_data['url']}")
+                    module_results = self._run_module(module_name, page_data)
+                    
+                    # Count vulnerabilities found by this module
+                    self.scan_stats['module_stats'][module_name]['vulnerabilities_found'] += len(module_results)
+                    
                     target_results.extend(module_results)
+            
+            # Legacy code for backward compatibility - remove this section
+            if False:  # Disabled legacy code
+                if not crawled_urls:
+                    print(f"  [DEBUG] No pages with parameters found by crawler")
+                else:
+                    # Legacy code removed - now handled above
+                    pass
             
         except Exception as e:
             print(f"Error scanning {target}: {e}")
@@ -493,7 +451,7 @@ class VulnScanner:
         
         # Test GET parameters
         for param, values in parsed_data['query_params'].items():
-            print(f"    [XSS] Testing parameter: {param}")
+            print(f"    [XSS] Testing GET parameter: {param}")
             
             # Create deduplication key for this parameter
             param_key = f"xss_{base_url.split('?')[0]}_{param}"
@@ -575,6 +533,103 @@ class VulnScanner:
                 except Exception as e:
                     print(f"    [XSS] Error testing payload: {e}")
                     continue
+        
+        # Test POST forms
+        forms_data = parsed_data.get('forms', [])
+        for i, form_data in enumerate(forms_data):
+            form_method = form_data.get('method', 'GET').upper()
+            form_action = form_data.get('action', '')
+            form_inputs = form_data.get('inputs', [])
+            
+            if form_method in ['POST', 'PUT'] and form_inputs:
+                print(f"    [XSS] Testing {form_method} form {i+1}: {form_action}")
+                
+                # Build form URL
+                if form_action.startswith('/'):
+                    form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
+                elif form_action.startswith('http'):
+                    form_url = form_action
+                else:
+                    form_url = f"{base_url.rstrip('/')}/{form_action}" if form_action else base_url
+                
+                # Test each form input
+                for input_data in form_inputs:
+                    input_name = input_data.get('name')
+                    input_type = input_data.get('type', 'text')
+                    
+                    if not input_name or input_type in ['submit', 'button', 'hidden']:
+                        continue
+                    
+                    print(f"    [XSS] Testing form input: {input_name}")
+                    
+                    # Create deduplication key for this form input
+                    form_key = f"xss_form_{form_url.split('?')[0]}_{input_name}"
+                    if form_key in self.found_vulnerabilities:
+                        print(f"    [XSS] Skipping form input {input_name} - already tested")
+                        continue
+                    
+                    for payload in xss_payloads[:10]:  # Test first 10 payloads for forms
+                        try:
+                            print(f"    [XSS] Trying form payload: {payload[:50]}...")
+                            
+                            # Prepare form data
+                            post_data = {}
+                            for inp in form_inputs:
+                                inp_name = inp.get('name')
+                                inp_value = inp.get('value', 'test')
+                                inp_type = inp.get('type', 'text')
+                                
+                                if inp_name and inp_type not in ['submit', 'button']:
+                                    if inp_name == input_name:
+                                        post_data[inp_name] = payload
+                                    else:
+                                        post_data[inp_name] = inp_value
+                            
+                            if form_method == 'POST':
+                                response = requests.post(
+                                    form_url,
+                                    data=post_data,
+                                    timeout=self.config.timeout,
+                                    headers=self.config.headers,
+                                    verify=False
+                                )
+                            else:  # PUT
+                                response = requests.put(
+                                    form_url,
+                                    data=post_data,
+                                    timeout=self.config.timeout,
+                                    headers=self.config.headers,
+                                    verify=False
+                                )
+                            
+                            print(f"    [XSS] Form response code: {response.status_code}")
+                            
+                            # Use XSS detector
+                            if XSSDetector.detect_reflected_xss(payload, response.text, response.status_code):
+                                evidence = f"XSS payload '{payload}' reflected in {form_method} form response"
+                                response_snippet = response.text[:200] + "..." if len(response.text) > 200 else response.text
+                                print(f"    [XSS] FORM VULNERABILITY FOUND! Input: {input_name}")
+                                
+                                # Mark as found to prevent duplicates
+                                self.found_vulnerabilities.add(form_key)
+                                
+                                results.append({
+                                    'module': 'xss',
+                                    'target': form_url,
+                                    'vulnerability': f'Reflected XSS in {form_method} Form',
+                                    'severity': 'Medium',
+                                    'parameter': input_name,
+                                    'payload': payload,
+                                    'evidence': evidence,
+                                    'request_url': form_url,
+                                    'detector': 'XSSDetector.detect_reflected_xss',
+                                    'response_snippet': response_snippet
+                                })
+                                break  # Found XSS, no need to test more payloads for this input
+                                
+                        except Exception as e:
+                            print(f"    [XSS] Error testing form payload: {e}")
+                            continue
         
         return results
     
@@ -728,44 +783,54 @@ class VulnScanner:
         try:
             print(f"    [CSRF] Testing CSRF protection...")
             
-            # First, get the initial page to analyze forms and CSRF protection
-            response = requests.get(
-                base_url,
-                timeout=self.config.timeout,
-                headers=self.config.headers,
-                verify=False
-            )
+            # Check if we already have forms extracted
+            forms_data = parsed_data.get('forms', [])
             
-            print(f"    [CSRF] Initial response code: {response.status_code}")
+            if not forms_data:
+                # First, get the initial page to analyze forms and CSRF protection
+                response = requests.get(
+                    base_url,
+                    timeout=self.config.timeout,
+                    headers=self.config.headers,
+                    verify=False
+                )
+                
+                print(f"    [CSRF] Initial response code: {response.status_code}")
+                
+                # Skip CSRF testing for error responses
+                if response.status_code >= 400:
+                    print(f"    [CSRF] Skipping CSRF test - error response ({response.status_code})")
+                    return results
+                
+                # Extract all forms from the page
+                forms_data = self.url_parser.extract_forms(response.text)
+                response_text = response.text
+            else:
+                # Use cached response if available
+                try:
+                    response = requests.get(
+                        base_url,
+                        timeout=self.config.timeout,
+                        headers=self.config.headers,
+                        verify=False
+                    )
+                    response_text = response.text
+                except:
+                    response_text = ""
             
-            # Skip CSRF testing for error responses
-            if response.status_code >= 400:
-                print(f"    [CSRF] Skipping CSRF test - error response ({response.status_code})")
-                return results
-            
-            # Extract all forms from the page
-            import re
-            form_pattern = r'<form[^>]*>(.*?)</form>'
-            forms = re.findall(form_pattern, response.text, re.IGNORECASE | re.DOTALL)
-            
-            if not forms:
+            if not forms_data:
                 print(f"    [CSRF] No forms found on page")
                 return results
             
-            print(f"    [CSRF] Found {len(forms)} form(s) to analyze")
+            print(f"    [CSRF] Found {len(forms_data)} form(s) to analyze")
             
-            # Analyze each form individually
-            form_action_pattern = r'<form[^>]*action=["\']?([^"\'>\s]+)["\']?[^>]*>'
-            form_method_pattern = r'<form[^>]*method=["\']?([^"\'>\s]+)["\']?[^>]*>'
-            
-            form_actions = re.findall(form_action_pattern, response.text, re.IGNORECASE)
-            form_methods = re.findall(form_method_pattern, response.text, re.IGNORECASE)
-            
+            # Analyze each form for CSRF protection
             vulnerable_forms = []
             
-            for i, form_content in enumerate(forms):
-                form_action = form_actions[i] if i < len(form_actions) else ''
-                form_method = form_methods[i].upper() if i < len(form_methods) else 'GET'
+            for i, form_data in enumerate(forms_data):
+                form_method = form_data.get('method', 'GET').upper()
+                form_action = form_data.get('action', '')
+                form_inputs = form_data.get('inputs', [])
                 
                 print(f"    [CSRF] Analyzing form {i+1}: action='{form_action}', method='{form_method}'")
                 
@@ -778,17 +843,18 @@ class VulnScanner:
                 has_csrf_protection = False
                 csrf_indicators = CSRFDetector.get_csrf_indicators()
                 
-                for indicator in csrf_indicators:
-                    if indicator.lower() in form_content.lower():
+                # Check in form inputs
+                for input_data in form_inputs:
+                    input_name = input_data.get('name', '').lower()
+                    if any(indicator.lower() in input_name for indicator in csrf_indicators):
                         has_csrf_protection = True
-                        print(f"    [CSRF] Form {i+1} has CSRF protection: {indicator}")
+                        print(f"    [CSRF] Form {i+1} has CSRF protection: {input_name}")
                         break
                 
                 if not has_csrf_protection:
                     print(f"    [CSRF] Form {i+1} is VULNERABLE - no CSRF protection found")
                     
-                    # Create unique form identifier based on form action only (ignore base URL)
-                    # This will suppress duplicates like listproducts.php?cat=1, listproducts.php?cat=2, etc.
+                    # Create unique form identifier
                     normalized_action = self._normalize_form_action(form_action)
                     form_id = f"csrf_form_{normalized_action}_{form_method}"
                     
@@ -798,7 +864,8 @@ class VulnScanner:
                         vulnerable_forms.append({
                             'action': form_action,
                             'method': form_method,
-                            'content': form_content[:200] + '...' if len(form_content) > 200 else form_content
+                            'inputs': form_inputs,
+                            'form_data': form_data
                         })
                     else:
                         print(f"    [CSRF] Form {i+1} vulnerability suppressed (similar form already found)")
@@ -807,6 +874,12 @@ class VulnScanner:
             if vulnerable_forms:
                 for form_info in vulnerable_forms:
                     evidence = f"Form with action '{form_info['action']}' and method '{form_info['method']}' lacks CSRF protection"
+                    
+                    # Create form content snippet
+                    form_snippet = f"Method: {form_info['method']}, Action: {form_info['action']}"
+                    if form_info['inputs']:
+                        input_names = [inp.get('name', 'unnamed') for inp in form_info['inputs'][:5]]
+                        form_snippet += f", Inputs: {', '.join(input_names)}"
                     
                     results.append({
                         'module': 'csrf',
@@ -818,50 +891,53 @@ class VulnScanner:
                         'evidence': evidence,
                         'request_url': base_url,
                         'detector': 'CSRFDetector.form_analysis',
-                        'response_snippet': form_info['content']
+                        'response_snippet': form_snippet
                     })
                 
                 print(f"    [CSRF] VULNERABILITY FOUND! {len(vulnerable_forms)} vulnerable form(s)")
             else:
                 print(f"    [CSRF] All forms have CSRF protection or no POST forms found")
             
-            # Test CSRF bypass techniques if we have forms
-            csrf_payloads = CSRFPayloads.get_all_payloads()
-            
-            # Look for forms in the response
-            import re
-            form_pattern = r'<form[^>]*action=["\']?([^"\'>\s]+)["\']?[^>]*>'
-            forms = re.findall(form_pattern, response.text, re.IGNORECASE)
-            
-            if forms:
-                print(f"    [CSRF] Found {len(forms)} form(s) to test")
+            # Legacy form testing code - simplified
+            if response_text and vulnerable_forms:
+                # Test CSRF bypass techniques on vulnerable forms
+                csrf_payloads = CSRFPayloads.get_all_payloads()
                 
-                for i, form_action in enumerate(forms[:3]):  # Test max 3 forms
+                for form_info in vulnerable_forms[:2]:  # Test max 2 forms
+                    form_action = form_info['action']
+                    
                     # Resolve relative URLs
                     if form_action.startswith('/'):
                         form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
                     elif form_action.startswith('http'):
                         form_url = form_action
                     else:
-                        form_url = f"{base_url.rstrip('/')}/{form_action}"
+                        form_url = f"{base_url.rstrip('/')}/{form_action}" if form_action else base_url
                     
-                    print(f"    [CSRF] Testing form {i+1}: {form_url}")
+                    print(f"    [CSRF] Testing bypass techniques on: {form_url}")
                     
                     # Test a few bypass payloads
-                    connection_failed = False
-                    for payload in csrf_payloads[:5]:  # Test first 5 payloads
+                    for payload in csrf_payloads[:3]:  # Test first 3 payloads
                         try:
                             print(f"    [CSRF] Trying payload: {payload['name']}")
                             
-                            # Prepare request data
-                            request_data = payload.get('data', {})
-                            request_headers = self.config.headers.copy()
+                            # Prepare request data from form inputs
+                            request_data = {}
+                            for input_data in form_info['inputs']:
+                                input_name = input_data.get('name')
+                                input_value = input_data.get('value', 'test')
+                                if input_name and input_data.get('type', 'text') not in ['submit', 'button']:
+                                    request_data[input_name] = input_value
                             
-                            # Add payload-specific headers
+                            # Add payload-specific data
+                            if payload.get('data'):
+                                request_data.update(payload['data'])
+                            
+                            request_headers = self.config.headers.copy()
                             if 'headers' in payload:
                                 request_headers.update(payload['headers'])
                             
-                            # Make the request based on method
+                            # Make the request
                             method = payload.get('method', 'POST').upper()
                             
                             if method == 'POST':
@@ -873,38 +949,18 @@ class VulnScanner:
                                     verify=False,
                                     allow_redirects=False
                                 )
-                            elif method == 'PUT':
-                                test_response = requests.put(
-                                    form_url,
-                                    data=request_data,
-                                    headers=request_headers,
-                                    timeout=self.config.timeout,
-                                    verify=False,
-                                    allow_redirects=False
-                                )
-                            elif method == 'DELETE':
-                                test_response = requests.delete(
-                                    form_url,
-                                    data=request_data,
-                                    headers=request_headers,
-                                    timeout=self.config.timeout,
-                                    verify=False,
-                                    allow_redirects=False
-                                )
                             else:
-                                continue
+                                continue  # Skip non-POST for now
                             
                             print(f"    [CSRF] Response code: {test_response.status_code}")
                             
                             # Check if request was successful (potential CSRF bypass)
                             success_codes = [200, 201, 202, 302, 303]
                             if test_response.status_code in success_codes:
-                                # Check if the response indicates success
                                 success_indicators = self._get_success_indicators()
-                                
                                 response_lower = test_response.text.lower()
+                                
                                 if any(indicator in response_lower for indicator in success_indicators):
-                                    # Create deduplication key for bypass vulnerabilities
                                     bypass_dedup_key = f"csrf_bypass_{form_url}_{payload['name']}"
                                     
                                     if bypass_dedup_key not in self.found_vulnerabilities:
@@ -923,27 +979,61 @@ class VulnScanner:
                                             'detector': 'CSRFDetector.bypass_test',
                                             'response_snippet': test_response.text[:500]
                                         })
-                                    else:
-                                        print(f"    [CSRF] Duplicate bypass vulnerability suppressed")
-                                    break  # Found bypass, no need to test more payloads for this form
+                                        break  # Found bypass, no need to test more payloads for this form
                             
-                        except requests.exceptions.ConnectionError as e:
-                            print(f"    [CSRF] Connection failed for {form_url}: {str(e)[:100]}...")
-                            connection_failed = True
-                            break  # Stop testing this form if connection fails
-                        except requests.exceptions.Timeout as e:
-                            print(f"    [CSRF] Timeout for payload {payload['name']}: {e}")
-                            continue
                         except Exception as e:
                             print(f"    [CSRF] Error testing payload {payload['name']}: {e}")
                             continue
+            
+            # Legacy regex-based form detection for backward compatibility
+            if not forms_data and response_text:
+                import re
+                form_pattern = r'<form[^>]*>(.*?)</form>'
+                forms = re.findall(form_pattern, response_text, re.IGNORECASE | re.DOTALL)
+                
+                if forms:
+                    print(f"    [CSRF] Found {len(forms)} additional forms via regex")
+            
+                    # Process regex-found forms similar to above
+                    form_action_pattern = r'<form[^>]*action=["\']?([^"\'>\s]+)["\']?[^>]*>'
+                    form_method_pattern = r'<form[^>]*method=["\']?([^"\'>\s]+)["\']?[^>]*>'
                     
-                    # If connection failed for this form, skip remaining forms
-                    if connection_failed:
-                        print(f"    [CSRF] Skipping remaining forms due to connection issues")
-                        break
-            else:
-                print(f"    [CSRF] No forms found to test")
+                    form_actions = re.findall(form_action_pattern, response_text, re.IGNORECASE)
+                    form_methods = re.findall(form_method_pattern, response_text, re.IGNORECASE)
+                    
+                    for i, form_content in enumerate(forms):
+                        form_action = form_actions[i] if i < len(form_actions) else ''
+                        form_method = form_methods[i].upper() if i < len(form_methods) else 'GET'
+                        
+                        if form_method != 'GET':
+                            # Check for CSRF protection in form content
+                            has_csrf_protection = False
+                            csrf_indicators = CSRFDetector.get_csrf_indicators()
+                            
+                            for indicator in csrf_indicators:
+                                if indicator.lower() in form_content.lower():
+                                    has_csrf_protection = True
+                                    break
+                            
+                            if not has_csrf_protection:
+                                normalized_action = self._normalize_form_action(form_action)
+                                form_id = f"csrf_form_regex_{normalized_action}_{form_method}"
+                                
+                                if form_id not in self.found_vulnerabilities:
+                                    self.found_vulnerabilities.add(form_id)
+                                    
+                                    results.append({
+                                        'module': 'csrf',
+                                        'target': base_url,
+                                        'vulnerability': 'Missing CSRF Protection (Regex Detection)',
+                                        'severity': 'Medium',
+                                        'parameter': f"form_action: {form_action}",
+                                        'payload': 'N/A',
+                                        'evidence': f"Form with action '{form_action}' and method '{form_method}' lacks CSRF protection",
+                                        'request_url': base_url,
+                                        'detector': 'CSRFDetector.regex_analysis',
+                                        'response_snippet': form_content[:200] + '...' if len(form_content) > 200 else form_content
+                                    })
                 
         except Exception as e:
             print(f"    [CSRF] Error during CSRF testing: {e}")
@@ -3449,9 +3539,23 @@ class VulnScanner:
         print(f"Total Requests:       {stats.get('total_requests', 0)}")
         print(f"URLs Discovered:      {stats.get('total_urls', 0)}")
         print(f"Parameters Tested:    {stats.get('total_params', 0)}")
+        print(f"Forms Discovered:     {stats.get('total_forms', 0)}")
         print(f"Modules Used:         {', '.join(self.config.modules)}")
         print(f"Threads:              {self.config.threads}")
         print("-" * 80)
+        
+        # Print module statistics
+        module_stats = stats.get('module_stats', {})
+        if module_stats:
+            print("MODULE TESTING STATISTICS:")
+            print("-" * 80)
+            for module_name, module_data in module_stats.items():
+                print(f"{module_name.upper():20} | "
+                      f"Pages: {module_data['pages_tested']:3} | "
+                      f"Params: {module_data['parameters_tested']:3} | "
+                      f"Forms: {module_data['forms_tested']:3} | "
+                      f"Vulns: {module_data['vulnerabilities_found']:3}")
+            print("-" * 80)
         
         # Filter out scan stats and group by severity
         vulnerabilities = [v for v in results if 'vulnerability' in v]
