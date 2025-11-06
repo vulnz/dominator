@@ -197,6 +197,36 @@ class VulnScanner:
                 
                 if not crawled_urls:
                     print(f"  [DEBUG] No pages with parameters found by crawler")
+                else:
+                    # Try to crawl vulnerability pages deeper
+                    vuln_pages = [url for url in crawled_urls if '/vulnerabilities/' in url]
+                    print(f"  [DEBUG] Found {len(vuln_pages)} vulnerability pages to crawl deeper")
+                    
+                    for vuln_page in vuln_pages[:10]:  # Limit to 10 pages
+                        try:
+                            print(f"  [DEBUG] Deep crawling: {vuln_page}")
+                            deep_crawled = self.crawler.crawl_for_pages(vuln_page, max_pages=5)
+                            
+                            for deep_url in deep_crawled:
+                                deep_data = self.url_parser.parse(deep_url)
+                                if deep_data['query_params']:
+                                    print(f"  [DEBUG] Found parameters in deep crawl: {deep_url}")
+                                    print(f"  [DEBUG] Parameters: {list(deep_data['query_params'].keys())}")
+                                    
+                                    # Update stats
+                                    self.scan_stats['total_urls'] += 1
+                                    self.scan_stats['total_params'] += len(deep_data['query_params'])
+                                    
+                                    # Test all modules on this page
+                                    for module_name in self.config.modules:
+                                        if self._should_stop():
+                                            break
+                                        module_results = self._run_module(module_name, deep_data)
+                                        target_results.extend(module_results)
+                                        
+                        except Exception as e:
+                            print(f"  [DEBUG] Error deep crawling {vuln_page}: {e}")
+                            continue
                 
                 # Test important pages that might have forms or vulnerabilities
                 important_pages = self._get_important_pages()
