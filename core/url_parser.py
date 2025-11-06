@@ -111,6 +111,8 @@ class URLParser:
             r'<form[^>]+action=["\']?([^"\'>\s]+)["\']?[^>]*>',  # form actions
             r'window\.location\s*=\s*["\']([^"\']+)["\']',  # JavaScript redirects
             r'location\.href\s*=\s*["\']([^"\']+)["\']',  # JavaScript location
+            r'<link[^>]+href=["\']?([^"\'>\s]+)["\']?[^>]*>',  # link tags
+            r'<script[^>]+src=["\']?([^"\'>\s]+)["\']?[^>]*>',  # script tags
         ]
         
         print(f"    [URL_PARSER] Extracting URLs from response ({len(response_text)} chars)")
@@ -126,14 +128,19 @@ class URLParser:
                         continue
                     
                     # Convert relative URLs to absolute
-                    absolute_url = urljoin(base_url, match)
-                    
-                    # Only include HTTP/HTTPS URLs from same domain
-                    if (absolute_url.startswith(('http://', 'https://')) and 
-                        absolute_url not in urls and
-                        len(absolute_url) < 500):  # Avoid extremely long URLs
-                        urls.append(absolute_url)
-                        print(f"    [URL_PARSER] Added URL: {absolute_url}")
+                    try:
+                        absolute_url = urljoin(base_url, match)
+                        
+                        # Only include HTTP/HTTPS URLs from same domain
+                        if (absolute_url.startswith(('http://', 'https://')) and 
+                            absolute_url not in urls and
+                            len(absolute_url) < 500 and  # Avoid extremely long URLs
+                            self._is_same_domain(absolute_url, base_url)):
+                            urls.append(absolute_url)
+                            print(f"    [URL_PARSER] Added URL: {absolute_url}")
+                    except Exception as e:
+                        print(f"    [URL_PARSER] Error processing URL '{match}': {e}")
+                        continue
                         
                 except Exception as e:
                     print(f"    [URL_PARSER] Error processing match '{match}': {e}")
@@ -141,6 +148,15 @@ class URLParser:
         
         print(f"    [URL_PARSER] Total unique URLs found: {len(urls)}")
         return urls
+    
+    def _is_same_domain(self, url1: str, url2: str) -> bool:
+        """Check if two URLs are from the same domain"""
+        try:
+            domain1 = urlparse(url1).netloc.lower()
+            domain2 = urlparse(url2).netloc.lower()
+            return domain1 == domain2
+        except Exception:
+            return False
     
     def extract_forms(self, response_text: str) -> List[Dict[str, Any]]:
         """Extract forms from HTML"""

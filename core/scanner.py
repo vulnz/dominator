@@ -16,22 +16,35 @@ from core.url_parser import URLParser
 from core.crawler import WebCrawler
 from utils.file_handler import FileHandler
 from utils.screenshot_handler import ScreenshotHandler
-# Import payload classes
-from payloads.xss_payloads import XSSPayloads
-from payloads.sqli_payloads import SQLiPayloads
-from payloads.lfi_payloads import LFIPayloads
-from payloads.csrf_payloads import CSRFPayloads
-from payloads.dirbrute_payloads import DirBrutePayloads
-from payloads.git_payloads import GitPayloads
-from payloads.directory_traversal_payloads import DirectoryTraversalPayloads
-from payloads.ssrf_payloads import SSRFPayloads
-from payloads.rfi_payloads import RFIPayloads
-from payloads.blind_xss_payloads import BlindXSSPayloads
-from payloads.phpinfo_payloads import PHPInfoPayloads
-from payloads.xxe_payloads import XXEPayloads
-from payloads.command_injection_payloads import CommandInjectionPayloads
-from payloads.idor_payloads import IDORPayloads
-from payloads.nosql_injection_payloads import NoSQLInjectionPayloads
+# Import payload classes with error handling
+try:
+    from payloads.xss_payloads import XSSPayloads
+    from payloads.sqli_payloads import SQLiPayloads
+    from payloads.lfi_payloads import LFIPayloads
+    from payloads.csrf_payloads import CSRFPayloads
+    from payloads.dirbrute_payloads import DirBrutePayloads
+    from payloads.git_payloads import GitPayloads
+    from payloads.directory_traversal_payloads import DirectoryTraversalPayloads
+    from payloads.ssrf_payloads import SSRFPayloads
+    from payloads.rfi_payloads import RFIPayloads
+    from payloads.blind_xss_payloads import BlindXSSPayloads
+    from payloads.phpinfo_payloads import PHPInfoPayloads
+    from payloads.xxe_payloads import XXEPayloads
+    from payloads.command_injection_payloads import CommandInjectionPayloads
+    from payloads.idor_payloads import IDORPayloads
+    from payloads.nosql_injection_payloads import NoSQLInjectionPayloads
+except ImportError as e:
+    print(f"Warning: Could not import payload classes: {e}")
+    # Create dummy classes to prevent crashes
+    class DummyPayloads:
+        @staticmethod
+        def get_all_payloads():
+            return ["'", '"', "<script>alert(1)</script>"]
+    
+    XSSPayloads = SQLiPayloads = LFIPayloads = CSRFPayloads = DummyPayloads
+    DirBrutePayloads = GitPayloads = DirectoryTraversalPayloads = DummyPayloads
+    SSRFPayloads = RFIPayloads = BlindXSSPayloads = PHPInfoPayloads = DummyPayloads
+    XXEPayloads = CommandInjectionPayloads = IDORPayloads = NoSQLInjectionPayloads = DummyPayloads
 
 # Import detector classes
 from detectors.xss_detector import XSSDetector
@@ -513,8 +526,12 @@ class VulnScanner:
                     
                     # Use XSS detector
                     if XSSDetector.detect_reflected_xss(payload, response.text, response.status_code):
-                        evidence = XSSDetector.get_evidence(payload, response.text)
-                        response_snippet = XSSDetector.get_response_snippet(payload, response.text)
+                        try:
+                            evidence = f"XSS payload '{payload}' reflected in response"
+                            response_snippet = response.text[:200] + "..." if len(response.text) > 200 else response.text
+                        except Exception as e:
+                            evidence = f"XSS detected with payload: {payload}"
+                            response_snippet = "Response analysis failed"
                         print(f"    [XSS] VULNERABILITY FOUND! Parameter: {param}")
                         
                         # Mark as found to prevent duplicates
@@ -595,8 +612,12 @@ class VulnScanner:
                     is_vulnerable, pattern = SQLiDetector.detect_error_based_sqli(response.text, response.status_code)
                     
                     if is_vulnerable:
-                        evidence = SQLiDetector.get_evidence(pattern)
-                        response_snippet = SQLiDetector.get_response_snippet(pattern, response.text)
+                        try:
+                            evidence = f"SQL injection detected - error pattern: {pattern}"
+                            response_snippet = response.text[:200] + "..." if len(response.text) > 200 else response.text
+                        except Exception as e:
+                            evidence = f"SQL injection detected with payload: {payload}"
+                            response_snippet = "Response analysis failed"
                         print(f"    [SQLI] VULNERABILITY FOUND! Parameter: {param}")
                         
                         results.append({
@@ -662,8 +683,12 @@ class VulnScanner:
                     is_vulnerable, pattern = LFIDetector.detect_lfi(response.text, response.status_code)
                     
                     if is_vulnerable:
-                        evidence = LFIDetector.get_evidence(pattern)
-                        response_snippet = LFIDetector.get_response_snippet(pattern, response.text)
+                        try:
+                            evidence = f"Local file inclusion detected - pattern: {pattern}"
+                            response_snippet = response.text[:200] + "..." if len(response.text) > 200 else response.text
+                        except Exception as e:
+                            evidence = f"LFI detected with payload: {payload}"
+                            response_snippet = "Response analysis failed"
                         print(f"    [LFI] VULNERABILITY FOUND! Parameter: {param}")
                         
                         results.append({

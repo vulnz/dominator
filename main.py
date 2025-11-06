@@ -91,9 +91,24 @@ def show_modules():
     print("- gitexposed: Exposed Git Repository")
     print("- dirtraversal: Directory Traversal")
     print("- secheaders: Security Headers and Cookie Flags")
-    print("- openredirect: Open Redirect")
-    print("- backupfinder: Backup Files Finder")
-    print("- sensitivedata: Sensitive Data Detection")
+    print("- clickjacking: Clickjacking Protection")
+    print("- blindxss: Blind Cross-Site Scripting")
+    print("- passwordoverhttp: Password Over HTTP")
+    print("- outdatedsoftware: Outdated Software Detection")
+    print("- databaseerrors: Database Error Messages")
+    print("- phpinfo: PHPInfo Exposure")
+    print("- ssltls: SSL/TLS Configuration")
+    print("- httponlycookies: HttpOnly Cookie Security")
+    print("- technology: Technology Detection")
+    print("- commandinjection: Command Injection")
+    print("- pathtraversal: Path Traversal")
+    print("- ldapinjection: LDAP Injection")
+    print("- nosqlinjection: NoSQL Injection")
+    print("- fileupload: File Upload Vulnerabilities")
+    print("- cors: CORS Misconfiguration")
+    print("- jwt: JWT Vulnerabilities")
+    print("- deserialization: Insecure Deserialization")
+    print("- responsesplitting: HTTP Response Splitting")
 
 def main():
     """Main function"""
@@ -136,6 +151,14 @@ def main():
                 print(f"\nReport saved to {args.output}")
             except Exception as e:
                 print(f"Error saving report: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        # Cleanup resources
+        try:
+            scanner.cleanup()
+        except Exception as e:
+            print(f"Warning: Error during cleanup: {e}")
             
     except KeyboardInterrupt:
         print("\nScan interrupted by user")

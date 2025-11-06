@@ -61,6 +61,10 @@ class FileHandler:
                 scan_stats = item['scan_stats']
                 continue
             
+            # Skip items without vulnerability field
+            if 'vulnerability' not in item:
+                continue
+            
             # Process screenshot if present
             screenshot_base64 = None
             if item.get('screenshot'):
@@ -578,11 +582,18 @@ class FileHandler:
                     techs.forEach(tech => {
                         const techItem = document.createElement('div');
                         techItem.className = 'tech-item';
+                        
+                        // Handle both string and object tech formats
+                        const techName = typeof tech === 'string' ? tech : (tech.name || tech);
+                        const techVersion = typeof tech === 'object' ? (tech.version || 'Unknown Version') : 'Unknown Version';
+                        const techCategory = typeof tech === 'object' ? (tech.category || 'Unknown') : 'Unknown';
+                        const techConfidence = typeof tech === 'object' ? (tech.confidence || 'N/A') : 'N/A';
+                        
                         techItem.innerHTML = `
-                            <div class="tech-name">${tech.name}</div>
-                            <div class="tech-version">${tech.version || 'Unknown Version'}</div>
+                            <div class="tech-name">${techName}</div>
+                            <div class="tech-version">${techVersion}</div>
                             <div style="font-size: 0.8rem; color: #888; margin-top: 5px;">
-                                ${tech.category} (${tech.confidence}%)
+                                ${techCategory} ${techConfidence !== 'N/A' ? '(' + techConfidence + '%)' : ''}
                             </div>
                         `;
                         techGrid.appendChild(techItem);

@@ -100,15 +100,17 @@ class WebCrawler:
                         from urllib.parse import urljoin
                         url = urljoin(base_url, url)
                     
-                    if self._is_same_domain(url, base_url):
+                    if self._is_same_domain(url, base_url) and url not in self.visited_urls:
+                        self.visited_urls.add(url)
                         print(f"    [CRAWLER] Crawling page: {url}")
                         sub_urls = self._crawl_single_page(url)
                         for sub_url in sub_urls:
-                            parsed = self.url_parser.parse(sub_url)
-                            if parsed['query_params'] and sub_url not in found_urls:
-                                found_urls.append(sub_url)
-                                print(f"    [CRAWLER] Found page with parameters: {sub_url}")
-                                print(f"    [CRAWLER] Parameters: {list(parsed['query_params'].keys())}")
+                            if sub_url not in self.visited_urls:
+                                parsed = self.url_parser.parse(sub_url)
+                                if parsed['query_params'] and sub_url not in found_urls:
+                                    found_urls.append(sub_url)
+                                    print(f"    [CRAWLER] Found page with parameters: {sub_url}")
+                                    print(f"    [CRAWLER] Parameters: {list(parsed['query_params'].keys())}")
                 except Exception as e:
                     print(f"    [CRAWLER] Error crawling page {url}: {e}")
                     continue
