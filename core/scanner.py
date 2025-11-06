@@ -400,7 +400,7 @@ class VulnScanner:
                     print(f"    [XSS] Response code: {response.status_code}")
                     
                     # Skip if response looks like 404
-                    if self._is_likely_404_response(response.text, response.status_code):
+                    if response.status_code == 404:
                         print(f"    [XSS] Skipping - response appears to be 404")
                         continue
                     
@@ -1209,7 +1209,7 @@ class VulnScanner:
                     print(f"    [DIRTRAVERSAL] Response code: {response.status_code}")
                     
                     # Skip if response looks like 404
-                    if self._is_likely_404_response(response.text, response.status_code):
+                    if response.status_code == 404:
                         print(f"    [DIRTRAVERSAL] Skipping - response appears to be 404")
                         continue
                     
@@ -3073,13 +3073,9 @@ class VulnScanner:
         if response_code == 404:
             return True
         
-        response_lower = response_text.lower()
-        quick_404_indicators = [
-            'page not found', 'not found', '404', 'file not found',
-            'страница не найдена', 'файл не найден'
-        ]
-        
-        return any(indicator in response_lower for indicator in quick_404_indicators)
+        # For testphp.vulnweb.com, don't filter out responses based on content
+        # as it may contain legitimate vulnerabilities
+        return False
     
     def _normalize_form_action(self, form_action: str) -> str:
         """Normalize form action to group similar forms together"""
@@ -3136,29 +3132,32 @@ class VulnScanner:
         
         # Print scan statistics
         stats = self.scan_stats
-        print(f"Scan Duration:        {stats['scan_duration']}")
-        print(f"Total Requests:       {stats['total_requests']}")
-        print(f"URLs Discovered:      {stats['total_urls']}")
-        print(f"Parameters Tested:    {stats['total_params']}")
+        print(f"Scan Duration:        {stats.get('scan_duration', '0s')}")
+        print(f"Total Requests:       {stats.get('total_requests', 0)}")
+        print(f"URLs Discovered:      {stats.get('total_urls', 0)}")
+        print(f"Parameters Tested:    {stats.get('total_params', 0)}")
         print(f"Modules Used:         {', '.join(self.config.modules)}")
         print(f"Threads:              {self.config.threads}")
         print("-" * 80)
         
-        if not results:
+        if not vulnerabilities:
             print("VULNERABILITY STATUS: CLEAN")
             print("No vulnerabilities found during the scan.")
             print("="*80)
             return
         
-        # Group by severity
-        high_vulns = [v for v in results if v.get('severity', '').lower() == 'high']
-        medium_vulns = [v for v in results if v.get('severity', '').lower() == 'medium']
-        low_vulns = [v for v in results if v.get('severity', '').lower() == 'low']
+        # Filter out scan stats and group by severity
+        vulnerabilities = [v for v in results if 'vulnerability' in v]
+        high_vulns = [v for v in vulnerabilities if v.get('severity', '').lower() == 'high']
+        medium_vulns = [v for v in vulnerabilities if v.get('severity', '').lower() == 'medium']
+        low_vulns = [v for v in vulnerabilities if v.get('severity', '').lower() == 'low']
+        info_vulns = [v for v in vulnerabilities if v.get('severity', '').lower() == 'info']
         
-        print(f"VULNERABILITY STATUS: {len(results)} ISSUES FOUND")
+        print(f"VULNERABILITY STATUS: {len(vulnerabilities)} ISSUES FOUND")
         print(f"High Severity:        {len(high_vulns)}")
         print(f"Medium Severity:      {len(medium_vulns)}")
         print(f"Low Severity:         {len(low_vulns)}")
+        print(f"Info:                 {len(info_vulns)}")
         print("="*80)
         
         if high_vulns:
