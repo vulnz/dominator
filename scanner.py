@@ -20,6 +20,7 @@ Examples:
   python scanner.py -u http://example.com --modules all
   python scanner.py -f targets.txt --modules phpinfo,ssltls
   python scanner.py -u http://example.com --modules secheaders --output report.json
+  python scanner.py --single-url -u http://example.com/page.php?id=1 --modules textinjection,htmlinjection
         """
     )
     
@@ -45,6 +46,8 @@ Examples:
                        help='Additional headers (format: "Header: Value")')
     parser.add_argument('--headers-file',
                        help='File containing headers (one per line)')
+    parser.add_argument('--single-url', action='store_true',
+                       help='Scan only the specified URL without crawling or testing other pages')
     
     # Output options
     parser.add_argument('--output', '-o',
@@ -77,19 +80,19 @@ Examples:
         if not hasattr(args, 'proxy'):
             args.proxy = None
         if not hasattr(args, 'request_limit'):
-            args.request_limit = None
+            args.request_limit = args.request_limit
         if not hasattr(args, 'use_all'):
             args.use_all = False
         if not hasattr(args, 'auth'):
             args.auth = None
         if not hasattr(args, 'all'):
-            args.all = False
+            args.all = (args.modules == 'all')
         if not hasattr(args, 'limit'):
-            args.limit = None
+            args.limit = args.request_limit
         if not hasattr(args, 'page_limit'):
             args.page_limit = None
-        if not hasattr(args, 'request_limit'):
-            args.request_limit = None
+        if not hasattr(args, 'format'):
+            args.format = 'json'
         
         # Create configuration
         config = Config(args)
