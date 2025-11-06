@@ -752,14 +752,17 @@ class VulnScanner:
                     test_params = parsed_data['query_params'].copy()
                     test_params[param] = [payload]
                     
-                    # Build query string with proper URL encoding
-                    from urllib.parse import urlencode, quote_plus
+                    # Build query string with minimal URL encoding to preserve XSS payloads
+                    from urllib.parse import quote
                     query_parts = []
                     for k, v_list in test_params.items():
                         for v in v_list:
-                            query_parts.append(f"{quote_plus(k)}={quote_plus(str(v))}")
+                            # Use quote instead of quote_plus and preserve more characters
+                            encoded_key = quote(k, safe='')
+                            encoded_value = quote(str(v), safe='<>"\'-=(){}[];&')
+                            query_parts.append(f"{encoded_key}={encoded_value}")
                     
-                    test_url = self._build_test_url(base_url, test_params)
+                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
                     print(f"    [XSS] Request URL: {test_url}")
                     
                     response = requests.get(
@@ -780,11 +783,15 @@ class VulnScanner:
                         print(f"    [XSS] Skipping - response appears to be 404")
                         continue
                     
-                    # Use XSS detector
+                    # Use XSS detector with enhanced logging
+                    print(f"    [XSS] Checking if payload is reflected in response...")
+                    print(f"    [XSS] Response length: {len(response.text)} chars")
+                    print(f"    [XSS] Payload in response: {payload in response.text}")
+                    
                     if XSSDetector.detect_reflected_xss(payload, response.text, response.status_code):
                         try:
-                            evidence = f"XSS payload '{payload}' reflected in response"
-                            response_snippet = response.text[:200] + "..." if len(response.text) > 200 else response.text
+                            evidence = XSSDetector.get_evidence(payload, response.text)
+                            response_snippet = XSSDetector.get_response_snippet(payload, response.text)
                         except Exception as e:
                             evidence = f"XSS detected with payload: {payload}"
                             response_snippet = "Response analysis failed"
@@ -794,7 +801,7 @@ class VulnScanner:
                             'module': 'xss',
                             'target': base_url,
                             'vulnerability': 'Reflected XSS',
-                            'severity': 'Medium',
+                            'severity': 'High',  # Increased severity for XSS
                             'parameter': param,
                             'payload': payload,
                             'evidence': evidence,
@@ -802,6 +809,8 @@ class VulnScanner:
                             'detector': 'XSSDetector.detect_reflected_xss',
                             'response_snippet': response_snippet
                         }
+                    else:
+                        print(f"    [XSS] No XSS detected for payload: {payload[:30]}...")
                             
                         # Filter false positives
                         try:

