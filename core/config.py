@@ -59,31 +59,27 @@ class Config:
     
     def _parse_modules(self, modules_str: Optional[str], use_all: bool) -> List[str]:
         """Parse scanning modules"""
+        all_modules = [
+            'xss', 'sqli', 'lfi', 'rfi', 'xxe', 'csrf', 'idor', 'ssrf',
+            'dirbrute', 'gitexposed', 'dirtraversal', 'secheaders',
+            'versiondisclosure', 'clickjacking', 'blindxss', 'passwordoverhttp',
+            'outdatedsoftware', 'databaseerrors', 'phpinfo', 'ssltls',
+            'httponlycookies', 'technology', 'commandinjection', 'pathtraversal',
+            'ldapinjection', 'nosqlinjection', 'fileupload', 'cors', 'jwt',
+            'deserialization', 'responsesplitting', 'ssti', 'crlf',
+            'textinjection', 'contentreflection', 'htmlinjection'
+        ]
+        
         if modules_str:
+            # Handle special case where user specifies "all" as module name
+            if modules_str.strip().lower() == 'all':
+                return all_modules
             return [m.strip() for m in modules_str.split(',')]
         elif use_all:
-            return [
-                'xss', 'sqli', 'lfi', 'rfi', 'xxe', 'csrf', 'idor', 'ssrf',
-                'dirbrute', 'gitexposed', 'dirtraversal', 'secheaders',
-                'versiondisclosure', 'clickjacking', 'blindxss', 'passwordoverhttp',
-                'outdatedsoftware', 'databaseerrors', 'phpinfo', 'ssltls',
-                'httponlycookies', 'technology', 'commandinjection', 'pathtraversal',
-                'ldapinjection', 'nosqlinjection', 'fileupload', 'cors', 'jwt',
-                'deserialization', 'responsesplitting', 'ssti', 'crlf',
-                'textinjection', 'contentreflection', 'htmlinjection'
-            ]
+            return all_modules
         else:
             # If no modules specified and --all not used, use all modules by default
-            return [
-                'xss', 'sqli', 'lfi', 'rfi', 'xxe', 'csrf', 'idor', 'ssrf',
-                'dirbrute', 'gitexposed', 'dirtraversal', 'secheaders',
-                'versiondisclosure', 'clickjacking', 'blindxss', 'passwordoverhttp',
-                'outdatedsoftware', 'databaseerrors', 'phpinfo', 'ssltls',
-                'httponlycookies', 'technology', 'commandinjection', 'pathtraversal',
-                'ldapinjection', 'nosqlinjection', 'fileupload', 'cors', 'jwt',
-                'deserialization', 'responsesplitting', 'ssti', 'crlf',
-                'textinjection', 'contentreflection', 'htmlinjection'
-            ]
+            return all_modules
     
     def _parse_exclude(self, exclude_str: Optional[str]) -> List[str]:
         """Parse excluded paths"""
