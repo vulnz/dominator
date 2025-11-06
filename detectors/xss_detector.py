@@ -19,6 +19,7 @@ class XSSDetector:
         
         # Check for exact payload reflection first
         if payload in response_text:
+            print(f"    [XSS] Payload found in response, checking context...")
             return XSSDetector._is_dangerous_context(payload, response_text)
         
         # Check for URL-decoded payload reflection
@@ -99,8 +100,21 @@ class XSSDetector:
         # Check if payload contains HTML tags and they're not escaped
         if '<' in payload and '>' in payload:
             # Look for unescaped angle brackets
-            if payload in response_text and '&lt;' not in response_text.replace(payload, ''):
-                return True
+            if payload in response_text:
+                # Check if the payload appears unescaped
+                escaped_payload = payload.replace('<', '&lt;').replace('>', '&gt;')
+                if escaped_payload not in response_text:
+                    print(f"    [XSS] Unescaped HTML tags found in dangerous context")
+                    return True
+        
+        # Additional check for simple payloads that might be reflected
+        if payload in response_text:
+            # Check for basic XSS patterns that are commonly vulnerable
+            simple_patterns = ['<script', 'javascript:', 'onerror=', 'onload=', 'alert(']
+            for pattern in simple_patterns:
+                if pattern.lower() in payload.lower() and pattern.lower() in response_text.lower():
+                    print(f"    [XSS] XSS pattern '{pattern}' found reflected")
+                    return True
         
         return False
     

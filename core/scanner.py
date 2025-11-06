@@ -788,6 +788,11 @@ class VulnScanner:
                     print(f"    [XSS] Response length: {len(response.text)} chars")
                     print(f"    [XSS] Payload in response: {payload in response.text}")
                     
+                    # Debug: Show first 200 chars of response if payload is found
+                    if payload in response.text:
+                        response_preview = response.text[:200].replace('\n', ' ').replace('\r', ' ')
+                        print(f"    [XSS] Response preview: {response_preview}...")
+                    
                     if XSSDetector.detect_reflected_xss(payload, response.text, response.status_code):
                         try:
                             evidence = XSSDetector.get_evidence(payload, response.text)
@@ -811,6 +816,17 @@ class VulnScanner:
                         }
                     else:
                         print(f"    [XSS] No XSS detected for payload: {payload[:30]}...")
+                        
+                        # Debug: Check if payload is in response but not detected as XSS
+                        if payload in response.text:
+                            print(f"    [XSS] DEBUG: Payload found in response but not classified as XSS")
+                            # Show context around payload
+                            payload_pos = response.text.find(payload)
+                            if payload_pos >= 0:
+                                start = max(0, payload_pos - 50)
+                                end = min(len(response.text), payload_pos + len(payload) + 50)
+                                context = response.text[start:end].replace('\n', ' ').replace('\r', ' ')
+                                print(f"    [XSS] DEBUG: Context: ...{context}...")
                             
                         # Filter false positives
                         try:
@@ -1041,6 +1057,13 @@ class VulnScanner:
                             is_valid = True
                         
                         if is_valid:
+                            # Mark as found to prevent duplicates
+                            self.found_vulnerabilities.add(param_key)
+                            
+                            # Update successful payload count
+                            self.scan_stats['payload_stats']['sqli']['successful_payloads'] += 1
+                            self.scan_stats['total_payloads_used'] += 1
+                            
                             results.append(vulnerability)
                             break  # Found SQLi, no need to test more payloads for this param
                             
