@@ -100,19 +100,15 @@ class URLParser:
         """Extract URLs from server response"""
         urls = []
         
-        # Regular expressions for URL search
+        # Regular expressions for URL search - improved to avoid quote issues
         patterns = [
-            r'href=["\']([^"\']+)["\']',  # href attributes
-            r'src=["\']([^"\']+)["\']',   # src attributes
-            r'action=["\']([^"\']+)["\']', # form action attributes
-            r'url\(["\']?([^"\')\s]+)["\']?\)', # CSS url()
-            r'href=([^\s>]+)',  # href without quotes
-            r'<a[^>]+href=["\']?([^"\'>\s]+)["\']?[^>]*>',  # anchor tags
-            r'<form[^>]+action=["\']?([^"\'>\s]+)["\']?[^>]*>',  # form actions
-            r'window\.location\s*=\s*["\']([^"\']+)["\']',  # JavaScript redirects
-            r'location\.href\s*=\s*["\']([^"\']+)["\']',  # JavaScript location
-            r'<link[^>]+href=["\']?([^"\'>\s]+)["\']?[^>]*>',  # link tags
-            r'<script[^>]+src=["\']?([^"\'>\s]+)["\']?[^>]*>',  # script tags
+            r'href=(["\'])([^"\']+?)\1',  # href attributes with proper quote matching
+            r'src=(["\'])([^"\']+?)\1',   # src attributes with proper quote matching
+            r'action=(["\'])([^"\']+?)\1', # form action attributes with proper quote matching
+            r'url\((["\']?)([^"\')\s]+?)\1\)', # CSS url() with optional quotes
+            r'href=([^\s>"\']+)',  # href without quotes
+            r'window\.location\s*=\s*(["\'])([^"\']+?)\1',  # JavaScript redirects
+            r'location\.href\s*=\s*(["\'])([^"\']+?)\1',  # JavaScript location
         ]
         
         print(f"    [URL_PARSER] Extracting URLs from response ({len(response_text)} chars)")
@@ -123,13 +119,34 @@ class URLParser:
             
             for match in matches:
                 try:
+                    # Handle tuple matches from quote-capturing patterns
+                    if isinstance(match, tuple):
+                        # For patterns that capture quotes, take the URL part
+                        if len(match) == 2:
+                            url_part = match[1]  # Second element is the URL
+                        else:
+                            url_part = match[0]  # Fallback to first element
+                    else:
+                        url_part = match
+                    
                     # Skip empty matches, anchors, and non-HTTP URLs
-                    if not match or match.startswith('#') or match.startswith('mailto:') or match.startswith('javascript:'):
+                    if not url_part or url_part.startswith('#') or url_part.startswith('mailto:') or url_part.startswith('javascript:'):
+                        continue
+                    
+                    # Additional cleaning
+                    url_part = url_part.strip('\'"').strip()
+                    
+                    # Skip if contains quotes (malformed)
+                    if '"' in url_part or "'" in url_part:
                         continue
                     
                     # Convert relative URLs to absolute
                     try:
-                        absolute_url = urljoin(base_url, match)
+                        absolute_url = urljoin(base_url, url_part)
+                        
+                        # Validate the final URL
+                        if not self._is_valid_url(absolute_url):
+                            continue
                         
                         # Only include HTTP/HTTPS URLs from same domain
                         if (absolute_url.startswith(('http://', 'https://')) and 
@@ -139,7 +156,7 @@ class URLParser:
                             urls.append(absolute_url)
                             print(f"    [URL_PARSER] Added URL: {absolute_url}")
                     except Exception as e:
-                        print(f"    [URL_PARSER] Error processing URL '{match}': {e}")
+                        print(f"    [URL_PARSER] Error processing URL '{url_part}': {e}")
                         continue
                         
                 except Exception as e:
@@ -155,6 +172,31 @@ class URLParser:
             domain1 = urlparse(url1).netloc.lower()
             domain2 = urlparse(url2).netloc.lower()
             return domain1 == domain2
+        except Exception:
+            return False
+    
+    def _is_valid_url(self, url: str) -> bool:
+        """Validate URL format and structure"""
+        try:
+            parsed = urlparse(url)
+            
+            # Must have scheme and netloc
+            if not parsed.scheme or not parsed.netloc:
+                return False
+            
+            # Must be HTTP or HTTPS
+            if parsed.scheme not in ('http', 'https'):
+                return False
+            
+            # Should not contain quotes
+            if '"' in url or "'" in url:
+                return False
+            
+            # Should not have malformed path with quotes
+            if parsed.path and ('"' in parsed.path or "'" in parsed.path):
+                return False
+            
+            return True
         except Exception:
             return False
     

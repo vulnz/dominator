@@ -221,6 +221,9 @@ class WebCrawler:
         url = url.strip('\'"').strip()
         url = unquote(url)
         
+        # Remove any remaining quotes that might be part of the URL
+        url = re.sub(r'^["\']|["\']$', '', url)
+        
         # Fix malformed URLs like "https:/www.example.com/"
         if url.startswith('https:/') and not url.startswith('https://'):
             url = url.replace('https:/', 'https://')
@@ -229,6 +232,14 @@ class WebCrawler:
         
         # Skip invalid URLs
         if any(invalid in url for invalid in ['javascript:', 'mailto:', 'tel:', 'ftp:', '#']):
+            return ""
+        
+        # Additional validation - URL should not contain quotes in the middle
+        if '"' in url or "'" in url:
+            return ""
+        
+        # URL should not end with quote characters
+        if url.endswith(('"', "'")):
             return ""
         
         return url
