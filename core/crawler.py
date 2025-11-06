@@ -242,6 +242,14 @@ class WebCrawler:
         if url.endswith(('"', "'")):
             return ""
         
+        # Check for malformed paths with quotes
+        try:
+            parsed = urlparse(url)
+            if parsed.path and ('"' in parsed.path or "'" in parsed.path):
+                return ""
+        except Exception:
+            return ""
+        
         return url
     
     def _resolve_url(self, url: str, base_url: str) -> str:
