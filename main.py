@@ -88,6 +88,7 @@ def show_modules():
     print("- idor: Insecure Direct Object Reference")
     print("- ssrf: Server-Side Request Forgery")
     print("- dirbrute: Directory and File Bruteforce")
+    print("- gitexposed: Exposed Git Repository")
 
 def main():
     """Main function"""

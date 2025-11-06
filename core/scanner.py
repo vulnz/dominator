@@ -13,8 +13,8 @@ from core.config import Config
 from core.url_parser import URLParser
 from core.crawler import WebCrawler
 from utils.file_handler import FileHandler
-from payloads import XSSPayloads, SQLiPayloads, LFIPayloads, CSRFPayloads, DirBrutePayloads
-from detectors import XSSDetector, SQLiDetector, LFIDetector, CSRFDetector, DirBruteDetector, Real404Detector
+from payloads import XSSPayloads, SQLiPayloads, LFIPayloads, CSRFPayloads, DirBrutePayloads, GitPayloads
+from detectors import XSSDetector, SQLiDetector, LFIDetector, CSRFDetector, DirBruteDetector, Real404Detector, GitDetector
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -233,6 +233,8 @@ class VulnScanner:
                 results.extend(self._test_csrf(parsed_data))
             elif module_name == "dirbrute":
                 results.extend(self._test_dirbrute(parsed_data))
+            elif module_name == "gitexposed":
+                results.extend(self._test_git_exposed(parsed_data))
             # Add more modules as needed
                 
         except Exception as e:
@@ -876,6 +878,94 @@ class VulnScanner:
                     
             except Exception as e:
                 continue
+    
+    def _test_git_exposed(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for exposed .git repository"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # Remove query parameters from base URL
+        if '?' in base_url:
+            base_url = base_url.split('?')[0]
+        
+        # Get the base directory URL
+        if base_url.endswith('.php') or base_url.endswith('.html') or base_url.endswith('.asp'):
+            # For file URLs, use the directory containing the file
+            base_dir = '/'.join(base_url.split('/')[:-1]) + '/'
+        else:
+            # Ensure base URL ends with /
+            if not base_url.endswith('/'):
+                base_url += '/'
+            base_dir = base_url
+        
+        try:
+            print(f"    [GITEXPOSED] Testing for exposed .git repository...")
+            print(f"    [GITEXPOSED] Base directory: {base_dir}")
+            
+            # Get git paths to test
+            git_paths = GitPayloads.get_all_git_payloads()
+            
+            print(f"    [GITEXPOSED] Testing {len(git_paths)} git paths...")
+            
+            for git_path in git_paths:
+                try:
+                    test_url = f"{base_dir}{git_path}"
+                    
+                    response = requests.get(
+                        test_url,
+                        timeout=self.config.timeout,
+                        headers=self.config.headers,
+                        verify=False,
+                        allow_redirects=False
+                    )
+                    
+                    print(f"    [GITEXPOSED] Testing: {git_path} -> {response.status_code} ({len(response.text)} bytes)")
+                    
+                    # Use Git detector
+                    is_exposed, evidence, severity = GitDetector.detect_git_exposure(
+                        response.text, response.status_code, test_url
+                    )
+                    
+                    if is_exposed:
+                        print(f"    [GITEXPOSED] GIT EXPOSURE FOUND: {git_path} - {evidence}")
+                        
+                        # Get detailed evidence and response snippet
+                        detailed_evidence = GitDetector.get_evidence(
+                            git_path.split('/')[-1] if '/' in git_path else git_path,
+                            response.text
+                        )
+                        response_snippet = GitDetector.get_response_snippet(response.text)
+                        remediation = GitDetector.get_remediation_advice(git_path)
+                        
+                        results.append({
+                            'module': 'gitexposed',
+                            'target': test_url,
+                            'vulnerability': 'Git Repository Exposed',
+                            'severity': severity,
+                            'parameter': f'git_path: {git_path}',
+                            'payload': git_path,
+                            'evidence': detailed_evidence,
+                            'request_url': test_url,
+                            'detector': 'GitDetector.detect_git_exposure',
+                            'response_snippet': response_snippet,
+                            'remediation': remediation
+                        })
+                    else:
+                        print(f"    [GITEXPOSED] No exposure: {git_path} - {evidence}")
+                        
+                except Exception as e:
+                    print(f"    [GITEXPOSED] Error testing {git_path}: {e}")
+                    continue
+            
+            if results:
+                print(f"    [GITEXPOSED] Found {len(results)} git exposures")
+            else:
+                print(f"    [GITEXPOSED] No git repository exposures found")
+                
+        except Exception as e:
+            print(f"    [GITEXPOSED] Error during git exposure testing: {e}")
+        
+        return results
 
     def _get_important_pages(self) -> List[str]:
         """Get list of important pages that might contain forms"""
