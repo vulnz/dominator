@@ -3140,14 +3140,14 @@ class VulnScanner:
         print(f"Threads:              {self.config.threads}")
         print("-" * 80)
         
+        # Filter out scan stats and group by severity
+        vulnerabilities = [v for v in results if 'vulnerability' in v]
+        
         if not vulnerabilities:
             print("VULNERABILITY STATUS: CLEAN")
             print("No vulnerabilities found during the scan.")
             print("="*80)
             return
-        
-        # Filter out scan stats and group by severity
-        vulnerabilities = [v for v in results if 'vulnerability' in v]
         high_vulns = [v for v in vulnerabilities if v.get('severity', '').lower() == 'high']
         medium_vulns = [v for v in vulnerabilities if v.get('severity', '').lower() == 'medium']
         low_vulns = [v for v in vulnerabilities if v.get('severity', '').lower() == 'low']
