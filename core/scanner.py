@@ -84,6 +84,9 @@ class VulnScanner:
         if self.results:
             for result in self.results:
                 result['scan_stats'] = self.scan_stats
+        else:
+            # Create empty result with stats for reporting
+            self.results = [{'scan_stats': self.scan_stats}]
         
         return self.results
     

@@ -115,17 +115,16 @@ def main():
         print(f"Starting scan...")
         results = scanner.scan()
         
-        # Save results
+        # Always print results to console first
+        scanner.print_results(results)
+        
+        # Save results if output specified
         if args.output:
             try:
                 scanner.save_report(results, args.output, args.format)
-                print(f"Report saved to {args.output}")
+                print(f"\nReport saved to {args.output}")
             except Exception as e:
                 print(f"Error saving report: {e}")
-                # Still print results to console
-                scanner.print_results(results)
-        else:
-            scanner.print_results(results)
             
     except KeyboardInterrupt:
         print("\nScan interrupted by user")

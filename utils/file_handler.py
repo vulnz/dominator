@@ -93,53 +93,76 @@ class FileHandler:
                     response_snippet = self._escape_html(str(item.get('response_snippet', '')))
                     
                     vuln_html = f'''
-                    <div class="vulnerability severity-{severity}">
+                    <div class="vulnerability" data-severity="{severity}" data-module="{item.get('module', '')}">
                         <div class="vuln-header">
                             <div class="vuln-title">
                                 <span class="vuln-id">#{i}</span>
-                                {vuln}
+                                <span>{vuln}</span>
+                                <span class="expand-icon">▼</span>
                             </div>
                             <div class="vuln-meta">
-                                <div class="meta-item">
-                                    <span class="meta-label">Severity:</span>
-                                    <span class="severity-badge">{item.get('severity', 'Unknown')}</span>
-                                </div>
-                                <div class="meta-item">
-                                    <span class="meta-label">Module:</span>
-                                    <span>{module}</span>
-                                </div>
-                                <div class="meta-item">
-                                    <span class="meta-label">Parameter:</span>
-                                    <span>{param}</span>
-                                </div>
+                                <span class="meta-badge severity-badge {severity}">{item.get('severity', 'Unknown')}</span>
+                                <span class="meta-badge module-badge">{module}</span>
+                                <span class="meta-badge">Parameter: {param}</span>
                             </div>
                         </div>
                         <div class="vuln-details">
-                            <div class="detail-section">
-                                <div class="detail-title">🎯 Target URL</div>
-                                <div class="code-block" data-lang="url">{target}</div>
-                            </div>
-                            
-                            <div class="detail-section">
-                                <div class="detail-title">📤 HTTP Request</div>
-                                <div class="code-block request-block" data-lang="http">{request_url}</div>
-                            </div>
-                            
-                            <div class="detail-section">
-                                <div class="detail-title">💉 Malicious Payload</div>
-                                <div class="code-block" data-lang="payload">{payload}</div>
-                            </div>
-                            
-                            <div class="detail-section">
-                                <div class="detail-title">📥 Server Response</div>
-                                <div class="code-block response-block" data-lang="html">{response_snippet}</div>
-                            </div>
-                            
-                            <div class="detail-section">
-                                <div class="detail-title">🔍 Evidence & Analysis</div>
-                                <div class="code-block" data-lang="evidence">{evidence}</div>
-                                <div class="detector-info">
-                                    <span class="detector-name">🤖 Detection Method:</span> {detector}
+                            <div class="details-content">
+                                <div class="info-grid">
+                                    <div class="info-item">
+                                        <div class="info-label">Target URL</div>
+                                        <div class="info-value">{target}</div>
+                                    </div>
+                                    <div class="info-item">
+                                        <div class="info-label">Parameter</div>
+                                        <div class="info-value">{param}</div>
+                                    </div>
+                                    <div class="info-item">
+                                        <div class="info-label">Detection Method</div>
+                                        <div class="info-value">{detector}</div>
+                                    </div>
+                                    <div class="info-item">
+                                        <div class="info-label">Module</div>
+                                        <div class="info-value">{module}</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="detail-cards">
+                                    <div class="detail-card request-card">
+                                        <div class="card-header">
+                                            📤 HTTP Request
+                                        </div>
+                                        <div class="card-content">
+                                            <div class="code-block">{request_url}</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="detail-card response-card">
+                                        <div class="card-header">
+                                            📥 Server Response
+                                        </div>
+                                        <div class="card-content">
+                                            <div class="code-block">{response_snippet}</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="detail-card payload-card">
+                                        <div class="card-header">
+                                            💉 Malicious Payload
+                                        </div>
+                                        <div class="card-content">
+                                            <div class="code-block">{payload}</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="detail-card evidence-card">
+                                        <div class="card-header">
+                                            🔍 Evidence & Analysis
+                                        </div>
+                                        <div class="card-content">
+                                            <div class="code-block">{evidence}</div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
