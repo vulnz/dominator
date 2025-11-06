@@ -1,135 +1,120 @@
 """
-XXE (XML External Entity) vulnerability detection logic
+XXE vulnerability detection logic with enhanced validation
 """
 
 import re
-from typing import Tuple, List, Dict, Any
 
 class XXEDetector:
     """XXE vulnerability detection logic"""
     
     @staticmethod
-    def get_xxe_indicators() -> List[str]:
-        """Get XXE vulnerability indicators"""
-        return [
-            'file://',
-            '/etc/passwd',
-            '/etc/hosts',
-            'root:x:0:0',
-            'localhost',
-            'SYSTEM',
-            'DOCTYPE',
-            'ENTITY',
-            'C:\\Windows\\System32',
-            'C:\\boot.ini',
-            'file:///c:',
-            'file:///etc',
-            'xml parsing error',
-            'external entity',
-            'entity reference'
-        ]
-    
-    @staticmethod
-    def detect_xxe(response_text: str, response_code: int, payload: str) -> bool:
-        """
-        Detect XXE vulnerability
-        Returns True if XXE is detected
-        """
+    def detect_xxe(response_text, response_code, payload):
+        """Detect XXE vulnerability with enhanced validation"""
         if response_code >= 500:
             return False
         
-        response_lower = response_text.lower()
-        indicators = XXEDetector.get_xxe_indicators()
+        # Check for XXE-specific markers in payload
+        if 'xxe_marker' not in payload.lower():
+            return False
         
-        # Check for file content disclosure
+        # Look for file content indicators that suggest successful XXE
         file_indicators = [
-            'root:x:0:0',  # /etc/passwd content
-            'localhost',   # /etc/hosts content
-            '[boot loader]',  # boot.ini content
-            'system32',    # Windows system files
+            # /etc/passwd patterns
+            r'root:.*?:0:0:',
+            r'daemon:.*?:/usr/sbin/nologin',
+            r'bin:.*?:/bin/sh',
+            r'sys:.*?:/dev/null',
+            r'nobody:.*?:65534',
+            
+            # Windows win.ini patterns
+            r'\[fonts\]',
+            r'\[extensions\]',
+            r'\[mci extensions\]',
+            r'for 16-bit app support',
+            
+            # /etc/hosts patterns
+            r'127\.0\.0\.1\s+localhost',
+            r'::1\s+localhost',
+            r'# Host Database',
+            
+            # Generic system file patterns
+            r'# This file was automatically generated',
+            r'# /etc/',
+            r'# System',
+            r'\[boot loader\]',
+            r'\[operating systems\]'
         ]
         
-        for indicator in file_indicators:
-            if indicator.lower() in response_lower:
-                return True
+        # Check for multiple indicators to reduce false positives
+        matches = 0
+        matched_patterns = []
+        
+        for pattern in file_indicators:
+            if re.search(pattern, response_text, re.IGNORECASE | re.MULTILINE):
+                matches += 1
+                matched_patterns.append(pattern)
+        
+        # Require at least 2 matches for /etc/passwd or 1 strong match for Windows
+        if matches >= 2:
+            return True
+        elif matches >= 1 and any('fonts' in p or 'extensions' in p or 'boot loader' in p for p in matched_patterns):
+            return True
         
         # Check for XML parsing errors that might indicate XXE processing
-        xml_errors = [
-            'xml parsing error',
-            'external entity',
-            'entity reference',
-            'dtd',
-            'doctype'
+        xml_error_patterns = [
+            r'XML.*?entity.*?not.*?found',
+            r'External.*?entity.*?reference',
+            r'DOCTYPE.*?declaration',
+            r'Entity.*?resolution',
+            r'XML.*?parsing.*?error'
         ]
         
-        for error in xml_errors:
-            if error in response_lower and any(p in payload.lower() for p in ['entity', 'doctype', 'system']):
-                return True
+        for pattern in xml_error_patterns:
+            if re.search(pattern, response_text, re.IGNORECASE):
+                # Only consider as XXE if we also have entity references in payload
+                if 'ENTITY' in payload and ('SYSTEM' in payload or 'PUBLIC' in payload):
+                    return True
         
         return False
     
     @staticmethod
-    def get_evidence(payload: str, response_text: str) -> str:
-        """Get evidence of XXE vulnerability"""
-        indicators = XXEDetector.get_xxe_indicators()
-        found_indicators = []
-        
-        response_lower = response_text.lower()
-        for indicator in indicators:
-            if indicator.lower() in response_lower:
-                found_indicators.append(indicator)
-        
-        if found_indicators:
-            return f"XXE vulnerability detected. Found indicators: {', '.join(found_indicators[:3])}"
-        
-        return "Potential XXE vulnerability detected based on response patterns"
-    
-    @staticmethod
-    def get_response_snippet(payload: str, response_text: str) -> str:
-        """Get relevant response snippet"""
-        indicators = XXEDetector.get_xxe_indicators()
-        
-        for indicator in indicators:
-            if indicator.lower() in response_text.lower():
-                # Find the context around the indicator
-                start = max(0, response_text.lower().find(indicator.lower()) - 50)
-                end = min(len(response_text), start + 200)
-                return response_text[start:end]
-        
-        return response_text[:200]
-    
-    @staticmethod
-    def get_remediation_advice() -> str:
-        """Get remediation advice for XXE vulnerabilities"""
-        return (
-            "Disable XML external entity processing in XML parsers. "
-            "Use secure XML parsing libraries and configure them to reject DTDs and external entities. "
-            "Validate and sanitize all XML input. Consider using JSON instead of XML where possible."
-        )
-    
-    @staticmethod
-    def get_evidence(payload: str, response_text: str) -> str:
-        """Get evidence for XXE"""
+    def get_evidence(payload, response_text):
+        """Get evidence for XXE vulnerability"""
         evidence_parts = []
         
-        # Check for file content
-        if 'root:' in response_text:
-            evidence_parts.append("System file content detected")
-        elif '[extensions]' in response_text:
-            evidence_parts.append("Windows configuration file detected")
-        
-        # Check for XML parsing errors
-        if 'xml' in response_text.lower() and 'error' in response_text.lower():
-            evidence_parts.append("XML parsing error detected")
+        # Check what type of file content was found
+        if re.search(r'root:.*?:0:0:', response_text):
+            evidence_parts.append("Unix /etc/passwd file content detected")
+        if re.search(r'\[fonts\]|\[extensions\]', response_text, re.IGNORECASE):
+            evidence_parts.append("Windows win.ini file content detected")
+        if re.search(r'127\.0\.0\.1\s+localhost', response_text):
+            evidence_parts.append("System hosts file content detected")
         
         if evidence_parts:
-            return f"XXE detected: {'; '.join(evidence_parts)}"
+            return f"XXE vulnerability confirmed: {', '.join(evidence_parts)}"
         else:
-            return f"Potential XXE with payload: {payload}"
+            return f"XXE vulnerability detected with payload containing entity references"
     
     @staticmethod
-    def get_response_snippet(payload: str, response_text: str) -> str:
-        """Get response snippet for XXE"""
-        if len(response_text) > 300:
-            return response_text[:300] + "..."
-        return response_text
+    def get_response_snippet(payload, response_text):
+        """Get response snippet showing XXE"""
+        # Find the most relevant part of the response
+        file_patterns = [
+            r'root:.*?:0:0:.*',
+            r'\[fonts\].*?\[.*?\]',
+            r'127\.0\.0\.1\s+localhost.*'
+        ]
+        
+        for pattern in file_patterns:
+            match = re.search(pattern, response_text, re.IGNORECASE | re.MULTILINE)
+            if match:
+                start = max(0, match.start() - 50)
+                end = min(len(response_text), match.end() + 50)
+                return response_text[start:end]
+        
+        return response_text[:200] + "..." if len(response_text) > 200 else response_text
+    
+    @staticmethod
+    def get_remediation_advice():
+        """Get remediation advice for XXE"""
+        return "Disable external entity processing in XML parsers, use whitelisting for allowed XML elements, and implement proper input validation."

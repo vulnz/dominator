@@ -1,232 +1,147 @@
 """
-Insecure Deserialization vulnerability detection logic
+Insecure Deserialization vulnerability detection logic with enhanced validation
 """
 
 import re
-from typing import Tuple, List, Dict, Any
+import base64
 
 class InsecureDeserializationDetector:
     """Insecure Deserialization vulnerability detection logic"""
     
     @staticmethod
-    def get_serialization_patterns() -> Dict[str, List[str]]:
-        """Get serialization format patterns"""
-        return {
-            'java': [
-                'rO0AB', 'aced0005',  # Java serialization magic bytes (base64)
-                'java.lang.', 'java.util.',
-                'ObjectInputStream', 'readObject',
-                'Serializable', 'serialVersionUID'
-            ],
-            'php': [
-                'O:', 'a:', 's:', 'i:',  # PHP serialization
-                'unserialize', 'serialize',
-                '__wakeup', '__destruct',
-                'PD9waHA'  # <?php in base64
-            ],
-            'python': [
-                'pickle', 'cPickle', '_pickle',
-                'loads', 'dumps',
-                'protocol', '__reduce__'
-            ],
-            'dotnet': [
-                'BinaryFormatter', 'SoapFormatter',
-                'System.Runtime.Serialization',
-                'DataContractSerializer',
-                'XmlSerializer'
-            ]
-        }
-    
-    @staticmethod
-    def detect_insecure_deserialization(response_text: str, response_code: int, payload: str) -> Tuple[bool, str, str]:
-        """
-        Detect insecure deserialization vulnerability
-        Returns: (is_vulnerable, evidence, severity)
-        """
+    def detect_insecure_deserialization(response_text, response_code, payload):
+        """Detect insecure deserialization vulnerability with enhanced validation"""
         if response_code >= 500:
-            return False, "Server error response", "None"
-        
-        response_lower = response_text.lower()
-        patterns = InsecureDeserializationDetector.get_serialization_patterns()
-        
-        found_patterns = []
-        detected_format = None
-        
-        # Check for serialization patterns
-        for format_name, format_patterns in patterns.items():
-            format_matches = 0
-            for pattern in format_patterns:
-                if pattern.lower() in response_lower:
-                    found_patterns.append(pattern)
-                    format_matches += 1
+            # Check if it's a deserialization-related error
+            deser_error_patterns = [
+                r'deserialization.*?error',
+                r'unserialize.*?error',
+                r'pickle.*?error',
+                r'ObjectInputStream',
+                r'readObject.*?exception',
+                r'ClassNotFoundException',
+                r'InvalidClassException'
+            ]
             
-            if format_matches >= 2:
-                detected_format = format_name
-                break
+            for pattern in deser_error_patterns:
+                if re.search(pattern, response_text, re.IGNORECASE):
+                    return True, "Deserialization error detected", "Medium"
+            
+            return False, "Server error unrelated to deserialization", "None"
         
-        if not found_patterns:
-            return False, "No serialization patterns detected", "None"
+        # Check for deserialization markers in payload
+        if 'deser_marker' not in payload.lower():
+            return False, "No deserialization marker in payload", "None"
         
-        # Check for deserialization errors
-        error_patterns = [
-            'deserialization', 'unserialize', 'unmarshal',
-            'classnotfoundexception', 'invalidclassexception',
-            'streamcorruptedexception', 'optionaldata',
-            'magic number', 'invalid stream header',
-            'unexpected end of stream'
+        # Look for successful deserialization indicators
+        success_indicators = [
+            # Direct marker reflection
+            r'deser_marker',
+            r'deserialization_test',
+            
+            # Java deserialization success indicators
+            r'java\.util\.HashMap',
+            r'java\.util\.ArrayList',
+            r'java\.lang\.String',
+            r'serialVersionUID',
+            
+            # PHP deserialization success indicators
+            r'stdClass.*?Object',
+            r'__wakeup.*?called',
+            r'__destruct.*?called',
+            r'unserialize.*?success',
+            
+            # Python pickle success indicators
+            r'pickle\.loads',
+            r'__reduce__.*?called',
+            r'copyreg\._reconstruct',
+            
+            # .NET deserialization success indicators
+            r'BinaryFormatter',
+            r'DataContractSerializer',
+            r'System\.Collections',
+            
+            # Generic object instantiation indicators
+            r'Object.*?instantiated',
+            r'Constructor.*?called',
+            r'Instance.*?created'
         ]
         
-        error_found = False
-        for error in error_patterns:
-            if error in response_lower:
-                error_found = True
-                break
+        matches = 0
+        matched_indicators = []
         
-        if error_found:
-            severity = "High"
-            evidence = f"Insecure deserialization detected ({detected_format or 'unknown format'}). Found patterns: {', '.join(found_patterns[:3])}"
-        else:
-            severity = "Medium"
-            evidence = f"Potential deserialization detected ({detected_format or 'unknown format'}). Found patterns: {', '.join(found_patterns[:3])}"
+        for pattern in success_indicators:
+            if re.search(pattern, response_text, re.IGNORECASE | re.MULTILINE):
+                matches += 1
+                matched_indicators.append(pattern)
         
-        return True, evidence, severity
-    
-    @staticmethod
-    def get_evidence(patterns: List[str], format_type: str, response_text: str) -> str:
-        """Get detailed evidence of insecure deserialization"""
-        evidence_parts = []
-        
-        if format_type:
-            evidence_parts.append(f"Detected {format_type.upper()} serialization format")
-        
-        if patterns:
-            evidence_parts.append(f"Found serialization indicators: {', '.join(patterns[:5])}")
-        
-        # Look for specific vulnerability indicators
-        vuln_indicators = [
-            'remote code execution', 'arbitrary code',
-            'command execution', 'file system access',
-            'privilege escalation'
+        # Strong indicators that confirm deserialization
+        strong_indicators = [
+            r'deser_marker.*?deserialization_test',
+            r'java\.util\.HashMap.*?deser_marker',
+            r'stdClass.*?deser_marker',
+            r'__wakeup.*?deser_marker'
         ]
         
-        response_lower = response_text.lower()
-        found_vulns = [indicator for indicator in vuln_indicators if indicator in response_lower]
+        for pattern in strong_indicators:
+            if re.search(pattern, response_text, re.IGNORECASE):
+                return True, "Deserialization marker successfully processed", "High"
         
-        if found_vulns:
-            evidence_parts.append(f"Potential impact indicators: {', '.join(found_vulns)}")
+        # Check for file system access (potential RCE via deserialization)
+        file_access_patterns = [
+            r'root:.*?:0:0:',
+            r'daemon:.*?:/usr/sbin/nologin',
+            r'\[fonts\]',
+            r'\[extensions\]'
+        ]
         
-        return ". ".join(evidence_parts)
+        for pattern in file_access_patterns:
+            if re.search(pattern, response_text, re.IGNORECASE):
+                if 'deser_marker' in payload:
+                    return True, "File system access via deserialization", "High"
+        
+        # Check for command execution indicators
+        command_indicators = [
+            r'uid=\d+.*?gid=\d+',
+            r'Microsoft Windows.*?Version',
+            r'Directory of.*?C:\\',
+            r'total \d+.*?drwx'
+        ]
+        
+        for pattern in command_indicators:
+            if re.search(pattern, response_text, re.IGNORECASE):
+                if 'deser_marker' in payload:
+                    return True, "Command execution via deserialization", "High"
+        
+        # Require multiple weak indicators
+        if matches >= 2:
+            return True, f"Multiple deserialization indicators found: {', '.join(matched_indicators[:3])}", "Medium"
+        
+        return False, "No clear deserialization vulnerability detected", "None"
     
     @staticmethod
-    def get_response_snippet(payload: str, response_text: str) -> str:
-        """Get relevant response snippet"""
-        patterns = []
-        for format_patterns in InsecureDeserializationDetector.get_serialization_patterns().values():
-            patterns.extend(format_patterns)
+    def get_response_snippet(payload, response_text):
+        """Get response snippet showing deserialization"""
+        # Find the most relevant part of the response
+        deser_patterns = [
+            r'deser_marker.*',
+            r'deserialization_test.*',
+            r'java\.util\..*',
+            r'stdClass.*',
+            r'root:.*?:0:0:.*',
+            r'uid=\d+.*?gid=\d+.*'
+        ]
         
-        for pattern in patterns:
-            if pattern.lower() in response_text.lower():
-                start = max(0, response_text.lower().find(pattern.lower()) - 50)
-                end = min(len(response_text), start + 200)
+        for pattern in deser_patterns:
+            match = re.search(pattern, response_text, re.IGNORECASE | re.MULTILINE)
+            if match:
+                start = max(0, match.start() - 50)
+                end = min(len(response_text), match.end() + 50)
                 return response_text[start:end]
         
-        return response_text[:200]
+        return response_text[:200] + "..." if len(response_text) > 200 else response_text
     
     @staticmethod
-    def get_evidence(original_response: str, modified_response: str) -> str:
-        """Get evidence for IDOR"""
-        evidence_parts = []
-        
-        # Compare response lengths
-        orig_len = len(original_response)
-        mod_len = len(modified_response)
-        
-        if abs(orig_len - mod_len) > 100:
-            evidence_parts.append(f"response size difference: {orig_len} vs {mod_len} bytes")
-        
-        # Check for different content
-        if 'user' in modified_response.lower() and 'user' not in original_response.lower():
-            evidence_parts.append("different user data detected")
-        elif 'id' in modified_response.lower() and 'id' not in original_response.lower():
-            evidence_parts.append("different ID data detected")
-        
-        if evidence_parts:
-            return f"IDOR detected: {'; '.join(evidence_parts)}"
-        else:
-            return "Different response content suggests IDOR vulnerability"
-    
-    @staticmethod
-    def get_response_snippet(response_text: str) -> str:
-        """Get response snippet for IDOR"""
-        if len(response_text) > 300:
-            return response_text[:300] + "..."
-        return response_text
-    
-    @staticmethod
-    def get_remediation_advice() -> str:
-        """Get remediation advice for IDOR"""
-        return (
-            "Implement proper access controls and authorization checks. "
-            "Use indirect object references or UUIDs instead of sequential IDs. "
-            "Validate user permissions before returning sensitive data."
-        )
-    
-    @staticmethod
-    def get_evidence(payload: str, response_text: str) -> str:
-        """Get evidence for directory traversal"""
-        evidence_parts = []
-        
-        # Check for file content indicators
-        if 'root:' in response_text and '/bin/' in response_text:
-            evidence_parts.append("Unix passwd file content detected")
-        elif '[extensions]' in response_text or '[files]' in response_text:
-            evidence_parts.append("Windows ini file content detected")
-        elif '<?php' in response_text:
-            evidence_parts.append("PHP source code exposed")
-        elif 'function' in response_text and 'var ' in response_text:
-            evidence_parts.append("Source code content detected")
-        
-        if evidence_parts:
-            return f"Directory traversal successful: {'; '.join(evidence_parts)}"
-        else:
-            return f"Potential directory traversal with payload: {payload}"
-    
-    @staticmethod
-    def get_response_snippet(payload: str, response_text: str) -> str:
-        """Get response snippet for directory traversal"""
-        # Look for file content
-        lines = response_text.split('\n')
-        relevant_lines = []
-        
-        for line in lines[:20]:  # First 20 lines
-            if any(indicator in line for indicator in ['root:', '[extensions]', '<?php', 'function']):
-                relevant_lines.append(line.strip())
-        
-        if relevant_lines:
-            snippet = '\n'.join(relevant_lines[:10])
-            if len(snippet) > 400:
-                return snippet[:400] + "..."
-            return snippet
-        
-        # Fallback
-        if len(response_text) > 300:
-            return response_text[:300] + "..."
-        return response_text
-    
-    @staticmethod
-    def get_remediation_advice() -> str:
-        """Get remediation advice for insecure deserialization vulnerabilities"""
-        return (
-            "Avoid deserializing untrusted data. "
-            "Use safe serialization formats like JSON instead of native serialization. "
-            "Implement integrity checks and digital signatures for serialized data. "
-            "Use whitelist-based deserialization and run deserialization in sandboxed environments. "
-            "Keep serialization libraries updated and monitor for known vulnerabilities."
-        )
-    
-    @staticmethod
-    def get_response_snippet(payload: str, response_text: str) -> str:
-        """Get response snippet for deserialization"""
-        if len(response_text) > 300:
-            return response_text[:300] + "..."
-        return response_text
+    def get_remediation_advice():
+        """Get remediation advice for insecure deserialization"""
+        return "Avoid deserializing untrusted data, use safe serialization formats like JSON, implement integrity checks, and use allowlists for permitted classes."
