@@ -39,8 +39,18 @@ class XSSDetector:
         if payload in response_text:
             # Find context where payload appears
             start_pos = response_text.find(payload)
-            context_start = max(0, start_pos - 50)
-            context_end = min(len(response_text), start_pos + len(payload) + 50)
+            context_start = max(0, start_pos - 40)
+            context_end = min(len(response_text), start_pos + len(payload) + 40)
             context = response_text[context_start:context_end]
             return f"Payload reflected in response: ...{context}..."
+        return "Payload not found in response"
+    
+    @staticmethod
+    def get_response_snippet(payload: str, response_text: str) -> str:
+        """Get response snippet showing payload context"""
+        if payload in response_text:
+            start_pos = response_text.find(payload)
+            context_start = max(0, start_pos - 40)
+            context_end = min(len(response_text), start_pos + len(payload) + 40)
+            return response_text[context_start:context_end]
         return "Payload not found in response"

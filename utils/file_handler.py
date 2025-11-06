@@ -50,62 +50,123 @@ class FileHandler:
     def save_html(self, data: List[Dict[str, Any]], filename: str):
         """Save in HTML format"""
         try:
-            vulnerabilities_html = ""
+            import os
+            from datetime import datetime
             
+            # Read HTML template
+            template_path = os.path.join('report', 'templates', 'html_template.html')
+            if not os.path.exists(template_path):
+                raise Exception(f"HTML template not found at {template_path}")
+            
+            with open(template_path, 'r', encoding='utf-8') as f:
+                template = f.read()
+            
+            # Calculate statistics
+            total_vulns = len(data)
+            high_count = len([v for v in data if v.get('severity', '').lower() == 'high'])
+            medium_count = len([v for v in data if v.get('severity', '').lower() == 'medium'])
+            low_count = len([v for v in data if v.get('severity', '').lower() == 'low'])
+            
+            # Generate vulnerabilities HTML
             if not data:
-                vulnerabilities_html = "<p>No vulnerabilities found</p>"
+                vulnerabilities_content = '''
+                <div class="no-vulns">
+                    <div class="no-vulns-icon">✅</div>
+                    <h2>No Vulnerabilities Found</h2>
+                    <p>The scan completed successfully without finding any vulnerabilities.</p>
+                </div>
+                '''
             else:
-                for item in data:
+                vulnerabilities_content = ""
+                for i, item in enumerate(data, 1):
                     severity = item.get('severity', 'info').lower()
-                    # Escape HTML characters in data
-                    target = str(item.get('target', '')).replace('<', '&lt;').replace('>', '&gt;')
-                    module = str(item.get('module', '')).replace('<', '&lt;').replace('>', '&gt;')
-                    vuln = str(item.get('vulnerability', 'Unknown')).replace('<', '&lt;').replace('>', '&gt;')
-                    param = str(item.get('parameter', '')).replace('<', '&lt;').replace('>', '&gt;')
-                    payload = str(item.get('payload', '')).replace('<', '&lt;').replace('>', '&gt;')
-                    evidence = str(item.get('evidence', '')).replace('<', '&lt;').replace('>', '&gt;')
                     
-                    vuln_html = f"""
-                    <div class="vulnerability {severity}">
-                        <h3>{vuln}</h3>
-                        <p><strong>Target:</strong> {target}</p>
-                        <p><strong>Module:</strong> {module}</p>
-                        <p><strong>Severity:</strong> {item.get('severity', '')}</p>
-                        <p><strong>Parameter:</strong> {param}</p>
-                        <p><strong>Payload:</strong> <code>{payload}</code></p>
-                        <p><strong>Evidence:</strong> {evidence}</p>
+                    # Escape HTML characters
+                    target = self._escape_html(str(item.get('target', '')))
+                    module = self._escape_html(str(item.get('module', '')))
+                    vuln = self._escape_html(str(item.get('vulnerability', 'Unknown')))
+                    param = self._escape_html(str(item.get('parameter', '')))
+                    payload = self._escape_html(str(item.get('payload', '')))
+                    evidence = self._escape_html(str(item.get('evidence', '')))
+                    request_url = self._escape_html(str(item.get('request_url', '')))
+                    detector = self._escape_html(str(item.get('detector', 'Unknown')))
+                    response_snippet = self._escape_html(str(item.get('response_snippet', '')))
+                    
+                    vuln_html = f'''
+                    <div class="vulnerability severity-{severity}">
+                        <div class="vuln-header">
+                            <div class="vuln-title">#{i} {vuln}</div>
+                            <div class="vuln-meta">
+                                <div class="meta-item">
+                                    <span class="meta-label">Severity:</span>
+                                    <span class="severity-badge">{item.get('severity', 'Unknown')}</span>
+                                </div>
+                                <div class="meta-item">
+                                    <span class="meta-label">Module:</span>
+                                    <span>{module}</span>
+                                </div>
+                                <div class="meta-item">
+                                    <span class="meta-label">Parameter:</span>
+                                    <span>{param}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="vuln-details">
+                            <div class="detail-section">
+                                <div class="detail-title">🎯 Target</div>
+                                <div class="code-block">{target}</div>
+                            </div>
+                            
+                            <div class="detail-section">
+                                <div class="detail-title">📤 Request</div>
+                                <div class="code-block request-block">{request_url}</div>
+                            </div>
+                            
+                            <div class="detail-section">
+                                <div class="detail-title">💉 Payload</div>
+                                <div class="code-block">{payload}</div>
+                            </div>
+                            
+                            <div class="detail-section">
+                                <div class="detail-title">📥 Response Snippet</div>
+                                <div class="code-block response-block">{response_snippet}</div>
+                            </div>
+                            
+                            <div class="detail-section">
+                                <div class="detail-title">🔍 Evidence</div>
+                                <div class="code-block">{evidence}</div>
+                                <div class="detector-info">
+                                    <span class="detector-name">Detector:</span> {detector}
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    """
-                    vulnerabilities_html += vuln_html
+                    '''
+                    vulnerabilities_content += vuln_html
             
-            html_content = f"""<!DOCTYPE html>
-<html>
-<head>
-    <title>Web Vulnerability Scanner Report</title>
-    <style>
-        body {{ font-family: Arial, sans-serif; margin: 20px; }}
-        .header {{ background-color: #f0f0f0; padding: 10px; border-radius: 5px; }}
-        .vulnerability {{ border: 1px solid #ddd; margin: 10px 0; padding: 10px; border-radius: 5px; }}
-        .high {{ border-left: 5px solid #ff0000; }}
-        .medium {{ border-left: 5px solid #ff9900; }}
-        .low {{ border-left: 5px solid #ffff00; }}
-        .info {{ border-left: 5px solid #0099ff; }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>Web Vulnerability Scanner Report</h1>
-        <p>Vulnerabilities found: {len(data)}</p>
-    </div>
-    {vulnerabilities_html}
-</body>
-</html>"""
+            # Replace template variables
+            html_content = template.format(
+                timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                total_vulns=total_vulns,
+                high_count=high_count,
+                medium_count=medium_count,
+                low_count=low_count,
+                vulnerabilities_content=vulnerabilities_content
+            )
             
             with open(filename, 'w', encoding='utf-8') as f:
                 f.write(html_content)
                 
         except Exception as e:
             raise Exception(f"Error creating HTML report: {e}")
+    
+    def _escape_html(self, text: str) -> str:
+        """Escape HTML characters"""
+        return (text.replace('&', '&amp;')
+                   .replace('<', '&lt;')
+                   .replace('>', '&gt;')
+                   .replace('"', '&quot;')
+                   .replace("'", '&#x27;'))
     
     def read_file_lines(self, filename: str) -> List[str]:
         """Read lines from file"""

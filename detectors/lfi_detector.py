@@ -65,3 +65,13 @@ class LFIDetector:
     def get_evidence(pattern: str) -> str:
         """Get evidence of LFI vulnerability"""
         return f"File content pattern found: {pattern}"
+    
+    @staticmethod
+    def get_response_snippet(pattern: str, response_text: str) -> str:
+        """Get response snippet showing file content context"""
+        if pattern in response_text:
+            start_pos = response_text.find(pattern)
+            context_start = max(0, start_pos - 40)
+            context_end = min(len(response_text), start_pos + len(pattern) + 40)
+            return response_text[context_start:context_end]
+        return "File pattern not found in response"

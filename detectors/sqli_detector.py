@@ -114,3 +114,13 @@ class SQLiDetector:
     def get_evidence(pattern: str) -> str:
         """Get evidence of SQL injection vulnerability"""
         return f"SQL error pattern found: {pattern}"
+    
+    @staticmethod
+    def get_response_snippet(pattern: str, response_text: str) -> str:
+        """Get response snippet showing error context"""
+        if pattern.lower() in response_text.lower():
+            start_pos = response_text.lower().find(pattern.lower())
+            context_start = max(0, start_pos - 40)
+            context_end = min(len(response_text), start_pos + len(pattern) + 40)
+            return response_text[context_start:context_end]
+        return "Error pattern not found in response"

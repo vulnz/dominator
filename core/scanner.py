@@ -215,6 +215,7 @@ class VulnScanner:
                     # Use XSS detector
                     if XSSDetector.detect_reflected_xss(payload, response.text, response.status_code):
                         evidence = XSSDetector.get_evidence(payload, response.text)
+                        response_snippet = XSSDetector.get_response_snippet(payload, response.text)
                         print(f"    [XSS] VULNERABILITY FOUND! Parameter: {param}")
                         
                         results.append({
@@ -225,7 +226,9 @@ class VulnScanner:
                             'parameter': param,
                             'payload': payload,
                             'evidence': evidence,
-                            'request_url': test_url
+                            'request_url': test_url,
+                            'detector': 'XSSDetector.detect_reflected_xss',
+                            'response_snippet': response_snippet
                         })
                         break  # Found XSS, no need to test more payloads for this param
                         
@@ -278,6 +281,7 @@ class VulnScanner:
                     
                     if is_vulnerable:
                         evidence = SQLiDetector.get_evidence(pattern)
+                        response_snippet = SQLiDetector.get_response_snippet(pattern, response.text)
                         print(f"    [SQLI] VULNERABILITY FOUND! Parameter: {param}")
                         
                         results.append({
@@ -288,7 +292,9 @@ class VulnScanner:
                             'parameter': param,
                             'payload': payload,
                             'evidence': evidence,
-                            'request_url': test_url
+                            'request_url': test_url,
+                            'detector': 'SQLiDetector.detect_error_based_sqli',
+                            'response_snippet': response_snippet
                         })
                         break  # Found SQLi, no need to test more payloads for this param
                             
@@ -341,6 +347,7 @@ class VulnScanner:
                     
                     if is_vulnerable:
                         evidence = LFIDetector.get_evidence(pattern)
+                        response_snippet = LFIDetector.get_response_snippet(pattern, response.text)
                         print(f"    [LFI] VULNERABILITY FOUND! Parameter: {param}")
                         
                         results.append({
@@ -351,7 +358,9 @@ class VulnScanner:
                             'parameter': param,
                             'payload': payload,
                             'evidence': evidence,
-                            'request_url': test_url
+                            'request_url': test_url,
+                            'detector': 'LFIDetector.detect_lfi',
+                            'response_snippet': response_snippet
                         })
                         break  # Found LFI, no need to test more payloads for this param
                             
@@ -382,16 +391,55 @@ class VulnScanner:
     def print_results(self, results: List[Dict[str, Any]]):
         """Print results to console"""
         if not results:
-            print("No vulnerabilities found")
+            print("\n" + "="*60)
+            print("🛡️  SCAN RESULTS")
+            print("="*60)
+            print("✅ No vulnerabilities found")
+            print("="*60)
             return
         
-        print(f"\nVulnerabilities found: {len(results)}")
-        print("=" * 60)
+        print("\n" + "="*60)
+        print("🛡️  SCAN RESULTS")
+        print("="*60)
+        print(f"🚨 Found {len(results)} vulnerabilities")
+        print("="*60)
         
-        for i, result in enumerate(results, 1):
-            print(f"{i}. {result.get('vulnerability', 'Unknown')}")
-            print(f"   Target: {result.get('target', '')}")
-            print(f"   Module: {result.get('module', '')}")
-            print(f"   Severity: {result.get('severity', '')}")
-            print(f"   Parameter: {result.get('parameter', '')}")
-            print("-" * 40)
+        # Group by severity
+        high_vulns = [v for v in results if v.get('severity', '').lower() == 'high']
+        medium_vulns = [v for v in results if v.get('severity', '').lower() == 'medium']
+        low_vulns = [v for v in results if v.get('severity', '').lower() == 'low']
+        
+        if high_vulns:
+            print(f"\n🔴 HIGH SEVERITY ({len(high_vulns)} found):")
+            for i, result in enumerate(high_vulns, 1):
+                self._print_vulnerability(i, result)
+        
+        if medium_vulns:
+            print(f"\n🟡 MEDIUM SEVERITY ({len(medium_vulns)} found):")
+            for i, result in enumerate(medium_vulns, 1):
+                self._print_vulnerability(i, result)
+        
+        if low_vulns:
+            print(f"\n🟢 LOW SEVERITY ({len(low_vulns)} found):")
+            for i, result in enumerate(low_vulns, 1):
+                self._print_vulnerability(i, result)
+        
+        print("="*60)
+    
+    def _print_vulnerability(self, index: int, result: Dict[str, Any]):
+        """Print single vulnerability details"""
+        print(f"\n  {index}. {result.get('vulnerability', 'Unknown')}")
+        print(f"     🎯 Target: {result.get('target', '')}")
+        print(f"     📍 Parameter: {result.get('parameter', '')}")
+        print(f"     🔧 Module: {result.get('module', '')}")
+        print(f"     🔍 Detector: {result.get('detector', 'Unknown')}")
+        print(f"     💉 Payload: {result.get('payload', '')[:100]}{'...' if len(str(result.get('payload', ''))) > 100 else ''}")
+        print(f"     📤 Request: {result.get('request_url', '')}")
+        
+        # Show response snippet if available
+        response_snippet = result.get('response_snippet', '')
+        if response_snippet:
+            print(f"     📥 Response: ...{response_snippet[:80]}{'...' if len(response_snippet) > 80 else ''}")
+        
+        print(f"     ✅ Evidence: {result.get('evidence', '')}")
+        print("     " + "-"*50)
