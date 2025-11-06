@@ -67,7 +67,16 @@ class Config:
                 'deserialization', 'responsesplitting'
             ]
         else:
-            return ['xss', 'sqli', 'lfi', 'csrf']  # Default modules if none specified
+            # If no modules specified and --all not used, use all modules by default
+            return [
+                'xss', 'sqli', 'lfi', 'rfi', 'xxe', 'csrf', 'idor', 'ssrf',
+                'dirbrute', 'gitexposed', 'dirtraversal', 'secheaders',
+                'versiondisclosure', 'clickjacking', 'blindxss', 'passwordoverhttp',
+                'outdatedsoftware', 'databaseerrors', 'phpinfo', 'ssltls',
+                'httponlycookies', 'technology', 'commandinjection', 'pathtraversal',
+                'ldapinjection', 'nosqlinjection', 'fileupload', 'cors', 'jwt',
+                'deserialization', 'responsesplitting'
+            ]
     
     def _parse_exclude(self, exclude_str: Optional[str]) -> List[str]:
         """Parse excluded paths"""

@@ -47,8 +47,8 @@ Usage examples:
     # Scanning parameters
     parser.add_argument('-m', '--modules', 
                        help='Scanning modules (comma separated)')
-    parser.add_argument('--all', action='store_true', default=True,
-                       help='Use all modules (default)')
+    parser.add_argument('--all', action='store_true',
+                       help='Use all modules')
     parser.add_argument('--exclude',
                        help='Exclude paths from scanning')
     parser.add_argument('--timeout', type=int, default=10,
@@ -113,8 +113,7 @@ def main():
     
     # Check if modules are specified
     if not args.modules and not args.all:
-        print("Warning: No modules specified, using default modules")
-        args.all = True
+        print("Warning: No modules specified, using all modules by default")
     
     try:
         # Create configuration
