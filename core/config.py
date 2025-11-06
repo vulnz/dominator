@@ -23,6 +23,7 @@ class Config:
         self.page_limit = args.page_limit
         self.output_file = args.output
         self.output_format = args.format
+        self.single_url = getattr(args, 'single_url', False)
         
         # Crawler settings
         self.crawler_depth = getattr(args, 'crawler_depth', 3)
@@ -67,7 +68,7 @@ class Config:
             'httponlycookies', 'technology', 'commandinjection', 'pathtraversal',
             'ldapinjection', 'nosqlinjection', 'fileupload', 'cors', 'jwt',
             'deserialization', 'responsesplitting', 'ssti', 'crlf',
-            'textinjection', 'contentreflection', 'htmlinjection'
+            'textinjection', 'htmlinjection'
         ]
         
         if modules_str:

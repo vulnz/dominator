@@ -1106,6 +1106,11 @@ class VulnScanner:
         # Get LFI payloads
         lfi_payloads = LFIPayloads.get_all_payloads()
         
+        # Update payload stats
+        if 'lfi' not in self.scan_stats['payload_stats']:
+            self.scan_stats['payload_stats']['lfi'] = {'payloads_used': 0, 'requests_made': 0, 'successful_payloads': 0}
+        self.scan_stats['payload_stats']['lfi']['payloads_used'] += len(lfi_payloads)
+        
         # Test GET parameters
         for param, values in parsed_data['query_params'].items():
             print(f"    [LFI] Testing parameter: {param}")
@@ -1134,6 +1139,10 @@ class VulnScanner:
                         headers=self.config.headers,
                         verify=False
                     )
+                    
+                    # Update request count
+                    self.request_count += 1
+                    self.scan_stats['payload_stats']['lfi']['requests_made'] += 1
                     
                     print(f"    [LFI] Response code: {response.status_code}")
                     
@@ -1173,6 +1182,10 @@ class VulnScanner:
                             is_valid = True
                         
                         if is_valid:
+                            # Update successful payload count
+                            self.scan_stats['payload_stats']['lfi']['successful_payloads'] += 1
+                            self.scan_stats['total_payloads_used'] += 1
+                            
                             results.append(vulnerability)
                             break  # Found LFI, no need to test more payloads for this param
                             
@@ -1186,6 +1199,10 @@ class VulnScanner:
         """Test for CSRF vulnerabilities"""
         results = []
         base_url = parsed_data['url']
+        
+        # Update payload stats
+        if 'csrf' not in self.scan_stats['payload_stats']:
+            self.scan_stats['payload_stats']['csrf'] = {'payloads_used': 0, 'requests_made': 0, 'successful_payloads': 0}
         
         try:
             print(f"    [CSRF] Testing CSRF protection...")
@@ -1201,6 +1218,10 @@ class VulnScanner:
                     headers=self.config.headers,
                     verify=False
                 )
+                
+                # Update request count
+                self.request_count += 1
+                self.scan_stats['payload_stats']['csrf']['requests_made'] += 1
                 
                 print(f"    [CSRF] Initial response code: {response.status_code}")
                 
@@ -1309,6 +1330,7 @@ class VulnScanner:
             if response_text and vulnerable_forms:
                 # Test CSRF bypass techniques on vulnerable forms
                 csrf_payloads = CSRFPayloads.get_all_payloads()
+                self.scan_stats['payload_stats']['csrf']['payloads_used'] += len(csrf_payloads)
                 
                 for form_info in vulnerable_forms[:2]:  # Test max 2 forms
                     form_action = form_info['action']
@@ -1356,9 +1378,13 @@ class VulnScanner:
                                     verify=False,
                                     allow_redirects=False
                                 )
+                            
+                                # Update request count
+                                self.request_count += 1
+                                self.scan_stats['payload_stats']['csrf']['requests_made'] += 1
                             else:
                                 continue  # Skip non-POST for now
-                            
+                        
                             print(f"    [CSRF] Response code: {test_response.status_code}")
                             
                             # Check if request was successful (potential CSRF bypass)
@@ -1373,6 +1399,10 @@ class VulnScanner:
                                     if bypass_dedup_key not in self.found_vulnerabilities:
                                         self.found_vulnerabilities.add(bypass_dedup_key)
                                         print(f"    [CSRF] POTENTIAL BYPASS FOUND! Payload: {payload['name']}")
+                                        
+                                        # Update successful payload count
+                                        self.scan_stats['payload_stats']['csrf']['successful_payloads'] += 1
+                                        self.scan_stats['total_payloads_used'] += 1
                                         
                                         results.append({
                                             'module': 'csrf',
@@ -1452,6 +1482,10 @@ class VulnScanner:
         results = []
         base_url = parsed_data['url']
         
+        # Update payload stats
+        if 'dirbrute' not in self.scan_stats['payload_stats']:
+            self.scan_stats['payload_stats']['dirbrute'] = {'payloads_used': 0, 'requests_made': 0, 'successful_payloads': 0}
+        
         # Remove query parameters from base URL
         if '?' in base_url:
             base_url = base_url.split('?')[0]
@@ -1504,6 +1538,9 @@ class VulnScanner:
             directories = DirBrutePayloads.get_all_directories()
             found_directories = []
             
+            # Update payload stats
+            self.scan_stats['payload_stats']['dirbrute']['payloads_used'] += len(directories)
+            
             print(f"    [DIRBRUTE] Testing {len(directories)} directories...")
             
             for directory in directories[:50]:  # Limit to first 50 directories
@@ -1521,6 +1558,10 @@ class VulnScanner:
                         verify=False,
                         allow_redirects=False
                     )
+                    
+                    # Update request count
+                    self.request_count += 1
+                    self.scan_stats['payload_stats']['dirbrute']['requests_made'] += 1
                     
                     print(f"    [DIRBRUTE] Testing directory: {directory} -> {response.status_code} ({len(response.text)} bytes)")
                     
@@ -1554,6 +1595,10 @@ class VulnScanner:
                         has_listing = DirBruteDetector.detect_directory_listing(response.text)
                         severity = 'Medium' if has_listing else 'Low'
                         
+                        # Update successful payload count
+                        self.scan_stats['payload_stats']['dirbrute']['successful_payloads'] += 1
+                        self.scan_stats['total_payloads_used'] += 1
+                        
                         results.append({
                             'module': 'dirbrute',
                             'target': test_url,
@@ -1580,6 +1625,10 @@ class VulnScanner:
             
             # Test common files in root directory
             files = DirBrutePayloads.get_all_files()
+            
+            # Update payload stats for files
+            self.scan_stats['payload_stats']['dirbrute']['payloads_used'] += len(files)
+            
             print(f"    [DIRBRUTE] Testing {len(files)} files...")
             
             for file in files[:50]:  # Limit to first 50 files
