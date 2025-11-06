@@ -32,10 +32,16 @@ Examples:
     # Scanning options
     parser.add_argument('--modules', default='all',
                        help='Comma-separated list of modules to run (default: all)')
+    parser.add_argument('--all-modules', action='store_true',
+                       help='Use all available modules')
     parser.add_argument('--threads', type=int, default=5,
                        help='Number of threads to use (default: 5)')
     parser.add_argument('--timeout', type=int, default=10,
                        help='Request timeout in seconds (default: 10)')
+    parser.add_argument('--scan-timeout', type=int,
+                       help='Maximum scan time in seconds')
+    parser.add_argument('--max-time', type=int,
+                       help='Maximum scan time in minutes')
     parser.add_argument('--delay', type=float, default=0,
                        help='Delay between requests in seconds (default: 0)')
     parser.add_argument('--request-limit', type=int, default=None,
@@ -86,7 +92,7 @@ Examples:
         if not hasattr(args, 'auth'):
             args.auth = None
         if not hasattr(args, 'all'):
-            args.all = (args.modules == 'all')
+            args.all = (args.modules == 'all' or args.all_modules)
         if not hasattr(args, 'limit'):
             args.limit = args.request_limit
         if not hasattr(args, 'page_limit'):
