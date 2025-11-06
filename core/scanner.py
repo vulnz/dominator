@@ -38,6 +38,8 @@ try:
     from payloads.nosql_injection_payloads import NoSQLInjectionPayloads
     from payloads.ssti_payloads import SSTIPayloads
     from payloads.crlf_payloads import CRLFPayloads
+    from payloads.textinjection_payloads import TextInjectionPayloads
+    from payloads.htmlinjection_payloads import HTMLInjectionPayloads
 except ImportError as e:
     print(f"Warning: Could not import payload classes: {e}")
     # Create dummy classes to prevent crashes
@@ -50,7 +52,7 @@ except ImportError as e:
     DirBrutePayloads = GitPayloads = DirectoryTraversalPayloads = DummyPayloads
     SSRFPayloads = RFIPayloads = BlindXSSPayloads = PHPInfoPayloads = DummyPayloads
     XXEPayloads = CommandInjectionPayloads = IDORPayloads = NoSQLInjectionPayloads = DummyPayloads
-    SSTIPayloads = CRLFPayloads = DummyPayloads
+    SSTIPayloads = CRLFPayloads = TextInjectionPayloads = HTMLInjectionPayloads = DummyPayloads
 
 # Import detector classes with error handling
 try:
@@ -345,6 +347,40 @@ except ImportError:
         def detect_crlf_injection(response_text, response_code, payload, headers):
             return '\r\n' in response_text or '%0d%0a' in payload
 
+try:
+    from detectors.textinjection_detector import TextInjectionDetector
+except ImportError:
+    class TextInjectionDetector:
+        @staticmethod
+        def detect_text_injection(response_text, response_code, payload):
+            return payload in response_text
+        @staticmethod
+        def get_evidence(payload, response_text):
+            return f"Text injection detected with payload: {payload}"
+        @staticmethod
+        def get_response_snippet(payload, response_text):
+            return response_text[:200] + "..." if len(response_text) > 200 else response_text
+        @staticmethod
+        def get_remediation_advice():
+            return "Implement proper input validation and output encoding."
+
+try:
+    from detectors.htmlinjection_detector import HTMLInjectionDetector
+except ImportError:
+    class HTMLInjectionDetector:
+        @staticmethod
+        def detect_html_injection(response_text, response_code, payload):
+            return payload in response_text and '<' in payload and '>' in payload
+        @staticmethod
+        def get_evidence(payload, response_text):
+            return f"HTML injection detected with payload: {payload}"
+        @staticmethod
+        def get_response_snippet(payload, response_text):
+            return response_text[:200] + "..." if len(response_text) > 200 else response_text
+        @staticmethod
+        def get_remediation_advice():
+            return "Implement proper HTML encoding and Content Security Policy (CSP)."
+
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -476,64 +512,68 @@ class VulnScanner:
             # Add main page to testing list
             all_found_pages.append(parsed_data)
             
-            # Always crawl for additional pages
-            print(f"  [DEBUG] Starting enhanced crawler to find additional pages...")
-            crawled_urls = self.crawler.crawl_for_pages(parsed_data['url'])
-            
-            # Update crawler stats
-            self.scan_stats['total_ajax_endpoints'] = len(self.crawler.get_ajax_endpoints())
-            self.scan_stats['total_js_files'] = len(self.crawler.js_urls)
-            
-            if crawled_urls:
-                print(f"  [DEBUG] Crawler found {len(crawled_urls)} additional pages")
-                for url in crawled_urls:
-                    crawled_data = self.url_parser.parse(url)
-                    all_found_pages.append(crawled_data)
-                    
-                    # Update stats
-                    self.scan_stats['total_urls'] += 1
-                    self.scan_stats['total_params'] += len(crawled_data['query_params'])
-            else:
-                print(f"  [DEBUG] No additional pages found by crawler")
-            
-            # Test important pages that might have forms or vulnerabilities
-            important_pages = self._get_important_pages()
-            print(f"  [DEBUG] Testing {len(important_pages)} important pages")
-            
-            for page in important_pages[:40]:  # Increase limit to 40 pages
-                if page.startswith('http'):
-                    test_url = page
-                else:
-                    # Build URL with correct port and base path
-                    port_part = f":{parsed_data['port']}" if parsed_data.get('port') and parsed_data['port'] != 80 else ""
-                    base_path = parsed_data.get('path', '/').rstrip('/')
-                    test_url = f"{parsed_data['scheme']}://{parsed_data['host']}{port_part}{base_path}{page}"
+            # Check if single URL mode is enabled
+            if not self.config.single_url:
+                # Always crawl for additional pages
+                print(f"  [DEBUG] Starting enhanced crawler to find additional pages...")
+                crawled_urls = self.crawler.crawl_for_pages(parsed_data['url'])
                 
-                try:
-                    print(f"  [DEBUG] Testing important page: {test_url}")
-                    test_response = requests.get(test_url, timeout=15, verify=False)
-                    if test_response.status_code == 200:
-                        page_data = self.url_parser.parse(test_url)
-                        
-                        # Extract forms from the page
-                        forms = self.url_parser.extract_forms(test_response.text)
-                        page_data['forms'] = forms
-                        self.scan_stats['total_forms'] += len(forms)
-                        
-                        all_found_pages.append(page_data)
+                # Update crawler stats
+                self.scan_stats['total_ajax_endpoints'] = len(self.crawler.get_ajax_endpoints())
+                self.scan_stats['total_js_files'] = len(self.crawler.js_urls)
+                
+                if crawled_urls:
+                    print(f"  [DEBUG] Crawler found {len(crawled_urls)} additional pages")
+                    for url in crawled_urls:
+                        crawled_data = self.url_parser.parse(url)
+                        all_found_pages.append(crawled_data)
                         
                         # Update stats
                         self.scan_stats['total_urls'] += 1
-                        self.scan_stats['total_params'] += len(page_data['query_params'])
-                        
-                        print(f"  [DEBUG] Page has {len(page_data['query_params'])} parameters and {len(forms)} forms")
-                    elif test_response.status_code == 404:
-                        print(f"  [DEBUG] Page not found: {test_url}")
+                        self.scan_stats['total_params'] += len(crawled_data['query_params'])
+                else:
+                    print(f"  [DEBUG] No additional pages found by crawler")
+                
+                # Test important pages that might have forms or vulnerabilities
+                important_pages = self._get_important_pages()
+                print(f"  [DEBUG] Testing {len(important_pages)} important pages")
+                
+                for page in important_pages[:40]:  # Increase limit to 40 pages
+                    if page.startswith('http'):
+                        test_url = page
                     else:
-                        print(f"  [DEBUG] Page returned {test_response.status_code}: {test_url}")
-                except Exception as e:
-                    print(f"  [DEBUG] Error testing page {test_url}: {e}")
-                    continue
+                        # Build URL with correct port and base path
+                        port_part = f":{parsed_data['port']}" if parsed_data.get('port') and parsed_data['port'] != 80 else ""
+                        base_path = parsed_data.get('path', '/').rstrip('/')
+                        test_url = f"{parsed_data['scheme']}://{parsed_data['host']}{port_part}{base_path}{page}"
+                    
+                    try:
+                        print(f"  [DEBUG] Testing important page: {test_url}")
+                        test_response = requests.get(test_url, timeout=15, verify=False)
+                        if test_response.status_code == 200:
+                            page_data = self.url_parser.parse(test_url)
+                            
+                            # Extract forms from the page
+                            forms = self.url_parser.extract_forms(test_response.text)
+                            page_data['forms'] = forms
+                            self.scan_stats['total_forms'] += len(forms)
+                            
+                            all_found_pages.append(page_data)
+                            
+                            # Update stats
+                            self.scan_stats['total_urls'] += 1
+                            self.scan_stats['total_params'] += len(page_data['query_params'])
+                            
+                            print(f"  [DEBUG] Page has {len(page_data['query_params'])} parameters and {len(forms)} forms")
+                        elif test_response.status_code == 404:
+                            print(f"  [DEBUG] Page not found: {test_url}")
+                        else:
+                            print(f"  [DEBUG] Page returned {test_response.status_code}: {test_url}")
+                    except Exception as e:
+                        print(f"  [DEBUG] Error testing page {test_url}: {e}")
+                        continue
+            else:
+                print(f"  [DEBUG] Single URL mode enabled - skipping crawler and additional pages")
             
             # Now test ALL found pages with ALL modules
             print(f"  [DEBUG] Testing {len(all_found_pages)} total pages with all modules")
@@ -714,6 +754,10 @@ class VulnScanner:
                 results.extend(self._test_ssti(parsed_data))
             elif module_name == "crlf":
                 results.extend(self._test_crlf(parsed_data))
+            elif module_name == "textinjection":
+                results.extend(self._test_text_injection(parsed_data))
+            elif module_name == "htmlinjection":
+                results.extend(self._test_html_injection(parsed_data))
             else:
                 print(f"    [WARNING] Unknown module: {module_name}")
                 
@@ -3894,6 +3938,180 @@ class VulnScanner:
                         
                 except Exception as e:
                     print(f"    [CRLF] Error testing payload: {e}")
+                    continue
+        
+        return results
+
+    def _test_text_injection(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for Text Injection vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # Get text injection payloads
+        text_payloads = TextInjectionPayloads.get_all_payloads()
+        
+        # Update payload stats
+        if 'textinjection' not in self.scan_stats['payload_stats']:
+            self.scan_stats['payload_stats']['textinjection'] = {'payloads_used': 0, 'requests_made': 0, 'successful_payloads': 0}
+        self.scan_stats['payload_stats']['textinjection']['payloads_used'] += len(text_payloads)
+        
+        # Test GET parameters
+        for param, values in parsed_data['query_params'].items():
+            print(f"    [TEXTINJECTION] Testing parameter: {param}")
+            
+            # Create deduplication key for this parameter
+            param_key = f"textinjection_{base_url.split('?')[0]}_{param}"
+            if param_key in self.found_vulnerabilities:
+                print(f"    [TEXTINJECTION] Skipping parameter {param} - already tested")
+                continue
+            
+            for payload in text_payloads[:20]:  # Test first 20 payloads
+                try:
+                    print(f"    [TEXTINJECTION] Trying payload: {payload[:50]}...")
+                    
+                    # Create test URL
+                    test_params = parsed_data['query_params'].copy()
+                    test_params[param] = [payload]
+                    
+                    # Build query string
+                    query_parts = []
+                    for k, v_list in test_params.items():
+                        for v in v_list:
+                            query_parts.append(f"{k}={v}")
+                    
+                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    
+                    response = requests.get(
+                        test_url,
+                        timeout=self.config.timeout,
+                        headers=self.config.headers,
+                        verify=False
+                    )
+                    
+                    # Update request count
+                    self.request_count += 1
+                    self.scan_stats['payload_stats']['textinjection']['requests_made'] += 1
+                    
+                    print(f"    [TEXTINJECTION] Response code: {response.status_code}")
+                    
+                    # Use Text Injection detector
+                    if TextInjectionDetector.detect_text_injection(response.text, response.status_code, payload):
+                        evidence = TextInjectionDetector.get_evidence(payload, response.text)
+                        response_snippet = TextInjectionDetector.get_response_snippet(payload, response.text)
+                        remediation = TextInjectionDetector.get_remediation_advice()
+                        print(f"    [TEXTINJECTION] VULNERABILITY FOUND! Parameter: {param}")
+                        
+                        # Mark as found to prevent duplicates
+                        self.found_vulnerabilities.add(param_key)
+                        
+                        # Update successful payload count
+                        self.scan_stats['payload_stats']['textinjection']['successful_payloads'] += 1
+                        self.scan_stats['total_payloads_used'] += 1
+                        
+                        results.append({
+                            'module': 'textinjection',
+                            'target': base_url,
+                            'vulnerability': 'Text Injection',
+                            'severity': 'Medium',
+                            'parameter': param,
+                            'payload': payload,
+                            'evidence': evidence,
+                            'request_url': test_url,
+                            'detector': 'TextInjectionDetector.detect_text_injection',
+                            'response_snippet': response_snippet,
+                            'remediation': remediation
+                        })
+                        break  # Found text injection, no need to test more payloads for this param
+                        
+                except Exception as e:
+                    print(f"    [TEXTINJECTION] Error testing payload: {e}")
+                    continue
+        
+        return results
+
+    def _test_html_injection(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for HTML Injection vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # Get HTML injection payloads
+        html_payloads = HTMLInjectionPayloads.get_all_payloads()
+        
+        # Update payload stats
+        if 'htmlinjection' not in self.scan_stats['payload_stats']:
+            self.scan_stats['payload_stats']['htmlinjection'] = {'payloads_used': 0, 'requests_made': 0, 'successful_payloads': 0}
+        self.scan_stats['payload_stats']['htmlinjection']['payloads_used'] += len(html_payloads)
+        
+        # Test GET parameters
+        for param, values in parsed_data['query_params'].items():
+            print(f"    [HTMLINJECTION] Testing parameter: {param}")
+            
+            # Create deduplication key for this parameter
+            param_key = f"htmlinjection_{base_url.split('?')[0]}_{param}"
+            if param_key in self.found_vulnerabilities:
+                print(f"    [HTMLINJECTION] Skipping parameter {param} - already tested")
+                continue
+            
+            for payload in html_payloads[:25]:  # Test first 25 payloads
+                try:
+                    print(f"    [HTMLINJECTION] Trying payload: {payload[:50]}...")
+                    
+                    # Create test URL
+                    test_params = parsed_data['query_params'].copy()
+                    test_params[param] = [payload]
+                    
+                    # Build query string
+                    query_parts = []
+                    for k, v_list in test_params.items():
+                        for v in v_list:
+                            query_parts.append(f"{k}={v}")
+                    
+                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    
+                    response = requests.get(
+                        test_url,
+                        timeout=self.config.timeout,
+                        headers=self.config.headers,
+                        verify=False
+                    )
+                    
+                    # Update request count
+                    self.request_count += 1
+                    self.scan_stats['payload_stats']['htmlinjection']['requests_made'] += 1
+                    
+                    print(f"    [HTMLINJECTION] Response code: {response.status_code}")
+                    
+                    # Use HTML Injection detector
+                    if HTMLInjectionDetector.detect_html_injection(response.text, response.status_code, payload):
+                        evidence = HTMLInjectionDetector.get_evidence(payload, response.text)
+                        response_snippet = HTMLInjectionDetector.get_response_snippet(payload, response.text)
+                        remediation = HTMLInjectionDetector.get_remediation_advice()
+                        print(f"    [HTMLINJECTION] VULNERABILITY FOUND! Parameter: {param}")
+                        
+                        # Mark as found to prevent duplicates
+                        self.found_vulnerabilities.add(param_key)
+                        
+                        # Update successful payload count
+                        self.scan_stats['payload_stats']['htmlinjection']['successful_payloads'] += 1
+                        self.scan_stats['total_payloads_used'] += 1
+                        
+                        results.append({
+                            'module': 'htmlinjection',
+                            'target': base_url,
+                            'vulnerability': 'HTML Injection',
+                            'severity': 'Medium',
+                            'parameter': param,
+                            'payload': payload,
+                            'evidence': evidence,
+                            'request_url': test_url,
+                            'detector': 'HTMLInjectionDetector.detect_html_injection',
+                            'response_snippet': response_snippet,
+                            'remediation': remediation
+                        })
+                        break  # Found HTML injection, no need to test more payloads for this param
+                        
+                except Exception as e:
+                    print(f"    [HTMLINJECTION] Error testing payload: {e}")
                     continue
         
         return results
