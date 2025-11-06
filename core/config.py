@@ -1,15 +1,15 @@
 """
-Конфигурация сканера
+Scanner configuration
 """
 
 import os
 from typing import List, Dict, Optional
 
 class Config:
-    """Класс конфигурации сканера"""
+    """Scanner configuration class"""
     
     def __init__(self, args):
-        """Инициализация конфигурации из аргументов"""
+        """Initialize configuration from arguments"""
         self.target = args.target
         self.target_file = args.file
         self.headers = self._parse_headers(args.headers, args.headers_file)
@@ -24,7 +24,7 @@ class Config:
         self.output_file = args.output
         self.output_format = args.format
         
-        # Пути к папкам
+        # Directory paths
         self.modules_dir = "modules"
         self.payloads_dir = "payloads"
         self.detectors_dir = "detectors"
@@ -34,14 +34,14 @@ class Config:
         """Parse HTTP headers"""
         result = {}
         
-        # Из аргументов командной строки
+        # From command line arguments
         if headers:
             for header in headers:
                 if ':' in header:
                     key, value = header.split(':', 1)
                     result[key.strip()] = value.strip()
         
-        # Из файла
+        # From file
         if headers_file and os.path.exists(headers_file):
             with open(headers_file, 'r', encoding='utf-8') as f:
                 for line in f:
@@ -71,11 +71,11 @@ class Config:
         """Get list of targets for scanning"""
         targets = []
         
-        # Из параметра -t
+        # From -t parameter
         if self.target:
             targets.append(self.target)
         
-        # Из файла
+        # From file
         if self.target_file and os.path.exists(self.target_file):
             with open(self.target_file, 'r', encoding='utf-8') as f:
                 for line in f:

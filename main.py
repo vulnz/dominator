@@ -12,12 +12,12 @@ from core.config import Config
 from utils.file_handler import FileHandler
 
 def create_parser():
-    """Создание парсера аргументов командной строки"""
+    """Create command line argument parser"""
     parser = argparse.ArgumentParser(
         description='Web Vulnerability Scanner',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Примеры использования:
+Usage examples:
   python main.py -t example.com
   python main.py -t 192.168.1.1:8080
   python main.py -t https://example.com/path
