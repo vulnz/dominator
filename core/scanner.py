@@ -23,15 +23,15 @@ class VulnScanner:
         self.request_count = 0
         
     def scan(self) -> List[Dict[str, Any]]:
-        """Основной метод сканирования"""
+        """Main scanning method"""
         targets = self.config.get_targets()
         
         if not targets:
-            raise ValueError("Не найдено целей для сканирования")
+            raise ValueError("No targets found for scanning")
         
-        print(f"Найдено целей: {len(targets)}")
-        print(f"Модули: {', '.join(self.config.modules)}")
-        print(f"Потоков: {self.config.threads}")
+        print(f"Targets found: {len(targets)}")
+        print(f"Modules: {', '.join(self.config.modules)}")
+        print(f"Threads: {self.config.threads}")
         print("-" * 50)
         
         # Многопоточное сканирование
@@ -52,16 +52,16 @@ class VulnScanner:
                     if result:
                         self.results.extend(result)
                 except Exception as e:
-                    print(f"Ошибка при сканировании: {e}")
+                    print(f"Scanning error: {e}")
         
         return self.results
     
     def _scan_target(self, target: str) -> List[Dict[str, Any]]:
-        """Сканирование одной цели"""
+        """Scan single target"""
         target_results = []
         
         try:
-            print(f"Сканирование: {target}")
+            print(f"Scanning: {target}")
             
             # Парсинг URL и извлечение точек инъекции
             parsed_data = self.url_parser.parse(target)
@@ -75,18 +75,18 @@ class VulnScanner:
                 target_results.extend(module_results)
             
         except Exception as e:
-            print(f"Ошибка при сканировании {target}: {e}")
+            print(f"Error scanning {target}: {e}")
         
         return target_results
     
     def _run_module(self, module_name: str, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Запуск модуля сканирования"""
+        """Run scanning module"""
         results = []
         
         try:
-            # Здесь будет загрузка и запуск модуля
-            # Пока что заглушка
-            print(f"  Модуль {module_name}: проверка...")
+            # Module loading and execution will be here
+            # Placeholder for now
+            print(f"  Module {module_name}: checking...")
             
             # Имитация работы модуля
             time.sleep(0.1)
@@ -105,18 +105,18 @@ class VulnScanner:
                 })
             
         except Exception as e:
-            print(f"Ошибка в модуле {module_name}: {e}")
+            print(f"Error in module {module_name}: {e}")
         
         return results
     
     def _should_stop(self) -> bool:
-        """Проверка условий остановки сканирования"""
+        """Check scan stop conditions"""
         if self.config.request_limit and self.request_count >= self.config.request_limit:
             return True
         return False
     
     def save_report(self, results: List[Dict[str, Any]], filename: str, format_type: str):
-        """Сохранение отчета"""
+        """Save report"""
         if format_type == 'json':
             self.file_handler.save_json(results, filename)
         elif format_type == 'xml':
@@ -127,18 +127,18 @@ class VulnScanner:
             self.file_handler.save_txt(results, filename)
     
     def print_results(self, results: List[Dict[str, Any]]):
-        """Вывод результатов в консоль"""
+        """Print results to console"""
         if not results:
-            print("Уязвимости не найдены")
+            print("No vulnerabilities found")
             return
         
-        print(f"\nНайдено уязвимостей: {len(results)}")
+        print(f"\nVulnerabilities found: {len(results)}")
         print("=" * 60)
         
         for i, result in enumerate(results, 1):
             print(f"{i}. {result.get('vulnerability', 'Unknown')}")
-            print(f"   Цель: {result.get('target', '')}")
-            print(f"   Модуль: {result.get('module', '')}")
-            print(f"   Серьезность: {result.get('severity', '')}")
-            print(f"   Параметр: {result.get('parameter', '')}")
+            print(f"   Target: {result.get('target', '')}")
+            print(f"   Module: {result.get('module', '')}")
+            print(f"   Severity: {result.get('severity', '')}")
+            print(f"   Parameter: {result.get('parameter', '')}")
             print("-" * 40)

@@ -31,7 +31,7 @@ class Config:
         self.templates_dir = "report/templates"
         
     def _parse_headers(self, headers: Optional[List[str]], headers_file: Optional[str]) -> Dict[str, str]:
-        """Парсинг HTTP заголовков"""
+        """Parse HTTP headers"""
         result = {}
         
         # Из аргументов командной строки
@@ -53,7 +53,7 @@ class Config:
         return result
     
     def _parse_modules(self, modules_str: Optional[str], use_all: bool) -> List[str]:
-        """Парсинг модулей сканирования"""
+        """Parse scanning modules"""
         if modules_str:
             return [m.strip() for m in modules_str.split(',')]
         elif use_all:
@@ -62,13 +62,13 @@ class Config:
             return []
     
     def _parse_exclude(self, exclude_str: Optional[str]) -> List[str]:
-        """Парсинг исключаемых путей"""
+        """Parse excluded paths"""
         if exclude_str:
             return [path.strip() for path in exclude_str.split(',')]
         return []
     
     def get_targets(self) -> List[str]:
-        """Получить список целей для сканирования"""
+        """Get list of targets for scanning"""
         targets = []
         
         # Из параметра -t

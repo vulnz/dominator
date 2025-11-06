@@ -11,12 +11,12 @@ class FileHandler:
     """Класс для работы с файлами"""
     
     def save_json(self, data: List[Dict[str, Any]], filename: str):
-        """Сохранение в JSON формате"""
+        """Save in JSON format"""
         with open(filename, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     
     def save_xml(self, data: List[Dict[str, Any]], filename: str):
-        """Сохранение в XML формате"""
+        """Save in XML format"""
         root = ET.Element("scan_results")
         
         for item in data:
@@ -29,26 +29,26 @@ class FileHandler:
         tree.write(filename, encoding='utf-8', xml_declaration=True)
     
     def save_txt(self, data: List[Dict[str, Any]], filename: str):
-        """Сохранение в текстовом формате"""
+        """Save in text format"""
         with open(filename, 'w', encoding='utf-8') as f:
             f.write("Web Vulnerability Scanner Report\n")
             f.write("=" * 50 + "\n\n")
             
             if not data:
-                f.write("Уязвимости не найдены\n")
+                f.write("No vulnerabilities found\n")
                 return
             
             for i, item in enumerate(data, 1):
                 f.write(f"{i}. {item.get('vulnerability', 'Unknown')}\n")
-                f.write(f"   Цель: {item.get('target', '')}\n")
-                f.write(f"   Модуль: {item.get('module', '')}\n")
-                f.write(f"   Серьезность: {item.get('severity', '')}\n")
-                f.write(f"   Параметр: {item.get('parameter', '')}\n")
+                f.write(f"   Target: {item.get('target', '')}\n")
+                f.write(f"   Module: {item.get('module', '')}\n")
+                f.write(f"   Severity: {item.get('severity', '')}\n")
+                f.write(f"   Parameter: {item.get('parameter', '')}\n")
                 f.write(f"   Payload: {item.get('payload', '')}\n")
                 f.write("-" * 40 + "\n")
     
     def save_html(self, data: List[Dict[str, Any]], filename: str):
-        """Сохранение в HTML формате"""
+        """Save in HTML format"""
         html_template = """
 <!DOCTYPE html>
 <html>
@@ -67,7 +67,7 @@ class FileHandler:
 <body>
     <div class="header">
         <h1>Web Vulnerability Scanner Report</h1>
-        <p>Найдено уязвимостей: {count}</p>
+        <p>Vulnerabilities found: {count}</p>
     </div>
     {vulnerabilities}
 </body>
@@ -77,19 +77,19 @@ class FileHandler:
         vulnerabilities_html = ""
         
         if not data:
-            vulnerabilities_html = "<p>Уязвимости не найдены</p>"
+            vulnerabilities_html = "<p>No vulnerabilities found</p>"
         else:
             for item in data:
                 severity = item.get('severity', 'info').lower()
                 vuln_html = f"""
                 <div class="vulnerability {severity}">
                     <h3>{item.get('vulnerability', 'Unknown')}</h3>
-                    <p><strong>Цель:</strong> {item.get('target', '')}</p>
-                    <p><strong>Модуль:</strong> {item.get('module', '')}</p>
-                    <p><strong>Серьезность:</strong> {item.get('severity', '')}</p>
-                    <p><strong>Параметр:</strong> {item.get('parameter', '')}</p>
+                    <p><strong>Target:</strong> {item.get('target', '')}</p>
+                    <p><strong>Module:</strong> {item.get('module', '')}</p>
+                    <p><strong>Severity:</strong> {item.get('severity', '')}</p>
+                    <p><strong>Parameter:</strong> {item.get('parameter', '')}</p>
                     <p><strong>Payload:</strong> <code>{item.get('payload', '')}</code></p>
-                    <p><strong>Доказательство:</strong> {item.get('evidence', '')}</p>
+                    <p><strong>Evidence:</strong> {item.get('evidence', '')}</p>
                 </div>
                 """
                 vulnerabilities_html += vuln_html
@@ -103,7 +103,7 @@ class FileHandler:
             f.write(final_html)
     
     def read_file_lines(self, filename: str) -> List[str]:
-        """Чтение строк из файла"""
+        """Read lines from file"""
         if not os.path.exists(filename):
             return []
         

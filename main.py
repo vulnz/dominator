@@ -27,58 +27,58 @@ def create_parser():
         """
     )
     
-    # Основные параметры
+    # Main parameters
     parser.add_argument('-t', '--target', 
-                       help='Цель сканирования (IP, домен, URL, IP:порт, URL:порт, подсеть)')
+                       help='Scan target (IP, domain, URL, IP:port, URL:port, subnet)')
     parser.add_argument('-f', '--file', 
-                       help='Файл с целями для сканирования')
+                       help='File with targets for scanning')
     
-    # HTTP параметры
+    # HTTP parameters
     parser.add_argument('-H', '--headers', action='append',
-                       help='HTTP заголовки (можно использовать несколько раз)')
+                       help='HTTP headers (can be used multiple times)')
     parser.add_argument('-hf', '--headers-file',
-                       help='Файл с HTTP заголовками')
+                       help='File with HTTP headers')
     parser.add_argument('-c', '--cookies',
                        help='HTTP cookies')
     parser.add_argument('-a', '--auth',
                        choices=['jwt', 'basic'],
-                       help='Тип авторизации')
+                       help='Authorization type')
     
-    # Параметры сканирования
+    # Scanning parameters
     parser.add_argument('-m', '--modules', 
-                       help='Модули сканирования (через запятую)')
+                       help='Scanning modules (comma separated)')
     parser.add_argument('--all', action='store_true', default=True,
-                       help='Использовать все модули (по умолчанию)')
+                       help='Use all modules (default)')
     parser.add_argument('--exclude',
-                       help='Исключить пути из сканирования')
+                       help='Exclude paths from scanning')
     parser.add_argument('--timeout', type=int, default=10,
-                       help='Таймаут запросов в секундах')
+                       help='Request timeout in seconds')
     parser.add_argument('--threads', type=int, default=10,
-                       help='Количество потоков')
+                       help='Number of threads')
     parser.add_argument('--limit', type=int,
-                       help='Лимит запросов перед завершением')
+                       help='Request limit before scan finish')
     parser.add_argument('--page-limit', type=int,
-                       help='Лимит страниц для сканирования')
+                       help='Page limit for scanning')
     
-    # Отчеты
+    # Reports
     parser.add_argument('-o', '--output',
-                       help='Файл для сохранения отчета')
+                       help='File to save report')
     parser.add_argument('--format', 
                        choices=['xml', 'json', 'txt', 'html'],
                        default='txt',
-                       help='Формат отчета')
+                       help='Report format')
     
-    # Информационные команды
+    # Information commands
     parser.add_argument('--modules-list', action='store_true',
-                       help='Показать все доступные модули')
+                       help='Show all available modules')
     parser.add_argument('--help-examples', action='store_true',
-                       help='Показать примеры использования')
+                       help='Show usage examples')
     
     return parser
 
 def show_modules():
-    """Показать все доступные модули"""
-    print("Доступные модули сканирования:")
+    """Show all available modules"""
+    print("Available scanning modules:")
     print("- xss: Cross-Site Scripting")
     print("- sqli: SQL Injection")
     print("- lfi: Local File Inclusion")
@@ -89,44 +89,44 @@ def show_modules():
     print("- ssrf: Server-Side Request Forgery")
 
 def main():
-    """Основная функция"""
+    """Main function"""
     parser = create_parser()
     args = parser.parse_args()
     
-    # Показать модули и выйти
+    # Show modules and exit
     if args.modules_list:
         show_modules()
         return
     
-    # Проверить обязательные параметры
+    # Check required parameters
     if not args.target and not args.file:
-        print("Ошибка: Необходимо указать цель (-t) или файл с целями (-f)")
+        print("Error: Must specify target (-t) or targets file (-f)")
         parser.print_help()
         sys.exit(1)
     
     try:
-        # Создать конфигурацию
+        # Create configuration
         config = Config(args)
         
-        # Создать сканер
+        # Create scanner
         scanner = VulnScanner(config)
         
-        # Запустить сканирование
-        print(f"Запуск сканирования...")
+        # Start scanning
+        print(f"Starting scan...")
         results = scanner.scan()
         
-        # Сохранить результаты
+        # Save results
         if args.output:
             scanner.save_report(results, args.output, args.format)
-            print(f"Отчет сохранен в {args.output}")
+            print(f"Report saved to {args.output}")
         else:
             scanner.print_results(results)
             
     except KeyboardInterrupt:
-        print("\nСканирование прервано пользователем")
+        print("\nScan interrupted by user")
         sys.exit(1)
     except Exception as e:
-        print(f"Ошибка: {e}")
+        print(f"Error: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
