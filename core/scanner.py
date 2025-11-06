@@ -990,6 +990,13 @@ class VulnScanner:
         for param, values in parsed_data['query_params'].items():
             print(f"    [SQLI] Testing parameter: {param}")
             
+            # Create deduplication key for this parameter and base URL
+            base_url_clean = base_url.split('?')[0]
+            param_key = f"sqli_{base_url_clean}_{param}"
+            if param_key in self.found_vulnerabilities:
+                print(f"    [SQLI] Skipping parameter {param} - already tested")
+                continue
+            
             for payload in sqli_payloads:
                 try:
                     print(f"    [SQLI] Trying payload: {payload[:50]}...")
