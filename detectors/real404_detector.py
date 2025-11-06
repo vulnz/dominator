@@ -36,6 +36,43 @@ class Real404Detector:
         ]
     
     @staticmethod
+    def get_php_error_indicators() -> List[str]:
+        """Get PHP error indicators that suggest invalid paths"""
+        return [
+            # PHP database errors (common when invalid paths cause SQL issues)
+            'mysql_fetch_array() expects parameter 1 to be resource, null given',
+            'mysql_fetch_array() expects parameter 1 to be resource',
+            'mysql_query() expects parameter 1 to be string, null given',
+            'mysql_num_rows() expects parameter 1 to be resource',
+            'mysqli_fetch_array() expects parameter 1 to be mysqli_result',
+            'mysqli_query() expects parameter 1 to be mysqli',
+            
+            # PHP file/path errors
+            'failed to open stream: no such file or directory',
+            'include(): failed opening',
+            'require(): failed opening',
+            'fopen(): failed to open stream',
+            'file_get_contents(): failed to open stream',
+            
+            # PHP undefined variable/index errors (common with invalid parameters)
+            'undefined index:', 'undefined variable:',
+            'undefined offset:', 'undefined property:',
+            
+            # PHP function errors
+            'call to undefined function',
+            'fatal error:', 'parse error:',
+            'warning:', 'notice:', 'strict standards:',
+            
+            # ASP.NET errors
+            'server error in', 'runtime error',
+            'compilation error', 'parser error',
+            
+            # General application errors
+            'application error', 'system error',
+            'database error', 'connection error'
+        ]
+    
+    @staticmethod
     def get_valid_content_indicators() -> List[str]:
         """Get indicators that suggest valid content (not 404)"""
         return [
@@ -281,11 +318,19 @@ class Real404Detector:
             confidence += 0.4
             evidence_parts.append(f"404 indicators: {', '.join(found_indicators[:3])}")
         
+        # Check for PHP/application error indicators (high confidence for 404)
+        php_errors = Real404Detector.get_php_error_indicators()
+        found_php_errors = [err for err in php_errors if err.lower() in response_lower]
+        
+        if found_php_errors:
+            confidence += 0.7  # High confidence - technical errors usually indicate invalid paths
+            evidence_parts.append(f"PHP/App errors: {', '.join(found_php_errors[:2])}")
+        
         # Check for valid content indicators (negative evidence)
         valid_indicators = Real404Detector.get_valid_content_indicators()
         found_valid = [ind for ind in valid_indicators if ind.lower() in response_lower]
         
-        if found_valid:
+        if found_valid and not found_php_errors:  # Don't reduce confidence if we have PHP errors
             confidence -= 0.3  # Reduce confidence if valid content found
             evidence_parts.append(f"Valid content found: {len(found_valid)} indicators")
         
@@ -337,6 +382,20 @@ class Real404Detector:
         
         if not has_template:
             return False, "Different template or no template detected", 0.0
+        
+        # Check for PHP errors in template (strong indicator of 404)
+        php_error_patterns = [
+            r'warning:.*mysql_fetch_array\(\).*expects parameter 1 to be resource',
+            r'warning:.*mysql_.*\(\).*expects parameter',
+            r'warning:.*failed to open stream',
+            r'fatal error:', r'parse error:', r'notice:.*undefined'
+        ]
+        
+        has_php_errors = any(re.search(pattern, response_lower, re.IGNORECASE) 
+                           for pattern in php_error_patterns)
+        
+        if has_template and has_php_errors:
+            return True, "Template with PHP errors (invalid path)", 0.8
         
         # If it has the same template, check if the main content area is missing/different
         content_indicators = [
