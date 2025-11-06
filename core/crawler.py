@@ -43,6 +43,16 @@ class WebCrawler:
                 print(f"    [CRAWLER] Analyzing URLs for parameters...")
                 for i, url in enumerate(urls[:max_pages]):
                     try:
+                        # Handle relative paths
+                        if url.startswith('/'):
+                            from urllib.parse import urlparse
+                            parsed_base = urlparse(base_url)
+                            url = f"{parsed_base.scheme}://{parsed_base.netloc}{url}"
+                        elif not url.startswith(('http://', 'https://')):
+                            # Handle relative paths without leading slash
+                            from urllib.parse import urljoin
+                            url = urljoin(base_url, url)
+                        
                         print(f"    [CRAWLER] Checking URL {i+1}/{min(len(urls), max_pages)}: {url}")
                         
                         # Skip non-HTTP URLs and fragments
@@ -81,6 +91,15 @@ class WebCrawler:
             print(f"    [CRAWLER] No parameters found, trying to crawl individual pages...")
             for url in urls[:5]:  # Try first 5 pages
                 try:
+                    # Handle relative paths
+                    if url.startswith('/'):
+                        from urllib.parse import urlparse
+                        parsed_base = urlparse(base_url)
+                        url = f"{parsed_base.scheme}://{parsed_base.netloc}{url}"
+                    elif not url.startswith(('http://', 'https://')):
+                        from urllib.parse import urljoin
+                        url = urljoin(base_url, url)
+                    
                     if self._is_same_domain(url, base_url):
                         print(f"    [CRAWLER] Crawling page: {url}")
                         sub_urls = self._crawl_single_page(url)
