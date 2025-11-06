@@ -13,8 +13,8 @@ from core.config import Config
 from core.url_parser import URLParser
 from core.crawler import WebCrawler
 from utils.file_handler import FileHandler
-from payloads import XSSPayloads, SQLiPayloads, LFIPayloads, CSRFPayloads, DirBrutePayloads, GitPayloads, DirectoryTraversalPayloads
-from detectors import XSSDetector, SQLiDetector, LFIDetector, CSRFDetector, DirBruteDetector, Real404Detector, GitDetector, DirectoryTraversalDetector, SecurityHeadersDetector
+from payloads import XSSPayloads, SQLiPayloads, LFIPayloads, CSRFPayloads, DirBrutePayloads, GitPayloads, DirectoryTraversalPayloads, SSRFPayloads, RFIPayloads
+from detectors import XSSDetector, SQLiDetector, LFIDetector, CSRFDetector, DirBruteDetector, Real404Detector, GitDetector, DirectoryTraversalDetector, SecurityHeadersDetector, SSRFDetector, RFIDetector, VersionDisclosureDetector, ClickjackingDetector
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -239,6 +239,14 @@ class VulnScanner:
                 results.extend(self._test_directory_traversal(parsed_data))
             elif module_name == "secheaders":
                 results.extend(self._test_security_headers(parsed_data))
+            elif module_name == "ssrf":
+                results.extend(self._test_ssrf(parsed_data))
+            elif module_name == "rfi":
+                results.extend(self._test_rfi(parsed_data))
+            elif module_name == "versiondisclosure":
+                results.extend(self._test_version_disclosure(parsed_data))
+            elif module_name == "clickjacking":
+                results.extend(self._test_clickjacking(parsed_data))
             # Add more modules as needed
                 
         except Exception as e:
@@ -1119,6 +1127,256 @@ class VulnScanner:
             
         except Exception as e:
             print(f"    [SECHEADERS] Error during security headers testing: {e}")
+        
+        return results
+    
+    def _test_ssrf(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for SSRF vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # Get SSRF payloads
+        ssrf_payloads = SSRFPayloads.get_all_payloads()
+        
+        # Test GET parameters
+        for param, values in parsed_data['query_params'].items():
+            print(f"    [SSRF] Testing parameter: {param}")
+            
+            # Create deduplication key for this parameter
+            param_key = f"ssrf_{base_url.split('?')[0]}_{param}"
+            if param_key in self.found_vulnerabilities:
+                print(f"    [SSRF] Skipping parameter {param} - already tested")
+                continue
+            
+            for payload in ssrf_payloads[:10]:  # Test first 10 payloads
+                try:
+                    print(f"    [SSRF] Trying payload: {payload[:50]}...")
+                    
+                    # Create test URL
+                    test_params = parsed_data['query_params'].copy()
+                    test_params[param] = [payload]
+                    
+                    # Build query string
+                    query_parts = []
+                    for k, v_list in test_params.items():
+                        for v in v_list:
+                            query_parts.append(f"{k}={v}")
+                    
+                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    print(f"    [SSRF] Request URL: {test_url}")
+                    
+                    response = requests.get(
+                        test_url,
+                        timeout=self.config.timeout,
+                        headers=self.config.headers,
+                        verify=False
+                    )
+                    
+                    print(f"    [SSRF] Response code: {response.status_code}")
+                    
+                    # Use SSRF detector
+                    if SSRFDetector.detect_ssrf(response.text, response.status_code, payload):
+                        evidence = SSRFDetector.get_evidence(payload, response.text)
+                        response_snippet = SSRFDetector.get_response_snippet(payload, response.text)
+                        print(f"    [SSRF] VULNERABILITY FOUND! Parameter: {param}")
+                        
+                        # Mark as found to prevent duplicates
+                        self.found_vulnerabilities.add(param_key)
+                        
+                        results.append({
+                            'module': 'ssrf',
+                            'target': base_url,
+                            'vulnerability': 'Server-Side Request Forgery',
+                            'severity': 'High',
+                            'parameter': param,
+                            'payload': payload,
+                            'evidence': evidence,
+                            'request_url': test_url,
+                            'detector': 'SSRFDetector.detect_ssrf',
+                            'response_snippet': response_snippet
+                        })
+                        break  # Found SSRF, no need to test more payloads for this param
+                        
+                except Exception as e:
+                    print(f"    [SSRF] Error testing payload: {e}")
+                    continue
+        
+        return results
+    
+    def _test_rfi(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for RFI vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # Get RFI payloads
+        rfi_payloads = RFIPayloads.get_all_payloads()
+        
+        # Test GET parameters
+        for param, values in parsed_data['query_params'].items():
+            print(f"    [RFI] Testing parameter: {param}")
+            
+            # Create deduplication key for this parameter
+            param_key = f"rfi_{base_url.split('?')[0]}_{param}"
+            if param_key in self.found_vulnerabilities:
+                print(f"    [RFI] Skipping parameter {param} - already tested")
+                continue
+            
+            for payload in rfi_payloads[:15]:  # Test first 15 payloads
+                try:
+                    print(f"    [RFI] Trying payload: {payload[:50]}...")
+                    
+                    # Create test URL
+                    test_params = parsed_data['query_params'].copy()
+                    test_params[param] = [payload]
+                    
+                    # Build query string
+                    query_parts = []
+                    for k, v_list in test_params.items():
+                        for v in v_list:
+                            query_parts.append(f"{k}={v}")
+                    
+                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    print(f"    [RFI] Request URL: {test_url}")
+                    
+                    response = requests.get(
+                        test_url,
+                        timeout=self.config.timeout,
+                        headers=self.config.headers,
+                        verify=False
+                    )
+                    
+                    print(f"    [RFI] Response code: {response.status_code}")
+                    
+                    # Use RFI detector
+                    if RFIDetector.detect_rfi(response.text, response.status_code, payload):
+                        evidence = RFIDetector.get_evidence(payload, response.text)
+                        response_snippet = RFIDetector.get_response_snippet(payload, response.text)
+                        print(f"    [RFI] VULNERABILITY FOUND! Parameter: {param}")
+                        
+                        # Mark as found to prevent duplicates
+                        self.found_vulnerabilities.add(param_key)
+                        
+                        results.append({
+                            'module': 'rfi',
+                            'target': base_url,
+                            'vulnerability': 'Remote File Inclusion',
+                            'severity': 'High',
+                            'parameter': param,
+                            'payload': payload,
+                            'evidence': evidence,
+                            'request_url': test_url,
+                            'detector': 'RFIDetector.detect_rfi',
+                            'response_snippet': response_snippet
+                        })
+                        break  # Found RFI, no need to test more payloads for this param
+                        
+                except Exception as e:
+                    print(f"    [RFI] Error testing payload: {e}")
+                    continue
+        
+        return results
+    
+    def _test_version_disclosure(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for version disclosure vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        try:
+            print(f"    [VERSIONDISCLOSURE] Testing version disclosure...")
+            
+            # Make request to get headers and content
+            response = requests.get(
+                base_url,
+                timeout=self.config.timeout,
+                headers=self.config.headers,
+                verify=False
+            )
+            
+            print(f"    [VERSIONDISCLOSURE] Response code: {response.status_code}")
+            
+            # Skip if error response
+            if response.status_code >= 400:
+                print(f"    [VERSIONDISCLOSURE] Skipping - error response ({response.status_code})")
+                return results
+            
+            # Check for version disclosures
+            disclosures = VersionDisclosureDetector.detect_version_disclosure(response.text, response.headers)
+            
+            if disclosures:
+                print(f"    [VERSIONDISCLOSURE] Found {len(disclosures)} version disclosures")
+                
+                for disclosure in disclosures:
+                    severity = VersionDisclosureDetector.get_severity(disclosure['software'], disclosure['version'])
+                    evidence = f"Version disclosure: {disclosure['software']} {disclosure['version']} found in {disclosure['location']}"
+                    
+                    results.append({
+                        'module': 'versiondisclosure',
+                        'target': base_url,
+                        'vulnerability': f'Version Disclosure ({disclosure["software"].title()})',
+                        'severity': severity,
+                        'parameter': f'version: {disclosure["software"]}',
+                        'payload': 'N/A',
+                        'evidence': evidence,
+                        'request_url': base_url,
+                        'detector': 'VersionDisclosureDetector.detect_version_disclosure',
+                        'response_snippet': f'Version: {disclosure["version"]}'
+                    })
+            else:
+                print(f"    [VERSIONDISCLOSURE] No version disclosures found")
+            
+        except Exception as e:
+            print(f"    [VERSIONDISCLOSURE] Error during version disclosure testing: {e}")
+        
+        return results
+    
+    def _test_clickjacking(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for clickjacking vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        try:
+            print(f"    [CLICKJACKING] Testing clickjacking protection...")
+            
+            # Make request to get headers
+            response = requests.get(
+                base_url,
+                timeout=self.config.timeout,
+                headers=self.config.headers,
+                verify=False
+            )
+            
+            print(f"    [CLICKJACKING] Response code: {response.status_code}")
+            
+            # Skip if error response
+            if response.status_code >= 400:
+                print(f"    [CLICKJACKING] Skipping - error response ({response.status_code})")
+                return results
+            
+            # Check for clickjacking protection
+            clickjacking_result = ClickjackingDetector.detect_clickjacking(response.headers)
+            
+            if clickjacking_result['vulnerable']:
+                print(f"    [CLICKJACKING] VULNERABILITY FOUND! Missing clickjacking protection")
+                
+                severity = 'Medium' if clickjacking_result['missing_headers'] else 'Low'
+                
+                results.append({
+                    'module': 'clickjacking',
+                    'target': base_url,
+                    'vulnerability': 'Missing Clickjacking Protection',
+                    'severity': severity,
+                    'parameter': 'headers',
+                    'payload': 'N/A',
+                    'evidence': clickjacking_result['evidence'],
+                    'request_url': base_url,
+                    'detector': 'ClickjackingDetector.detect_clickjacking',
+                    'response_snippet': 'Missing X-Frame-Options or CSP frame-ancestors'
+                })
+            else:
+                print(f"    [CLICKJACKING] Clickjacking protection is properly configured")
+            
+        except Exception as e:
+            print(f"    [CLICKJACKING] Error during clickjacking testing: {e}")
         
         return results
 

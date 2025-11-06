@@ -11,5 +11,9 @@ from .real404_detector import Real404Detector
 from .git_detector import GitDetector
 from .directory_traversal_detector import DirectoryTraversalDetector
 from .security_headers_detector import SecurityHeadersDetector
+from .ssrf_detector import SSRFDetector
+from .rfi_detector import RFIDetector
+from .version_disclosure_detector import VersionDisclosureDetector
+from .clickjacking_detector import ClickjackingDetector
 
-__all__ = ['XSSDetector', 'SQLiDetector', 'LFIDetector', 'CSRFDetector', 'DirBruteDetector', 'Real404Detector', 'GitDetector', 'DirectoryTraversalDetector', 'SecurityHeadersDetector']
+__all__ = ['XSSDetector', 'SQLiDetector', 'LFIDetector', 'CSRFDetector', 'DirBruteDetector', 'Real404Detector', 'GitDetector', 'DirectoryTraversalDetector', 'SecurityHeadersDetector', 'SSRFDetector', 'RFIDetector', 'VersionDisclosureDetector', 'ClickjackingDetector']

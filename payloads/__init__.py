@@ -9,5 +9,7 @@ from .csrf_payloads import CSRFPayloads
 from .dirbrute_payloads import DirBrutePayloads
 from .git_payloads import GitPayloads
 from .directory_traversal_payloads import DirectoryTraversalPayloads
+from .ssrf_payloads import SSRFPayloads
+from .rfi_payloads import RFIPayloads
 
-__all__ = ['XSSPayloads', 'SQLiPayloads', 'LFIPayloads', 'CSRFPayloads', 'DirBrutePayloads', 'GitPayloads', 'DirectoryTraversalPayloads']
+__all__ = ['XSSPayloads', 'SQLiPayloads', 'LFIPayloads', 'CSRFPayloads', 'DirBrutePayloads', 'GitPayloads', 'DirectoryTraversalPayloads', 'SSRFPayloads', 'RFIPayloads']
