@@ -117,8 +117,13 @@ def main():
         
         # Save results
         if args.output:
-            scanner.save_report(results, args.output, args.format)
-            print(f"Report saved to {args.output}")
+            try:
+                scanner.save_report(results, args.output, args.format)
+                print(f"Report saved to {args.output}")
+            except Exception as e:
+                print(f"Error saving report: {e}")
+                # Still print results to console
+                scanner.print_results(results)
         else:
             scanner.print_results(results)
             
@@ -127,6 +132,8 @@ def main():
         sys.exit(1)
     except Exception as e:
         print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 if __name__ == "__main__":

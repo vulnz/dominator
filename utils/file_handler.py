@@ -49,56 +49,63 @@ class FileHandler:
     
     def save_html(self, data: List[Dict[str, Any]], filename: str):
         """Save in HTML format"""
-        html_template = '''<!DOCTYPE html>
+        try:
+            vulnerabilities_html = ""
+            
+            if not data:
+                vulnerabilities_html = "<p>No vulnerabilities found</p>"
+            else:
+                for item in data:
+                    severity = item.get('severity', 'info').lower()
+                    # Escape HTML characters in data
+                    target = str(item.get('target', '')).replace('<', '&lt;').replace('>', '&gt;')
+                    module = str(item.get('module', '')).replace('<', '&lt;').replace('>', '&gt;')
+                    vuln = str(item.get('vulnerability', 'Unknown')).replace('<', '&lt;').replace('>', '&gt;')
+                    param = str(item.get('parameter', '')).replace('<', '&lt;').replace('>', '&gt;')
+                    payload = str(item.get('payload', '')).replace('<', '&lt;').replace('>', '&gt;')
+                    evidence = str(item.get('evidence', '')).replace('<', '&lt;').replace('>', '&gt;')
+                    
+                    vuln_html = f"""
+                    <div class="vulnerability {severity}">
+                        <h3>{vuln}</h3>
+                        <p><strong>Target:</strong> {target}</p>
+                        <p><strong>Module:</strong> {module}</p>
+                        <p><strong>Severity:</strong> {item.get('severity', '')}</p>
+                        <p><strong>Parameter:</strong> {param}</p>
+                        <p><strong>Payload:</strong> <code>{payload}</code></p>
+                        <p><strong>Evidence:</strong> {evidence}</p>
+                    </div>
+                    """
+                    vulnerabilities_html += vuln_html
+            
+            html_content = f"""<!DOCTYPE html>
 <html>
 <head>
     <title>Web Vulnerability Scanner Report</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .header { background-color: #f0f0f0; padding: 10px; border-radius: 5px; }
-        .vulnerability { border: 1px solid #ddd; margin: 10px 0; padding: 10px; border-radius: 5px; }
-        .high { border-left: 5px solid #ff0000; }
-        .medium { border-left: 5px solid #ff9900; }
-        .low { border-left: 5px solid #ffff00; }
-        .info { border-left: 5px solid #0099ff; }
+        body {{ font-family: Arial, sans-serif; margin: 20px; }}
+        .header {{ background-color: #f0f0f0; padding: 10px; border-radius: 5px; }}
+        .vulnerability {{ border: 1px solid #ddd; margin: 10px 0; padding: 10px; border-radius: 5px; }}
+        .high {{ border-left: 5px solid #ff0000; }}
+        .medium {{ border-left: 5px solid #ff9900; }}
+        .low {{ border-left: 5px solid #ffff00; }}
+        .info {{ border-left: 5px solid #0099ff; }}
     </style>
 </head>
 <body>
     <div class="header">
         <h1>Web Vulnerability Scanner Report</h1>
-        <p>Vulnerabilities found: {count}</p>
+        <p>Vulnerabilities found: {len(data)}</p>
     </div>
-    {vulnerabilities}
+    {vulnerabilities_html}
 </body>
-</html>'''
-        
-        vulnerabilities_html = ""
-        
-        if not data:
-            vulnerabilities_html = "<p>No vulnerabilities found</p>"
-        else:
-            for item in data:
-                severity = item.get('severity', 'info').lower()
-                vuln_html = f'''
-                <div class="vulnerability {severity}">
-                    <h3>{item.get('vulnerability', 'Unknown')}</h3>
-                    <p><strong>Target:</strong> {item.get('target', '')}</p>
-                    <p><strong>Module:</strong> {item.get('module', '')}</p>
-                    <p><strong>Severity:</strong> {item.get('severity', '')}</p>
-                    <p><strong>Parameter:</strong> {item.get('parameter', '')}</p>
-                    <p><strong>Payload:</strong> <code>{item.get('payload', '')}</code></p>
-                    <p><strong>Evidence:</strong> {item.get('evidence', '')}</p>
-                </div>
-                '''
-                vulnerabilities_html += vuln_html
-        
-        final_html = html_template.format(
-            count=len(data),
-            vulnerabilities=vulnerabilities_html
-        )
-        
-        with open(filename, 'w', encoding='utf-8') as f:
-            f.write(final_html)
+</html>"""
+            
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+                
+        except Exception as e:
+            raise Exception(f"Error creating HTML report: {e}")
     
     def read_file_lines(self, filename: str) -> List[str]:
         """Read lines from file"""

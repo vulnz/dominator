@@ -364,6 +364,7 @@ class VulnScanner:
             if response.status_code == 200:
                 # Extract URLs from response
                 urls = self.url_parser.extract_urls_from_response(response.text, base_url)
+                print(f"    Found {len(urls)} URLs to check")
                 
                 # Filter URLs with parameters and same domain
                 for url in urls[:20]:  # Limit to first 20 URLs
@@ -374,7 +375,8 @@ class VulnScanner:
                             url not in found_urls and 
                             parsed['host'] in base_url):
                             found_urls.append(url)
-                    except:
+                    except Exception as e:
+                        print(f"    Error parsing URL {url}: {e}")
                         continue
                         
         except Exception as e:
