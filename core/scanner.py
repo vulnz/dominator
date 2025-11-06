@@ -30,6 +30,7 @@ class VulnScanner:
         self.file_handler = FileHandler()
         self.results = []
         self.request_count = 0
+        self.found_vulnerabilities = set()  # For deduplication
         self.scan_stats = {
             'total_requests': 0,
             'total_urls': 0,
@@ -437,20 +438,34 @@ class VulnScanner:
             
             if is_vulnerable:
                 response_snippet = CSRFDetector.get_response_snippet(response.text)
-                print(f"    [CSRF] VULNERABILITY FOUND! Missing CSRF protection")
                 
-                results.append({
-                    'module': 'csrf',
-                    'target': base_url,
-                    'vulnerability': 'Missing CSRF Protection',
-                    'severity': 'Medium',
-                    'parameter': 'N/A',
-                    'payload': 'N/A',
-                    'evidence': evidence,
-                    'request_url': base_url,
-                    'detector': 'CSRFDetector.detect_csrf_vulnerability',
-                    'response_snippet': response_snippet
-                })
+                # Create unique identifier for deduplication
+                # Use form actions found in the response to create unique key
+                import re
+                form_actions = re.findall(r'<form[^>]*action=["\']?([^"\'>\s]+)["\']?[^>]*>', response.text, re.IGNORECASE)
+                unique_forms = set(form_actions)
+                
+                # Create deduplication key based on forms found
+                dedup_key = f"csrf_missing_{','.join(sorted(unique_forms))}"
+                
+                if dedup_key not in self.found_vulnerabilities:
+                    self.found_vulnerabilities.add(dedup_key)
+                    print(f"    [CSRF] VULNERABILITY FOUND! Missing CSRF protection")
+                    
+                    results.append({
+                        'module': 'csrf',
+                        'target': base_url,
+                        'vulnerability': 'Missing CSRF Protection',
+                        'severity': 'Medium',
+                        'parameter': 'N/A',
+                        'payload': 'N/A',
+                        'evidence': evidence,
+                        'request_url': base_url,
+                        'detector': 'CSRFDetector.detect_csrf_vulnerability',
+                        'response_snippet': response_snippet
+                    })
+                else:
+                    print(f"    [CSRF] Duplicate vulnerability suppressed (same forms already found)")
             else:
                 print(f"    [CSRF] {evidence}")
             
@@ -534,20 +549,27 @@ class VulnScanner:
                                 
                                 response_lower = test_response.text.lower()
                                 if any(indicator in response_lower for indicator in success_indicators):
-                                    print(f"    [CSRF] POTENTIAL BYPASS FOUND! Payload: {payload['name']}")
+                                    # Create deduplication key for bypass vulnerabilities
+                                    bypass_dedup_key = f"csrf_bypass_{form_url}_{payload['name']}"
                                     
-                                    results.append({
-                                        'module': 'csrf',
-                                        'target': form_url,
-                                        'vulnerability': 'CSRF Protection Bypass',
-                                        'severity': 'High',
-                                        'parameter': 'form_action',
-                                        'payload': str(request_data),
-                                        'evidence': f"Request succeeded with {payload['description']}. Response code: {test_response.status_code}",
-                                        'request_url': form_url,
-                                        'detector': 'CSRFDetector.bypass_test',
-                                        'response_snippet': test_response.text[:500]
-                                    })
+                                    if bypass_dedup_key not in self.found_vulnerabilities:
+                                        self.found_vulnerabilities.add(bypass_dedup_key)
+                                        print(f"    [CSRF] POTENTIAL BYPASS FOUND! Payload: {payload['name']}")
+                                        
+                                        results.append({
+                                            'module': 'csrf',
+                                            'target': form_url,
+                                            'vulnerability': 'CSRF Protection Bypass',
+                                            'severity': 'High',
+                                            'parameter': 'form_action',
+                                            'payload': str(request_data),
+                                            'evidence': f"Request succeeded with {payload['description']}. Response code: {test_response.status_code}",
+                                            'request_url': form_url,
+                                            'detector': 'CSRFDetector.bypass_test',
+                                            'response_snippet': test_response.text[:500]
+                                        })
+                                    else:
+                                        print(f"    [CSRF] Duplicate bypass vulnerability suppressed")
                                     break  # Found bypass, no need to test more payloads for this form
                             
                         except Exception as e:
