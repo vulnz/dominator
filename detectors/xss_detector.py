@@ -2,6 +2,8 @@
 XSS vulnerability detector
 """
 
+import re
+
 class XSSDetector:
     """XSS vulnerability detection logic"""
     
