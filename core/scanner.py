@@ -860,6 +860,16 @@ class VulnScanner:
                         response.text, response.status_code, len(response.text), baseline_404_text, baseline_404_size
                     )
                     
+                    # Additional check for false positives - skip if response size is too similar to baseline
+                    if is_valid and baseline_404_size > 0:
+                        size_diff = abs(len(response.text) - baseline_404_size)
+                        size_ratio = size_diff / baseline_404_size if baseline_404_size > 0 else 1
+                        
+                        # Skip if size difference is less than 5% or less than 50 bytes
+                        if size_ratio < 0.05 or size_diff < 50:
+                            print(f"    [DIRBRUTE] Skipping directory {directory} - size too similar to 404 baseline ({len(response.text)} vs {baseline_404_size} bytes)")
+                            is_valid = False
+                    
                     if is_valid:
                         print(f"    [DIRBRUTE] DIRECTORY FOUND: {directory}/ - {evidence}")
                         
@@ -915,6 +925,16 @@ class VulnScanner:
                     is_valid, evidence = DirBruteDetector.is_valid_response(
                         response.text, response.status_code, len(response.text), baseline_404_text, baseline_404_size
                     )
+                    
+                    # Additional check for false positives - skip if response size is too similar to baseline
+                    if is_valid and baseline_404_size > 0:
+                        size_diff = abs(len(response.text) - baseline_404_size)
+                        size_ratio = size_diff / baseline_404_size if baseline_404_size > 0 else 1
+                        
+                        # Skip if size difference is less than 5% or less than 50 bytes
+                        if size_ratio < 0.05 or size_diff < 50:
+                            print(f"    [DIRBRUTE] Skipping file {file} - size too similar to 404 baseline ({len(response.text)} vs {baseline_404_size} bytes)")
+                            is_valid = False
                     
                     if is_valid:
                         print(f"    [DIRBRUTE] FILE FOUND: {file} - {evidence}")
@@ -976,6 +996,16 @@ class VulnScanner:
                 is_valid, evidence = DirBruteDetector.is_valid_response(
                     response.text, response.status_code, len(response.text), baseline_404_text, baseline_404_size
                 )
+                
+                # Additional check for false positives - skip if response size is too similar to baseline
+                if is_valid and baseline_404_size > 0:
+                    size_diff = abs(len(response.text) - baseline_404_size)
+                    size_ratio = size_diff / baseline_404_size if baseline_404_size > 0 else 1
+                    
+                    # Skip if size difference is less than 5% or less than 50 bytes
+                    if size_ratio < 0.05 or size_diff < 50:
+                        print(f"    [DIRBRUTE] Skipping file {directory}/{file} - size too similar to 404 baseline ({len(response.text)} vs {baseline_404_size} bytes)")
+                        is_valid = False
                 
                 if is_valid:
                     print(f"    [DIRBRUTE] FILE FOUND: {directory}/{file} - {evidence}")
