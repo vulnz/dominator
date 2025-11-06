@@ -84,6 +84,8 @@ Examples:
             args.all = False
         if not hasattr(args, 'limit'):
             args.limit = None
+        if not hasattr(args, 'page_limit'):
+            args.page_limit = None
         
         # Create configuration
         config = Config(args)
