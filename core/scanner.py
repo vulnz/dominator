@@ -13,8 +13,8 @@ from core.config import Config
 from core.url_parser import URLParser
 from core.crawler import WebCrawler
 from utils.file_handler import FileHandler
-from payloads import XSSPayloads, SQLiPayloads, LFIPayloads, CSRFPayloads, DirBrutePayloads, GitPayloads, DirectoryTraversalPayloads, SSRFPayloads, RFIPayloads
-from detectors import XSSDetector, SQLiDetector, LFIDetector, CSRFDetector, DirBruteDetector, Real404Detector, GitDetector, DirectoryTraversalDetector, SecurityHeadersDetector, SSRFDetector, RFIDetector, VersionDisclosureDetector, ClickjackingDetector
+from payloads import XSSPayloads, SQLiPayloads, LFIPayloads, CSRFPayloads, DirBrutePayloads, GitPayloads, DirectoryTraversalPayloads, SSRFPayloads, RFIPayloads, BlindXSSPayloads
+from detectors import XSSDetector, SQLiDetector, LFIDetector, CSRFDetector, DirBruteDetector, Real404Detector, GitDetector, DirectoryTraversalDetector, SecurityHeadersDetector, SSRFDetector, RFIDetector, VersionDisclosureDetector, ClickjackingDetector, BlindXSSDetector, PasswordOverHTTPDetector, OutdatedSoftwareDetector, DatabaseErrorDetector
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -247,6 +247,14 @@ class VulnScanner:
                 results.extend(self._test_version_disclosure(parsed_data))
             elif module_name == "clickjacking":
                 results.extend(self._test_clickjacking(parsed_data))
+            elif module_name == "blindxss":
+                results.extend(self._test_blind_xss(parsed_data))
+            elif module_name == "passwordoverhttp":
+                results.extend(self._test_password_over_http(parsed_data))
+            elif module_name == "outdatedsoftware":
+                results.extend(self._test_outdated_software(parsed_data))
+            elif module_name == "databaseerrors":
+                results.extend(self._test_database_errors(parsed_data))
             # Add more modules as needed
                 
         except Exception as e:
@@ -1379,6 +1387,270 @@ class VulnScanner:
             print(f"    [CLICKJACKING] Error during clickjacking testing: {e}")
         
         return results
+    
+    def _test_blind_xss(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for Blind XSS vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # Get Blind XSS payloads
+        blind_xss_payloads = BlindXSSPayloads.get_all_payloads()
+        
+        # Test GET parameters
+        for param, values in parsed_data['query_params'].items():
+            print(f"    [BLINDXSS] Testing parameter: {param}")
+            
+            # Create deduplication key for this parameter
+            param_key = f"blindxss_{base_url.split('?')[0]}_{param}"
+            if param_key in self.found_vulnerabilities:
+                print(f"    [BLINDXSS] Skipping parameter {param} - already tested")
+                continue
+            
+            for payload in blind_xss_payloads[:10]:  # Test first 10 payloads
+                try:
+                    # Replace callback host with a test domain
+                    test_payload = BlindXSSPayloads.replace_callback_host(payload, 'blindxss-test.example.com')
+                    print(f"    [BLINDXSS] Trying payload: {test_payload[:50]}...")
+                    
+                    # Create test URL
+                    test_params = parsed_data['query_params'].copy()
+                    test_params[param] = [test_payload]
+                    
+                    # Build query string
+                    query_parts = []
+                    for k, v_list in test_params.items():
+                        for v in v_list:
+                            query_parts.append(f"{k}={v}")
+                    
+                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    print(f"    [BLINDXSS] Request URL: {test_url}")
+                    
+                    response = requests.get(
+                        test_url,
+                        timeout=self.config.timeout,
+                        headers=self.config.headers,
+                        verify=False
+                    )
+                    
+                    print(f"    [BLINDXSS] Response code: {response.status_code}")
+                    
+                    # Use Blind XSS detector (simulate no callback for now)
+                    if BlindXSSDetector.detect_blind_xss(test_payload, response.text, response.status_code, callback_received=False):
+                        evidence = BlindXSSDetector.get_evidence(test_payload, response.text, callback_received=False)
+                        response_snippet = BlindXSSDetector.get_response_snippet(test_payload, response.text)
+                        print(f"    [BLINDXSS] POTENTIAL VULNERABILITY FOUND! Parameter: {param}")
+                        
+                        # Mark as found to prevent duplicates
+                        self.found_vulnerabilities.add(param_key)
+                        
+                        results.append({
+                            'module': 'blindxss',
+                            'target': base_url,
+                            'vulnerability': 'Potential Blind XSS',
+                            'severity': 'High',
+                            'parameter': param,
+                            'payload': test_payload,
+                            'evidence': evidence,
+                            'request_url': test_url,
+                            'detector': 'BlindXSSDetector.detect_blind_xss',
+                            'response_snippet': response_snippet
+                        })
+                        break  # Found potential blind XSS, no need to test more payloads for this param
+                        
+                except Exception as e:
+                    print(f"    [BLINDXSS] Error testing payload: {e}")
+                    continue
+        
+        return results
+    
+    def _test_password_over_http(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for password transmission over HTTP"""
+        results = []
+        base_url = parsed_data['url']
+        
+        try:
+            print(f"    [PASSWORDOVERHTTP] Testing password over HTTP...")
+            
+            # Make request to get page content
+            response = requests.get(
+                base_url,
+                timeout=self.config.timeout,
+                headers=self.config.headers,
+                verify=False
+            )
+            
+            print(f"    [PASSWORDOVERHTTP] Response code: {response.status_code}")
+            
+            # Use Password over HTTP detector
+            is_vulnerable, evidence, forms_found = PasswordOverHTTPDetector.detect_password_over_http(
+                base_url, response.text, response.status_code
+            )
+            
+            if is_vulnerable:
+                print(f"    [PASSWORDOVERHTTP] VULNERABILITY FOUND! {evidence}")
+                
+                detailed_evidence = PasswordOverHTTPDetector.get_evidence(forms_found)
+                remediation = PasswordOverHTTPDetector.get_remediation_advice()
+                
+                results.append({
+                    'module': 'passwordoverhttp',
+                    'target': base_url,
+                    'vulnerability': 'Password Transmitted over HTTP',
+                    'severity': 'High',
+                    'parameter': 'password_field',
+                    'payload': 'N/A',
+                    'evidence': detailed_evidence,
+                    'request_url': base_url,
+                    'detector': 'PasswordOverHTTPDetector.detect_password_over_http',
+                    'response_snippet': f'Found {len(forms_found)} form(s) with password fields',
+                    'remediation': remediation
+                })
+            else:
+                print(f"    [PASSWORDOVERHTTP] No password over HTTP issues found")
+            
+        except Exception as e:
+            print(f"    [PASSWORDOVERHTTP] Error during password over HTTP testing: {e}")
+        
+        return results
+    
+    def _test_outdated_software(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for outdated software versions"""
+        results = []
+        base_url = parsed_data['url']
+        
+        try:
+            print(f"    [OUTDATEDSOFTWARE] Testing outdated software...")
+            
+            # Make request to get headers and content
+            response = requests.get(
+                base_url,
+                timeout=self.config.timeout,
+                headers=self.config.headers,
+                verify=False
+            )
+            
+            print(f"    [OUTDATEDSOFTWARE] Response code: {response.status_code}")
+            
+            # Use Outdated Software detector
+            detections = OutdatedSoftwareDetector.detect_outdated_software(
+                dict(response.headers), response.text
+            )
+            
+            if detections:
+                print(f"    [OUTDATEDSOFTWARE] Found {len(detections)} outdated software components")
+                
+                for detection in detections:
+                    software = detection['software']
+                    version = detection['version']
+                    severity = detection['severity']
+                    known_vulns = detection.get('known_vulnerabilities', [])
+                    
+                    evidence = f"{software.upper()} version {version}"
+                    if known_vulns:
+                        evidence += f" has known vulnerabilities: {', '.join(known_vulns[:3])}"
+                    
+                    remediation = OutdatedSoftwareDetector.get_remediation_advice(software, version)
+                    
+                    results.append({
+                        'module': 'outdatedsoftware',
+                        'target': base_url,
+                        'vulnerability': f'Outdated {software.title()} Version',
+                        'severity': severity,
+                        'parameter': f'software: {software}',
+                        'payload': 'N/A',
+                        'evidence': evidence,
+                        'request_url': base_url,
+                        'detector': 'OutdatedSoftwareDetector.detect_outdated_software',
+                        'response_snippet': f'Version: {version}',
+                        'remediation': remediation
+                    })
+            else:
+                print(f"    [OUTDATEDSOFTWARE] No outdated software detected")
+            
+        except Exception as e:
+            print(f"    [OUTDATEDSOFTWARE] Error during outdated software testing: {e}")
+        
+        return results
+    
+    def _test_database_errors(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for database error message disclosure"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # Test GET parameters with error-inducing payloads
+        for param, values in parsed_data['query_params'].items():
+            print(f"    [DATABASEERRORS] Testing parameter: {param}")
+            
+            # Create deduplication key for this parameter
+            param_key = f"dberrors_{base_url.split('?')[0]}_{param}"
+            if param_key in self.found_vulnerabilities:
+                print(f"    [DATABASEERRORS] Skipping parameter {param} - already tested")
+                continue
+            
+            # Test with error-inducing payloads
+            error_payloads = ["'", '"', "' OR '1'='1", "'; DROP TABLE users; --", "%27"]
+            
+            for payload in error_payloads:
+                try:
+                    print(f"    [DATABASEERRORS] Trying payload: {payload}")
+                    
+                    # Create test URL
+                    test_params = parsed_data['query_params'].copy()
+                    test_params[param] = [payload]
+                    
+                    # Build query string
+                    query_parts = []
+                    for k, v_list in test_params.items():
+                        for v in v_list:
+                            query_parts.append(f"{k}={v}")
+                    
+                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    print(f"    [DATABASEERRORS] Request URL: {test_url}")
+                    
+                    response = requests.get(
+                        test_url,
+                        timeout=self.config.timeout,
+                        headers=self.config.headers,
+                        verify=False
+                    )
+                    
+                    print(f"    [DATABASEERRORS] Response code: {response.status_code}")
+                    
+                    # Use Database Error detector
+                    is_vulnerable, db_type, evidence, error_messages = DatabaseErrorDetector.detect_database_errors(
+                        response.text, response.status_code
+                    )
+                    
+                    if is_vulnerable:
+                        detailed_evidence = DatabaseErrorDetector.get_evidence(db_type, error_messages)
+                        response_snippet = DatabaseErrorDetector.get_response_snippet(error_messages, response.text)
+                        remediation = DatabaseErrorDetector.get_remediation_advice()
+                        
+                        print(f"    [DATABASEERRORS] VULNERABILITY FOUND! Parameter: {param}, DB: {db_type}")
+                        
+                        # Mark as found to prevent duplicates
+                        self.found_vulnerabilities.add(param_key)
+                        
+                        results.append({
+                            'module': 'databaseerrors',
+                            'target': base_url,
+                            'vulnerability': 'Database Error Message Disclosure',
+                            'severity': 'Low',
+                            'parameter': param,
+                            'payload': payload,
+                            'evidence': detailed_evidence,
+                            'request_url': test_url,
+                            'detector': 'DatabaseErrorDetector.detect_database_errors',
+                            'response_snippet': response_snippet,
+                            'remediation': remediation
+                        })
+                        break  # Found database error, no need to test more payloads for this param
+                        
+                except Exception as e:
+                    print(f"    [DATABASEERRORS] Error testing payload: {e}")
+                    continue
+        
+        return results
 
     def _get_important_pages(self) -> List[str]:
         """Get list of important pages that might contain forms"""
@@ -1391,6 +1663,16 @@ class VulnScanner:
                 important_pages.append(f'/{file}')
         
         return important_pages[:20]  # Limit to first 20 important pages
+    
+    def _get_success_indicators(self) -> List[str]:
+        """Get indicators that suggest a request was successful"""
+        return [
+            'success', 'successful', 'completed', 'saved', 'updated', 'created',
+            'added', 'submitted', 'processed', 'confirmed', 'accepted',
+            'thank you', 'thanks', 'welcome', 'congratulations',
+            'успешно', 'сохранено', 'обновлено', 'создано', 'добавлено',
+            'спасибо', 'поздравляем', 'добро пожаловать'
+        ]
     
     def _is_likely_404_response(self, response_text: str, response_code: int) -> bool:
         """Quick check if response is likely a 404 page"""

@@ -11,5 +11,6 @@ from .git_payloads import GitPayloads
 from .directory_traversal_payloads import DirectoryTraversalPayloads
 from .ssrf_payloads import SSRFPayloads
 from .rfi_payloads import RFIPayloads
+from .blind_xss_payloads import BlindXSSPayloads
 
-__all__ = ['XSSPayloads', 'SQLiPayloads', 'LFIPayloads', 'CSRFPayloads', 'DirBrutePayloads', 'GitPayloads', 'DirectoryTraversalPayloads', 'SSRFPayloads', 'RFIPayloads']
+__all__ = ['XSSPayloads', 'SQLiPayloads', 'LFIPayloads', 'CSRFPayloads', 'DirBrutePayloads', 'GitPayloads', 'DirectoryTraversalPayloads', 'SSRFPayloads', 'RFIPayloads', 'BlindXSSPayloads']

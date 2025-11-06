@@ -15,5 +15,9 @@ from .ssrf_detector import SSRFDetector
 from .rfi_detector import RFIDetector
 from .version_disclosure_detector import VersionDisclosureDetector
 from .clickjacking_detector import ClickjackingDetector
+from .blind_xss_detector import BlindXSSDetector
+from .password_over_http_detector import PasswordOverHTTPDetector
+from .outdated_software_detector import OutdatedSoftwareDetector
+from .database_error_detector import DatabaseErrorDetector
 
-__all__ = ['XSSDetector', 'SQLiDetector', 'LFIDetector', 'CSRFDetector', 'DirBruteDetector', 'Real404Detector', 'GitDetector', 'DirectoryTraversalDetector', 'SecurityHeadersDetector', 'SSRFDetector', 'RFIDetector', 'VersionDisclosureDetector', 'ClickjackingDetector']
+__all__ = ['XSSDetector', 'SQLiDetector', 'LFIDetector', 'CSRFDetector', 'DirBruteDetector', 'Real404Detector', 'GitDetector', 'DirectoryTraversalDetector', 'SecurityHeadersDetector', 'SSRFDetector', 'RFIDetector', 'VersionDisclosureDetector', 'ClickjackingDetector', 'BlindXSSDetector', 'PasswordOverHTTPDetector', 'OutdatedSoftwareDetector', 'DatabaseErrorDetector']
