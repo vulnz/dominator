@@ -57,6 +57,8 @@ Usage examples:
                        help='Request timeout in seconds')
     parser.add_argument('--scan-timeout', type=int,
                        help='Maximum scan time in seconds')
+    parser.add_argument('--max-time', type=int,
+                       help='Maximum scan time in minutes (will stop scan and show report)')
     parser.add_argument('--threads', type=int, default=10,
                        help='Number of threads')
     parser.add_argument('--limit', type=int,
@@ -146,6 +148,40 @@ class ScanTimeout:
         """Check if timeout occurred"""
         return self.timed_out
 
+class MaxTimeHandler:
+    """Handle maximum scan time limit"""
+    def __init__(self, max_minutes, scanner):
+        self.max_minutes = max_minutes
+        self.scanner = scanner
+        self.timer = None
+        self.stopped = False
+    
+    def timeout_handler(self):
+        """Handle max time timeout"""
+        self.stopped = True
+        print(f"\n[!] Maximum scan time ({self.max_minutes} minutes) reached!")
+        print("[!] Stopping scan and generating report with current results...")
+        # Set a flag in scanner to stop gracefully
+        if hasattr(self.scanner, 'stop_requested'):
+            self.scanner.stop_requested = True
+    
+    def start(self):
+        """Start max time timer"""
+        if self.max_minutes:
+            timeout_seconds = self.max_minutes * 60
+            self.timer = threading.Timer(timeout_seconds, self.timeout_handler)
+            self.timer.start()
+            print(f"[INFO] Maximum scan time set to {self.max_minutes} minutes")
+    
+    def cancel(self):
+        """Cancel max time timer"""
+        if self.timer:
+            self.timer.cancel()
+    
+    def is_stopped(self):
+        """Check if max time was reached"""
+        return self.stopped
+
 def main():
     """Main function"""
     parser = create_parser()
@@ -180,6 +216,12 @@ def main():
         # Create scanner
         scanner = VulnScanner(config)
         
+        # Set up max time handler if specified
+        max_time_handler = None
+        if args.max_time:
+            max_time_handler = MaxTimeHandler(args.max_time, scanner)
+            max_time_handler.start()
+        
         # Start scanning
         start_time = time.time()
         print(f"Starting scan...")
@@ -191,9 +233,16 @@ def main():
         else:
             results = scanner.scan()
         
-        # Cancel timeout if scan completed normally
+        # Cancel timeouts if scan completed normally
         if timeout_handler:
             timeout_handler.cancel()
+        if max_time_handler:
+            max_time_handler.cancel()
+        
+        # Check if scan was stopped due to max time
+        if max_time_handler and max_time_handler.is_stopped():
+            print(f"\n[INFO] Scan was stopped after {args.max_time} minutes")
+            print("[INFO] Showing results collected so far...")
         
         scan_duration = time.time() - start_time
         print(f"\nScan completed in {scan_duration:.2f} seconds")

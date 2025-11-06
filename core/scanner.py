@@ -380,6 +380,7 @@ class VulnScanner:
             'module_stats': {},
             'payload_stats': {}
         }
+        self.stop_requested = False  # Flag for graceful stopping
         
     def scan(self) -> List[Dict[str, Any]]:
         """Main scanning method"""
@@ -401,7 +402,7 @@ class VulnScanner:
             futures = []
             
             for target in targets:
-                if self._should_stop():
+                if self._should_stop() or self.stop_requested:
                     break
                     
                 future = executor.submit(self._scan_target, target)
@@ -551,7 +552,7 @@ class VulnScanner:
                 
                 # Test each module on this page
                 for module_name in self.config.modules:
-                    if self._should_stop():
+                    if self._should_stop() or self.stop_requested:
                         break
                     
                     # Initialize module stats if not exists
@@ -778,9 +779,12 @@ class VulnScanner:
                     
                     print(f"    [XSS] Response code: {response.status_code}")
                     
-                    # Check if we should stop due to request limit
+                    # Check if we should stop due to request limit or max time
                     if self._should_stop():
-                        print(f"    [XSS] Stopping - reached request limit ({self.config.request_limit})")
+                        if self.stop_requested:
+                            print(f"    [XSS] Stopping - maximum time reached")
+                        else:
+                            print(f"    [XSS] Stopping - reached request limit ({self.config.request_limit})")
                         return results
                     
                     # Skip if response looks like 404
@@ -1034,9 +1038,12 @@ class VulnScanner:
                     
                     print(f"    [SQLI] Response code: {response.status_code}")
                     
-                    # Check if we should stop due to request limit
+                    # Check if we should stop due to request limit or max time
                     if self._should_stop():
-                        print(f"    [SQLI] Stopping - reached request limit ({self.config.request_limit})")
+                        if self.stop_requested:
+                            print(f"    [SQLI] Stopping - maximum time reached")
+                        else:
+                            print(f"    [SQLI] Stopping - reached request limit ({self.config.request_limit})")
                         return results
                     
                     # Use SQLi detector
@@ -3916,6 +3923,9 @@ class VulnScanner:
     
     def _should_stop(self) -> bool:
         """Check scan stop conditions"""
+        if self.stop_requested:
+            print(f"[STOP] Scan stop requested")
+            return True
         if self.config.request_limit and self.request_count >= self.config.request_limit:
             print(f"[LIMIT] Request limit reached: {self.request_count}/{self.config.request_limit}")
             return True
