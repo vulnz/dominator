@@ -121,6 +121,12 @@ class VulnScanner:
                 print(f"  [DEBUG] No parameters found, starting crawler...")
                 crawled_urls = self.crawler.crawl_for_pages(parsed_data['url'])
                 
+                # For CSRF testing, also test pages without parameters (they might have forms)
+                if 'csrf' in self.config.modules:
+                    print(f"  [DEBUG] Testing main page for CSRF (no parameters needed)")
+                    csrf_results = self._run_module('csrf', parsed_data)
+                    target_results.extend(csrf_results)
+                
                 if not crawled_urls:
                     print(f"  [DEBUG] No pages with parameters found by crawler")
                 
@@ -139,6 +145,11 @@ class VulnScanner:
                                 break
                             module_results = self._run_module(module_name, crawled_data)
                             target_results.extend(module_results)
+                    elif 'csrf' in self.config.modules:
+                        # Test pages without parameters for CSRF (they might have forms)
+                        print(f"  [DEBUG] Testing page for CSRF: {url}")
+                        csrf_results = self._run_module('csrf', crawled_data)
+                        target_results.extend(csrf_results)
             else:
                 # Scan with each module
                 print(f"  [DEBUG] Testing parameters: {list(parsed_data['query_params'].keys())}")
