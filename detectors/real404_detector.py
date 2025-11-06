@@ -208,7 +208,7 @@ class Real404Detector:
     @staticmethod
     def generate_baseline_404(base_url: str, session=None) -> Tuple[str, int]:
         """
-        Generate baseline 404 patterns by making 10 different fake requests
+        Generate baseline 404 patterns by making fake requests
         Returns (most_common_404_response, content_length)
         """
         import requests
@@ -216,31 +216,29 @@ class Real404Detector:
         import string
         from collections import Counter
         
-        print(f"    [REAL404] Generating 10 fake requests to establish 404 patterns...")
+        print(f"    [REAL404] Generating fake requests to establish 404 patterns...")
         
         baseline_responses = []
         response_fingerprints = []
         
-        # Generate 10 different fake request patterns
-        fake_patterns = [
-            # Random files with different extensions
-            f"{''.join(random.choices(string.ascii_lowercase + string.digits, k=20))}.php",
-            f"{''.join(random.choices(string.ascii_lowercase + string.digits, k=18))}.html",
-            f"{''.join(random.choices(string.ascii_lowercase + string.digits, k=16))}.txt",
-            f"{''.join(random.choices(string.ascii_lowercase + string.digits, k=14))}.asp",
-            f"{''.join(random.choices(string.ascii_lowercase + string.digits, k=12))}.jsp",
-            
-            # Fake directories
-            f"nonexistent_{''.join(random.choices(string.ascii_lowercase, k=10))}/",
-            f"missing_{''.join(random.choices(string.ascii_lowercase, k=8))}/index.php",
-            
-            # Path traversal style (should be 404)
-            f"../{''.join(random.choices(string.ascii_lowercase, k=12))}.php",
-            f"./fake_{''.join(random.choices(string.digits, k=8))}.html",
-            
-            # Completely random path
-            f"{''.join(random.choices(string.ascii_lowercase + string.digits + '_-', k=25))}"
-        ]
+        # Generate different fake request patterns dynamically
+        fake_patterns = []
+        
+        # Generate random files with different extensions
+        extensions = ['.php', '.html', '.txt', '.asp', '.jsp']
+        for ext in extensions:
+            random_name = ''.join(random.choices(string.ascii_lowercase + string.digits, k=15))
+            fake_patterns.append(f"{random_name}{ext}")
+        
+        # Generate fake directories
+        for i in range(3):
+            random_dir = ''.join(random.choices(string.ascii_lowercase, k=10))
+            fake_patterns.append(f"nonexistent_{random_dir}/")
+        
+        # Generate completely random paths
+        for i in range(2):
+            random_path = ''.join(random.choices(string.ascii_lowercase + string.digits + '_-', k=20))
+            fake_patterns.append(random_path)
         
         successful_requests = 0
         

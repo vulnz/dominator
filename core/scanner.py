@@ -16,6 +16,9 @@ from core.url_parser import URLParser
 from core.crawler import WebCrawler
 from utils.file_handler import FileHandler
 from utils.screenshot_handler import ScreenshotHandler
+from libs.false_positive_filter import FalsePositiveFilter
+from libs.response_analyzer import ResponseAnalyzer
+from libs.path_manager import PathManager
 # Import payload classes with error handling
 try:
     from payloads.xss_payloads import XSSPayloads
@@ -98,6 +101,9 @@ class VulnScanner:
         self.crawler = WebCrawler(config)
         self.file_handler = FileHandler()
         self.screenshot_handler = ScreenshotHandler()
+        self.false_positive_filter = FalsePositiveFilter()
+        self.response_analyzer = ResponseAnalyzer()
+        self.path_manager = PathManager()
         self.results = []
         self.request_count = 0
         self.found_vulnerabilities = set()  # For deduplication
@@ -525,27 +531,9 @@ class VulnScanner:
                         except Exception as e:
                             evidence = f"XSS detected with payload: {payload}"
                             response_snippet = "Response analysis failed"
-                        print(f"    [XSS] VULNERABILITY FOUND! Parameter: {param}")
                         
-                        # Mark as found to prevent duplicates
-                        self.found_vulnerabilities.add(param_key)
-                        
-                        # Update successful payload count
-                        self.scan_stats['payload_stats']['xss']['successful_payloads'] += 1
-                        self.scan_stats['total_payloads_used'] += 1
-                        
-                        # Take screenshot for XSS vulnerability
-                        screenshot_filename = None
-                        try:
-                            import time
-                            vuln_id = f"xss_{param}_{int(time.time())}"
-                            screenshot_filename = self.screenshot_handler.take_screenshot_with_payload(
-                                test_url, "xss", vuln_id, payload
-                            )
-                        except Exception as e:
-                            print(f"    [XSS] Could not take screenshot: {e}")
-                        
-                        results.append({
+                        # Create vulnerability object for filtering
+                        vulnerability = {
                             'module': 'xss',
                             'target': base_url,
                             'vulnerability': 'Reflected XSS',
@@ -555,10 +543,38 @@ class VulnScanner:
                             'evidence': evidence,
                             'request_url': test_url,
                             'detector': 'XSSDetector.detect_reflected_xss',
-                            'response_snippet': response_snippet,
-                            'screenshot': screenshot_filename
-                        })
-                        break  # Found XSS, no need to test more payloads for this param
+                            'response_snippet': response_snippet
+                        }
+                        
+                        # Filter false positives
+                        is_valid, filter_reason = self.false_positive_filter.filter_vulnerability(vulnerability)
+                        
+                        if is_valid:
+                            print(f"    [XSS] VULNERABILITY FOUND! Parameter: {param}")
+                            
+                            # Mark as found to prevent duplicates
+                            self.found_vulnerabilities.add(param_key)
+                            
+                            # Update successful payload count
+                            self.scan_stats['payload_stats']['xss']['successful_payloads'] += 1
+                            self.scan_stats['total_payloads_used'] += 1
+                            
+                            # Take screenshot for XSS vulnerability
+                            screenshot_filename = None
+                            try:
+                                import time
+                                vuln_id = f"xss_{param}_{int(time.time())}"
+                                screenshot_filename = self.screenshot_handler.take_screenshot_with_payload(
+                                    test_url, "xss", vuln_id, payload
+                                )
+                                vulnerability['screenshot'] = screenshot_filename
+                            except Exception as e:
+                                print(f"    [XSS] Could not take screenshot: {e}")
+                            
+                            results.append(vulnerability)
+                            break  # Found XSS, no need to test more payloads for this param
+                        else:
+                            print(f"    [XSS] False positive filtered: {filter_reason}")
                         
                 except Exception as e:
                     print(f"    [XSS] Error testing payload: {e}")
@@ -3482,42 +3498,25 @@ class VulnScanner:
         return results
 
     def _get_important_pages(self) -> List[str]:
-        """Get list of important pages that might contain forms or vulnerabilities"""
-        # Common vulnerability testing pages
-        important_pages = [
-            '/login.php', '/admin.php', '/register.php', '/contact.php', '/guestbook.php',
-            '/search.php', '/index.php', '/home.php', '/profile.php', '/settings.php',
-            '/upload.php', '/file.php', '/download.php', '/view.php', '/edit.php',
-            '/delete.php', '/update.php', '/create.php', '/submit.php', '/process.php',
-            '/listproducts.php', '/showimage.php', '/artists.php', '/categories.php',
-            '/cart.php', '/userinfo.php', '/disclaimer.php', '/privacy.php',
-            '/AJAX/index.php', '/Mod_Rewrite_Shop/', '/hpp/', '/Flash/add.swf'
+        """Get list of important pages dynamically"""
+        # Get common paths from path manager
+        common_paths = self.path_manager.generate_common_paths("")
+        
+        important_pages = []
+        for path_type, paths in common_paths.items():
+            important_pages.extend(paths)
+        
+        # Add dynamic parameter patterns
+        param_patterns = [
+            '?cat=1', '?id=1', '?user=1', '?file=1', 
+            '?artist=1', '?action=view', '?test=query'
         ]
         
-        # Add common parameter patterns for testphp.vulnweb.com
-        param_pages = [
-            '/listproducts.php?cat=1',
-            '/listproducts.php?artist=1', 
-            '/showimage.php?file=1',
-            '/artists.php?artist=1',
-            '/categories.php?cat=1',
-            '/search.php?test=query',
-            '/userinfo.php?user=1',
-            '/cart.php?action=view',
-            '/AJAX/index.php?test=1'
-        ]
-        
-        important_pages.extend(param_pages)
-        
-        # Use DirBrutePayloads to get additional common files
-        try:
-            common_files = DirBrutePayloads.get_common_files()
-            
-            for file in common_files:
-                if any(keyword in file.lower() for keyword in ['login', 'admin', 'register', 'contact', 'guestbook', 'search', 'upload', 'file', 'list', 'show', 'view']):
-                    important_pages.append(f'/{file}')
-        except:
-            pass
+        # Combine base paths with parameters
+        base_paths = ['/search.php', '/list.php', '/show.php', '/view.php']
+        for base_path in base_paths:
+            for param in param_patterns:
+                important_pages.append(base_path + param)
         
         return list(set(important_pages))[:50]  # Remove duplicates and limit to 50 pages
     

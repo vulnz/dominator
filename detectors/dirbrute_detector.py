@@ -16,52 +16,66 @@ class DirBruteDetector:
         Returns (is_valid, evidence)
         """
         from .real404_detector import Real404Detector
+        from libs.response_analyzer import ResponseAnalyzer
+        
+        # Use response analyzer for better analysis
+        analyzer = ResponseAnalyzer()
+        analysis = analyzer.analyze_response(response_text, response_code)
         
         # Use improved 404 detection with baseline patterns and size analysis
         is_404, real_404_evidence, confidence = Real404Detector.detect_real_404(
             response_text, response_code, content_length, baseline_404, baseline_size
         )
         
-        # Very high confidence 404 detection
-        if is_404 and confidence > 0.85:
+        # Very high confidence 404 detection - strict filtering
+        if is_404 and confidence > 0.9:
             return False, f"Real 404 detected (very high confidence: {confidence:.3f}): {real_404_evidence}"
         
-        # High confidence 404 detection
-        if is_404 and confidence > 0.7:
+        # High confidence 404 detection with additional checks
+        if is_404 and confidence > 0.8:
+            # Check if response has meaningful structure despite 404 detection
+            if analysis['structure_score'] > 0.5 and analysis['has_forms']:
+                return True, f"Valid content overrides high confidence 404 (structure score: {analysis['structure_score']:.2f})"
             return False, f"Real 404 detected (high confidence: {confidence:.3f}): {real_404_evidence}"
         
-        # Medium confidence 404 detection - additional validation
-        if is_404 and confidence > 0.5:
+        # Medium confidence 404 detection - more careful validation
+        if is_404 and confidence > 0.6:
             # Check for strong valid content indicators
-            if DirBruteDetector._has_strong_valid_content(response_text):
+            if (DirBruteDetector._has_strong_valid_content(response_text) and 
+                analysis['structure_score'] > 0.3):
                 return True, f"Valid content overrides medium confidence 404 (confidence: {confidence:.3f})"
             else:
                 return False, f"Real 404 detected (medium confidence: {confidence:.3f}): {real_404_evidence}"
         
-        # Low confidence 404 - be very careful
-        if is_404 and confidence > 0.3:
+        # Low confidence 404 - very careful validation
+        if is_404 and confidence > 0.4:
             # Multiple validation checks for low confidence cases
             has_valid_content = DirBruteDetector._has_strong_valid_content(response_text)
             has_dir_content = DirBruteDetector._has_directory_file_content(response_text)
+            has_meaningful_content = analyzer.is_meaningful_content(response_text)
             
-            if has_valid_content or has_dir_content:
+            if (has_valid_content or has_dir_content or has_meaningful_content) and analysis['structure_score'] > 0.2:
                 return True, f"Valid content overrides low confidence 404 (confidence: {confidence:.3f})"
             else:
                 return False, f"Real 404 detected (low confidence: {confidence:.3f}): {real_404_evidence}"
         
         # For 200 responses that don't match 404 patterns
         if response_code == 200:
-            # Enhanced validation for directory/file content
-            if DirBruteDetector._has_directory_file_content(response_text):
+            # Enhanced validation using response analyzer
+            if analysis['structure_score'] > 0.4:
+                return True, f"HTTP 200 - High structure score ({analysis['structure_score']:.2f})"
+            elif DirBruteDetector._has_directory_file_content(response_text):
                 return True, f"HTTP 200 - Valid directory/file content found"
             elif DirBruteDetector._has_strong_valid_content(response_text):
                 return True, f"HTTP 200 - Strong valid content indicators found"
-            elif content_length > 2000:  # Large responses are likely valid
+            elif content_length > 3000:  # Increased threshold for large responses
                 return True, f"HTTP 200 - Large response likely valid ({content_length} bytes)"
             else:
                 # Small 200 responses need more scrutiny
                 if DirBruteDetector._looks_like_error_page(response_text):
                     return False, f"HTTP 200 - Appears to be error page despite status code"
+                elif analysis['has_errors'] and analysis['structure_score'] < 0.1:
+                    return False, f"HTTP 200 - Contains errors with low structure score"
                 return True, f"HTTP 200 - Content appears valid (no 404 patterns matched)"
         
         # Success codes
