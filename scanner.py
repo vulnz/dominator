@@ -78,6 +78,8 @@ Examples:
             args.request_limit = None
         if not hasattr(args, 'use_all'):
             args.use_all = False
+        if not hasattr(args, 'auth'):
+            args.auth = None
         
         # Create configuration
         config = Config(args)
