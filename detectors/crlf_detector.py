@@ -176,3 +176,30 @@ class CRLFDetector:
         6. Implement Content Security Policy (CSP) headers
         7. Regular security testing for header injection vulnerabilities
         """
+    
+    @staticmethod
+    def get_evidence(payload: str, response_text: str, response_headers: dict) -> str:
+        """Get evidence for CRLF injection"""
+        evidence_parts = []
+        
+        # Check for injected headers
+        if 'set-cookie' in str(response_headers).lower() and 'injected' in str(response_headers).lower():
+            evidence_parts.append("Cookie injection via CRLF")
+        if 'location' in str(response_headers).lower():
+            evidence_parts.append("Location header injection")
+        
+        # Check for CRLF in response body
+        if '\r\n' in response_text or '%0d%0a' in response_text:
+            evidence_parts.append("CRLF characters in response")
+        
+        if evidence_parts:
+            return f"CRLF injection detected: {'; '.join(evidence_parts)}"
+        else:
+            return f"Potential CRLF injection with payload: {payload}"
+    
+    @staticmethod
+    def get_response_snippet(payload: str, response_text: str) -> str:
+        """Get response snippet for CRLF injection"""
+        if len(response_text) > 300:
+            return response_text[:300] + "..."
+        return response_text

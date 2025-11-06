@@ -121,6 +121,31 @@ class FileUploadDetector:
         return response_text[:200]
     
     @staticmethod
+    def get_response_snippet(response_text: str) -> str:
+        """Get response snippet for file upload"""
+        # Look for form content
+        import re
+        form_match = re.search(r'<form[^>]*>.*?</form>', response_text, re.IGNORECASE | re.DOTALL)
+        if form_match:
+            form_content = form_match.group(0)
+            if len(form_content) > 400:
+                return form_content[:400] + "..."
+            return form_content
+        
+        if len(response_text) > 300:
+            return response_text[:300] + "..."
+        return response_text
+    
+    @staticmethod
+    def get_remediation_advice() -> str:
+        """Get remediation advice for file upload"""
+        return (
+            "Implement file type validation and size limits. "
+            "Use whitelist of allowed file extensions. "
+            "Store uploaded files outside web root and scan for malware."
+        )
+    
+    @staticmethod
     def get_remediation_advice() -> str:
         """Get remediation advice for file upload vulnerabilities"""
         return (

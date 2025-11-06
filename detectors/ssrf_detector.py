@@ -89,3 +89,34 @@ class SSRFDetector:
                 return response_text[start:end]
         
         return response_text[:max_length]
+    
+    @staticmethod
+    def get_evidence(payload: str, response_text: str) -> str:
+        """Get evidence for SSRF"""
+        evidence_parts = []
+        
+        # Check for internal network responses
+        if 'localhost' in response_text or '127.0.0.1' in response_text:
+            evidence_parts.append("localhost/127.0.0.1 response detected")
+        
+        # Check for cloud metadata responses
+        if 'instance-id' in response_text or 'ami-id' in response_text:
+            evidence_parts.append("AWS metadata response detected")
+        elif 'project-id' in response_text or 'instance/id' in response_text:
+            evidence_parts.append("GCP metadata response detected")
+        
+        # Check for internal service responses
+        if 'HTTP/1.' in response_text or 'Server:' in response_text:
+            evidence_parts.append("HTTP service response detected")
+        
+        if evidence_parts:
+            return f"SSRF detected: {'; '.join(evidence_parts)}"
+        else:
+            return f"Potential SSRF with payload: {payload}"
+    
+    @staticmethod
+    def get_response_snippet(payload: str, response_text: str) -> str:
+        """Get response snippet for SSRF"""
+        if len(response_text) > 400:
+            return response_text[:400] + "..."
+        return response_text

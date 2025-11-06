@@ -92,6 +92,40 @@ class NoSQLInjectionDetector:
         return response_text[:200]
     
     @staticmethod
+    def get_evidence(payload: str, response_text: str) -> str:
+        """Get evidence for NoSQL injection"""
+        evidence_parts = []
+        
+        # Check for NoSQL error messages
+        if 'mongodb' in response_text.lower():
+            evidence_parts.append("MongoDB error detected")
+        if 'couchdb' in response_text.lower():
+            evidence_parts.append("CouchDB error detected")
+        if 'syntax error' in response_text.lower():
+            evidence_parts.append("Query syntax error")
+        
+        if evidence_parts:
+            return f"NoSQL injection detected: {'; '.join(evidence_parts)}"
+        else:
+            return f"Potential NoSQL injection with payload: {payload}"
+    
+    @staticmethod
+    def get_response_snippet(payload: str, response_text: str) -> str:
+        """Get response snippet for NoSQL injection"""
+        if len(response_text) > 300:
+            return response_text[:300] + "..."
+        return response_text
+    
+    @staticmethod
+    def get_remediation_advice() -> str:
+        """Get remediation advice for NoSQL injection"""
+        return (
+            "Use parameterized queries and proper input validation. "
+            "Implement NoSQL-specific input sanitization. "
+            "Use database-specific security features and access controls."
+        )
+    
+    @staticmethod
     def get_remediation_advice() -> str:
         """Get remediation advice for NoSQL injection vulnerabilities"""
         return (

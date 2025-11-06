@@ -182,3 +182,27 @@ class DatabaseErrorDetector:
             "Log detailed error information server-side for debugging purposes. "
             "Use try-catch blocks around database operations and handle errors gracefully."
         )
+    
+    @staticmethod
+    def get_evidence(db_type: str, error_messages: list) -> str:
+        """Get evidence for database errors"""
+        evidence = f"Database error disclosure detected ({db_type})"
+        if error_messages:
+            evidence += f": {', '.join(error_messages[:3])}"
+        return evidence
+    
+    @staticmethod
+    def get_response_snippet(error_messages: list, response_text: str) -> str:
+        """Get response snippet for database errors"""
+        if error_messages:
+            # Find the error message in response
+            for error in error_messages[:2]:
+                start_pos = response_text.lower().find(error.lower())
+                if start_pos != -1:
+                    snippet_start = max(0, start_pos - 50)
+                    snippet_end = min(len(response_text), start_pos + len(error) + 50)
+                    return response_text[snippet_start:snippet_end]
+        
+        if len(response_text) > 300:
+            return response_text[:300] + "..."
+        return response_text

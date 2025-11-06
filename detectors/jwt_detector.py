@@ -212,3 +212,31 @@ class JWTDetector:
         }
         
         return advice.get(issue_type, "Review JWT implementation according to security best practices.")
+    
+    @staticmethod
+    def get_evidence(issues: list, tokens_found: int) -> str:
+        """Get evidence for JWT vulnerabilities"""
+        evidence_parts = [f"Found {tokens_found} JWT token(s)"]
+        
+        for issue in issues:
+            evidence_parts.append(f"{issue['issue']}: {issue['description']}")
+        
+        return "; ".join(evidence_parts)
+    
+    @staticmethod
+    def get_response_snippet(response_text: str) -> str:
+        """Get response snippet for JWT"""
+        import re
+        # Find JWT tokens
+        jwt_pattern = r'eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*'
+        tokens = re.findall(jwt_pattern, response_text)
+        
+        if tokens:
+            snippet = f"JWT tokens found: {len(tokens)}\n"
+            for i, token in enumerate(tokens[:3]):  # Show first 3 tokens
+                snippet += f"Token {i+1}: {token[:50]}...\n"
+            return snippet
+        
+        if len(response_text) > 300:
+            return response_text[:300] + "..."
+        return response_text

@@ -129,6 +129,39 @@ class PHPInfoDetector:
         return response_text[:200]
     
     @staticmethod
+    def get_evidence(indicators: list, response_text: str) -> str:
+        """Get detailed evidence for phpinfo exposure"""
+        found_indicators = []
+        response_lower = response_text.lower()
+        
+        for indicator in indicators:
+            if indicator.lower() in response_lower:
+                found_indicators.append(indicator)
+        
+        evidence = f"PHPInfo page detected with {len(found_indicators)} indicators"
+        if found_indicators:
+            evidence += f": {', '.join(found_indicators[:5])}"
+        
+        return evidence
+    
+    @staticmethod
+    def get_response_snippet(response_text: str) -> str:
+        """Get response snippet for phpinfo exposure"""
+        # Look for phpinfo table content
+        import re
+        table_match = re.search(r'<table[^>]*>.*?</table>', response_text, re.IGNORECASE | re.DOTALL)
+        if table_match:
+            table_content = table_match.group(0)
+            if len(table_content) > 500:
+                return table_content[:500] + "..."
+            return table_content
+        
+        # Fallback to general snippet
+        if len(response_text) > 300:
+            return response_text[:300] + "..."
+        return response_text
+    
+    @staticmethod
     def get_remediation_advice() -> str:
         """Get remediation advice for PHPInfo exposure"""
         return (

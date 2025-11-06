@@ -122,3 +122,30 @@ class HTTPResponseSplittingDetector:
             "Use proper output encoding and avoid direct header manipulation. "
             "Implement Content Security Policy (CSP) to mitigate XSS risks from response splitting."
         )
+    
+    @staticmethod
+    def get_evidence(payload: str, response_text: str, response_headers: dict) -> str:
+        """Get evidence for HTTP response splitting"""
+        evidence_parts = []
+        
+        # Check for injected headers
+        if 'set-cookie' in str(response_headers).lower():
+            evidence_parts.append("Set-Cookie header injection detected")
+        if 'location' in str(response_headers).lower():
+            evidence_parts.append("Location header injection detected")
+        
+        # Check for CRLF in response
+        if '\r\n' in response_text or '%0d%0a' in response_text:
+            evidence_parts.append("CRLF injection in response")
+        
+        if evidence_parts:
+            return f"HTTP response splitting detected: {'; '.join(evidence_parts)}"
+        else:
+            return f"Potential response splitting with payload: {payload}"
+    
+    @staticmethod
+    def get_response_snippet(payload: str, response_text: str) -> str:
+        """Get response snippet for response splitting"""
+        if len(response_text) > 300:
+            return response_text[:300] + "..."
+        return response_text

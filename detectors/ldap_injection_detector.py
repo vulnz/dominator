@@ -90,6 +90,40 @@ class LDAPInjectionDetector:
         return response_text[:200]
     
     @staticmethod
+    def get_evidence(payload: str, response_text: str) -> str:
+        """Get evidence for LDAP injection"""
+        evidence_parts = []
+        
+        # Check for LDAP error messages
+        if 'ldap' in response_text.lower():
+            evidence_parts.append("LDAP error message detected")
+        if 'invalid dn syntax' in response_text.lower():
+            evidence_parts.append("LDAP DN syntax error")
+        if 'bad search filter' in response_text.lower():
+            evidence_parts.append("LDAP search filter error")
+        
+        if evidence_parts:
+            return f"LDAP injection detected: {'; '.join(evidence_parts)}"
+        else:
+            return f"Potential LDAP injection with payload: {payload}"
+    
+    @staticmethod
+    def get_response_snippet(payload: str, response_text: str) -> str:
+        """Get response snippet for LDAP injection"""
+        if len(response_text) > 300:
+            return response_text[:300] + "..."
+        return response_text
+    
+    @staticmethod
+    def get_remediation_advice() -> str:
+        """Get remediation advice for LDAP injection"""
+        return (
+            "Use parameterized LDAP queries and proper input validation. "
+            "Implement LDAP escaping for special characters. "
+            "Use least privilege principles for LDAP connections."
+        )
+    
+    @staticmethod
     def get_remediation_advice() -> str:
         """Get remediation advice for LDAP injection vulnerabilities"""
         return (

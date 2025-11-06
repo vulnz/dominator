@@ -265,7 +265,44 @@ class GitDetector:
         return response_text[:max_length] + "..."
     
     @staticmethod
-    def get_remediation_advice(file_type: str) -> str:
+    def get_evidence(file_type: str, response_text: str) -> str:
+        """Get detailed evidence for git exposure"""
+        evidence_parts = []
+        
+        if 'config' in file_type:
+            evidence_parts.append("Git configuration file exposed")
+        elif 'head' in file_type:
+            evidence_parts.append("Git HEAD file exposed")
+        elif 'index' in file_type:
+            evidence_parts.append("Git index file exposed")
+        elif 'log' in file_type:
+            evidence_parts.append("Git log file exposed")
+        elif 'ref' in file_type:
+            evidence_parts.append("Git reference file exposed")
+        elif 'object' in file_type:
+            evidence_parts.append("Git object file exposed")
+        else:
+            evidence_parts.append("Git repository file exposed")
+        
+        # Add content indicators
+        if '[core]' in response_text:
+            evidence_parts.append("contains git configuration")
+        if 'ref:' in response_text:
+            evidence_parts.append("contains git references")
+        if 'repositoryformatversion' in response_text:
+            evidence_parts.append("contains repository metadata")
+        
+        return "; ".join(evidence_parts)
+    
+    @staticmethod
+    def get_response_snippet(response_text: str) -> str:
+        """Get response snippet for git exposure"""
+        if len(response_text) > 300:
+            return response_text[:300] + "..."
+        return response_text
+    
+    @staticmethod
+    def get_remediation_advice(git_path: str) -> str:
         """Get remediation advice for git exposure"""
         return (
             "CRITICAL: Git repository is exposed! "

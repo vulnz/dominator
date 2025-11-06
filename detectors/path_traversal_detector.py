@@ -83,6 +83,40 @@ class PathTraversalDetector:
         return response_text[:200]
     
     @staticmethod
+    def get_evidence(payload: str, response_text: str) -> str:
+        """Get evidence for path traversal"""
+        evidence_parts = []
+        
+        # Check for file content indicators
+        if 'root:' in response_text and '/bin/' in response_text:
+            evidence_parts.append("Unix passwd file content detected")
+        elif '[extensions]' in response_text or '[files]' in response_text:
+            evidence_parts.append("Windows ini file content detected")
+        elif '<?php' in response_text:
+            evidence_parts.append("PHP source code exposed")
+        
+        if evidence_parts:
+            return f"Path traversal successful: {'; '.join(evidence_parts)}"
+        else:
+            return f"Potential path traversal with payload: {payload}"
+    
+    @staticmethod
+    def get_response_snippet(payload: str, response_text: str) -> str:
+        """Get response snippet for path traversal"""
+        if len(response_text) > 300:
+            return response_text[:300] + "..."
+        return response_text
+    
+    @staticmethod
+    def get_remediation_advice() -> str:
+        """Get remediation advice for path traversal"""
+        return (
+            "Implement proper input validation and sanitization. "
+            "Use whitelisting for allowed file paths. "
+            "Avoid direct file system access based on user input."
+        )
+    
+    @staticmethod
     def get_remediation_advice() -> str:
         """Get remediation advice for path traversal vulnerabilities"""
         return (

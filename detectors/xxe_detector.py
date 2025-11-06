@@ -106,3 +106,30 @@ class XXEDetector:
             "Use secure XML parsing libraries and configure them to reject DTDs and external entities. "
             "Validate and sanitize all XML input. Consider using JSON instead of XML where possible."
         )
+    
+    @staticmethod
+    def get_evidence(payload: str, response_text: str) -> str:
+        """Get evidence for XXE"""
+        evidence_parts = []
+        
+        # Check for file content
+        if 'root:' in response_text:
+            evidence_parts.append("System file content detected")
+        elif '[extensions]' in response_text:
+            evidence_parts.append("Windows configuration file detected")
+        
+        # Check for XML parsing errors
+        if 'xml' in response_text.lower() and 'error' in response_text.lower():
+            evidence_parts.append("XML parsing error detected")
+        
+        if evidence_parts:
+            return f"XXE detected: {'; '.join(evidence_parts)}"
+        else:
+            return f"Potential XXE with payload: {payload}"
+    
+    @staticmethod
+    def get_response_snippet(payload: str, response_text: str) -> str:
+        """Get response snippet for XXE"""
+        if len(response_text) > 300:
+            return response_text[:300] + "..."
+        return response_text

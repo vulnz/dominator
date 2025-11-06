@@ -118,3 +118,34 @@ class RFIDetector:
                 return response_text[start:end]
         
         return response_text[:max_length]
+    
+    @staticmethod
+    def get_evidence(payload: str, response_text: str) -> str:
+        """Get evidence for RFI"""
+        evidence_parts = []
+        
+        # Check for remote file inclusion indicators
+        if 'http://' in payload and 'http://' in response_text:
+            evidence_parts.append("remote HTTP URL included")
+        elif 'https://' in payload and 'https://' in response_text:
+            evidence_parts.append("remote HTTPS URL included")
+        elif 'ftp://' in payload and 'ftp://' in response_text:
+            evidence_parts.append("remote FTP URL included")
+        
+        # Check for successful inclusion
+        if '<?php' in response_text:
+            evidence_parts.append("PHP code execution detected")
+        elif '<script>' in response_text:
+            evidence_parts.append("JavaScript code execution detected")
+        
+        if evidence_parts:
+            return f"RFI detected: {'; '.join(evidence_parts)}"
+        else:
+            return f"Potential RFI with payload: {payload}"
+    
+    @staticmethod
+    def get_response_snippet(payload: str, response_text: str) -> str:
+        """Get response snippet for RFI"""
+        if len(response_text) > 400:
+            return response_text[:400] + "..."
+        return response_text

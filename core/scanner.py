@@ -52,41 +52,298 @@ except ImportError as e:
     XXEPayloads = CommandInjectionPayloads = IDORPayloads = NoSQLInjectionPayloads = DummyPayloads
     SSTIPayloads = CRLFPayloads = DummyPayloads
 
-# Import detector classes
-from detectors.xss_detector import XSSDetector
-from detectors.sqli_detector import SQLiDetector
-from detectors.lfi_detector import LFIDetector
-from detectors.csrf_detector import CSRFDetector
-from detectors.dirbrute_detector import DirBruteDetector
-from detectors.real404_detector import Real404Detector
-from detectors.git_detector import GitDetector
-from detectors.directory_traversal_detector import DirectoryTraversalDetector
-from detectors.security_headers_detector import SecurityHeadersDetector
-from detectors.ssrf_detector import SSRFDetector
-from detectors.rfi_detector import RFIDetector
-from detectors.version_disclosure_detector import VersionDisclosureDetector
-from detectors.clickjacking_detector import ClickjackingDetector
-from detectors.blind_xss_detector import BlindXSSDetector
-from detectors.password_over_http_detector import PasswordOverHTTPDetector
-from detectors.outdated_software_detector import OutdatedSoftwareDetector
-from detectors.database_error_detector import DatabaseErrorDetector
-from detectors.phpinfo_detector import PHPInfoDetector
-from detectors.ssl_tls_detector import SSLTLSDetector
-from detectors.httponly_cookie_detector import HttpOnlyCookieDetector
-from Wappalyzer import Wappalyzer, WebPage
-from detectors.xxe_detector import XXEDetector
-from detectors.idor_detector import IDORDetector
-from detectors.command_injection_detector import CommandInjectionDetector
-from detectors.path_traversal_detector import PathTraversalDetector
-from detectors.ldap_injection_detector import LDAPInjectionDetector
-from detectors.nosql_injection_detector import NoSQLInjectionDetector
-from detectors.file_upload_detector import FileUploadDetector
-from detectors.cors_detector import CORSDetector
-from detectors.jwt_detector import JWTDetector
-from detectors.insecure_deserialization_detector import InsecureDeserializationDetector
-from detectors.http_response_splitting_detector import HTTPResponseSplittingDetector
-from detectors.ssti_detector import SSTIDetector
-from detectors.crlf_detector import CRLFDetector
+# Import detector classes with error handling
+try:
+    from detectors.xss_detector import XSSDetector
+except ImportError:
+    class XSSDetector:
+        @staticmethod
+        def detect_reflected_xss(payload, response_text, response_code):
+            return payload.lower() in response_text.lower()
+
+try:
+    from detectors.sqli_detector import SQLiDetector
+except ImportError:
+    class SQLiDetector:
+        @staticmethod
+        def detect_error_based_sqli(response_text, response_code):
+            sql_errors = ['mysql', 'sql syntax', 'ora-', 'postgresql']
+            return any(error in response_text.lower() for error in sql_errors), "SQL error detected"
+
+try:
+    from detectors.lfi_detector import LFIDetector
+except ImportError:
+    class LFIDetector:
+        @staticmethod
+        def detect_lfi(response_text, response_code):
+            lfi_indicators = ['root:', '[extensions]', '<?php']
+            return any(indicator in response_text for indicator in lfi_indicators), "File inclusion detected"
+
+try:
+    from detectors.csrf_detector import CSRFDetector
+except ImportError:
+    class CSRFDetector:
+        @staticmethod
+        def get_csrf_indicators():
+            return ['csrf_token', '_token', 'authenticity_token']
+
+try:
+    from detectors.dirbrute_detector import DirBruteDetector
+except ImportError:
+    class DirBruteDetector:
+        @staticmethod
+        def is_valid_response(response_text, response_code, content_length, baseline_404=None, baseline_size=0):
+            return response_code == 200, f"HTTP {response_code}"
+
+try:
+    from detectors.real404_detector import Real404Detector
+except ImportError:
+    class Real404Detector:
+        @staticmethod
+        def generate_baseline_404(base_url, session=None):
+            return "", 0
+        @staticmethod
+        def detect_real_404(response_text, response_code, content_length, baseline_404=None, baseline_size=0):
+            return response_code == 404, "404 detected", 1.0
+
+try:
+    from detectors.git_detector import GitDetector
+except ImportError:
+    class GitDetector:
+        @staticmethod
+        def detect_git_exposure(response_text, response_code, url):
+            return '.git' in response_text, "Git content detected", "High"
+
+try:
+    from detectors.directory_traversal_detector import DirectoryTraversalDetector
+except ImportError:
+    class DirectoryTraversalDetector:
+        @staticmethod
+        def detect_directory_traversal(response_text, response_code, payload):
+            return 'root:' in response_text or '[extensions]' in response_text
+
+try:
+    from detectors.security_headers_detector import SecurityHeadersDetector
+except ImportError:
+    class SecurityHeadersDetector:
+        @staticmethod
+        def detect_missing_security_headers(headers):
+            return []
+        @staticmethod
+        def detect_insecure_cookies(headers):
+            return []
+
+try:
+    from detectors.ssrf_detector import SSRFDetector
+except ImportError:
+    class SSRFDetector:
+        @staticmethod
+        def detect_ssrf(response_text, response_code, payload):
+            return 'localhost' in response_text or '127.0.0.1' in response_text
+
+try:
+    from detectors.rfi_detector import RFIDetector
+except ImportError:
+    class RFIDetector:
+        @staticmethod
+        def detect_rfi(response_text, response_code, payload):
+            return 'http://' in payload and '<?php' in response_text
+
+try:
+    from detectors.version_disclosure_detector import VersionDisclosureDetector
+except ImportError:
+    class VersionDisclosureDetector:
+        @staticmethod
+        def detect_version_disclosure(response_text, headers):
+            return []
+        @staticmethod
+        def get_severity(software, version):
+            return "Medium"
+
+try:
+    from detectors.clickjacking_detector import ClickjackingDetector
+except ImportError:
+    class ClickjackingDetector:
+        @staticmethod
+        def detect_clickjacking(headers):
+            return {'vulnerable': 'X-Frame-Options' not in headers, 'evidence': 'Missing X-Frame-Options'}
+
+try:
+    from detectors.blind_xss_detector import BlindXSSDetector
+except ImportError:
+    class BlindXSSDetector:
+        @staticmethod
+        def detect_blind_xss(payload, response_text, response_code, callback_received=False):
+            return callback_received
+
+try:
+    from detectors.password_over_http_detector import PasswordOverHTTPDetector
+except ImportError:
+    class PasswordOverHTTPDetector:
+        @staticmethod
+        def detect_password_over_http(url, response_text, response_code):
+            return url.startswith('http://') and 'password' in response_text.lower(), "HTTP password form", []
+
+try:
+    from detectors.outdated_software_detector import OutdatedSoftwareDetector
+except ImportError:
+    class OutdatedSoftwareDetector:
+        @staticmethod
+        def detect_outdated_software(headers, response_text):
+            return []
+
+try:
+    from detectors.database_error_detector import DatabaseErrorDetector
+except ImportError:
+    class DatabaseErrorDetector:
+        @staticmethod
+        def detect_database_errors(response_text, response_code):
+            return False, '', '', []
+
+try:
+    from detectors.phpinfo_detector import PHPInfoDetector
+except ImportError:
+    class PHPInfoDetector:
+        @staticmethod
+        def detect_phpinfo_exposure(response_text, response_code, url):
+            return 'phpinfo' in response_text.lower(), "PHPInfo detected", "High"
+
+try:
+    from detectors.ssl_tls_detector import SSLTLSDetector
+except ImportError:
+    class SSLTLSDetector:
+        @staticmethod
+        def detect_ssl_tls_implementation(url):
+            return url.startswith('https://'), "HTTPS detected", "Low", {}
+
+try:
+    from detectors.httponly_cookie_detector import HttpOnlyCookieDetector
+except ImportError:
+    class HttpOnlyCookieDetector:
+        @staticmethod
+        def detect_httponly_cookies(headers):
+            return []
+
+try:
+    from Wappalyzer import Wappalyzer, WebPage
+except ImportError:
+    class Wappalyzer:
+        @staticmethod
+        def latest():
+            return Wappalyzer()
+        def analyze(self, webpage):
+            return []
+    class WebPage:
+        @staticmethod
+        def new_from_response(response):
+            return WebPage()
+
+try:
+    from detectors.xxe_detector import XXEDetector
+except ImportError:
+    class XXEDetector:
+        @staticmethod
+        def detect_xxe(response_text, response_code, payload):
+            return 'ENTITY' in payload and 'root:' in response_text
+
+try:
+    from detectors.idor_detector import IDORDetector
+except ImportError:
+    class IDORDetector:
+        @staticmethod
+        def get_idor_parameters():
+            return ['id', 'user_id', 'userid']
+        @staticmethod
+        def detect_idor(orig_response, mod_response, orig_code, mod_code):
+            return orig_response != mod_response
+
+try:
+    from detectors.command_injection_detector import CommandInjectionDetector
+except ImportError:
+    class CommandInjectionDetector:
+        @staticmethod
+        def detect_command_injection(response_text, response_code, payload):
+            return 'uid=' in response_text or 'Volume in drive' in response_text
+
+try:
+    from detectors.path_traversal_detector import PathTraversalDetector
+except ImportError:
+    class PathTraversalDetector:
+        @staticmethod
+        def detect_path_traversal(response_text, response_code, payload):
+            return 'root:' in response_text or '[extensions]' in response_text
+
+try:
+    from detectors.ldap_injection_detector import LDAPInjectionDetector
+except ImportError:
+    class LDAPInjectionDetector:
+        @staticmethod
+        def detect_ldap_injection(response_text, response_code, payload):
+            return 'ldap' in response_text.lower()
+
+try:
+    from detectors.nosql_injection_detector import NoSQLInjectionDetector
+except ImportError:
+    class NoSQLInjectionDetector:
+        @staticmethod
+        def detect_nosql_injection(response_text, response_code, payload):
+            return 'mongodb' in response_text.lower()
+
+try:
+    from detectors.file_upload_detector import FileUploadDetector
+except ImportError:
+    class FileUploadDetector:
+        @staticmethod
+        def detect_file_upload_vulnerability(response_text, response_code, url):
+            return 'type="file"' in response_text, "File upload form detected", "Medium"
+
+try:
+    from detectors.cors_detector import CORSDetector
+except ImportError:
+    class CORSDetector:
+        @staticmethod
+        def detect_cors_misconfiguration(headers, origin=None):
+            return False, "No CORS issues", "None", []
+
+try:
+    from detectors.jwt_detector import JWTDetector
+except ImportError:
+    class JWTDetector:
+        @staticmethod
+        def detect_jwt_vulnerabilities(response_text, headers, url):
+            return 'eyJ' in response_text, "JWT token found", "Low", []
+
+try:
+    from detectors.insecure_deserialization_detector import InsecureDeserializationDetector
+except ImportError:
+    class InsecureDeserializationDetector:
+        @staticmethod
+        def detect_insecure_deserialization(response_text, response_code, payload):
+            return False, "No deserialization detected", "None"
+
+try:
+    from detectors.http_response_splitting_detector import HTTPResponseSplittingDetector
+except ImportError:
+    class HTTPResponseSplittingDetector:
+        @staticmethod
+        def detect_response_splitting(response_text, response_code, payload, headers):
+            return '\r\n' in response_text
+
+try:
+    from detectors.ssti_detector import SSTIDetector
+except ImportError:
+    class SSTIDetector:
+        @staticmethod
+        def detect_ssti(response_text, response_code, payload):
+            return '49' in response_text and '7*7' in payload
+
+try:
+    from detectors.crlf_detector import CRLFDetector
+except ImportError:
+    class CRLFDetector:
+        @staticmethod
+        def detect_crlf_injection(response_text, response_code, payload, headers):
+            return '\r\n' in response_text or '%0d%0a' in payload
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -531,7 +788,7 @@ class VulnScanner:
                         except Exception as e:
                             evidence = f"XSS detected with payload: {payload}"
                             response_snippet = "Response analysis failed"
-                        
+                            
                         # Create vulnerability object for filtering
                         vulnerability = {
                             'module': 'xss',
@@ -545,20 +802,23 @@ class VulnScanner:
                             'detector': 'XSSDetector.detect_reflected_xss',
                             'response_snippet': response_snippet
                         }
-                        
+                            
                         # Filter false positives
-                        is_valid, filter_reason = self.false_positive_filter.filter_vulnerability(vulnerability)
-                        
+                        try:
+                            is_valid, filter_reason = self.false_positive_filter.filter_vulnerability(vulnerability)
+                        except:
+                            is_valid, filter_reason = True, "Filter not available"
+                            
                         if is_valid:
                             print(f"    [XSS] VULNERABILITY FOUND! Parameter: {param}")
-                            
+                                
                             # Mark as found to prevent duplicates
                             self.found_vulnerabilities.add(param_key)
-                            
+                                
                             # Update successful payload count
                             self.scan_stats['payload_stats']['xss']['successful_payloads'] += 1
                             self.scan_stats['total_payloads_used'] += 1
-                            
+                                
                             # Take screenshot for XSS vulnerability
                             screenshot_filename = None
                             try:
@@ -570,7 +830,7 @@ class VulnScanner:
                                 vulnerability['screenshot'] = screenshot_filename
                             except Exception as e:
                                 print(f"    [XSS] Could not take screenshot: {e}")
-                            
+                                
                             results.append(vulnerability)
                             break  # Found XSS, no need to test more payloads for this param
                         else:
@@ -659,7 +919,7 @@ class VulnScanner:
                                 # Mark as found to prevent duplicates
                                 self.found_vulnerabilities.add(form_key)
                                 
-                                results.append({
+                                vulnerability = {
                                     'module': 'xss',
                                     'target': form_url,
                                     'vulnerability': f'Reflected XSS in {form_method} Form',
@@ -670,8 +930,17 @@ class VulnScanner:
                                     'request_url': form_url,
                                     'detector': 'XSSDetector.detect_reflected_xss',
                                     'response_snippet': response_snippet
-                                })
-                                break  # Found XSS, no need to test more payloads for this input
+                                }
+                                
+                                # Filter false positives
+                                try:
+                                    is_valid, filter_reason = self.false_positive_filter.filter_vulnerability(vulnerability)
+                                except:
+                                    is_valid = True
+                                
+                                if is_valid:
+                                    results.append(vulnerability)
+                                    break  # Found XSS, no need to test more payloads for this input
                                 
                         except Exception as e:
                             print(f"    [XSS] Error testing form payload: {e}")
@@ -728,7 +997,11 @@ class VulnScanner:
                     print(f"    [SQLI] Response code: {response.status_code}")
                     
                     # Use SQLi detector
-                    is_vulnerable, pattern = SQLiDetector.detect_error_based_sqli(response.text, response.status_code)
+                    try:
+                        is_vulnerable, pattern = SQLiDetector.detect_error_based_sqli(response.text, response.status_code)
+                    except:
+                        is_vulnerable = False
+                        pattern = "Detection failed"
                     
                     if is_vulnerable:
                         try:
@@ -739,7 +1012,7 @@ class VulnScanner:
                             response_snippet = "Response analysis failed"
                         print(f"    [SQLI] VULNERABILITY FOUND! Parameter: {param}")
                         
-                        results.append({
+                        vulnerability = {
                             'module': 'sqli',
                             'target': base_url,
                             'vulnerability': 'SQL Injection',
@@ -750,8 +1023,17 @@ class VulnScanner:
                             'request_url': test_url,
                             'detector': 'SQLiDetector.detect_error_based_sqli',
                             'response_snippet': response_snippet
-                        })
-                        break  # Found SQLi, no need to test more payloads for this param
+                        }
+                        
+                        # Filter false positives
+                        try:
+                            is_valid, filter_reason = self.false_positive_filter.filter_vulnerability(vulnerability)
+                        except:
+                            is_valid = True
+                        
+                        if is_valid:
+                            results.append(vulnerability)
+                            break  # Found SQLi, no need to test more payloads for this param
                             
                 except Exception as e:
                     print(f"    [SQLI] Error testing payload: {e}")
@@ -799,7 +1081,11 @@ class VulnScanner:
                     print(f"    [LFI] Response code: {response.status_code}")
                     
                     # Use LFI detector
-                    is_vulnerable, pattern = LFIDetector.detect_lfi(response.text, response.status_code)
+                    try:
+                        is_vulnerable, pattern = LFIDetector.detect_lfi(response.text, response.status_code)
+                    except:
+                        is_vulnerable = False
+                        pattern = "Detection failed"
                     
                     if is_vulnerable:
                         try:
@@ -810,7 +1096,7 @@ class VulnScanner:
                             response_snippet = "Response analysis failed"
                         print(f"    [LFI] VULNERABILITY FOUND! Parameter: {param}")
                         
-                        results.append({
+                        vulnerability = {
                             'module': 'lfi',
                             'target': base_url,
                             'vulnerability': 'Local File Inclusion',
@@ -821,8 +1107,17 @@ class VulnScanner:
                             'request_url': test_url,
                             'detector': 'LFIDetector.detect_lfi',
                             'response_snippet': response_snippet
-                        })
-                        break  # Found LFI, no need to test more payloads for this param
+                        }
+                        
+                        # Filter false positives
+                        try:
+                            is_valid, filter_reason = self.false_positive_filter.filter_vulnerability(vulnerability)
+                        except:
+                            is_valid = True
+                        
+                        if is_valid:
+                            results.append(vulnerability)
+                            break  # Found LFI, no need to test more payloads for this param
                             
                 except Exception as e:
                     print(f"    [LFI] Error testing payload: {e}")

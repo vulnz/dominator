@@ -97,3 +97,18 @@ class BlindXSSDetector:
         
         # Return first part of response if payload not found
         return response_text[:max_length] + ("..." if len(response_text) > max_length else "")
+    
+    @staticmethod
+    def get_evidence(payload: str, response_text: str, callback_received: bool) -> str:
+        """Get evidence for blind XSS"""
+        if callback_received:
+            return f"Blind XSS confirmed: callback received for payload {payload[:50]}"
+        else:
+            return f"Potential blind XSS: payload {payload[:50]} injected, monitoring for callback"
+    
+    @staticmethod
+    def get_response_snippet(payload: str, response_text: str) -> str:
+        """Get response snippet for blind XSS"""
+        if len(response_text) > 300:
+            return response_text[:300] + "..."
+        return response_text

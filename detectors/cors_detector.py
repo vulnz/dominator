@@ -144,3 +144,17 @@ class CORSDetector:
         }
         
         return advice.get(issue_type, "Review and tighten CORS configuration according to security best practices.")
+    
+    @staticmethod
+    def get_evidence(issues: list, response_headers: dict) -> str:
+        """Get evidence for CORS misconfiguration"""
+        evidence_parts = []
+        
+        for issue in issues:
+            evidence_parts.append(f"{issue['issue']}: {issue['description']}")
+        
+        # Add header information
+        cors_header = response_headers.get('Access-Control-Allow-Origin', 'Not set')
+        evidence_parts.append(f"Access-Control-Allow-Origin: {cors_header}")
+        
+        return "; ".join(evidence_parts)

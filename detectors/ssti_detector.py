@@ -179,3 +179,32 @@ class SSTIDetector:
         6. Implement Content Security Policy (CSP) headers
         7. Regular security audits of template usage
         """
+    
+    @staticmethod
+    def get_evidence(payload: str, response_text: str) -> str:
+        """Get evidence for SSTI"""
+        evidence_parts = []
+        
+        # Check for template evaluation
+        if '49' in response_text and '7*7' in payload:
+            evidence_parts.append("Mathematical expression evaluated (7*7=49)")
+        elif '14' in response_text and '7+7' in payload:
+            evidence_parts.append("Mathematical expression evaluated (7+7=14)")
+        
+        # Check for template engine errors
+        if 'template' in response_text.lower():
+            evidence_parts.append("Template engine error detected")
+        if 'jinja' in response_text.lower():
+            evidence_parts.append("Jinja2 template engine detected")
+        
+        if evidence_parts:
+            return f"SSTI detected: {'; '.join(evidence_parts)}"
+        else:
+            return f"Potential SSTI with payload: {payload}"
+    
+    @staticmethod
+    def get_response_snippet(payload: str, response_text: str) -> str:
+        """Get response snippet for SSTI"""
+        if len(response_text) > 300:
+            return response_text[:300] + "..."
+        return response_text

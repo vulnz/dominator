@@ -133,6 +133,87 @@ class InsecureDeserializationDetector:
         return response_text[:200]
     
     @staticmethod
+    def get_evidence(original_response: str, modified_response: str) -> str:
+        """Get evidence for IDOR"""
+        evidence_parts = []
+        
+        # Compare response lengths
+        orig_len = len(original_response)
+        mod_len = len(modified_response)
+        
+        if abs(orig_len - mod_len) > 100:
+            evidence_parts.append(f"response size difference: {orig_len} vs {mod_len} bytes")
+        
+        # Check for different content
+        if 'user' in modified_response.lower() and 'user' not in original_response.lower():
+            evidence_parts.append("different user data detected")
+        elif 'id' in modified_response.lower() and 'id' not in original_response.lower():
+            evidence_parts.append("different ID data detected")
+        
+        if evidence_parts:
+            return f"IDOR detected: {'; '.join(evidence_parts)}"
+        else:
+            return "Different response content suggests IDOR vulnerability"
+    
+    @staticmethod
+    def get_response_snippet(response_text: str) -> str:
+        """Get response snippet for IDOR"""
+        if len(response_text) > 300:
+            return response_text[:300] + "..."
+        return response_text
+    
+    @staticmethod
+    def get_remediation_advice() -> str:
+        """Get remediation advice for IDOR"""
+        return (
+            "Implement proper access controls and authorization checks. "
+            "Use indirect object references or UUIDs instead of sequential IDs. "
+            "Validate user permissions before returning sensitive data."
+        )
+    
+    @staticmethod
+    def get_evidence(payload: str, response_text: str) -> str:
+        """Get evidence for directory traversal"""
+        evidence_parts = []
+        
+        # Check for file content indicators
+        if 'root:' in response_text and '/bin/' in response_text:
+            evidence_parts.append("Unix passwd file content detected")
+        elif '[extensions]' in response_text or '[files]' in response_text:
+            evidence_parts.append("Windows ini file content detected")
+        elif '<?php' in response_text:
+            evidence_parts.append("PHP source code exposed")
+        elif 'function' in response_text and 'var ' in response_text:
+            evidence_parts.append("Source code content detected")
+        
+        if evidence_parts:
+            return f"Directory traversal successful: {'; '.join(evidence_parts)}"
+        else:
+            return f"Potential directory traversal with payload: {payload}"
+    
+    @staticmethod
+    def get_response_snippet(payload: str, response_text: str) -> str:
+        """Get response snippet for directory traversal"""
+        # Look for file content
+        lines = response_text.split('\n')
+        relevant_lines = []
+        
+        for line in lines[:20]:  # First 20 lines
+            if any(indicator in line for indicator in ['root:', '[extensions]', '<?php', 'function']):
+                relevant_lines.append(line.strip())
+        
+        if relevant_lines:
+            snippet = '\n'.join(relevant_lines[:10])
+            if len(snippet) > 400:
+                return snippet[:400] + "..."
+            return snippet
+        
+        # Fallback
+        if len(response_text) > 300:
+            return response_text[:300] + "..."
+        return response_text
+    
+    @staticmethod
     def get_remediation_advice() -> str:
         """Get remediation advice for insecure deserialization vulnerabilities"""
         return (
@@ -142,3 +223,10 @@ class InsecureDeserializationDetector:
             "Use whitelist-based deserialization and run deserialization in sandboxed environments. "
             "Keep serialization libraries updated and monitor for known vulnerabilities."
         )
+    
+    @staticmethod
+    def get_response_snippet(payload: str, response_text: str) -> str:
+        """Get response snippet for deserialization"""
+        if len(response_text) > 300:
+            return response_text[:300] + "..."
+        return response_text
