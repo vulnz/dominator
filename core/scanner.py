@@ -198,34 +198,66 @@ class VulnScanner:
                 if not crawled_urls:
                     print(f"  [DEBUG] No pages with parameters found by crawler")
                 else:
-                    # Try to crawl vulnerability pages deeper
+                    # Try to crawl vulnerability pages deeper and test them directly
                     vuln_pages = [url for url in crawled_urls if '/vulnerabilities/' in url]
-                    print(f"  [DEBUG] Found {len(vuln_pages)} vulnerability pages to crawl deeper")
+                    print(f"  [DEBUG] Found {len(vuln_pages)} vulnerability pages to test directly")
                     
-                    for vuln_page in vuln_pages[:10]:  # Limit to 10 pages
+                    for vuln_page in vuln_pages[:15]:  # Test first 15 vulnerability pages
                         try:
-                            print(f"  [DEBUG] Deep crawling: {vuln_page}")
-                            deep_crawled = self.crawler.crawl_for_pages(vuln_page, max_pages=5)
+                            print(f"  [DEBUG] Testing vulnerability page: {vuln_page}")
                             
-                            for deep_url in deep_crawled:
-                                deep_data = self.url_parser.parse(deep_url)
-                                if deep_data['query_params']:
-                                    print(f"  [DEBUG] Found parameters in deep crawl: {deep_url}")
-                                    print(f"  [DEBUG] Parameters: {list(deep_data['query_params'].keys())}")
+                            # Test the page directly first
+                            vuln_data = self.url_parser.parse(vuln_page)
+                            
+                            # Test all modules on this vulnerability page
+                            for module_name in self.config.modules:
+                                if self._should_stop():
+                                    break
                                     
-                                    # Update stats
-                                    self.scan_stats['total_urls'] += 1
-                                    self.scan_stats['total_params'] += len(deep_data['query_params'])
+                                # Skip parameter-dependent modules if no parameters, but test others
+                                param_dependent = ['xss', 'sqli', 'lfi', 'rfi', 'xxe', 'idor', 'ssrf', 
+                                                 'dirtraversal', 'blindxss', 'commandinjection', 'pathtraversal',
+                                                 'ldapinjection', 'nosqlinjection', 'deserialization', 'responsesplitting']
+                                
+                                if module_name in param_dependent and not vuln_data['query_params']:
+                                    # For parameter-dependent modules, try adding common test parameters
+                                    test_params = {'id': ['1'], 'name': ['test'], 'search': ['test'], 'file': ['test.txt']}
+                                    vuln_data_with_params = vuln_data.copy()
+                                    vuln_data_with_params['query_params'] = test_params
+                                    vuln_data_with_params['url'] = f"{vuln_page}?id=1&name=test"
                                     
-                                    # Test all modules on this page
-                                    for module_name in self.config.modules:
-                                        if self._should_stop():
-                                            break
-                                        module_results = self._run_module(module_name, deep_data)
-                                        target_results.extend(module_results)
+                                    print(f"  [DEBUG] Testing {module_name} on {vuln_page} with test parameters")
+                                    module_results = self._run_module(module_name, vuln_data_with_params)
+                                    target_results.extend(module_results)
+                                else:
+                                    print(f"  [DEBUG] Testing {module_name} on {vuln_page}")
+                                    module_results = self._run_module(module_name, vuln_data)
+                                    target_results.extend(module_results)
+                            
+                            # Also try to crawl deeper for more URLs with parameters
+                            try:
+                                deep_crawled = self.crawler.crawl_for_pages(vuln_page, max_pages=3)
+                                for deep_url in deep_crawled:
+                                    deep_data = self.url_parser.parse(deep_url)
+                                    if deep_data['query_params']:
+                                        print(f"  [DEBUG] Found parameters in deep crawl: {deep_url}")
+                                        print(f"  [DEBUG] Parameters: {list(deep_data['query_params'].keys())}")
+                                        
+                                        # Update stats
+                                        self.scan_stats['total_urls'] += 1
+                                        self.scan_stats['total_params'] += len(deep_data['query_params'])
+                                        
+                                        # Test parameter-dependent modules on this page
+                                        for module_name in ['xss', 'sqli', 'lfi', 'rfi', 'xxe', 'idor', 'ssrf']:
+                                            if self._should_stop():
+                                                break
+                                            module_results = self._run_module(module_name, deep_data)
+                                            target_results.extend(module_results)
+                            except Exception as e:
+                                print(f"  [DEBUG] Error deep crawling {vuln_page}: {e}")
                                         
                         except Exception as e:
-                            print(f"  [DEBUG] Error deep crawling {vuln_page}: {e}")
+                            print(f"  [DEBUG] Error testing vulnerability page {vuln_page}: {e}")
                             continue
                 
                 # Test important pages that might have forms or vulnerabilities
@@ -241,7 +273,10 @@ class VulnScanner:
                     if page.startswith('http'):
                         test_url = page
                     else:
-                        test_url = f"{parsed_data['scheme']}://{parsed_data['host']}{page}"
+                        # Build URL with correct port and base path
+                        port_part = f":{parsed_data['port']}" if parsed_data.get('port') and parsed_data['port'] != 80 else ""
+                        base_path = parsed_data.get('path', '/').rstrip('/')
+                        test_url = f"{parsed_data['scheme']}://{parsed_data['host']}{port_part}{base_path}{page}"
                     
                     try:
                         print(f"  [DEBUG] Testing page: {test_url}")
