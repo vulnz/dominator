@@ -13,8 +13,8 @@ from core.config import Config
 from core.url_parser import URLParser
 from core.crawler import WebCrawler
 from utils.file_handler import FileHandler
-from payloads import XSSPayloads, SQLiPayloads, LFIPayloads
-from detectors import XSSDetector, SQLiDetector, LFIDetector
+from payloads import XSSPayloads, SQLiPayloads, LFIPayloads, CSRFPayloads
+from detectors import XSSDetector, SQLiDetector, LFIDetector, CSRFDetector
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -201,6 +201,8 @@ class VulnScanner:
                 results.extend(self._test_sqli(parsed_data))
             elif module_name == "lfi":
                 results.extend(self._test_lfi(parsed_data))
+            elif module_name == "csrf":
+                results.extend(self._test_csrf(parsed_data))
             # Add more modules as needed
                 
         except Exception as e:
@@ -404,6 +406,156 @@ class VulnScanner:
         
         return results
 
+
+    def _test_csrf(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for CSRF vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        try:
+            print(f"    [CSRF] Testing CSRF protection...")
+            
+            # First, get the initial page to analyze forms and CSRF protection
+            response = requests.get(
+                base_url,
+                timeout=self.config.timeout,
+                headers=self.config.headers,
+                verify=False
+            )
+            
+            print(f"    [CSRF] Initial response code: {response.status_code}")
+            
+            # Check for CSRF protection on the page
+            is_vulnerable, evidence = CSRFDetector.detect_csrf_vulnerability(
+                response.text, 
+                dict(response.headers)
+            )
+            
+            if is_vulnerable:
+                response_snippet = CSRFDetector.get_response_snippet(response.text)
+                print(f"    [CSRF] VULNERABILITY FOUND! Missing CSRF protection")
+                
+                results.append({
+                    'module': 'csrf',
+                    'target': base_url,
+                    'vulnerability': 'Missing CSRF Protection',
+                    'severity': 'Medium',
+                    'parameter': 'N/A',
+                    'payload': 'N/A',
+                    'evidence': evidence,
+                    'request_url': base_url,
+                    'detector': 'CSRFDetector.detect_csrf_vulnerability',
+                    'response_snippet': response_snippet
+                })
+            else:
+                print(f"    [CSRF] CSRF protection appears to be implemented")
+            
+            # Test CSRF bypass techniques if we have forms
+            csrf_payloads = CSRFPayloads.get_all_payloads()
+            
+            # Look for forms in the response
+            import re
+            form_pattern = r'<form[^>]*action=["\']?([^"\'>\s]+)["\']?[^>]*>'
+            forms = re.findall(form_pattern, response.text, re.IGNORECASE)
+            
+            if forms:
+                print(f"    [CSRF] Found {len(forms)} form(s) to test")
+                
+                for i, form_action in enumerate(forms[:3]):  # Test max 3 forms
+                    # Resolve relative URLs
+                    if form_action.startswith('/'):
+                        form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
+                    elif form_action.startswith('http'):
+                        form_url = form_action
+                    else:
+                        form_url = f"{base_url.rstrip('/')}/{form_action}"
+                    
+                    print(f"    [CSRF] Testing form {i+1}: {form_url}")
+                    
+                    # Test a few bypass payloads
+                    for payload in csrf_payloads[:5]:  # Test first 5 payloads
+                        try:
+                            print(f"    [CSRF] Trying payload: {payload['name']}")
+                            
+                            # Prepare request data
+                            request_data = payload.get('data', {})
+                            request_headers = self.config.headers.copy()
+                            
+                            # Add payload-specific headers
+                            if 'headers' in payload:
+                                request_headers.update(payload['headers'])
+                            
+                            # Make the request based on method
+                            method = payload.get('method', 'POST').upper()
+                            
+                            if method == 'POST':
+                                test_response = requests.post(
+                                    form_url,
+                                    data=request_data,
+                                    headers=request_headers,
+                                    timeout=self.config.timeout,
+                                    verify=False,
+                                    allow_redirects=False
+                                )
+                            elif method == 'PUT':
+                                test_response = requests.put(
+                                    form_url,
+                                    data=request_data,
+                                    headers=request_headers,
+                                    timeout=self.config.timeout,
+                                    verify=False,
+                                    allow_redirects=False
+                                )
+                            elif method == 'DELETE':
+                                test_response = requests.delete(
+                                    form_url,
+                                    data=request_data,
+                                    headers=request_headers,
+                                    timeout=self.config.timeout,
+                                    verify=False,
+                                    allow_redirects=False
+                                )
+                            else:
+                                continue
+                            
+                            print(f"    [CSRF] Response code: {test_response.status_code}")
+                            
+                            # Check if request was successful (potential CSRF bypass)
+                            if test_response.status_code in [200, 201, 202, 302, 303]:
+                                # Check if the response indicates success
+                                success_indicators = [
+                                    'success', 'updated', 'created', 'deleted', 
+                                    'saved', 'submitted', 'processed'
+                                ]
+                                
+                                response_lower = test_response.text.lower()
+                                if any(indicator in response_lower for indicator in success_indicators):
+                                    print(f"    [CSRF] POTENTIAL BYPASS FOUND! Payload: {payload['name']}")
+                                    
+                                    results.append({
+                                        'module': 'csrf',
+                                        'target': form_url,
+                                        'vulnerability': 'CSRF Protection Bypass',
+                                        'severity': 'High',
+                                        'parameter': 'form_action',
+                                        'payload': str(request_data),
+                                        'evidence': f"Request succeeded with {payload['description']}. Response code: {test_response.status_code}",
+                                        'request_url': form_url,
+                                        'detector': 'CSRFDetector.bypass_test',
+                                        'response_snippet': test_response.text[:500]
+                                    })
+                                    break  # Found bypass, no need to test more payloads for this form
+                            
+                        except Exception as e:
+                            print(f"    [CSRF] Error testing payload {payload['name']}: {e}")
+                            continue
+            else:
+                print(f"    [CSRF] No forms found to test")
+                
+        except Exception as e:
+            print(f"    [CSRF] Error during CSRF testing: {e}")
+        
+        return results
 
     def _should_stop(self) -> bool:
         """Check scan stop conditions"""
