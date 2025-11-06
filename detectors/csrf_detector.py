@@ -12,26 +12,41 @@ class CSRFDetector:
     def get_csrf_indicators() -> List[str]:
         """Get CSRF protection indicators to look for"""
         return [
-            'csrf_token',
-            'csrf-token',
-            '_token',
-            'authenticity_token',
-            'csrfmiddlewaretoken',
-            'anti-csrf-token',
-            '__RequestVerificationToken',
-            'YII_CSRF_TOKEN',
-            '_csrf',
-            'csrf_param'
+            # Common CSRF token names
+            'csrf_token', 'csrf-token', '_token', 'token',
+            'authenticity_token', 'csrfmiddlewaretoken', 
+            'anti-csrf-token', '_csrf', 'csrf_param',
+            
+            # Framework-specific tokens
+            '__RequestVerificationToken',  # ASP.NET
+            'YII_CSRF_TOKEN',             # Yii Framework
+            '_wpnonce',                   # WordPress
+            'form_token',                 # phpBB
+            'sid',                        # Session ID
+            'security_token',             # Generic
+            'xsrf_token',                 # Alternative naming
+            
+            # Meta tag indicators
+            'csrf-token', 'x-csrf-token', 'xsrf-token'
         ]
     
     @staticmethod
     def get_csrf_headers() -> List[str]:
         """Get CSRF protection headers"""
         return [
-            'X-CSRF-Token',
-            'X-CSRFToken',
-            'X-XSRF-TOKEN',
-            'X-Requested-With'
+            # CSRF-specific headers
+            'X-CSRF-Token', 'X-CSRFToken', 'X-XSRF-TOKEN',
+            'X-CSRF-TOKEN', 'csrf-token', 'CSRF-Token',
+            
+            # Framework headers
+            'X-Requested-With',           # AJAX protection
+            'X-PINGOTHER',               # CORS preflight
+            'X-Custom-Header',           # Custom protection
+            
+            # Security headers
+            'X-Frame-Options',           # Clickjacking protection
+            'Content-Security-Policy',   # CSP protection
+            'Referrer-Policy'            # Referrer validation
         ]
     
     @staticmethod

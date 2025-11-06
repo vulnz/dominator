@@ -131,13 +131,7 @@ class VulnScanner:
                     print(f"  [DEBUG] No pages with parameters found by crawler")
                 
                 # Test important pages that might have forms
-                important_pages = [
-                    '/login.php', '/login', '/signin.php', '/signin',
-                    '/register.php', '/register', '/signup.php', '/signup',
-                    '/guestbook.php', '/guestbook', '/contact.php', '/contact',
-                    '/admin.php', '/admin', '/profile.php', '/profile',
-                    '/settings.php', '/settings', '/account.php', '/account'
-                ]
+                important_pages = self._get_important_pages()
                 
                 if 'csrf' in self.config.modules:
                     for page in important_pages:
@@ -507,8 +501,10 @@ class VulnScanner:
                 if not has_csrf_protection:
                     print(f"    [CSRF] Form {i+1} is VULNERABLE - no CSRF protection found")
                     
-                    # Create unique form identifier
-                    form_id = f"{base_url}_{form_action}_{form_method}"
+                    # Create unique form identifier based on form action only (ignore base URL)
+                    # This will suppress duplicates like listproducts.php?cat=1, listproducts.php?cat=2, etc.
+                    normalized_action = self._normalize_form_action(form_action)
+                    form_id = f"csrf_form_{normalized_action}_{form_method}"
                     
                     if form_id not in self.found_vulnerabilities:
                         self.found_vulnerabilities.add(form_id)
@@ -518,6 +514,8 @@ class VulnScanner:
                             'method': form_method,
                             'content': form_content[:200] + '...' if len(form_content) > 200 else form_content
                         })
+                    else:
+                        print(f"    [CSRF] Form {i+1} vulnerability suppressed (similar form already found)")
             
             # Report vulnerabilities
             if vulnerable_forms:
@@ -612,12 +610,10 @@ class VulnScanner:
                             print(f"    [CSRF] Response code: {test_response.status_code}")
                             
                             # Check if request was successful (potential CSRF bypass)
-                            if test_response.status_code in [200, 201, 202, 302, 303]:
+                            success_codes = [200, 201, 202, 302, 303]
+                            if test_response.status_code in success_codes:
                                 # Check if the response indicates success
-                                success_indicators = [
-                                    'success', 'updated', 'created', 'deleted', 
-                                    'saved', 'submitted', 'processed'
-                                ]
+                                success_indicators = self._get_success_indicators()
                                 
                                 response_lower = test_response.text.lower()
                                 if any(indicator in response_lower for indicator in success_indicators):
@@ -655,6 +651,48 @@ class VulnScanner:
         
         return results
 
+    def _get_important_pages(self) -> List[str]:
+        """Get list of important pages that might contain forms"""
+        return [
+            '/login.php', '/login', '/signin.php', '/signin',
+            '/register.php', '/register', '/signup.php', '/signup', 
+            '/guestbook.php', '/guestbook', '/contact.php', '/contact',
+            '/admin.php', '/admin', '/profile.php', '/profile',
+            '/settings.php', '/settings', '/account.php', '/account',
+            '/user.php', '/users.php', '/member.php', '/members.php',
+            '/dashboard.php', '/panel.php', '/cp.php', '/control.php'
+        ]
+    
+    def _normalize_form_action(self, form_action: str) -> str:
+        """Normalize form action to group similar forms together"""
+        if not form_action:
+            return 'empty_action'
+        
+        # Remove query parameters to group similar pages
+        if '?' in form_action:
+            base_action = form_action.split('?')[0]
+        else:
+            base_action = form_action
+        
+        # Remove leading slash and normalize
+        normalized = base_action.lstrip('/')
+        
+        # Group common patterns
+        common_patterns = {
+            'search.php': 'search_form',
+            'login.php': 'login_form', 
+            'register.php': 'register_form',
+            'contact.php': 'contact_form',
+            'guestbook.php': 'guestbook_form',
+            'admin.php': 'admin_form'
+        }
+        
+        for pattern, group_name in common_patterns.items():
+            if pattern in normalized:
+                return group_name
+        
+        return normalized
+    
     def _should_stop(self) -> bool:
         """Check scan stop conditions"""
         if self.config.request_limit and self.request_count >= self.config.request_limit:

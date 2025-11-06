@@ -208,6 +208,22 @@ class FileHandler:
         except Exception as e:
             raise Exception(f"Error creating HTML report: {e}")
     
+    def _get_success_indicators(self) -> List[str]:
+        """Get indicators of successful form submission"""
+        return [
+            # English indicators
+            'success', 'successful', 'updated', 'created', 'deleted',
+            'saved', 'submitted', 'processed', 'completed', 'done',
+            'thank you', 'thanks', 'welcome', 'logged in', 'registered',
+            
+            # Common response patterns
+            'operation completed', 'request processed', 'data saved',
+            'changes saved', 'profile updated', 'password changed',
+            
+            # Error absence indicators
+            'no error', 'valid', 'accepted', 'approved'
+        ]
+    
     def _escape_html(self, text: str) -> str:
         """Escape HTML characters"""
         return (text.replace('&', '&amp;')
