@@ -57,9 +57,17 @@ class Config:
         if modules_str:
             return [m.strip() for m in modules_str.split(',')]
         elif use_all:
-            return ['xss', 'sqli', 'lfi', 'rfi', 'xxe', 'csrf', 'idor', 'ssrf']
+            return [
+                'xss', 'sqli', 'lfi', 'rfi', 'xxe', 'csrf', 'idor', 'ssrf',
+                'dirbrute', 'gitexposed', 'dirtraversal', 'secheaders',
+                'versiondisclosure', 'clickjacking', 'blindxss', 'passwordoverhttp',
+                'outdatedsoftware', 'databaseerrors', 'phpinfo', 'ssltls',
+                'httponlycookies', 'technology', 'commandinjection', 'pathtraversal',
+                'ldapinjection', 'nosqlinjection', 'fileupload', 'cors', 'jwt',
+                'deserialization', 'responsesplitting'
+            ]
         else:
-            return []
+            return ['xss', 'sqli', 'lfi', 'csrf']  # Default modules if none specified
     
     def _parse_exclude(self, exclude_str: Optional[str]) -> List[str]:
         """Parse excluded paths"""

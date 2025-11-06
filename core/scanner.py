@@ -14,8 +14,56 @@ from core.url_parser import URLParser
 from core.crawler import WebCrawler
 from utils.file_handler import FileHandler
 from utils.screenshot_handler import ScreenshotHandler
-from payloads import XSSPayloads, SQLiPayloads, LFIPayloads, CSRFPayloads, DirBrutePayloads, GitPayloads, DirectoryTraversalPayloads, SSRFPayloads, RFIPayloads, BlindXSSPayloads, PHPInfoPayloads, XXEPayloads, CommandInjectionPayloads, IDORPayloads, NoSQLInjectionPayloads
-from detectors import XSSDetector, SQLiDetector, LFIDetector, CSRFDetector, DirBruteDetector, Real404Detector, GitDetector, DirectoryTraversalDetector, SecurityHeadersDetector, SSRFDetector, RFIDetector, VersionDisclosureDetector, ClickjackingDetector, BlindXSSDetector, PasswordOverHTTPDetector, OutdatedSoftwareDetector, DatabaseErrorDetector, PHPInfoDetector, SSLTLSDetector, HttpOnlyCookieDetector, TechnologyDetector, XXEDetector, IDORDetector, CommandInjectionDetector, PathTraversalDetector, LDAPInjectionDetector, NoSQLInjectionDetector, FileUploadDetector, CORSDetector, JWTDetector, InsecureDeserializationDetector, HTTPResponseSplittingDetector
+# Import payload classes
+from payloads.xss_payloads import XSSPayloads
+from payloads.sqli_payloads import SQLiPayloads
+from payloads.lfi_payloads import LFIPayloads
+from payloads.csrf_payloads import CSRFPayloads
+from payloads.dirbrute_payloads import DirBrutePayloads
+from payloads.git_payloads import GitPayloads
+from payloads.directory_traversal_payloads import DirectoryTraversalPayloads
+from payloads.ssrf_payloads import SSRFPayloads
+from payloads.rfi_payloads import RFIPayloads
+from payloads.blind_xss_payloads import BlindXSSPayloads
+from payloads.phpinfo_payloads import PHPInfoPayloads
+from payloads.xxe_payloads import XXEPayloads
+from payloads.command_injection_payloads import CommandInjectionPayloads
+from payloads.idor_payloads import IDORPayloads
+from payloads.nosql_injection_payloads import NoSQLInjectionPayloads
+
+# Import detector classes
+from detectors.xss_detector import XSSDetector
+from detectors.sqli_detector import SQLiDetector
+from detectors.lfi_detector import LFIDetector
+from detectors.csrf_detector import CSRFDetector
+from detectors.dirbrute_detector import DirBruteDetector
+from detectors.real404_detector import Real404Detector
+from detectors.git_detector import GitDetector
+from detectors.directory_traversal_detector import DirectoryTraversalDetector
+from detectors.security_headers_detector import SecurityHeadersDetector
+from detectors.ssrf_detector import SSRFDetector
+from detectors.rfi_detector import RFIDetector
+from detectors.version_disclosure_detector import VersionDisclosureDetector
+from detectors.clickjacking_detector import ClickjackingDetector
+from detectors.blind_xss_detector import BlindXSSDetector
+from detectors.password_over_http_detector import PasswordOverHTTPDetector
+from detectors.outdated_software_detector import OutdatedSoftwareDetector
+from detectors.database_error_detector import DatabaseErrorDetector
+from detectors.phpinfo_detector import PHPInfoDetector
+from detectors.ssl_tls_detector import SSLTLSDetector
+from detectors.httponly_cookie_detector import HttpOnlyCookieDetector
+from detectors.technology_detector import TechnologyDetector
+from detectors.xxe_detector import XXEDetector
+from detectors.idor_detector import IDORDetector
+from detectors.command_injection_detector import CommandInjectionDetector
+from detectors.path_traversal_detector import PathTraversalDetector
+from detectors.ldap_injection_detector import LDAPInjectionDetector
+from detectors.nosql_injection_detector import NoSQLInjectionDetector
+from detectors.file_upload_detector import FileUploadDetector
+from detectors.cors_detector import CORSDetector
+from detectors.jwt_detector import JWTDetector
+from detectors.insecure_deserialization_detector import InsecureDeserializationDetector
+from detectors.http_response_splitting_detector import HTTPResponseSplittingDetector
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -187,6 +235,8 @@ class VulnScanner:
             
         except Exception as e:
             print(f"Error scanning {target}: {e}")
+            import traceback
+            traceback.print_exc()
         
         return target_results
     
@@ -294,10 +344,13 @@ class VulnScanner:
                 results.extend(self._test_insecure_deserialization(parsed_data))
             elif module_name == "responsesplitting":
                 results.extend(self._test_http_response_splitting(parsed_data))
-            # Add more modules as needed
+            else:
+                print(f"    [WARNING] Unknown module: {module_name}")
                 
         except Exception as e:
-            print(f"    Error testing {module_name}: {e}")
+            print(f"    [ERROR] Error testing {module_name}: {e}")
+            import traceback
+            traceback.print_exc()
         
         return results
     

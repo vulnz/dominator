@@ -111,6 +111,11 @@ def main():
         parser.print_help()
         sys.exit(1)
     
+    # Check if modules are specified
+    if not args.modules and not args.all:
+        print("Warning: No modules specified, using default modules")
+        args.all = True
+    
     try:
         # Create configuration
         config = Config(args)
