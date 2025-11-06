@@ -71,9 +71,12 @@ class FileHandler:
             if not data:
                 vulnerabilities_content = '''
                 <div class="no-vulns">
-                    <div class="no-vulns-icon">✅</div>
-                    <h2>No Vulnerabilities Found</h2>
-                    <p>The scan completed successfully without finding any vulnerabilities.</p>
+                    <div class="no-vulns-icon">🛡️</div>
+                    <h2>🎉 Отличные новости!</h2>
+                    <p style="font-size: 1.2rem; margin: 20px 0;">Сканирование завершено успешно - уязвимости не обнаружены!</p>
+                    <div style="background: linear-gradient(45deg, #10b981, #059669); color: white; padding: 15px 30px; border-radius: 25px; display: inline-block; font-weight: 700; margin-top: 20px;">
+                        ✨ Ваш сайт защищен ✨
+                    </div>
                 </div>
                 '''
             else:
@@ -92,38 +95,53 @@ class FileHandler:
                     detector = self._escape_html(str(item.get('detector', 'Unknown')))
                     response_snippet = self._escape_html(str(item.get('response_snippet', '')))
                     
+                    # Определяем иконки для разных типов уязвимостей
+                    vuln_icons = {
+                        'xss': '🚨',
+                        'sqli': '💉', 
+                        'lfi': '📁',
+                        'default': '⚠️'
+                    }
+                    
+                    vuln_icon = vuln_icons.get(item.get('module', '').lower(), vuln_icons['default'])
+                    
+                    # Форматируем название уязвимости
+                    vuln_display = vuln.replace('vulnerability', '').replace('Vulnerability', '').strip()
+                    if not vuln_display:
+                        vuln_display = f"{module.upper()} Vulnerability"
+                    
                     vuln_html = f'''
-                    <div class="vulnerability" data-severity="{severity}" data-module="{item.get('module', '')}">
+                    <div class="vulnerability severity-{severity}" data-severity="{severity}" data-module="{item.get('module', '')}">
                         <div class="vuln-header">
                             <div class="vuln-title">
-                                <span class="vuln-id">#{i}</span>
-                                <span>{vuln}</span>
+                                <span class="vuln-id">{vuln_icon} #{i}</span>
+                                <span>{vuln_display}</span>
                                 <span class="expand-icon">▼</span>
                             </div>
                             <div class="vuln-meta">
-                                <span class="meta-badge severity-badge {severity}">{item.get('severity', 'Unknown')}</span>
-                                <span class="meta-badge module-badge">{module}</span>
-                                <span class="meta-badge">Parameter: {param}</span>
+                                <span class="meta-badge severity-badge {severity}">🔥 {item.get('severity', 'Unknown').upper()}</span>
+                                <span class="meta-badge module-badge">🛡️ {module.upper()}</span>
+                                <span class="meta-badge">🎯 {param or 'N/A'}</span>
                             </div>
                         </div>
                         <div class="vuln-details">
                             <div class="details-content">
                                 <div class="info-grid">
                                     <div class="info-item">
-                                        <div class="info-label">Target URL</div>
+                                        <div class="info-label">🌐 Target URL</div>
                                         <div class="info-value">{target}</div>
                                     </div>
                                     <div class="info-item">
-                                        <div class="info-label">Parameter</div>
-                                        <div class="info-value">{param}</div>
+                                        <div class="info-label">🎯 Vulnerable Parameter</div>
+                                        <div class="info-value">{param or 'N/A'}</div>
                                     </div>
                                     <div class="info-item">
-                                        <div class="info-label">Detection Method</div>
+                                        <div class="info-label">🔍 Detection Method</div>
                                         <div class="info-value">{detector}</div>
                                     </div>
                                     <div class="info-item">
-                                        <div class="info-label">Module</div>
-                                        <div class="info-value">{module}</div>
+                                        <div class="info-label">🛡️ Security Module</div>
+                                        <div class="info-value">{module.upper()}</div>
                                     </div>
                                 </div>
                                 
@@ -131,10 +149,10 @@ class FileHandler:
                                     <div class="detail-card request-card">
                                         <div class="card-header">
                                             <i class="fas fa-paper-plane"></i>
-                                            HTTP Request
+                                            HTTP Request Details
                                         </div>
                                         <div class="card-content">
-                                            <div class="code-block">{request_url}</div>
+                                            <div class="code-block">{request_url or 'No request data available'}</div>
                                         </div>
                                     </div>
                                     
@@ -144,7 +162,7 @@ class FileHandler:
                                             Server Response
                                         </div>
                                         <div class="card-content">
-                                            <div class="code-block">{response_snippet}</div>
+                                            <div class="code-block">{response_snippet or 'No response data available'}</div>
                                         </div>
                                     </div>
                                     
@@ -154,7 +172,7 @@ class FileHandler:
                                             Malicious Payload
                                         </div>
                                         <div class="card-content">
-                                            <div class="code-block">{payload}</div>
+                                            <div class="code-block">{payload or 'No payload data available'}</div>
                                         </div>
                                     </div>
                                     
@@ -164,7 +182,7 @@ class FileHandler:
                                             Evidence & Analysis
                                         </div>
                                         <div class="card-content">
-                                            <div class="code-block">{evidence}</div>
+                                            <div class="code-block">{evidence or 'No evidence data available'}</div>
                                         </div>
                                     </div>
                                 </div>

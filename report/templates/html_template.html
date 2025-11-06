@@ -326,12 +326,13 @@
         .vulnerability {{
             background: var(--glass-bg);
             backdrop-filter: blur(20px);
-            border: 1px solid var(--glass-border);
-            border-radius: 20px;
+            border: 2px solid var(--glass-border);
+            border-radius: 25px;
             box-shadow: var(--shadow-light);
             overflow: hidden;
             transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
             position: relative;
+            margin-bottom: 30px;
         }}
         
         .vulnerability::before {{
@@ -340,15 +341,16 @@
             top: 0;
             left: 0;
             right: 0;
-            height: 5px;
+            height: 6px;
             background: var(--primary-gradient);
             transform: scaleX(0);
             transition: transform 0.3s ease;
         }}
         
         .vulnerability:hover {{
-            transform: translateY(-8px) scale(1.01);
-            box-shadow: 0 25px 50px rgba(0,0,0,0.15);
+            transform: translateY(-12px) scale(1.02);
+            box-shadow: 0 30px 60px rgba(0,0,0,0.2);
+            border-color: rgba(255,255,255,0.4);
         }}
         
         .vulnerability:hover::before {{
@@ -359,17 +361,44 @@
             display: none;
         }}
         
-        .vulnerability.severity-high::before {{ background: var(--danger-gradient); }}
-        .vulnerability.severity-medium::before {{ background: var(--warning-gradient); }}
-        .vulnerability.severity-low::before {{ background: var(--success-gradient); }}
+        .vulnerability.severity-high {{
+            border-color: rgba(239, 68, 68, 0.3);
+            background: linear-gradient(135deg, rgba(254, 242, 242, 0.9), rgba(255, 255, 255, 0.8));
+        }}
+        
+        .vulnerability.severity-high::before {{ 
+            background: var(--danger-gradient);
+            height: 8px;
+        }}
+        
+        .vulnerability.severity-medium {{
+            border-color: rgba(245, 158, 11, 0.3);
+            background: linear-gradient(135deg, rgba(255, 251, 235, 0.9), rgba(255, 255, 255, 0.8));
+        }}
+        
+        .vulnerability.severity-medium::before {{ 
+            background: var(--warning-gradient);
+            height: 6px;
+        }}
+        
+        .vulnerability.severity-low {{
+            border-color: rgba(16, 185, 129, 0.3);
+            background: linear-gradient(135deg, rgba(240, 253, 244, 0.9), rgba(255, 255, 255, 0.8));
+        }}
+        
+        .vulnerability.severity-low::before {{ 
+            background: var(--success-gradient);
+            height: 4px;
+        }}
         
         .vuln-header {{
-            padding: 30px;
-            background: rgba(255, 255, 255, 0.1);
-            border-bottom: 1px solid var(--glass-border);
+            padding: 35px 40px;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.05));
+            border-bottom: 2px solid var(--glass-border);
             cursor: pointer;
             position: relative;
             overflow: hidden;
+            backdrop-filter: blur(15px);
         }}
         
         .vuln-header::before {{
@@ -379,8 +408,12 @@
             left: -100%;
             width: 100%;
             height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
             transition: left 0.6s;
+        }}
+        
+        .vuln-header:hover {{
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.15));
         }}
         
         .vuln-header:hover::before {{
@@ -388,34 +421,41 @@
         }}
         
         .vuln-title {{
-            font-size: 1.4rem;
-            font-weight: 700;
+            font-size: 1.6rem;
+            font-weight: 800;
             color: #1a202c;
             display: flex;
             align-items: center;
-            gap: 20px;
-            margin-bottom: 20px;
+            gap: 25px;
+            margin-bottom: 25px;
             position: relative;
             z-index: 1;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }}
         
         .vuln-id {{
             background: var(--primary-gradient);
             color: white;
-            padding: 8px 16px;
-            border-radius: 25px;
-            font-size: 0.85rem;
-            font-weight: 700;
-            min-width: 50px;
+            padding: 12px 20px;
+            border-radius: 30px;
+            font-size: 0.9rem;
+            font-weight: 800;
+            min-width: 60px;
             text-align: center;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
-            animation: bounce 2s infinite;
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+            animation: pulse-glow 3s ease-in-out infinite;
+            border: 2px solid rgba(255,255,255,0.3);
         }}
         
-        @keyframes bounce {{
-            0%, 20%, 50%, 80%, 100% {{ transform: translateY(0); }}
-            40% {{ transform: translateY(-5px); }}
-            60% {{ transform: translateY(-3px); }}
+        @keyframes pulse-glow {{
+            0%, 100% {{ 
+                transform: scale(1);
+                box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+            }}
+            50% {{ 
+                transform: scale(1.05);
+                box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
+            }}
         }}
         
         .expand-icon {{
@@ -467,31 +507,49 @@
         }}
         
         .severity-badge.high {{
-            background: linear-gradient(45deg, #fef2f2, #fee2e2);
-            color: #dc2626;
-            border: 2px solid #fecaca;
-            box-shadow: 0 4px 15px rgba(220, 38, 38, 0.2);
+            background: linear-gradient(45deg, #dc2626, #ef4444);
+            color: white;
+            border: 2px solid rgba(255,255,255,0.3);
+            box-shadow: 0 6px 20px rgba(220, 38, 38, 0.4);
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            animation: danger-pulse 2s infinite;
+        }}
+        
+        @keyframes danger-pulse {{
+            0%, 100% {{ box-shadow: 0 6px 20px rgba(220, 38, 38, 0.4); }}
+            50% {{ box-shadow: 0 8px 25px rgba(220, 38, 38, 0.7); }}
         }}
         
         .severity-badge.medium {{
-            background: linear-gradient(45deg, #fffbeb, #fef3c7);
-            color: #d97706;
-            border: 2px solid #fed7aa;
-            box-shadow: 0 4px 15px rgba(217, 119, 6, 0.2);
+            background: linear-gradient(45deg, #d97706, #f59e0b);
+            color: white;
+            border: 2px solid rgba(255,255,255,0.3);
+            box-shadow: 0 6px 20px rgba(217, 119, 6, 0.4);
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }}
         
         .severity-badge.low {{
-            background: linear-gradient(45deg, #f0fdf4, #dcfce7);
-            color: #16a34a;
-            border: 2px solid #bbf7d0;
-            box-shadow: 0 4px 15px rgba(22, 163, 74, 0.2);
+            background: linear-gradient(45deg, #16a34a, #10b981);
+            color: white;
+            border: 2px solid rgba(255,255,255,0.3);
+            box-shadow: 0 6px 20px rgba(22, 163, 74, 0.4);
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }}
         
         .module-badge {{
-            background: linear-gradient(45deg, #f1f5f9, #e2e8f0);
-            color: #475569;
-            border: 2px solid #cbd5e1;
-            box-shadow: 0 4px 15px rgba(71, 85, 105, 0.1);
+            background: linear-gradient(45deg, #475569, #64748b);
+            color: white;
+            border: 2px solid rgba(255,255,255,0.3);
+            box-shadow: 0 6px 20px rgba(71, 85, 105, 0.3);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }}
         
         .vuln-details {{
