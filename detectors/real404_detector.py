@@ -120,7 +120,7 @@ class Real404Detector:
                        baseline_response: str = None) -> Tuple[bool, str, float]:
         """
         Detect if response is actually a 404 page despite 200 status code
-        Uses multiple detection methods for better accuracy
+        Uses baseline patterns from 10 fake requests for accurate detection
         Returns (is_404, evidence, confidence_score)
         """
         if response_code == 404:
@@ -129,46 +129,68 @@ class Real404Detector:
         if response_code != 200:
             return False, f"HTTP {response_code} - not a 200 response", 0.0
         
-        # Use multiple detection methods
+        # If no baseline, use basic detection
+        if not baseline_response:
+            return Real404Detector._detect_without_baseline(response_text, content_length)
+        
+        # Primary method: Compare with established 404 baseline
+        current_fingerprint = Real404Detector.get_response_fingerprint(response_text)
+        baseline_fingerprint = Real404Detector.get_response_fingerprint(baseline_response)
+        
+        # Exact fingerprint match = definitely 404
+        if current_fingerprint == baseline_fingerprint:
+            return True, f"Exact match with 404 baseline (fingerprint: {current_fingerprint})", 1.0
+        
+        # Calculate detailed similarity
+        similarity = Real404Detector._calculate_similarity(response_text, baseline_response)
+        
+        # High similarity = likely 404
+        if similarity > 0.9:
+            return True, f"Very high similarity to 404 baseline: {similarity:.3f}", 0.95
+        elif similarity > 0.8:
+            return True, f"High similarity to 404 baseline: {similarity:.3f}", 0.85
+        elif similarity > 0.7:
+            return True, f"Moderate similarity to 404 baseline: {similarity:.3f}", 0.75
+        
+        # Use additional detection methods for edge cases
         methods_results = []
         
-        # Method 1: Content similarity analysis
-        similarity_result = Real404Detector._detect_by_similarity(response_text, baseline_response)
-        methods_results.append(similarity_result)
-        
-        # Method 2: URL path analysis
+        # Method 1: URL path analysis (for path injection patterns)
         path_result = Real404Detector._detect_by_url_path_patterns(response_text)
         methods_results.append(path_result)
         
-        # Method 3: Content structure analysis
+        # Method 2: Content structure analysis (PHP errors, etc.)
         structure_result = Real404Detector._detect_by_content_structure(response_text, content_length)
         methods_results.append(structure_result)
         
-        # Method 4: Template consistency analysis
+        # Method 3: Template consistency analysis
         template_result = Real404Detector._detect_by_template_consistency(response_text)
         methods_results.append(template_result)
         
-        # Combine results from all methods
-        total_confidence = 0.0
+        # Combine additional methods
+        additional_confidence = 0.0
         evidence_parts = []
         
         for is_404, evidence, confidence in methods_results:
             if is_404:
-                total_confidence += confidence
+                additional_confidence += confidence
                 evidence_parts.append(evidence)
         
-        # Average confidence across methods
-        final_confidence = min(total_confidence / len(methods_results), 1.0)
+        # Average additional confidence
+        if methods_results:
+            additional_confidence = additional_confidence / len(methods_results)
         
-        # Decision threshold
-        is_404 = final_confidence >= 0.4
+        # Final decision combining baseline similarity and additional methods
+        if similarity > 0.5 and additional_confidence > 0.3:
+            final_confidence = min((similarity + additional_confidence) / 2, 1.0)
+            combined_evidence = f"Baseline similarity: {similarity:.3f} + Additional evidence: {'; '.join(evidence_parts)}"
+            return True, combined_evidence, final_confidence
+        elif additional_confidence > 0.6:  # Strong additional evidence
+            combined_evidence = f"Strong additional evidence: {'; '.join(evidence_parts)}"
+            return True, combined_evidence, additional_confidence
         
-        if evidence_parts:
-            combined_evidence = f"Real 404 detected (confidence: {final_confidence:.2f}): {'; '.join(evidence_parts)}"
-        else:
-            combined_evidence = f"Valid content detected (confidence: {1.0 - final_confidence:.2f})"
-        
-        return is_404, combined_evidence, final_confidence
+        # Not a 404
+        return False, f"Valid content (baseline similarity: {similarity:.3f}, no strong 404 indicators)", 0.0
     
     @staticmethod
     def _calculate_similarity(text1: str, text2: str) -> float:
@@ -178,54 +200,100 @@ class Real404Detector:
     @staticmethod
     def generate_baseline_404(base_url: str, session=None) -> Tuple[str, int]:
         """
-        Generate multiple baseline 404 responses by requesting non-existent resources
-        Returns (response_text, content_length) of the most representative 404
+        Generate baseline 404 patterns by making 10 different fake requests
+        Returns (most_common_404_response, content_length)
         """
         import requests
         import random
         import string
+        from collections import Counter
+        
+        print(f"    [REAL404] Generating 10 fake requests to establish 404 patterns...")
         
         baseline_responses = []
+        response_fingerprints = []
         
-        # Generate multiple test URLs with different patterns
-        test_patterns = [
-            f"{''.join(random.choices(string.ascii_lowercase + string.digits, k=15))}.html",
-            f"{''.join(random.choices(string.ascii_lowercase + string.digits, k=12))}.php",
-            f"nonexistent_{''.join(random.choices(string.ascii_lowercase, k=8))}.txt",
-            f"missing_{''.join(random.choices(string.digits, k=6))}.asp"
+        # Generate 10 different fake request patterns
+        fake_patterns = [
+            # Random files with different extensions
+            f"{''.join(random.choices(string.ascii_lowercase + string.digits, k=20))}.php",
+            f"{''.join(random.choices(string.ascii_lowercase + string.digits, k=18))}.html",
+            f"{''.join(random.choices(string.ascii_lowercase + string.digits, k=16))}.txt",
+            f"{''.join(random.choices(string.ascii_lowercase + string.digits, k=14))}.asp",
+            f"{''.join(random.choices(string.ascii_lowercase + string.digits, k=12))}.jsp",
+            
+            # Fake directories
+            f"nonexistent_{''.join(random.choices(string.ascii_lowercase, k=10))}/",
+            f"missing_{''.join(random.choices(string.ascii_lowercase, k=8))}/index.php",
+            
+            # Path traversal style (should be 404)
+            f"../{''.join(random.choices(string.ascii_lowercase, k=12))}.php",
+            f"./fake_{''.join(random.choices(string.digits, k=8))}.html",
+            
+            # Completely random path
+            f"{''.join(random.choices(string.ascii_lowercase + string.digits + '_-', k=25))}"
         ]
         
-        for pattern in test_patterns:
+        successful_requests = 0
+        
+        for i, pattern in enumerate(fake_patterns, 1):
             test_url = f"{base_url.rstrip('/')}/{pattern}"
             
             try:
+                print(f"    [REAL404] Fake request {i}/10: {pattern[:30]}...")
+                
                 if session:
                     response = session.get(test_url, timeout=10, verify=False)
                 else:
                     response = requests.get(test_url, timeout=10, verify=False)
                 
-                baseline_responses.append((response.text, len(response.text)))
-            except:
+                # Store response data
+                response_data = {
+                    'text': response.text,
+                    'length': len(response.text),
+                    'status_code': response.status_code,
+                    'url': test_url
+                }
+                
+                baseline_responses.append(response_data)
+                
+                # Generate fingerprint for pattern matching
+                fingerprint = Real404Detector.get_response_fingerprint(response.text)
+                response_fingerprints.append(fingerprint)
+                
+                successful_requests += 1
+                
+                print(f"    [REAL404] Response {i}: {response.status_code} - {len(response.text)} bytes - {fingerprint}")
+                
+            except Exception as e:
+                print(f"    [REAL404] Failed request {i}: {e}")
                 continue
         
-        if not baseline_responses:
+        if successful_requests == 0:
+            print(f"    [REAL404] No successful fake requests - cannot establish baseline")
             return "", 0
         
-        # Return the most common response (by length similarity)
-        if len(baseline_responses) == 1:
-            return baseline_responses[0]
+        print(f"    [REAL404] Completed {successful_requests}/10 fake requests")
         
-        # Find the most representative response
-        length_counts = {}
-        for text, length in baseline_responses:
-            length_range = (length // 100) * 100  # Group by 100-byte ranges
-            if length_range not in length_counts:
-                length_counts[length_range] = []
-            length_counts[length_range].append((text, length))
+        # Analyze patterns in responses
+        fingerprint_counts = Counter(response_fingerprints)
+        most_common_fingerprint = fingerprint_counts.most_common(1)[0][0]
         
-        # Return response from most common length range
-        most_common_range = max(length_counts.keys(), key=lambda k: len(length_counts[k]))
-        return length_counts[most_common_range][0]
+        print(f"    [REAL404] Most common fingerprint: {most_common_fingerprint} (appears {fingerprint_counts[most_common_fingerprint]} times)")
+        
+        # Find response with most common fingerprint
+        for response_data in baseline_responses:
+            if Real404Detector.get_response_fingerprint(response_data['text']) == most_common_fingerprint:
+                print(f"    [REAL404] Selected baseline: {response_data['status_code']} - {response_data['length']} bytes")
+                return response_data['text'], response_data['length']
+        
+        # Fallback: return first response
+        if baseline_responses:
+            fallback = baseline_responses[0]
+            print(f"    [REAL404] Using fallback baseline: {fallback['status_code']} - {fallback['length']} bytes")
+            return fallback['text'], fallback['length']
+        
+        return "", 0
     
     @staticmethod
     def is_valid_content(response_text: str, response_code: int, baseline_404: str = None) -> Tuple[bool, str]:
@@ -255,15 +323,87 @@ class Real404Detector:
     def get_response_fingerprint(response_text: str) -> str:
         """
         Generate fingerprint of response for comparison
+        Uses multiple characteristics for better pattern matching
         """
         import hashlib
         
-        # Normalize response for fingerprinting
-        normalized = re.sub(r'\s+', ' ', response_text.lower())
-        normalized = re.sub(r'<[^>]+>', '', normalized)  # Remove HTML tags
-        normalized = normalized.strip()
+        # Extract key characteristics for fingerprinting
+        characteristics = []
         
-        return hashlib.md5(normalized.encode()).hexdigest()[:16]
+        # 1. Content length range
+        length_range = (len(response_text) // 500) * 500  # Group by 500-byte ranges
+        characteristics.append(f"len:{length_range}")
+        
+        # 2. Title content (normalized)
+        title_match = re.search(r'<title[^>]*>(.*?)</title>', response_text, re.IGNORECASE | re.DOTALL)
+        if title_match:
+            title = re.sub(r'\s+', ' ', title_match.group(1).strip().lower())
+            characteristics.append(f"title:{title[:50]}")
+        
+        # 3. Main text content (without HTML, normalized)
+        text_content = re.sub(r'<[^>]+>', '', response_text)
+        text_content = re.sub(r'\s+', ' ', text_content.lower()).strip()
+        
+        # Take first and last parts of content for fingerprint
+        if len(text_content) > 200:
+            content_start = text_content[:100]
+            content_end = text_content[-100:]
+            characteristics.append(f"start:{content_start}")
+            characteristics.append(f"end:{content_end}")
+        else:
+            characteristics.append(f"full:{text_content}")
+        
+        # 4. Error patterns (PHP errors, etc.)
+        php_errors = Real404Detector.get_php_error_indicators()
+        found_errors = [err for err in php_errors if err.lower() in response_text.lower()]
+        if found_errors:
+            characteristics.append(f"errors:{','.join(found_errors[:3])}")
+        
+        # 5. Template indicators
+        if 'acunetix' in response_text.lower():
+            characteristics.append("template:acunetix")
+        
+        # Create fingerprint from characteristics
+        fingerprint_data = '|'.join(characteristics)
+        return hashlib.md5(fingerprint_data.encode()).hexdigest()[:16]
+    
+    @staticmethod
+    def _detect_without_baseline(response_text: str, content_length: int) -> Tuple[bool, str, float]:
+        """
+        Fallback detection method when no baseline is available
+        """
+        confidence = 0.0
+        evidence_parts = []
+        
+        # Check for obvious 404 indicators
+        indicators = Real404Detector.get_404_indicators()
+        found_indicators = [ind for ind in indicators if ind.lower() in response_text.lower()]
+        
+        if found_indicators:
+            confidence += 0.6
+            evidence_parts.append(f"404 indicators: {', '.join(found_indicators[:3])}")
+        
+        # Check for PHP errors (strong indicator)
+        php_errors = Real404Detector.get_php_error_indicators()
+        found_php_errors = [err for err in php_errors if err.lower() in response_text.lower()]
+        
+        if found_php_errors:
+            confidence += 0.8
+            evidence_parts.append(f"PHP errors: {', '.join(found_php_errors[:2])}")
+        
+        # Check content length
+        if content_length < 1000:
+            confidence += 0.2
+            evidence_parts.append(f"Short response: {content_length} bytes")
+        
+        is_404 = confidence > 0.5
+        
+        if evidence_parts:
+            evidence = f"No baseline - fallback detection: {'; '.join(evidence_parts)}"
+        else:
+            evidence = "No baseline - no clear 404 indicators found"
+        
+        return is_404, evidence, min(confidence, 1.0)
     
     @staticmethod
     def _detect_by_similarity(response_text: str, baseline_response: str = None) -> Tuple[bool, str, float]:
