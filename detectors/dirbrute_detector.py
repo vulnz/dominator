@@ -12,21 +12,39 @@ class DirBruteDetector:
     def is_valid_response(response_text: str, response_code: int, content_length: int, 
                          baseline_404: str = None) -> Tuple[bool, str]:
         """
-        Check if response indicates a valid directory/file
+        Check if response indicates a valid directory/file using improved 404 detection
         Returns (is_valid, evidence)
         """
         from .real404_detector import Real404Detector
         
-        # First check for real 404 pages (200 status but 404 content)
+        # First check for real 404 pages using improved multi-method detection
         is_404, real_404_evidence, confidence = Real404Detector.detect_real_404(
             response_text, response_code, content_length, baseline_404
         )
         
-        if is_404:
-            return False, f"Real 404 detected: {real_404_evidence}"
+        if is_404 and confidence > 0.4:
+            return False, f"Real 404 detected (confidence: {confidence:.2f}): {real_404_evidence}"
+        
+        # For 200 responses, do additional validation
+        if response_code == 200:
+            # Check if response has meaningful content
+            is_valid_content, content_evidence = Real404Detector.is_valid_content(
+                response_text, response_code, baseline_404
+            )
+            
+            if not is_valid_content:
+                return False, f"Invalid content: {content_evidence}"
+            
+            # Additional check for directory/file specific indicators
+            if DirBruteDetector._has_directory_file_content(response_text):
+                return True, f"HTTP 200 - Valid directory/file content found"
+            elif is_404:  # Low confidence 404
+                return False, f"Likely 404 (low confidence: {confidence:.2f}): {real_404_evidence}"
+            else:
+                return True, f"HTTP 200 - Content appears valid"
         
         # Success codes
-        if response_code in [200, 201, 202, 203, 206]:
+        if response_code in [201, 202, 203, 206]:
             return True, f"HTTP {response_code} - Resource found"
         
         # Redirect codes (might indicate valid resource)
@@ -42,6 +60,40 @@ class DirBruteDetector:
             return True, f"HTTP 405 - Method not allowed (resource exists)"
         
         return False, f"HTTP {response_code} - Resource not found"
+    
+    @staticmethod
+    def _has_directory_file_content(response_text: str) -> bool:
+        """Check if response contains content typical of valid directories/files"""
+        response_lower = response_text.lower()
+        
+        # Indicators of valid file/directory content
+        valid_content_indicators = [
+            # Directory listing indicators
+            'index of', 'directory listing', 'parent directory',
+            
+            # File content indicators  
+            '<?php', '<!doctype', '<html', '<head>', '<body>',
+            'function', 'var ', 'class ', 'import ', 'include',
+            
+            # Configuration file indicators
+            'config', 'settings', 'database', 'connection',
+            
+            # Log file indicators
+            'error', 'warning', 'info', 'debug', 'log',
+            
+            # Data file indicators
+            'json', 'xml', 'csv', 'data',
+            
+            # Backup file indicators
+            'backup', 'dump', 'export'
+        ]
+        
+        # Count indicators found
+        indicators_found = sum(1 for indicator in valid_content_indicators 
+                             if indicator in response_lower)
+        
+        # If we find multiple indicators, it's likely valid content
+        return indicators_found >= 2
     
     @staticmethod
     def detect_directory_listing(response_text: str) -> bool:

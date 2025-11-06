@@ -670,15 +670,16 @@ class VulnScanner:
             print(f"    [DIRBRUTE] Starting directory and file bruteforce...")
             
             # Get baseline 404 response for real 404 detection
-            print(f"    [DIRBRUTE] Generating baseline 404 response...")
+            print(f"    [DIRBRUTE] Generating baseline 404 responses...")
             baseline_404_text, baseline_404_size = Real404Detector.generate_baseline_404(
                 base_url, None
             )
             
             if baseline_404_text:
                 print(f"    [DIRBRUTE] Baseline 404 generated: {baseline_404_size} bytes")
+                print(f"    [DIRBRUTE] Baseline fingerprint: {Real404Detector.get_response_fingerprint(baseline_404_text)}")
             else:
-                print(f"    [DIRBRUTE] Could not generate baseline 404")
+                print(f"    [DIRBRUTE] Could not generate baseline 404 - proceeding without baseline")
                 baseline_404_text = None
             
             # Test directories first
