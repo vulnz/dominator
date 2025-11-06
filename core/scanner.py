@@ -824,6 +824,21 @@ class VulnScanner:
                 base_dir, None
             )
             
+            # Also get the original page content for comparison
+            original_response = None
+            original_fingerprint = None
+            try:
+                original_response = requests.get(
+                    base_url,
+                    timeout=self.config.timeout,
+                    headers=self.config.headers,
+                    verify=False
+                )
+                original_fingerprint = Real404Detector.get_response_fingerprint(original_response.text)
+                print(f"    [DIRBRUTE] Original page fingerprint: {original_fingerprint}")
+            except:
+                pass
+            
             if baseline_404_text:
                 print(f"    [DIRBRUTE] Baseline 404 generated: {baseline_404_size} bytes (average)")
                 print(f"    [DIRBRUTE] Baseline fingerprint: {Real404Detector.get_response_fingerprint(baseline_404_text)}")
@@ -860,15 +875,24 @@ class VulnScanner:
                         response.text, response.status_code, len(response.text), baseline_404_text, baseline_404_size
                     )
                     
-                    # Additional check for false positives - skip if response size is too similar to baseline
-                    if is_valid and baseline_404_size > 0:
-                        size_diff = abs(len(response.text) - baseline_404_size)
-                        size_ratio = size_diff / baseline_404_size if baseline_404_size > 0 else 1
+                    # Additional checks for false positives
+                    if is_valid:
+                        # Check if response size is too similar to baseline
+                        if baseline_404_size > 0:
+                            size_diff = abs(len(response.text) - baseline_404_size)
+                            size_ratio = size_diff / baseline_404_size if baseline_404_size > 0 else 1
+                            
+                            # Skip if size difference is less than 5% or less than 50 bytes
+                            if size_ratio < 0.05 or size_diff < 50:
+                                print(f"    [DIRBRUTE] Skipping directory {directory} - size too similar to 404 baseline ({len(response.text)} vs {baseline_404_size} bytes)")
+                                is_valid = False
                         
-                        # Skip if size difference is less than 5% or less than 50 bytes
-                        if size_ratio < 0.05 or size_diff < 50:
-                            print(f"    [DIRBRUTE] Skipping directory {directory} - size too similar to 404 baseline ({len(response.text)} vs {baseline_404_size} bytes)")
-                            is_valid = False
+                        # Check if response content is identical to original page
+                        if is_valid and original_fingerprint:
+                            response_fingerprint = Real404Detector.get_response_fingerprint(response.text)
+                            if response_fingerprint == original_fingerprint:
+                                print(f"    [DIRBRUTE] Skipping directory {directory} - identical content to original page")
+                                is_valid = False
                     
                     if is_valid:
                         print(f"    [DIRBRUTE] DIRECTORY FOUND: {directory}/ - {evidence}")
@@ -926,15 +950,24 @@ class VulnScanner:
                         response.text, response.status_code, len(response.text), baseline_404_text, baseline_404_size
                     )
                     
-                    # Additional check for false positives - skip if response size is too similar to baseline
-                    if is_valid and baseline_404_size > 0:
-                        size_diff = abs(len(response.text) - baseline_404_size)
-                        size_ratio = size_diff / baseline_404_size if baseline_404_size > 0 else 1
+                    # Additional checks for false positives
+                    if is_valid:
+                        # Check if response size is too similar to baseline
+                        if baseline_404_size > 0:
+                            size_diff = abs(len(response.text) - baseline_404_size)
+                            size_ratio = size_diff / baseline_404_size if baseline_404_size > 0 else 1
+                            
+                            # Skip if size difference is less than 5% or less than 50 bytes
+                            if size_ratio < 0.05 or size_diff < 50:
+                                print(f"    [DIRBRUTE] Skipping file {file} - size too similar to 404 baseline ({len(response.text)} vs {baseline_404_size} bytes)")
+                                is_valid = False
                         
-                        # Skip if size difference is less than 5% or less than 50 bytes
-                        if size_ratio < 0.05 or size_diff < 50:
-                            print(f"    [DIRBRUTE] Skipping file {file} - size too similar to 404 baseline ({len(response.text)} vs {baseline_404_size} bytes)")
-                            is_valid = False
+                        # Check if response content is identical to original page
+                        if is_valid and original_fingerprint:
+                            response_fingerprint = Real404Detector.get_response_fingerprint(response.text)
+                            if response_fingerprint == original_fingerprint:
+                                print(f"    [DIRBRUTE] Skipping file {file} - identical content to original page")
+                                is_valid = False
                     
                     if is_valid:
                         print(f"    [DIRBRUTE] FILE FOUND: {file} - {evidence}")
@@ -997,15 +1030,24 @@ class VulnScanner:
                     response.text, response.status_code, len(response.text), baseline_404_text, baseline_404_size
                 )
                 
-                # Additional check for false positives - skip if response size is too similar to baseline
-                if is_valid and baseline_404_size > 0:
-                    size_diff = abs(len(response.text) - baseline_404_size)
-                    size_ratio = size_diff / baseline_404_size if baseline_404_size > 0 else 1
+                # Additional checks for false positives
+                if is_valid:
+                    # Check if response size is too similar to baseline
+                    if baseline_404_size > 0:
+                        size_diff = abs(len(response.text) - baseline_404_size)
+                        size_ratio = size_diff / baseline_404_size if baseline_404_size > 0 else 1
+                        
+                        # Skip if size difference is less than 5% or less than 50 bytes
+                        if size_ratio < 0.05 or size_diff < 50:
+                            print(f"    [DIRBRUTE] Skipping file {directory}/{file} - size too similar to 404 baseline ({len(response.text)} vs {baseline_404_size} bytes)")
+                            is_valid = False
                     
-                    # Skip if size difference is less than 5% or less than 50 bytes
-                    if size_ratio < 0.05 or size_diff < 50:
-                        print(f"    [DIRBRUTE] Skipping file {directory}/{file} - size too similar to 404 baseline ({len(response.text)} vs {baseline_404_size} bytes)")
-                        is_valid = False
+                    # Check if response content is identical to original page
+                    if is_valid and original_fingerprint:
+                        response_fingerprint = Real404Detector.get_response_fingerprint(response.text)
+                        if response_fingerprint == original_fingerprint:
+                            print(f"    [DIRBRUTE] Skipping file {directory}/{file} - identical content to original page")
+                            is_valid = False
                 
                 if is_valid:
                     print(f"    [DIRBRUTE] FILE FOUND: {directory}/{file} - {evidence}")
