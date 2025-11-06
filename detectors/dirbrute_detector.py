@@ -9,11 +9,22 @@ class DirBruteDetector:
     """Directory bruteforce detection logic"""
     
     @staticmethod
-    def is_valid_response(response_text: str, response_code: int, content_length: int) -> Tuple[bool, str]:
+    def is_valid_response(response_text: str, response_code: int, content_length: int, 
+                         baseline_404: str = None) -> Tuple[bool, str]:
         """
         Check if response indicates a valid directory/file
         Returns (is_valid, evidence)
         """
+        from .real404_detector import Real404Detector
+        
+        # First check for real 404 pages (200 status but 404 content)
+        is_404, real_404_evidence, confidence = Real404Detector.detect_real_404(
+            response_text, response_code, content_length, baseline_404
+        )
+        
+        if is_404:
+            return False, f"Real 404 detected: {real_404_evidence}"
+        
         # Success codes
         if response_code in [200, 201, 202, 203, 206]:
             return True, f"HTTP {response_code} - Resource found"

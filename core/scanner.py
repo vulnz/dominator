@@ -14,7 +14,7 @@ from core.url_parser import URLParser
 from core.crawler import WebCrawler
 from utils.file_handler import FileHandler
 from payloads import XSSPayloads, SQLiPayloads, LFIPayloads, CSRFPayloads, DirBrutePayloads
-from detectors import XSSDetector, SQLiDetector, LFIDetector, CSRFDetector, DirBruteDetector
+from detectors import XSSDetector, SQLiDetector, LFIDetector, CSRFDetector, DirBruteDetector, Real404Detector
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -669,19 +669,17 @@ class VulnScanner:
         try:
             print(f"    [DIRBRUTE] Starting directory and file bruteforce...")
             
-            # Get baseline response for 404 detection
-            baseline_response = None
-            try:
-                baseline_response = requests.get(
-                    f"{base_url}nonexistent_random_file_12345.txt",
-                    timeout=self.config.timeout,
-                    headers=self.config.headers,
-                    verify=False
-                )
-            except:
-                pass
+            # Get baseline 404 response for real 404 detection
+            print(f"    [DIRBRUTE] Generating baseline 404 response...")
+            baseline_404_text, baseline_404_size = Real404Detector.generate_baseline_404(
+                base_url, None
+            )
             
-            baseline_size = len(baseline_response.text) if baseline_response else 0
+            if baseline_404_text:
+                print(f"    [DIRBRUTE] Baseline 404 generated: {baseline_404_size} bytes")
+            else:
+                print(f"    [DIRBRUTE] Could not generate baseline 404")
+                baseline_404_text = None
             
             # Test directories first
             directories = DirBrutePayloads.get_all_directories()
@@ -702,7 +700,7 @@ class VulnScanner:
                     )
                     
                     is_valid, evidence = DirBruteDetector.is_valid_response(
-                        response.text, response.status_code, len(response.text)
+                        response.text, response.status_code, len(response.text), baseline_404_text
                     )
                     
                     if is_valid:
@@ -749,7 +747,7 @@ class VulnScanner:
                     )
                     
                     is_valid, evidence = DirBruteDetector.is_valid_response(
-                        response.text, response.status_code, len(response.text)
+                        response.text, response.status_code, len(response.text), baseline_404_text
                     )
                     
                     if is_valid:
@@ -807,7 +805,7 @@ class VulnScanner:
                 )
                 
                 is_valid, evidence = DirBruteDetector.is_valid_response(
-                    response.text, response.status_code, len(response.text)
+                    response.text, response.status_code, len(response.text), baseline_404_text
                 )
                 
                 if is_valid:
