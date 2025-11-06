@@ -37,6 +37,8 @@ Examples:
                        help='Request timeout in seconds (default: 10)')
     parser.add_argument('--delay', type=float, default=0,
                        help='Delay between requests in seconds (default: 0)')
+    parser.add_argument('--request-limit', type=int, default=None,
+                       help='Maximum number of requests to make (default: unlimited)')
     parser.add_argument('--user-agent', default='Dominator/1.0',
                        help='User-Agent string to use')
     parser.add_argument('--headers', action='append',
@@ -86,6 +88,8 @@ Examples:
             args.limit = None
         if not hasattr(args, 'page_limit'):
             args.page_limit = None
+        if not hasattr(args, 'request_limit'):
+            args.request_limit = None
         
         # Create configuration
         config = Config(args)
