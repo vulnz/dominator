@@ -284,7 +284,14 @@ class VulnScanner:
                 verify=False
             )
             return response.status_code < 500
-        except:
+        except requests.exceptions.ConnectionError:
+            print(f"  [CONNECTIVITY] Connection failed to {url}")
+            return False
+        except requests.exceptions.Timeout:
+            print(f"  [CONNECTIVITY] Timeout connecting to {url}")
+            return False
+        except Exception as e:
+            print(f"  [CONNECTIVITY] Error connecting to {url}: {e}")
             return False
     
     def _test_module(self, module_name: str, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -718,6 +725,7 @@ class VulnScanner:
                     print(f"    [CSRF] Testing form {i+1}: {form_url}")
                     
                     # Test a few bypass payloads
+                    connection_failed = False
                     for payload in csrf_payloads[:5]:  # Test first 5 payloads
                         try:
                             print(f"    [CSRF] Trying payload: {payload['name']}")
@@ -796,9 +804,21 @@ class VulnScanner:
                                         print(f"    [CSRF] Duplicate bypass vulnerability suppressed")
                                     break  # Found bypass, no need to test more payloads for this form
                             
+                        except requests.exceptions.ConnectionError as e:
+                            print(f"    [CSRF] Connection failed for {form_url}: {str(e)[:100]}...")
+                            connection_failed = True
+                            break  # Stop testing this form if connection fails
+                        except requests.exceptions.Timeout as e:
+                            print(f"    [CSRF] Timeout for payload {payload['name']}: {e}")
+                            continue
                         except Exception as e:
                             print(f"    [CSRF] Error testing payload {payload['name']}: {e}")
                             continue
+                    
+                    # If connection failed for this form, skip remaining forms
+                    if connection_failed:
+                        print(f"    [CSRF] Skipping remaining forms due to connection issues")
+                        break
             else:
                 print(f"    [CSRF] No forms found to test")
                 
