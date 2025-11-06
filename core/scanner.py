@@ -505,6 +505,16 @@ class VulnScanner:
             print(f"  [DEBUG] Path: {parsed_data['path']}")
             print(f"  [DEBUG] Query parameters: {list(parsed_data['query_params'].keys())}")
             
+            # If no parameters found but URL has query string, try manual parsing
+            if not parsed_data['query_params'] and '?' in parsed_data['url']:
+                print(f"  [DEBUG] Manual parameter extraction from URL...")
+                from urllib.parse import urlparse, parse_qs
+                parsed_url = urlparse(parsed_data['url'])
+                if parsed_url.query:
+                    manual_params = parse_qs(parsed_url.query, keep_blank_values=True)
+                    parsed_data['query_params'] = manual_params
+                    print(f"  [DEBUG] Manually extracted parameters: {list(manual_params.keys())}")
+            
             # Update stats
             self.scan_stats['total_urls'] += 1
             self.scan_stats['total_params'] += len(parsed_data['query_params'])
