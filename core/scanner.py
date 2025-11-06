@@ -107,11 +107,15 @@ class VulnScanner:
             'total_urls': 0,
             'total_params': 0,
             'total_forms': 0,
+            'total_payloads_used': 0,
+            'total_ajax_endpoints': 0,
+            'total_js_files': 0,
             'scan_duration': '0s',
             'start_time': None,
             'end_time': None,
             'technologies': {},
-            'module_stats': {}
+            'module_stats': {},
+            'payload_stats': {}
         }
         
     def scan(self) -> List[Dict[str, Any]]:
@@ -209,8 +213,12 @@ class VulnScanner:
             all_found_pages.append(parsed_data)
             
             # Always crawl for additional pages
-            print(f"  [DEBUG] Starting crawler to find additional pages...")
+            print(f"  [DEBUG] Starting enhanced crawler to find additional pages...")
             crawled_urls = self.crawler.crawl_for_pages(parsed_data['url'])
+            
+            # Update crawler stats
+            self.scan_stats['total_ajax_endpoints'] = len(self.crawler.get_ajax_endpoints())
+            self.scan_stats['total_js_files'] = len(self.crawler.js_urls)
             
             if crawled_urls:
                 print(f"  [DEBUG] Crawler found {len(crawled_urls)} additional pages")
@@ -362,7 +370,14 @@ class VulnScanner:
     def _test_module(self, module_name: str, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Test specific vulnerability module"""
         results = []
-        self.request_count += 1
+        
+        # Initialize payload stats for this module if not exists
+        if module_name not in self.scan_stats['payload_stats']:
+            self.scan_stats['payload_stats'][module_name] = {
+                'payloads_used': 0,
+                'requests_made': 0,
+                'successful_payloads': 0
+            }
         
         try:
             if module_name == "xss":
@@ -449,6 +464,9 @@ class VulnScanner:
         # Get XSS payloads
         xss_payloads = XSSPayloads.get_all_payloads()
         
+        # Update payload stats
+        self.scan_stats['payload_stats']['xss']['payloads_used'] += len(xss_payloads)
+        
         # Test GET parameters
         for param, values in parsed_data['query_params'].items():
             print(f"    [XSS] Testing GET parameter: {param}")
@@ -484,6 +502,10 @@ class VulnScanner:
                         verify=False
                     )
                     
+                    # Update request count
+                    self.request_count += 1
+                    self.scan_stats['payload_stats']['xss']['requests_made'] += 1
+                    
                     print(f"    [XSS] Response code: {response.status_code}")
                     
                     # Skip if response looks like 404
@@ -503,6 +525,10 @@ class VulnScanner:
                         
                         # Mark as found to prevent duplicates
                         self.found_vulnerabilities.add(param_key)
+                        
+                        # Update successful payload count
+                        self.scan_stats['payload_stats']['xss']['successful_payloads'] += 1
+                        self.scan_stats['total_payloads_used'] += 1
                         
                         # Take screenshot for XSS vulnerability
                         screenshot_filename = None
@@ -641,6 +667,11 @@ class VulnScanner:
         # Get SQL injection payloads
         sqli_payloads = SQLiPayloads.get_all_payloads()
         
+        # Update payload stats
+        if 'sqli' not in self.scan_stats['payload_stats']:
+            self.scan_stats['payload_stats']['sqli'] = {'payloads_used': 0, 'requests_made': 0, 'successful_payloads': 0}
+        self.scan_stats['payload_stats']['sqli']['payloads_used'] += len(sqli_payloads)
+        
         # Test GET parameters
         for param, values in parsed_data['query_params'].items():
             print(f"    [SQLI] Testing parameter: {param}")
@@ -669,6 +700,10 @@ class VulnScanner:
                         headers=self.config.headers,
                         verify=False
                     )
+                    
+                    # Update request count
+                    self.request_count += 1
+                    self.scan_stats['payload_stats']['sqli']['requests_made'] += 1
                     
                     print(f"    [SQLI] Response code: {response.status_code}")
                     
@@ -3540,6 +3575,9 @@ class VulnScanner:
         print(f"URLs Discovered:      {stats.get('total_urls', 0)}")
         print(f"Parameters Tested:    {stats.get('total_params', 0)}")
         print(f"Forms Discovered:     {stats.get('total_forms', 0)}")
+        print(f"AJAX Endpoints:       {stats.get('total_ajax_endpoints', 0)}")
+        print(f"JavaScript Files:     {stats.get('total_js_files', 0)}")
+        print(f"Total Payloads Used:  {stats.get('total_payloads_used', 0)}")
         print(f"Modules Used:         {', '.join(self.config.modules)}")
         print(f"Threads:              {self.config.threads}")
         print("-" * 80)
@@ -3555,6 +3593,22 @@ class VulnScanner:
                       f"Params: {module_data['parameters_tested']:3} | "
                       f"Forms: {module_data['forms_tested']:3} | "
                       f"Vulns: {module_data['vulnerabilities_found']:3}")
+            print("-" * 80)
+        
+        # Print payload statistics
+        payload_stats = stats.get('payload_stats', {})
+        if payload_stats:
+            print("PAYLOAD USAGE STATISTICS:")
+            print("-" * 80)
+            for module_name, payload_data in payload_stats.items():
+                success_rate = 0
+                if payload_data['payloads_used'] > 0:
+                    success_rate = (payload_data['successful_payloads'] / payload_data['payloads_used']) * 100
+                print(f"{module_name.upper():20} | "
+                      f"Payloads: {payload_data['payloads_used']:4} | "
+                      f"Requests: {payload_data['requests_made']:4} | "
+                      f"Success: {payload_data['successful_payloads']:3} | "
+                      f"Rate: {success_rate:5.1f}%")
             print("-" * 80)
         
         # Filter out scan stats and group by severity
