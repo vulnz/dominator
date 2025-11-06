@@ -63,6 +63,7 @@ class FileHandler:
             
             # Calculate statistics
             total_vulns = len(data)
+            critical_count = len([v for v in data if v.get('severity', '').lower() == 'critical'])
             high_count = len([v for v in data if v.get('severity', '').lower() == 'high'])
             medium_count = len([v for v in data if v.get('severity', '').lower() == 'medium'])
             low_count = len([v for v in data if v.get('severity', '').lower() == 'low'])
@@ -72,17 +73,14 @@ class FileHandler:
                 vulnerabilities_content = '''
                 <div class="no-vulns">
                     <div class="no-vulns-icon">🛡️</div>
-                    <h2>🎉 Отличные новости!</h2>
-                    <p style="font-size: 1.2rem; margin: 20px 0;">Сканирование завершено успешно - уязвимости не обнаружены!</p>
-                    <div style="background: linear-gradient(45deg, #10b981, #059669); color: white; padding: 15px 30px; border-radius: 25px; display: inline-block; font-weight: 700; margin-top: 20px;">
-                        ✨ Ваш сайт защищен ✨
-                    </div>
+                    <h2>Отличные новости!</h2>
+                    <p>Сканирование завершено успешно - уязвимости не обнаружены!</p>
                 </div>
                 '''
             else:
                 vulnerabilities_content = ""
                 for i, item in enumerate(data, 1):
-                    severity = item.get('severity', 'info').lower()
+                    severity = item.get('severity', 'low').lower()
                     
                     # Escape HTML characters
                     target = self._escape_html(str(item.get('target', '')))
@@ -103,105 +101,100 @@ class FileHandler:
                         'default': '⚠️'
                     }
                     
-                    vuln_icon = vuln_icons.get(item.get('module', '').lower(), vuln_icons['default'])
+                    vuln_icon = vuln_icons.get(module.lower(), vuln_icons['default'])
                     
-                    # Форматируем название уязвимости
-                    vuln_display = vuln.replace('vulnerability', '').replace('Vulnerability', '').strip()
+                    # Форматируем название уязвимости в стиле Acunetix
+                    vuln_display = vuln
+                    if 'vulnerability' in vuln.lower():
+                        vuln_display = vuln.replace('vulnerability', '').replace('Vulnerability', '').strip()
                     if not vuln_display:
                         vuln_display = f"{module.upper()} Vulnerability"
                     
+                    # Определяем класс серьезности для стилизации
+                    severity_class = severity
+                    if severity == 'critical':
+                        severity_class = 'critical'
+                    elif severity == 'high':
+                        severity_class = 'high'
+                    elif severity == 'medium':
+                        severity_class = 'medium'
+                    else:
+                        severity_class = 'low'
+                    
                     vuln_html = f'''
-                    <div class="vulnerability severity-{severity}" data-severity="{severity}" data-module="{item.get('module', '')}">
-                        <div class="vuln-header">
-                            <div class="vuln-title">
-                                <span class="vuln-id">{vuln_icon} #{i}</span>
-                                <span>{vuln_display}</span>
-                                <span class="expand-icon">▼</span>
-                            </div>
-                            <div class="vuln-meta">
-                                <span class="meta-badge severity-badge {severity}">🔥 {item.get('severity', 'Unknown').upper()}</span>
-                                <span class="meta-badge module-badge">🛡️ {module.upper()}</span>
-                                <span class="meta-badge">🎯 {param or 'N/A'}</span>
-                            </div>
+                <div class="vulnerability" data-severity="{severity}" data-module="{module}">
+                    <div class="vuln-header">
+                        <div class="vuln-info">
+                            <div class="vuln-id">{i}</div>
+                            <div class="vuln-title">{vuln_icon} {vuln_display}</div>
                         </div>
-                        <div class="vuln-details">
-                            <div class="details-content">
-                                <div class="info-grid">
-                                    <div class="info-item">
-                                        <div class="info-label">🌐 Target URL</div>
-                                        <div class="info-value">{target}</div>
-                                    </div>
-                                    <div class="info-item">
-                                        <div class="info-label">🎯 Vulnerable Parameter</div>
-                                        <div class="info-value">{param or 'N/A'}</div>
-                                    </div>
-                                    <div class="info-item">
-                                        <div class="info-label">🔍 Detection Method</div>
-                                        <div class="info-value">{detector}</div>
-                                    </div>
-                                    <div class="info-item">
-                                        <div class="info-label">🛡️ Security Module</div>
-                                        <div class="info-value">{module.upper()}</div>
-                                    </div>
-                                </div>
-                                
-                                <div class="detail-cards">
-                                    <div class="detail-card request-card">
-                                        <div class="card-header">
-                                            <i class="fas fa-paper-plane"></i>
-                                            HTTP Request Details
-                                        </div>
-                                        <div class="card-content">
-                                            <div class="code-block">{request_url or 'No request data available'}</div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="detail-card response-card">
-                                        <div class="card-header">
-                                            <i class="fas fa-reply"></i>
-                                            Server Response
-                                        </div>
-                                        <div class="card-content">
-                                            <div class="code-block">{response_snippet or 'No response data available'}</div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="detail-card payload-card">
-                                        <div class="card-header">
-                                            <i class="fas fa-bomb"></i>
-                                            Malicious Payload
-                                        </div>
-                                        <div class="card-content">
-                                            <div class="code-block">{payload or 'No payload data available'}</div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="detail-card evidence-card">
-                                        <div class="card-header">
-                                            <i class="fas fa-search"></i>
-                                            Evidence & Analysis
-                                        </div>
-                                        <div class="card-content">
-                                            <div class="code-block">{evidence or 'No evidence data available'}</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                        <div class="vuln-badges">
+                            <span class="severity-badge severity-{severity_class}">{severity.upper()}</span>
+                            <span class="module-badge">{module.upper()}</span>
+                            <span class="expand-icon">▼</span>
                         </div>
                     </div>
+                    <div class="vuln-details">
+                        <div class="details-content">
+                            <div class="details-grid">
+                                <div class="detail-item">
+                                    <div class="detail-label">🌐 Целевой URL</div>
+                                    <div class="detail-value">{target}</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">🎯 Уязвимый параметр</div>
+                                    <div class="detail-value">{param or 'N/A'}</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">🔍 Метод обнаружения</div>
+                                    <div class="detail-value">{detector}</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">🛡️ Модуль безопасности</div>
+                                    <div class="detail-value">{module.upper()}</div>
+                                </div>
+                            </div>
+                            
+                            {f'''
+                            <div class="code-section">
+                                <div class="code-header">📡 HTTP Запрос</div>
+                                <div class="code-content">{request_url or 'Данные запроса недоступны'}</div>
+                            </div>
+                            ''' if request_url else ''}
+                            
+                            {f'''
+                            <div class="code-section">
+                                <div class="code-header">📥 Ответ сервера</div>
+                                <div class="code-content">{response_snippet or 'Данные ответа недоступны'}</div>
+                            </div>
+                            ''' if response_snippet else ''}
+                            
+                            {f'''
+                            <div class="code-section">
+                                <div class="code-header">💣 Вредоносная нагрузка</div>
+                                <div class="code-content">{payload or 'Данные нагрузки недоступны'}</div>
+                            </div>
+                            ''' if payload else ''}
+                            
+                            {f'''
+                            <div class="code-section">
+                                <div class="code-header">🔍 Доказательства и анализ</div>
+                                <div class="code-content">{evidence or 'Данные анализа недоступны'}</div>
+                            </div>
+                            ''' if evidence else ''}
+                        </div>
+                    </div>
+                </div>
                     '''
                     vulnerabilities_content += vuln_html
             
-            # Replace template variables - use double braces for CSS
-            html_content = template.replace('{timestamp}', datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            # Replace template variables
+            html_content = template.replace('{timestamp}', datetime.now().strftime("%d.%m.%Y %H:%M:%S"))
             html_content = html_content.replace('{total_vulns}', str(total_vulns))
+            html_content = html_content.replace('{critical_count}', str(critical_count))
             html_content = html_content.replace('{high_count}', str(high_count))
             html_content = html_content.replace('{medium_count}', str(medium_count))
             html_content = html_content.replace('{low_count}', str(low_count))
-            html_content = html_content.replace('{total_requests}', str(data[0].get('scan_stats', {}).get('total_requests', 0)) if data else '0')
-            html_content = html_content.replace('{total_urls}', str(data[0].get('scan_stats', {}).get('total_urls', 0)) if data else '0')
-            html_content = html_content.replace('{total_params}', str(data[0].get('scan_stats', {}).get('total_params', 0)) if data else '0')
-            html_content = html_content.replace('{scan_duration}', str(data[0].get('scan_stats', {}).get('scan_duration', '0s')) if data else '0s')
             html_content = html_content.replace('{vulnerabilities_content}', vulnerabilities_content)
             
             with open(filename, 'w', encoding='utf-8') as f:
