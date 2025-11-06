@@ -91,6 +91,9 @@ def show_modules():
     print("- gitexposed: Exposed Git Repository")
     print("- dirtraversal: Directory Traversal")
     print("- secheaders: Security Headers and Cookie Flags")
+    print("- openredirect: Open Redirect")
+    print("- backupfinder: Backup Files Finder")
+    print("- sensitivedata: Sensitive Data Detection")
 
 def main():
     """Main function"""
