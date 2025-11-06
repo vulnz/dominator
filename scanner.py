@@ -80,6 +80,8 @@ Examples:
             args.use_all = False
         if not hasattr(args, 'auth'):
             args.auth = None
+        if not hasattr(args, 'all'):
+            args.all = False
         
         # Create configuration
         config = Config(args)
