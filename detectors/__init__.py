@@ -22,5 +22,17 @@ from .database_error_detector import DatabaseErrorDetector
 from .phpinfo_detector import PHPInfoDetector
 from .ssl_tls_detector import SSLTLSDetector
 from .httponly_cookie_detector import HttpOnlyCookieDetector
+from .technology_detector import TechnologyDetector
+from .xxe_detector import XXEDetector
+from .idor_detector import IDORDetector
+from .command_injection_detector import CommandInjectionDetector
+from .path_traversal_detector import PathTraversalDetector
+from .ldap_injection_detector import LDAPInjectionDetector
+from .nosql_injection_detector import NoSQLInjectionDetector
+from .file_upload_detector import FileUploadDetector
+from .cors_detector import CORSDetector
+from .jwt_detector import JWTDetector
+from .insecure_deserialization_detector import InsecureDeserializationDetector
+from .http_response_splitting_detector import HTTPResponseSplittingDetector
 
-__all__ = ['XSSDetector', 'SQLiDetector', 'LFIDetector', 'CSRFDetector', 'DirBruteDetector', 'Real404Detector', 'GitDetector', 'DirectoryTraversalDetector', 'SecurityHeadersDetector', 'SSRFDetector', 'RFIDetector', 'VersionDisclosureDetector', 'ClickjackingDetector', 'BlindXSSDetector', 'PasswordOverHTTPDetector', 'OutdatedSoftwareDetector', 'DatabaseErrorDetector', 'PHPInfoDetector', 'SSLTLSDetector', 'HttpOnlyCookieDetector']
+__all__ = ['XSSDetector', 'SQLiDetector', 'LFIDetector', 'CSRFDetector', 'DirBruteDetector', 'Real404Detector', 'GitDetector', 'DirectoryTraversalDetector', 'SecurityHeadersDetector', 'SSRFDetector', 'RFIDetector', 'VersionDisclosureDetector', 'ClickjackingDetector', 'BlindXSSDetector', 'PasswordOverHTTPDetector', 'OutdatedSoftwareDetector', 'DatabaseErrorDetector', 'PHPInfoDetector', 'SSLTLSDetector', 'HttpOnlyCookieDetector', 'TechnologyDetector', 'XXEDetector', 'IDORDetector', 'CommandInjectionDetector', 'PathTraversalDetector', 'LDAPInjectionDetector', 'NoSQLInjectionDetector', 'FileUploadDetector', 'CORSDetector', 'JWTDetector', 'InsecureDeserializationDetector', 'HTTPResponseSplittingDetector']

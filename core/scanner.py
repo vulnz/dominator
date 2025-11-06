@@ -13,8 +13,9 @@ from core.config import Config
 from core.url_parser import URLParser
 from core.crawler import WebCrawler
 from utils.file_handler import FileHandler
-from payloads import XSSPayloads, SQLiPayloads, LFIPayloads, CSRFPayloads, DirBrutePayloads, GitPayloads, DirectoryTraversalPayloads, SSRFPayloads, RFIPayloads, BlindXSSPayloads, PHPInfoPayloads
-from detectors import XSSDetector, SQLiDetector, LFIDetector, CSRFDetector, DirBruteDetector, Real404Detector, GitDetector, DirectoryTraversalDetector, SecurityHeadersDetector, SSRFDetector, RFIDetector, VersionDisclosureDetector, ClickjackingDetector, BlindXSSDetector, PasswordOverHTTPDetector, OutdatedSoftwareDetector, DatabaseErrorDetector, PHPInfoDetector, SSLTLSDetector, HttpOnlyCookieDetector
+from utils.screenshot_handler import ScreenshotHandler
+from payloads import XSSPayloads, SQLiPayloads, LFIPayloads, CSRFPayloads, DirBrutePayloads, GitPayloads, DirectoryTraversalPayloads, SSRFPayloads, RFIPayloads, BlindXSSPayloads, PHPInfoPayloads, XXEPayloads, CommandInjectionPayloads, IDORPayloads, NoSQLInjectionPayloads
+from detectors import XSSDetector, SQLiDetector, LFIDetector, CSRFDetector, DirBruteDetector, Real404Detector, GitDetector, DirectoryTraversalDetector, SecurityHeadersDetector, SSRFDetector, RFIDetector, VersionDisclosureDetector, ClickjackingDetector, BlindXSSDetector, PasswordOverHTTPDetector, OutdatedSoftwareDetector, DatabaseErrorDetector, PHPInfoDetector, SSLTLSDetector, HttpOnlyCookieDetector, TechnologyDetector, XXEDetector, IDORDetector, CommandInjectionDetector, PathTraversalDetector, LDAPInjectionDetector, NoSQLInjectionDetector, FileUploadDetector, CORSDetector, JWTDetector, InsecureDeserializationDetector, HTTPResponseSplittingDetector
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -28,16 +29,19 @@ class VulnScanner:
         self.url_parser = URLParser()
         self.crawler = WebCrawler(config)
         self.file_handler = FileHandler()
+        self.screenshot_handler = ScreenshotHandler()
         self.results = []
         self.request_count = 0
         self.found_vulnerabilities = set()  # For deduplication
+        self.tested_domains_ssl = set()  # For SSL/TLS deduplication
         self.scan_stats = {
             'total_requests': 0,
             'total_urls': 0,
             'total_params': 0,
             'scan_duration': '0s',
             'start_time': None,
-            'end_time': None
+            'end_time': None,
+            'technologies': {}
         }
         
     def scan(self) -> List[Dict[str, Any]]:
@@ -90,6 +94,11 @@ class VulnScanner:
             self.results = [{'scan_stats': self.scan_stats}]
         
         return self.results
+    
+    def cleanup(self):
+        """Cleanup resources"""
+        if hasattr(self, 'screenshot_handler'):
+            self.screenshot_handler.cleanup()
     
     def _scan_target(self, target: str) -> List[Dict[str, Any]]:
         """Scan single target"""
@@ -261,6 +270,30 @@ class VulnScanner:
                 results.extend(self._test_ssl_tls(parsed_data))
             elif module_name == "httponlycookies":
                 results.extend(self._test_httponly_cookies(parsed_data))
+            elif module_name == "technology":
+                results.extend(self._test_technology_detection(parsed_data))
+            elif module_name == "xxe":
+                results.extend(self._test_xxe(parsed_data))
+            elif module_name == "idor":
+                results.extend(self._test_idor(parsed_data))
+            elif module_name == "commandinjection":
+                results.extend(self._test_command_injection(parsed_data))
+            elif module_name == "pathtraversal":
+                results.extend(self._test_path_traversal(parsed_data))
+            elif module_name == "ldapinjection":
+                results.extend(self._test_ldap_injection(parsed_data))
+            elif module_name == "nosqlinjection":
+                results.extend(self._test_nosql_injection(parsed_data))
+            elif module_name == "fileupload":
+                results.extend(self._test_file_upload(parsed_data))
+            elif module_name == "cors":
+                results.extend(self._test_cors(parsed_data))
+            elif module_name == "jwt":
+                results.extend(self._test_jwt(parsed_data))
+            elif module_name == "deserialization":
+                results.extend(self._test_insecure_deserialization(parsed_data))
+            elif module_name == "responsesplitting":
+                results.extend(self._test_http_response_splitting(parsed_data))
             # Add more modules as needed
                 
         except Exception as e:
@@ -326,6 +359,17 @@ class VulnScanner:
                         # Mark as found to prevent duplicates
                         self.found_vulnerabilities.add(param_key)
                         
+                        # Take screenshot for XSS vulnerability
+                        screenshot_filename = None
+                        try:
+                            import time
+                            vuln_id = f"xss_{param}_{int(time.time())}"
+                            screenshot_filename = self.screenshot_handler.take_screenshot_with_payload(
+                                test_url, "xss", vuln_id, payload
+                            )
+                        except Exception as e:
+                            print(f"    [XSS] Could not take screenshot: {e}")
+                        
                         results.append({
                             'module': 'xss',
                             'target': base_url,
@@ -336,7 +380,8 @@ class VulnScanner:
                             'evidence': evidence,
                             'request_url': test_url,
                             'detector': 'XSSDetector.detect_reflected_xss',
-                            'response_snippet': response_snippet
+                            'response_snippet': response_snippet,
+                            'screenshot': screenshot_filename
                         })
                         break  # Found XSS, no need to test more payloads for this param
                         
@@ -1811,8 +1856,20 @@ class VulnScanner:
         results = []
         base_url = parsed_data['url']
         
+        # Extract domain for deduplication
+        from urllib.parse import urlparse
+        parsed_url = urlparse(base_url)
+        domain = parsed_url.hostname
+        
+        if domain in self.tested_domains_ssl:
+            print(f"    [SSLTLS] Skipping SSL/TLS test for {domain} - already tested")
+            return results
+        
         try:
-            print(f"    [SSLTLS] Testing SSL/TLS implementation...")
+            print(f"    [SSLTLS] Testing SSL/TLS implementation for domain: {domain}")
+            
+            # Mark domain as tested
+            self.tested_domains_ssl.add(domain)
             
             # Use SSL/TLS detector
             has_ssl, evidence, severity, details = SSLTLSDetector.detect_ssl_tls_implementation(base_url)
@@ -1830,6 +1887,17 @@ class VulnScanner:
                     elif 'not enforced' in evidence.lower():
                         vulnerability_name = "SSL/TLS Not Enforced"
                 
+                # Take screenshot for SSL/TLS issues
+                screenshot_filename = None
+                try:
+                    import time
+                    vuln_id = f"ssl_{domain}_{int(time.time())}"
+                    screenshot_filename = self.screenshot_handler.take_screenshot(
+                        base_url, "ssl_tls", vuln_id
+                    )
+                except Exception as e:
+                    print(f"    [SSLTLS] Could not take screenshot: {e}")
+                
                 results.append({
                     'module': 'ssltls',
                     'target': base_url,
@@ -1841,10 +1909,11 @@ class VulnScanner:
                     'request_url': base_url,
                     'detector': 'SSLTLSDetector.detect_ssl_tls_implementation',
                     'response_snippet': f"TLS Version: {details.get('tls_version', 'N/A')}, Cipher: {details.get('cipher', 'N/A')}",
-                    'remediation': remediation
+                    'remediation': remediation,
+                    'screenshot': screenshot_filename
                 })
             else:
-                print(f"    [SSLTLS] SSL/TLS properly configured")
+                print(f"    [SSLTLS] SSL/TLS properly configured for {domain}")
             
         except Exception as e:
             print(f"    [SSLTLS] Error during SSL/TLS testing: {e}")
@@ -1900,6 +1969,907 @@ class VulnScanner:
             
         except Exception as e:
             print(f"    [HTTPONLYCOOKIES] Error during HttpOnly cookie testing: {e}")
+        
+        return results
+
+    def _test_technology_detection(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for technology detection"""
+        results = []
+        base_url = parsed_data['url']
+        
+        try:
+            print(f"    [TECHNOLOGY] Detecting technologies...")
+            
+            # Make request to get headers and content
+            response = requests.get(
+                base_url,
+                timeout=self.config.timeout,
+                headers=self.config.headers,
+                verify=False
+            )
+            
+            print(f"    [TECHNOLOGY] Response code: {response.status_code}")
+            
+            # Skip if error response
+            if response.status_code >= 400:
+                print(f"    [TECHNOLOGY] Skipping - error response ({response.status_code})")
+                return results
+            
+            # Detect technologies
+            technologies = TechnologyDetector.detect_technologies(
+                response.text, dict(response.headers), base_url
+            )
+            
+            if technologies:
+                print(f"    [TECHNOLOGY] Found {len(technologies)} technologies")
+                
+                # Store technologies in scan stats
+                domain = parsed_data.get('host', 'unknown')
+                self.scan_stats['technologies'][domain] = technologies
+                
+                for tech in technologies:
+                    # Only report high-confidence detections as informational findings
+                    if tech['confidence'] >= 80:
+                        tech_name = tech['name']
+                        if tech['version']:
+                            tech_name += f" {tech['version']}"
+                        
+                        results.append({
+                            'module': 'technology',
+                            'target': base_url,
+                            'vulnerability': f'Technology Detected: {tech_name}',
+                            'severity': 'Info',
+                            'parameter': f'technology: {tech["category"]}',
+                            'payload': 'N/A',
+                            'evidence': f'{tech_name} detected with {tech["confidence"]}% confidence. Evidence: {"; ".join(tech["evidence"])}',
+                            'request_url': base_url,
+                            'detector': 'TechnologyDetector.detect_technologies',
+                            'response_snippet': f'Category: {tech["category"]}, Confidence: {tech["confidence"]}%'
+                        })
+            else:
+                print(f"    [TECHNOLOGY] No technologies detected")
+            
+        except Exception as e:
+            print(f"    [TECHNOLOGY] Error during technology detection: {e}")
+        
+        return results
+
+    def _test_xxe(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for XXE vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # Get XXE payloads
+        xxe_payloads = XXEPayloads.get_all_payloads()
+        
+        # Test GET parameters
+        for param, values in parsed_data['query_params'].items():
+            print(f"    [XXE] Testing parameter: {param}")
+            
+            # Create deduplication key for this parameter
+            param_key = f"xxe_{base_url.split('?')[0]}_{param}"
+            if param_key in self.found_vulnerabilities:
+                print(f"    [XXE] Skipping parameter {param} - already tested")
+                continue
+            
+            for payload in xxe_payloads[:10]:  # Test first 10 payloads
+                try:
+                    print(f"    [XXE] Trying payload: {payload[:50]}...")
+                    
+                    # Create test URL
+                    test_params = parsed_data['query_params'].copy()
+                    test_params[param] = [payload]
+                    
+                    # Build query string
+                    query_parts = []
+                    for k, v_list in test_params.items():
+                        for v in v_list:
+                            query_parts.append(f"{k}={v}")
+                    
+                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    print(f"    [XXE] Request URL: {test_url}")
+                    
+                    response = requests.get(
+                        test_url,
+                        timeout=self.config.timeout,
+                        headers=self.config.headers,
+                        verify=False
+                    )
+                    
+                    print(f"    [XXE] Response code: {response.status_code}")
+                    
+                    # Use XXE detector
+                    if XXEDetector.detect_xxe(response.text, response.status_code, payload):
+                        evidence = XXEDetector.get_evidence(payload, response.text)
+                        response_snippet = XXEDetector.get_response_snippet(payload, response.text)
+                        remediation = XXEDetector.get_remediation_advice()
+                        print(f"    [XXE] VULNERABILITY FOUND! Parameter: {param}")
+                        
+                        # Mark as found to prevent duplicates
+                        self.found_vulnerabilities.add(param_key)
+                        
+                        results.append({
+                            'module': 'xxe',
+                            'target': base_url,
+                            'vulnerability': 'XML External Entity (XXE)',
+                            'severity': 'High',
+                            'parameter': param,
+                            'payload': payload,
+                            'evidence': evidence,
+                            'request_url': test_url,
+                            'detector': 'XXEDetector.detect_xxe',
+                            'response_snippet': response_snippet,
+                            'remediation': remediation
+                        })
+                        break  # Found XXE, no need to test more payloads for this param
+                        
+                except Exception as e:
+                    print(f"    [XXE] Error testing payload: {e}")
+                    continue
+        
+        return results
+
+    def _test_idor(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for IDOR vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # Get IDOR payloads
+        idor_payloads = IDORPayloads.get_all_payloads()
+        
+        # Test GET parameters that look like IDs
+        id_params = [param for param in parsed_data['query_params'].keys() 
+                    if any(id_word in param.lower() for id_word in IDORDetector.get_idor_parameters())]
+        
+        for param in id_params:
+            print(f"    [IDOR] Testing parameter: {param}")
+            
+            # Create deduplication key for this parameter
+            param_key = f"idor_{base_url.split('?')[0]}_{param}"
+            if param_key in self.found_vulnerabilities:
+                print(f"    [IDOR] Skipping parameter {param} - already tested")
+                continue
+            
+            try:
+                # Get original response
+                original_response = requests.get(
+                    parsed_data['url'],
+                    timeout=self.config.timeout,
+                    headers=self.config.headers,
+                    verify=False
+                )
+                
+                original_value = parsed_data['query_params'][param][0]
+                
+                # Generate sequential payloads based on original value
+                sequential_payloads = IDORPayloads.get_sequential_payloads(original_value)
+                test_payloads = sequential_payloads + idor_payloads[:10]
+                
+                for payload in test_payloads:
+                    try:
+                        print(f"    [IDOR] Trying payload: {payload}")
+                        
+                        # Create test URL
+                        test_params = parsed_data['query_params'].copy()
+                        test_params[param] = [payload]
+                        
+                        # Build query string
+                        query_parts = []
+                        for k, v_list in test_params.items():
+                            for v in v_list:
+                                query_parts.append(f"{k}={v}")
+                        
+                        test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                        
+                        modified_response = requests.get(
+                            test_url,
+                            timeout=self.config.timeout,
+                            headers=self.config.headers,
+                            verify=False
+                        )
+                        
+                        print(f"    [IDOR] Response code: {modified_response.status_code}")
+                        
+                        # Use IDOR detector
+                        if IDORDetector.detect_idor(
+                            original_response.text, modified_response.text,
+                            original_response.status_code, modified_response.status_code
+                        ):
+                            evidence = IDORDetector.get_evidence(original_response.text, modified_response.text)
+                            response_snippet = IDORDetector.get_response_snippet(modified_response.text)
+                            remediation = IDORDetector.get_remediation_advice()
+                            print(f"    [IDOR] VULNERABILITY FOUND! Parameter: {param}")
+                            
+                            # Mark as found to prevent duplicates
+                            self.found_vulnerabilities.add(param_key)
+                            
+                            results.append({
+                                'module': 'idor',
+                                'target': base_url,
+                                'vulnerability': 'Insecure Direct Object Reference',
+                                'severity': 'High',
+                                'parameter': param,
+                                'payload': payload,
+                                'evidence': evidence,
+                                'request_url': test_url,
+                                'detector': 'IDORDetector.detect_idor',
+                                'response_snippet': response_snippet,
+                                'remediation': remediation
+                            })
+                            break  # Found IDOR, no need to test more payloads for this param
+                            
+                    except Exception as e:
+                        print(f"    [IDOR] Error testing payload: {e}")
+                        continue
+                        
+            except Exception as e:
+                print(f"    [IDOR] Error getting original response: {e}")
+                continue
+        
+        return results
+
+    def _test_command_injection(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for Command Injection vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # Get command injection payloads
+        cmd_payloads = CommandInjectionPayloads.get_all_payloads()
+        
+        # Test GET parameters
+        for param, values in parsed_data['query_params'].items():
+            print(f"    [CMDINJECTION] Testing parameter: {param}")
+            
+            # Create deduplication key for this parameter
+            param_key = f"cmdinjection_{base_url.split('?')[0]}_{param}"
+            if param_key in self.found_vulnerabilities:
+                print(f"    [CMDINJECTION] Skipping parameter {param} - already tested")
+                continue
+            
+            for payload in cmd_payloads[:15]:  # Test first 15 payloads
+                try:
+                    print(f"    [CMDINJECTION] Trying payload: {payload}")
+                    
+                    # Create test URL
+                    test_params = parsed_data['query_params'].copy()
+                    test_params[param] = [payload]
+                    
+                    # Build query string
+                    query_parts = []
+                    for k, v_list in test_params.items():
+                        for v in v_list:
+                            query_parts.append(f"{k}={v}")
+                    
+                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    print(f"    [CMDINJECTION] Request URL: {test_url}")
+                    
+                    response = requests.get(
+                        test_url,
+                        timeout=self.config.timeout,
+                        headers=self.config.headers,
+                        verify=False
+                    )
+                    
+                    print(f"    [CMDINJECTION] Response code: {response.status_code}")
+                    
+                    # Use Command Injection detector
+                    if CommandInjectionDetector.detect_command_injection(response.text, response.status_code, payload):
+                        evidence = CommandInjectionDetector.get_evidence(payload, response.text)
+                        response_snippet = CommandInjectionDetector.get_response_snippet(payload, response.text)
+                        remediation = CommandInjectionDetector.get_remediation_advice()
+                        print(f"    [CMDINJECTION] VULNERABILITY FOUND! Parameter: {param}")
+                        
+                        # Mark as found to prevent duplicates
+                        self.found_vulnerabilities.add(param_key)
+                        
+                        results.append({
+                            'module': 'commandinjection',
+                            'target': base_url,
+                            'vulnerability': 'Command Injection',
+                            'severity': 'High',
+                            'parameter': param,
+                            'payload': payload,
+                            'evidence': evidence,
+                            'request_url': test_url,
+                            'detector': 'CommandInjectionDetector.detect_command_injection',
+                            'response_snippet': response_snippet,
+                            'remediation': remediation
+                        })
+                        break  # Found command injection, no need to test more payloads for this param
+                        
+                except Exception as e:
+                    print(f"    [CMDINJECTION] Error testing payload: {e}")
+                    continue
+        
+        return results
+
+    def _test_path_traversal(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for Path Traversal vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # Path traversal payloads
+        path_payloads = [
+            '../../../etc/passwd',
+            '..\\..\\..\\windows\\win.ini',
+            '/etc/passwd',
+            'C:\\windows\\win.ini',
+            '....//....//....//etc/passwd',
+            '....\\\\....\\\\....\\\\windows\\\\win.ini'
+        ]
+        
+        # Test GET parameters
+        for param, values in parsed_data['query_params'].items():
+            print(f"    [PATHTRAVERSAL] Testing parameter: {param}")
+            
+            # Create deduplication key for this parameter
+            param_key = f"pathtraversal_{base_url.split('?')[0]}_{param}"
+            if param_key in self.found_vulnerabilities:
+                print(f"    [PATHTRAVERSAL] Skipping parameter {param} - already tested")
+                continue
+            
+            for payload in path_payloads:
+                try:
+                    print(f"    [PATHTRAVERSAL] Trying payload: {payload}")
+                    
+                    # Create test URL
+                    test_params = parsed_data['query_params'].copy()
+                    test_params[param] = [payload]
+                    
+                    # Build query string
+                    query_parts = []
+                    for k, v_list in test_params.items():
+                        for v in v_list:
+                            query_parts.append(f"{k}={v}")
+                    
+                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    
+                    response = requests.get(
+                        test_url,
+                        timeout=self.config.timeout,
+                        headers=self.config.headers,
+                        verify=False
+                    )
+                    
+                    print(f"    [PATHTRAVERSAL] Response code: {response.status_code}")
+                    
+                    # Use Path Traversal detector
+                    if PathTraversalDetector.detect_path_traversal(response.text, response.status_code, payload):
+                        evidence = PathTraversalDetector.get_evidence(payload, response.text)
+                        response_snippet = PathTraversalDetector.get_response_snippet(payload, response.text)
+                        remediation = PathTraversalDetector.get_remediation_advice()
+                        print(f"    [PATHTRAVERSAL] VULNERABILITY FOUND! Parameter: {param}")
+                        
+                        # Mark as found to prevent duplicates
+                        self.found_vulnerabilities.add(param_key)
+                        
+                        results.append({
+                            'module': 'pathtraversal',
+                            'target': base_url,
+                            'vulnerability': 'Path Traversal',
+                            'severity': 'High',
+                            'parameter': param,
+                            'payload': payload,
+                            'evidence': evidence,
+                            'request_url': test_url,
+                            'detector': 'PathTraversalDetector.detect_path_traversal',
+                            'response_snippet': response_snippet,
+                            'remediation': remediation
+                        })
+                        break  # Found path traversal, no need to test more payloads for this param
+                        
+                except Exception as e:
+                    print(f"    [PATHTRAVERSAL] Error testing payload: {e}")
+                    continue
+        
+        return results
+
+    def _test_ldap_injection(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for LDAP Injection vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # LDAP injection payloads
+        ldap_payloads = [
+            '*', '*)(&', '*))%00', '*()|%26',
+            '*(|(mail=*))', '*(|(objectclass=*))',
+            '*)(uid=*))(|(uid=*',
+            '*)(|(cn=*))', '*)(|(sn=*))'
+        ]
+        
+        # Test GET parameters
+        for param, values in parsed_data['query_params'].items():
+            print(f"    [LDAPINJECTION] Testing parameter: {param}")
+            
+            # Create deduplication key for this parameter
+            param_key = f"ldapinjection_{base_url.split('?')[0]}_{param}"
+            if param_key in self.found_vulnerabilities:
+                print(f"    [LDAPINJECTION] Skipping parameter {param} - already tested")
+                continue
+            
+            for payload in ldap_payloads:
+                try:
+                    print(f"    [LDAPINJECTION] Trying payload: {payload}")
+                    
+                    # Create test URL
+                    test_params = parsed_data['query_params'].copy()
+                    test_params[param] = [payload]
+                    
+                    # Build query string
+                    query_parts = []
+                    for k, v_list in test_params.items():
+                        for v in v_list:
+                            query_parts.append(f"{k}={v}")
+                    
+                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    
+                    response = requests.get(
+                        test_url,
+                        timeout=self.config.timeout,
+                        headers=self.config.headers,
+                        verify=False
+                    )
+                    
+                    print(f"    [LDAPINJECTION] Response code: {response.status_code}")
+                    
+                    # Use LDAP Injection detector
+                    if LDAPInjectionDetector.detect_ldap_injection(response.text, response.status_code, payload):
+                        evidence = LDAPInjectionDetector.get_evidence(payload, response.text)
+                        response_snippet = LDAPInjectionDetector.get_response_snippet(payload, response.text)
+                        remediation = LDAPInjectionDetector.get_remediation_advice()
+                        print(f"    [LDAPINJECTION] VULNERABILITY FOUND! Parameter: {param}")
+                        
+                        # Mark as found to prevent duplicates
+                        self.found_vulnerabilities.add(param_key)
+                        
+                        results.append({
+                            'module': 'ldapinjection',
+                            'target': base_url,
+                            'vulnerability': 'LDAP Injection',
+                            'severity': 'High',
+                            'parameter': param,
+                            'payload': payload,
+                            'evidence': evidence,
+                            'request_url': test_url,
+                            'detector': 'LDAPInjectionDetector.detect_ldap_injection',
+                            'response_snippet': response_snippet,
+                            'remediation': remediation
+                        })
+                        break  # Found LDAP injection, no need to test more payloads for this param
+                        
+                except Exception as e:
+                    print(f"    [LDAPINJECTION] Error testing payload: {e}")
+                    continue
+        
+        return results
+
+    def _test_nosql_injection(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for NoSQL Injection vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # Get NoSQL injection payloads
+        nosql_payloads = NoSQLInjectionPayloads.get_all_payloads()
+        
+        # Test GET parameters
+        for param, values in parsed_data['query_params'].items():
+            print(f"    [NOSQLINJECTION] Testing parameter: {param}")
+            
+            # Create deduplication key for this parameter
+            param_key = f"nosqlinjection_{base_url.split('?')[0]}_{param}"
+            if param_key in self.found_vulnerabilities:
+                print(f"    [NOSQLINJECTION] Skipping parameter {param} - already tested")
+                continue
+            
+            for payload in nosql_payloads[:15]:  # Test first 15 payloads
+                try:
+                    print(f"    [NOSQLINJECTION] Trying payload: {payload[:50]}...")
+                    
+                    # Create test URL
+                    test_params = parsed_data['query_params'].copy()
+                    test_params[param] = [payload]
+                    
+                    # Build query string
+                    query_parts = []
+                    for k, v_list in test_params.items():
+                        for v in v_list:
+                            query_parts.append(f"{k}={v}")
+                    
+                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    
+                    response = requests.get(
+                        test_url,
+                        timeout=self.config.timeout,
+                        headers=self.config.headers,
+                        verify=False
+                    )
+                    
+                    print(f"    [NOSQLINJECTION] Response code: {response.status_code}")
+                    
+                    # Use NoSQL Injection detector
+                    if NoSQLInjectionDetector.detect_nosql_injection(response.text, response.status_code, payload):
+                        evidence = NoSQLInjectionDetector.get_evidence(payload, response.text)
+                        response_snippet = NoSQLInjectionDetector.get_response_snippet(payload, response.text)
+                        remediation = NoSQLInjectionDetector.get_remediation_advice()
+                        print(f"    [NOSQLINJECTION] VULNERABILITY FOUND! Parameter: {param}")
+                        
+                        # Mark as found to prevent duplicates
+                        self.found_vulnerabilities.add(param_key)
+                        
+                        results.append({
+                            'module': 'nosqlinjection',
+                            'target': base_url,
+                            'vulnerability': 'NoSQL Injection',
+                            'severity': 'High',
+                            'parameter': param,
+                            'payload': payload,
+                            'evidence': evidence,
+                            'request_url': test_url,
+                            'detector': 'NoSQLInjectionDetector.detect_nosql_injection',
+                            'response_snippet': response_snippet,
+                            'remediation': remediation
+                        })
+                        break  # Found NoSQL injection, no need to test more payloads for this param
+                        
+                except Exception as e:
+                    print(f"    [NOSQLINJECTION] Error testing payload: {e}")
+                    continue
+        
+        return results
+
+    def _test_file_upload(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for File Upload vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        try:
+            print(f"    [FILEUPLOAD] Testing for file upload vulnerabilities...")
+            
+            # Make request to get page content
+            response = requests.get(
+                base_url,
+                timeout=self.config.timeout,
+                headers=self.config.headers,
+                verify=False
+            )
+            
+            print(f"    [FILEUPLOAD] Response code: {response.status_code}")
+            
+            # Use File Upload detector
+            is_vulnerable, evidence, severity = FileUploadDetector.detect_file_upload_vulnerability(
+                response.text, response.status_code, base_url
+            )
+            
+            if is_vulnerable:
+                print(f"    [FILEUPLOAD] VULNERABILITY FOUND! {evidence}")
+                
+                response_snippet = FileUploadDetector.get_response_snippet(response.text)
+                remediation = FileUploadDetector.get_remediation_advice()
+                
+                results.append({
+                    'module': 'fileupload',
+                    'target': base_url,
+                    'vulnerability': 'File Upload Vulnerability',
+                    'severity': severity,
+                    'parameter': 'file_upload_form',
+                    'payload': 'N/A',
+                    'evidence': evidence,
+                    'request_url': base_url,
+                    'detector': 'FileUploadDetector.detect_file_upload_vulnerability',
+                    'response_snippet': response_snippet,
+                    'remediation': remediation
+                })
+            else:
+                print(f"    [FILEUPLOAD] No file upload vulnerabilities found")
+            
+        except Exception as e:
+            print(f"    [FILEUPLOAD] Error during file upload testing: {e}")
+        
+        return results
+
+    def _test_cors(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for CORS misconfigurations"""
+        results = []
+        base_url = parsed_data['url']
+        
+        try:
+            print(f"    [CORS] Testing CORS configuration...")
+            
+            # Test with different Origin headers
+            test_origins = [
+                'http://evil.com',
+                'https://attacker.com',
+                'null',
+                'http://localhost',
+                base_url  # Same origin
+            ]
+            
+            for origin in test_origins:
+                try:
+                    headers = self.config.headers.copy()
+                    headers['Origin'] = origin
+                    
+                    response = requests.get(
+                        base_url,
+                        timeout=self.config.timeout,
+                        headers=headers,
+                        verify=False
+                    )
+                    
+                    print(f"    [CORS] Testing origin {origin}: {response.status_code}")
+                    
+                    # Use CORS detector
+                    is_vulnerable, evidence, severity, issues = CORSDetector.detect_cors_misconfiguration(
+                        dict(response.headers), origin
+                    )
+                    
+                    if is_vulnerable:
+                        print(f"    [CORS] CORS MISCONFIGURATION FOUND! {evidence}")
+                        
+                        detailed_evidence = CORSDetector.get_evidence(issues, dict(response.headers))
+                        
+                        for issue in issues:
+                            remediation = CORSDetector.get_remediation_advice(issue['issue'])
+                            
+                            results.append({
+                                'module': 'cors',
+                                'target': base_url,
+                                'vulnerability': f'CORS Misconfiguration: {issue["issue"]}',
+                                'severity': issue['severity'],
+                                'parameter': f'origin: {origin}',
+                                'payload': origin,
+                                'evidence': detailed_evidence,
+                                'request_url': base_url,
+                                'detector': 'CORSDetector.detect_cors_misconfiguration',
+                                'response_snippet': f'Access-Control-Allow-Origin: {response.headers.get("Access-Control-Allow-Origin", "Not set")}',
+                                'remediation': remediation
+                            })
+                        break  # Found CORS issue, no need to test more origins
+                        
+                except Exception as e:
+                    print(f"    [CORS] Error testing origin {origin}: {e}")
+                    continue
+            
+            if not results:
+                print(f"    [CORS] No CORS misconfigurations found")
+            
+        except Exception as e:
+            print(f"    [CORS] Error during CORS testing: {e}")
+        
+        return results
+
+    def _test_jwt(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for JWT vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        try:
+            print(f"    [JWT] Testing for JWT vulnerabilities...")
+            
+            # Make request to get response
+            response = requests.get(
+                base_url,
+                timeout=self.config.timeout,
+                headers=self.config.headers,
+                verify=False
+            )
+            
+            print(f"    [JWT] Response code: {response.status_code}")
+            
+            # Use JWT detector
+            is_vulnerable, evidence, severity, issues = JWTDetector.detect_jwt_vulnerabilities(
+                response.text, dict(response.headers), base_url
+            )
+            
+            if is_vulnerable and issues:
+                print(f"    [JWT] JWT VULNERABILITIES FOUND! {evidence}")
+                
+                tokens_found = len(re.findall(r'eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*', response.text))
+                detailed_evidence = JWTDetector.get_evidence(issues, tokens_found)
+                response_snippet = JWTDetector.get_response_snippet(response.text)
+                
+                for issue in issues:
+                    remediation = JWTDetector.get_remediation_advice(issue['issue'])
+                    
+                    results.append({
+                        'module': 'jwt',
+                        'target': base_url,
+                        'vulnerability': f'JWT Vulnerability: {issue["issue"]}',
+                        'severity': issue['severity'],
+                        'parameter': 'jwt_token',
+                        'payload': 'N/A',
+                        'evidence': detailed_evidence,
+                        'request_url': base_url,
+                        'detector': 'JWTDetector.detect_jwt_vulnerabilities',
+                        'response_snippet': response_snippet,
+                        'remediation': remediation
+                    })
+            elif is_vulnerable:
+                print(f"    [JWT] JWT tokens found - manual analysis recommended")
+                
+                results.append({
+                    'module': 'jwt',
+                    'target': base_url,
+                    'vulnerability': 'JWT Tokens Detected',
+                    'severity': 'Info',
+                    'parameter': 'jwt_token',
+                    'payload': 'N/A',
+                    'evidence': evidence,
+                    'request_url': base_url,
+                    'detector': 'JWTDetector.detect_jwt_vulnerabilities',
+                    'response_snippet': JWTDetector.get_response_snippet(response.text)
+                })
+            else:
+                print(f"    [JWT] No JWT tokens found")
+            
+        except Exception as e:
+            print(f"    [JWT] Error during JWT testing: {e}")
+        
+        return results
+
+    def _test_insecure_deserialization(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for Insecure Deserialization vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # Deserialization payloads
+        deser_payloads = [
+            'rO0ABXNyABFqYXZhLnV0aWwuSGFzaE1hcA==',  # Java serialized HashMap
+            'O:8:"stdClass":0:{}',  # PHP serialized object
+            'a:1:{s:4:"test";s:4:"test";}',  # PHP serialized array
+            'YToxOntzOjQ6InRlc3QiO3M6NDoidGVzdCI7fQ==',  # Base64 PHP serialized
+        ]
+        
+        # Test GET parameters
+        for param, values in parsed_data['query_params'].items():
+            print(f"    [DESERIALIZATION] Testing parameter: {param}")
+            
+            # Create deduplication key for this parameter
+            param_key = f"deserialization_{base_url.split('?')[0]}_{param}"
+            if param_key in self.found_vulnerabilities:
+                print(f"    [DESERIALIZATION] Skipping parameter {param} - already tested")
+                continue
+            
+            for payload in deser_payloads:
+                try:
+                    print(f"    [DESERIALIZATION] Trying payload: {payload[:30]}...")
+                    
+                    # Create test URL
+                    test_params = parsed_data['query_params'].copy()
+                    test_params[param] = [payload]
+                    
+                    # Build query string
+                    query_parts = []
+                    for k, v_list in test_params.items():
+                        for v in v_list:
+                            query_parts.append(f"{k}={v}")
+                    
+                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    
+                    response = requests.get(
+                        test_url,
+                        timeout=self.config.timeout,
+                        headers=self.config.headers,
+                        verify=False
+                    )
+                    
+                    print(f"    [DESERIALIZATION] Response code: {response.status_code}")
+                    
+                    # Use Insecure Deserialization detector
+                    is_vulnerable, evidence, severity = InsecureDeserializationDetector.detect_insecure_deserialization(
+                        response.text, response.status_code, payload
+                    )
+                    
+                    if is_vulnerable:
+                        response_snippet = InsecureDeserializationDetector.get_response_snippet(payload, response.text)
+                        remediation = InsecureDeserializationDetector.get_remediation_advice()
+                        print(f"    [DESERIALIZATION] VULNERABILITY FOUND! Parameter: {param}")
+                        
+                        # Mark as found to prevent duplicates
+                        self.found_vulnerabilities.add(param_key)
+                        
+                        results.append({
+                            'module': 'deserialization',
+                            'target': base_url,
+                            'vulnerability': 'Insecure Deserialization',
+                            'severity': severity,
+                            'parameter': param,
+                            'payload': payload,
+                            'evidence': evidence,
+                            'request_url': test_url,
+                            'detector': 'InsecureDeserializationDetector.detect_insecure_deserialization',
+                            'response_snippet': response_snippet,
+                            'remediation': remediation
+                        })
+                        break  # Found deserialization issue, no need to test more payloads for this param
+                        
+                except Exception as e:
+                    print(f"    [DESERIALIZATION] Error testing payload: {e}")
+                    continue
+        
+        return results
+
+    def _test_http_response_splitting(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for HTTP Response Splitting vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # HTTP Response Splitting payloads
+        splitting_payloads = [
+            '%0d%0aSet-Cookie: test=injected',
+            '%0d%0aLocation: http://evil.com',
+            '%0aSet-Cookie: test=injected',
+            '\r\nSet-Cookie: test=injected',
+            '\nSet-Cookie: test=injected',
+            '%0d%0a%0d%0a<script>alert("XSS")</script>',
+            '%0a%0a<script>alert("XSS")</script>'
+        ]
+        
+        # Test GET parameters
+        for param, values in parsed_data['query_params'].items():
+            print(f"    [RESPONSESPLITTING] Testing parameter: {param}")
+            
+            # Create deduplication key for this parameter
+            param_key = f"responsesplitting_{base_url.split('?')[0]}_{param}"
+            if param_key in self.found_vulnerabilities:
+                print(f"    [RESPONSESPLITTING] Skipping parameter {param} - already tested")
+                continue
+            
+            for payload in splitting_payloads:
+                try:
+                    print(f"    [RESPONSESPLITTING] Trying payload: {payload}")
+                    
+                    # Create test URL
+                    test_params = parsed_data['query_params'].copy()
+                    test_params[param] = [payload]
+                    
+                    # Build query string
+                    query_parts = []
+                    for k, v_list in test_params.items():
+                        for v in v_list:
+                            query_parts.append(f"{k}={v}")
+                    
+                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    
+                    response = requests.get(
+                        test_url,
+                        timeout=self.config.timeout,
+                        headers=self.config.headers,
+                        verify=False
+                    )
+                    
+                    print(f"    [RESPONSESPLITTING] Response code: {response.status_code}")
+                    
+                    # Use HTTP Response Splitting detector
+                    if HTTPResponseSplittingDetector.detect_response_splitting(
+                        response.text, response.status_code, payload, dict(response.headers)
+                    ):
+                        evidence = HTTPResponseSplittingDetector.get_evidence(payload, response.text, dict(response.headers))
+                        response_snippet = HTTPResponseSplittingDetector.get_response_snippet(payload, response.text)
+                        remediation = HTTPResponseSplittingDetector.get_remediation_advice()
+                        print(f"    [RESPONSESPLITTING] VULNERABILITY FOUND! Parameter: {param}")
+                        
+                        # Mark as found to prevent duplicates
+                        self.found_vulnerabilities.add(param_key)
+                        
+                        results.append({
+                            'module': 'responsesplitting',
+                            'target': base_url,
+                            'vulnerability': 'HTTP Response Splitting',
+                            'severity': 'High',
+                            'parameter': param,
+                            'payload': payload,
+                            'evidence': evidence,
+                            'request_url': test_url,
+                            'detector': 'HTTPResponseSplittingDetector.detect_response_splitting',
+                            'response_snippet': response_snippet,
+                            'remediation': remediation
+                        })
+                        break  # Found response splitting, no need to test more payloads for this param
+                        
+                except Exception as e:
+                    print(f"    [RESPONSESPLITTING] Error testing payload: {e}")
+                    continue
         
         return results
 

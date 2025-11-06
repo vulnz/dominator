@@ -13,5 +13,9 @@ from .ssrf_payloads import SSRFPayloads
 from .rfi_payloads import RFIPayloads
 from .blind_xss_payloads import BlindXSSPayloads
 from .phpinfo_payloads import PHPInfoPayloads
+from .xxe_payloads import XXEPayloads
+from .command_injection_payloads import CommandInjectionPayloads
+from .idor_payloads import IDORPayloads
+from .nosql_injection_payloads import NoSQLInjectionPayloads
 
-__all__ = ['XSSPayloads', 'SQLiPayloads', 'LFIPayloads', 'CSRFPayloads', 'DirBrutePayloads', 'GitPayloads', 'DirectoryTraversalPayloads', 'SSRFPayloads', 'RFIPayloads', 'BlindXSSPayloads', 'PHPInfoPayloads']
+__all__ = ['XSSPayloads', 'SQLiPayloads', 'LFIPayloads', 'CSRFPayloads', 'DirBrutePayloads', 'GitPayloads', 'DirectoryTraversalPayloads', 'SSRFPayloads', 'RFIPayloads', 'BlindXSSPayloads', 'PHPInfoPayloads', 'XXEPayloads', 'CommandInjectionPayloads', 'IDORPayloads', 'NoSQLInjectionPayloads']
