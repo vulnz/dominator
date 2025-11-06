@@ -198,21 +198,45 @@ class VulnScanner:
                 if not crawled_urls:
                     print(f"  [DEBUG] No pages with parameters found by crawler")
                 
-                # Test important pages that might have forms
+                # Test important pages that might have forms or vulnerabilities
                 important_pages = self._get_important_pages()
                 
-                if 'csrf' in self.config.modules:
-                    for page in important_pages:
+                # Also test all found vulnerability pages
+                vuln_pages = [url for url in crawled_urls if '/vulnerabilities/' in url]
+                all_test_pages = important_pages + [url.replace(f"{parsed_data['scheme']}://{parsed_data['host']}", "") for url in vuln_pages]
+                
+                print(f"  [DEBUG] Testing {len(all_test_pages)} important/vulnerability pages")
+                
+                for page in all_test_pages[:20]:  # Limit to 20 pages
+                    if page.startswith('http'):
+                        test_url = page
+                    else:
                         test_url = f"{parsed_data['scheme']}://{parsed_data['host']}{page}"
-                        try:
-                            test_response = requests.get(test_url, timeout=5, verify=False)
-                            if test_response.status_code == 200:
-                                print(f"  [DEBUG] Testing important page for CSRF: {test_url}")
-                                page_data = self.url_parser.parse(test_url)
-                                csrf_results = self._run_module('csrf', page_data)
-                                target_results.extend(csrf_results)
-                        except:
-                            continue
+                    
+                    try:
+                        print(f"  [DEBUG] Testing page: {test_url}")
+                        test_response = requests.get(test_url, timeout=10, verify=False)
+                        if test_response.status_code == 200:
+                            page_data = self.url_parser.parse(test_url)
+                            
+                            # Test all modules on this page, not just CSRF
+                            for module_name in self.config.modules:
+                                if self._should_stop():
+                                    break
+                                    
+                                # Skip parameter-dependent modules if no parameters
+                                param_dependent = ['xss', 'sqli', 'lfi', 'rfi', 'xxe', 'idor', 'ssrf', 
+                                                 'dirtraversal', 'blindxss', 'commandinjection', 'pathtraversal',
+                                                 'ldapinjection', 'nosqlinjection', 'deserialization', 'responsesplitting']
+                                
+                                if module_name in param_dependent and not page_data['query_params']:
+                                    continue
+                                    
+                                module_results = self._run_module(module_name, page_data)
+                                target_results.extend(module_results)
+                    except Exception as e:
+                        print(f"  [DEBUG] Error testing page {test_url}: {e}")
+                        continue
                 
                 for url in crawled_urls:
                     crawled_data = self.url_parser.parse(url)
@@ -3080,16 +3104,23 @@ class VulnScanner:
         return results
 
     def _get_important_pages(self) -> List[str]:
-        """Get list of important pages that might contain forms"""
-        # Use DirBrutePayloads to get common files instead of hardcoded list
+        """Get list of important pages that might contain forms or vulnerabilities"""
+        # Common vulnerability testing pages
+        important_pages = [
+            '/login.php', '/admin.php', '/register.php', '/contact.php', '/guestbook.php',
+            '/search.php', '/index.php', '/home.php', '/profile.php', '/settings.php',
+            '/upload.php', '/file.php', '/download.php', '/view.php', '/edit.php',
+            '/delete.php', '/update.php', '/create.php', '/submit.php', '/process.php'
+        ]
+        
+        # Use DirBrutePayloads to get additional common files
         common_files = DirBrutePayloads.get_common_files()
-        important_pages = []
         
         for file in common_files:
-            if any(keyword in file.lower() for keyword in ['login', 'admin', 'register', 'contact', 'guestbook']):
+            if any(keyword in file.lower() for keyword in ['login', 'admin', 'register', 'contact', 'guestbook', 'search', 'upload', 'file']):
                 important_pages.append(f'/{file}')
         
-        return important_pages[:20]  # Limit to first 20 important pages
+        return list(set(important_pages))[:30]  # Remove duplicates and limit to 30 pages
     
     def _get_success_indicators(self) -> List[str]:
         """Get indicators that suggest a request was successful"""
