@@ -52,12 +52,39 @@ class LFIDetector:
         """Detect LFI vulnerability"""
         if response_code != 200:
             return False, None
-            
-        all_patterns = LFIDetector.get_linux_patterns() + LFIDetector.get_windows_patterns()
         
-        for pattern in all_patterns:
+        # Check response length - very short responses are likely not file contents
+        if len(response_text.strip()) < 50:
+            return False, None
+            
+        linux_patterns = LFIDetector.get_linux_patterns()
+        windows_patterns = LFIDetector.get_windows_patterns()
+        
+        found_linux = 0
+        found_windows = 0
+        matched_pattern = None
+        
+        # Count Linux patterns
+        for pattern in linux_patterns:
             if pattern in response_text:
-                return True, pattern
+                found_linux += 1
+                if not matched_pattern:
+                    matched_pattern = pattern
+        
+        # Count Windows patterns  
+        for pattern in windows_patterns:
+            if pattern in response_text:
+                found_windows += 1
+                if not matched_pattern:
+                    matched_pattern = pattern
+        
+        # Require multiple patterns for Linux /etc/passwd (more reliable)
+        if found_linux >= 3:
+            return True, matched_pattern
+        
+        # Windows patterns are more unique, so 1 is enough
+        if found_windows >= 1:
+            return True, matched_pattern
         
         return False, None
     

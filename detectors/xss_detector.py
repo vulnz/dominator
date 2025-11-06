@@ -10,9 +10,39 @@ class XSSDetector:
         """Detect reflected XSS vulnerability"""
         if response_code != 200:
             return False
-            
+        
         # Check if payload is reflected in response
-        return payload in response_text
+        if payload not in response_text:
+            return False
+        
+        # Additional checks to reduce false positives
+        # 1. Check if payload is in dangerous context (not just in comments or text)
+        dangerous_contexts = [
+            r'<script[^>]*>' + re.escape(payload),
+            r'<[^>]*\s+on\w+\s*=\s*["\']?[^"\']*' + re.escape(payload),
+            r'<[^>]*\s+href\s*=\s*["\']?javascript:[^"\']*' + re.escape(payload),
+            r'<[^>]*\s+src\s*=\s*["\']?[^"\']*' + re.escape(payload),
+            r'<[^>]*>' + re.escape(payload) + r'</[^>]*>',
+            r'<input[^>]*\s+value\s*=\s*["\']?[^"\']*' + re.escape(payload)
+        ]
+        
+        # Check if payload appears in dangerous context
+        for context_pattern in dangerous_contexts:
+            if re.search(context_pattern, response_text, re.IGNORECASE):
+                return True
+        
+        # 2. Check if payload is unescaped in HTML context
+        if '<' in payload and '>' in payload:
+            # Look for unescaped angle brackets
+            if payload in response_text and '&lt;' not in response_text.replace(payload, ''):
+                return True
+        
+        # 3. Check for JavaScript execution context
+        if 'javascript:' in payload.lower() or 'eval(' in payload.lower():
+            if payload in response_text:
+                return True
+        
+        return False
     
     @staticmethod
     def detect_dom_xss(payload: str, response_text: str, response_code: int) -> bool:

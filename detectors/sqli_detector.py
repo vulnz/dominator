@@ -92,11 +92,40 @@ class SQLiDetector:
     @staticmethod
     def detect_error_based_sqli(response_text: str, response_code: int) -> tuple:
         """Detect error-based SQL injection"""
+        if response_code >= 500:
+            return False, None
+            
         error_patterns = SQLiDetector.get_error_patterns()
+        response_lower = response_text.lower()
         
+        # Count how many different error patterns we find
+        found_patterns = []
         for pattern in error_patterns:
-            if pattern.lower() in response_text.lower():
+            if pattern.lower() in response_lower:
+                found_patterns.append(pattern)
+        
+        # Require at least one strong SQL error pattern
+        strong_patterns = [
+            "mysql_fetch_array",
+            "ORA-01756", "ORA-00933", "ORA-00936",
+            "PostgreSQL query failed",
+            "SQLException",
+            "MySqlException",
+            "check the manual that corresponds to your MySQL server version",
+            "Unknown column.*in.*field list",
+            "Table.*doesn.*t exist",
+            "ERROR: parser: parse error at or near",
+            "Microsoft OLE DB Provider for SQL Server.*80040e14"
+        ]
+        
+        # Check for strong patterns first
+        for pattern in strong_patterns:
+            if pattern.lower() in response_lower:
                 return True, pattern
+        
+        # If we have multiple weaker patterns, it might be SQLi
+        if len(found_patterns) >= 2:
+            return True, found_patterns[0]
         
         return False, None
     

@@ -17,6 +17,10 @@ class DirectoryTraversalDetector:
         if response_code != 200:
             return False
         
+        # Check if response is too short to contain file contents
+        if len(response_text.strip()) < 30:
+            return False
+        
         # Check for common file content patterns that indicate successful traversal
         traversal_indicators = DirectoryTraversalDetector.get_traversal_indicators()
         
@@ -27,8 +31,28 @@ class DirectoryTraversalDetector:
             if indicator['pattern'].lower() in response_lower:
                 found_indicators.append(indicator)
         
-        # Need at least one strong indicator
-        return len(found_indicators) > 0
+        # Categorize indicators by strength
+        strong_indicators = []
+        weak_indicators = []
+        
+        for indicator in found_indicators:
+            pattern = indicator['pattern'].lower()
+            # Strong indicators are very specific file contents
+            if any(strong in pattern for strong in [
+                'root:x:0:0:', 'daemon:x:1:1:', '[boot loader]', 
+                'multi(0)disk(0)', '[mysqld]', 'ServerRoot'
+            ]):
+                strong_indicators.append(indicator)
+            else:
+                weak_indicators.append(indicator)
+        
+        # Require at least one strong indicator OR multiple weak indicators
+        if len(strong_indicators) >= 1:
+            return True
+        elif len(weak_indicators) >= 3:
+            return True
+        
+        return False
     
     @staticmethod
     def get_traversal_indicators() -> List[Dict[str, str]]:

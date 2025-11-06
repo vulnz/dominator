@@ -43,24 +43,44 @@ class RFIDetector:
         """Detect RFI vulnerability"""
         if response_code >= 500:
             return False
+        
+        # Check if response is too short to contain meaningful RFI content
+        if len(response_text.strip()) < 20:
+            return False
             
         response_lower = response_text.lower()
-        indicators = RFIDetector.get_rfi_indicators()
         
-        # Check for RFI indicators in response
-        indicator_count = 0
-        for indicator in indicators:
+        # Strong RFI indicators (high confidence)
+        strong_indicators = [
+            '<?php', 'eval(', 'system(', 'exec(', 'shell_exec(',
+            'netsparker', 'acunetix', 'test_rfi_payload'
+        ]
+        
+        # Check for strong indicators first
+        strong_found = 0
+        for indicator in strong_indicators:
             if indicator in response_lower:
-                indicator_count += 1
-                
-        # Multiple indicators suggest RFI
-        if indicator_count >= 2:
+                strong_found += 1
+        
+        # If we have strong indicators and the payload contains URL, likely RFI
+        if strong_found >= 1 and ('http://' in payload.lower() or 'https://' in payload.lower()):
             return True
-            
-        # Check for specific RFI patterns
-        if 'http://' in payload.lower() or 'https://' in payload.lower():
-            if any(sign in response_lower for sign in ['<?php', 'eval(', 'system(']):
-                return True
+        
+        # Check for multiple weaker indicators
+        weak_indicators = [
+            'include(', 'require(', 'include_once(', 'require_once(',
+            'failed to open stream', 'no such file or directory',
+            'permission denied', 'connection refused'
+        ]
+        
+        weak_found = 0
+        for indicator in weak_indicators:
+            if indicator in response_lower:
+                weak_found += 1
+        
+        # Require multiple weak indicators AND URL in payload
+        if weak_found >= 2 and ('http://' in payload.lower() or 'https://' in payload.lower()):
+            return True
                 
         return False
     
