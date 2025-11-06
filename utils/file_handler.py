@@ -130,7 +130,8 @@ class FileHandler:
                                 <div class="detail-cards">
                                     <div class="detail-card request-card">
                                         <div class="card-header">
-                                            📤 HTTP Request
+                                            <i class="fas fa-paper-plane"></i>
+                                            HTTP Request
                                         </div>
                                         <div class="card-content">
                                             <div class="code-block">{request_url}</div>
@@ -139,7 +140,8 @@ class FileHandler:
                                     
                                     <div class="detail-card response-card">
                                         <div class="card-header">
-                                            📥 Server Response
+                                            <i class="fas fa-reply"></i>
+                                            Server Response
                                         </div>
                                         <div class="card-content">
                                             <div class="code-block">{response_snippet}</div>
@@ -148,7 +150,8 @@ class FileHandler:
                                     
                                     <div class="detail-card payload-card">
                                         <div class="card-header">
-                                            💉 Malicious Payload
+                                            <i class="fas fa-bomb"></i>
+                                            Malicious Payload
                                         </div>
                                         <div class="card-content">
                                             <div class="code-block">{payload}</div>
@@ -157,7 +160,8 @@ class FileHandler:
                                     
                                     <div class="detail-card evidence-card">
                                         <div class="card-header">
-                                            🔍 Evidence & Analysis
+                                            <i class="fas fa-search"></i>
+                                            Evidence & Analysis
                                         </div>
                                         <div class="card-content">
                                             <div class="code-block">{evidence}</div>
