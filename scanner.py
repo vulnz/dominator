@@ -63,6 +63,12 @@ Examples:
     args = parser.parse_args()
     
     try:
+        # Fix args for Config compatibility
+        if hasattr(args, 'url') and args.url:
+            args.target = args.url
+        elif hasattr(args, 'file') and args.file:
+            args.target = args.file
+        
         # Create configuration
         config = Config(args)
         
