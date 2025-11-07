@@ -60,17 +60,19 @@ class FileHandler:
         for i, item in enumerate(data):
             print(f"[DEBUG] Item {i}: keys = {list(item.keys()) if isinstance(item, dict) else 'not dict'}")
             
+            # Extract scan_stats but don't skip processing this item yet
             if 'scan_stats' in item:
                 scan_stats = item['scan_stats']
-                print(f"[DEBUG] Found scan_stats")
-                continue
+                print(f"[DEBUG] Found scan_stats in item {i}")
+                # Don't continue here - check if this item also has vulnerability data
             
-            # Skip items without vulnerability field
-            if 'vulnerability' not in item or not item.get('vulnerability'):
-                print(f"[DEBUG] Skipping item {i}: no vulnerability field")
+            # Check if this item has vulnerability data
+            if 'vulnerability' in item and item.get('vulnerability'):
+                print(f"[DEBUG] Found vulnerability in item {i}: {item.get('vulnerability', 'UNKNOWN')}")
+                # Process this vulnerability even if it also has scan_stats
+            else:
+                print(f"[DEBUG] Skipping item {i}: no vulnerability field or empty vulnerability")
                 continue
-            
-            print(f"[DEBUG] Found vulnerability: {item.get('vulnerability', 'UNKNOWN')}")
             
             # Process screenshot if present
             screenshot_base64 = None
@@ -112,10 +114,21 @@ class FileHandler:
         if vulnerabilities:
             for i, v in enumerate(vulnerabilities[:3]):
                 print(f"[DEBUG] Vuln {i+1}: {v.get('vulnerability', 'NO_VULN')} - {v.get('severity', 'NO_SEV')}")
+        else:
+            print(f"[DEBUG] WARNING: No vulnerabilities found for HTML report!")
+            print(f"[DEBUG] Original data items: {len(data)}")
+            for i, item in enumerate(data):
+                print(f"[DEBUG] Item {i} keys: {list(item.keys()) if isinstance(item, dict) else 'not dict'}")
+                if isinstance(item, dict) and 'vulnerability' in item:
+                    print(f"[DEBUG] Item {i} vulnerability: '{item.get('vulnerability', 'EMPTY')}'")
         
         # Get advanced HTML template
         template = self._get_advanced_html_template()
-        html_content = template.replace('{report_data}', json.dumps(report_data, ensure_ascii=False))
+        
+        # Debug: Show what we're putting into the template
+        print(f"[DEBUG] About to insert into template: vulnerabilities={len(report_data['vulnerabilities'])}")
+        
+        html_content = template.replace('{report_data}', json.dumps(report_data, ensure_ascii=False, indent=2))
         
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(html_content)
@@ -547,6 +560,10 @@ class FileHandler:
         });
         
         function initializeReport() {
+            console.log('Initializing report...');
+            console.log('Report data:', reportData);
+            console.log('Vulnerabilities count:', reportData.vulnerabilities ? reportData.vulnerabilities.length : 'undefined');
+            
             populateStats();
             populateTechnologies();
             populateVulnerabilities();
@@ -619,13 +636,20 @@ class FileHandler:
         }
         
         function populateVulnerabilities() {
+            console.log('Populating vulnerabilities...');
             const vulnerabilities = reportData.vulnerabilities || [];
+            console.log('Vulnerabilities array:', vulnerabilities);
+            console.log('Vulnerabilities length:', vulnerabilities.length);
+            
             const container = document.getElementById('vulnerabilities-list');
             
             if (vulnerabilities.length === 0) {
+                console.log('No vulnerabilities found, showing empty state');
                 container.innerHTML = '<div class="no-results"><i class="fas fa-check-circle" style="font-size: 3rem; color: #2ecc71; margin-bottom: 15px;"></i><h3>No Vulnerabilities Found</h3><p>The scan completed successfully with no security issues detected.</p></div>';
                 return;
             }
+            
+            console.log('Processing', vulnerabilities.length, 'vulnerabilities');
             
             // Populate module filter
             const modules = [...new Set(vulnerabilities.map(v => v.module))];
