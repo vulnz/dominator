@@ -29,10 +29,12 @@ Usage examples:
         """
     )
     
-    # Main parameters
-    parser.add_argument('-t', '--target', 
+    # Target options
+    target_group = parser.add_mutually_exclusive_group(required=True)
+    target_group.add_argument('-t', '--target', 
                        help='Scan target (IP, domain, URL, IP:port, URL:port, subnet)')
-    parser.add_argument('-f', '--file', 
+    target_group.add_argument('-u', '--url', help='Target URL to scan')
+    target_group.add_argument('-f', '--file', 
                        help='File with targets for scanning')
     
     # HTTP parameters
@@ -51,6 +53,8 @@ Usage examples:
                        help='Scanning modules (comma separated)')
     parser.add_argument('--all', action='store_true',
                        help='Use all modules')
+    parser.add_argument('--all-modules', action='store_true',
+                       help='Use all available modules')
     parser.add_argument('--exclude',
                        help='Exclude paths from scanning')
     parser.add_argument('--timeout', type=int, default=10,
@@ -65,6 +69,20 @@ Usage examples:
                        help='Request limit before scan finish')
     parser.add_argument('--page-limit', type=int,
                        help='Page limit for scanning')
+    parser.add_argument('--delay', type=float, default=0,
+                       help='Delay between requests in seconds (default: 0)')
+    parser.add_argument('--request-limit', type=int, default=None,
+                       help='Maximum number of requests to make (default: unlimited)')
+    parser.add_argument('--user-agent', default='Dominator/1.0',
+                       help='User-Agent string to use')
+    parser.add_argument('--single-url', action='store_true',
+                       help='Scan only the specified URL without crawling or testing other pages')
+    parser.add_argument('--crawl', action='store_true',
+                       help='Enable web crawling to find more pages')
+    parser.add_argument('--max-crawl-pages', type=int, default=20,
+                       help='Maximum pages to crawl (default: 20)')
+    parser.add_argument('--verbose', '-v', action='store_true',
+                       help='Verbose output')
     
     # Reports
     parser.add_argument('-o', '--output',
@@ -182,10 +200,23 @@ class MaxTimeHandler:
         """Check if max time was reached"""
         return self.stopped
 
+def print_banner():
+    """Print scanner banner"""
+    banner = """
+================================================================================
+                          DOMINATOR WEB SCANNER                              
+                         Advanced Vulnerability Scanner                       
+================================================================================
+    """
+    print(banner)
+
 def main():
     """Main function"""
     parser = create_parser()
     args = parser.parse_args()
+    
+    # Print banner
+    print_banner()
     
     # Show modules and exit
     if args.modules_list:
@@ -193,10 +224,36 @@ def main():
         return
     
     # Check required parameters
-    if not args.target and not args.file:
-        print("Error: Must specify target (-t) or targets file (-f)")
+    if not args.target and not args.file and not args.url:
+        print("Error: Must specify target (-t), URL (-u) or targets file (-f)")
         parser.print_help()
         sys.exit(1)
+    
+    # Fix args for Config compatibility
+    if hasattr(args, 'url') and args.url:
+        args.target = args.url
+    elif hasattr(args, 'file') and args.file:
+        args.target = args.file
+    
+    # Add missing attributes that Config expects
+    if not hasattr(args, 'cookies'):
+        args.cookies = None
+    if not hasattr(args, 'proxy'):
+        args.proxy = None
+    if not hasattr(args, 'request_limit'):
+        args.request_limit = args.request_limit
+    if not hasattr(args, 'use_all'):
+        args.use_all = False
+    if not hasattr(args, 'auth'):
+        args.auth = None
+    if not hasattr(args, 'all'):
+        args.all = (args.modules == 'all' or args.all_modules if hasattr(args, 'all_modules') else False)
+    if not hasattr(args, 'limit'):
+        args.limit = args.request_limit
+    if not hasattr(args, 'page_limit'):
+        args.page_limit = None
+    if not hasattr(args, 'format'):
+        args.format = 'txt'
     
     # Check if modules are specified
     if not args.modules and not args.all:
@@ -259,6 +316,11 @@ def main():
                 print(f"Error saving report: {e}")
                 import traceback
                 traceback.print_exc()
+        
+        # Exit with appropriate code
+        vulnerabilities_found = any(r.get('vulnerability') for r in results)
+        if vulnerabilities_found:
+            sys.exit(1)
         
         # Cleanup resources
         try:
