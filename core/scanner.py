@@ -4657,10 +4657,10 @@ class VulnScanner:
         # Filter out scan stats and group by severity - fix the filtering logic
         vulnerabilities = []
         for v in results:
-            # Skip scan stats entries
+            # Skip scan stats entries (entries that ONLY contain scan_stats)
             if 'scan_stats' in v and len(v) == 1:
                 continue
-            # Include entries that have vulnerability field
+            # Include entries that have vulnerability field (even if they also have scan_stats)
             if 'vulnerability' in v and v.get('vulnerability'):
                 vulnerabilities.append(v)
         
@@ -4671,12 +4671,25 @@ class VulnScanner:
             print("No vulnerabilities found during the scan.")
             print("="*80)
             return
+        
+        # Debug: Show what we're about to categorize
+        print(f"[DEBUG] About to categorize {len(vulnerabilities)} vulnerabilities")
+        for i, v in enumerate(vulnerabilities[:3]):
+            print(f"[DEBUG] Vuln {i+1}: '{v.get('vulnerability', 'NO_VULN')}' severity='{v.get('severity', 'NO_SEV')}'")
             
         # Group vulnerabilities by severity
         high_vulns = [v for v in vulnerabilities if v.get('severity', '').lower() == 'high']
         medium_vulns = [v for v in vulnerabilities if v.get('severity', '').lower() == 'medium']
         low_vulns = [v for v in vulnerabilities if v.get('severity', '').lower() == 'low']
         info_vulns = [v for v in vulnerabilities if v.get('severity', '').lower() == 'info']
+        
+        # Debug: Show categorization results
+        print(f"[DEBUG] Categorization results:")
+        print(f"[DEBUG] High: {len(high_vulns)}, Medium: {len(medium_vulns)}, Low: {len(low_vulns)}, Info: {len(info_vulns)}")
+        if high_vulns:
+            print(f"[DEBUG] First high vuln: {high_vulns[0].get('vulnerability', 'UNKNOWN')}")
+        if medium_vulns:
+            print(f"[DEBUG] First medium vuln: {medium_vulns[0].get('vulnerability', 'UNKNOWN')}")
         
         print(f"VULNERABILITY STATUS: {len(vulnerabilities)} ISSUES FOUND")
         print(f"High Severity:        {len(high_vulns)}")
