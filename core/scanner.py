@@ -4432,9 +4432,7 @@ class VulnScanner:
         return [
             'success', 'successful', 'completed', 'saved', 'updated', 'created',
             'added', 'submitted', 'processed', 'confirmed', 'accepted',
-            'thank you', 'thanks', 'welcome', 'congratulations',
-            'успешно', 'сохранено', 'обновлено', 'создано', 'добавлено',
-            'спасибо', 'поздравляем', 'добро пожаловать'
+            'thank you', 'thanks', 'welcome', 'congratulations'
         ]
     
     def _is_likely_404_response(self, response_text: str, response_code: int) -> bool:
