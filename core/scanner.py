@@ -2145,6 +2145,10 @@ class VulnScanner:
         results = []
         base_url = parsed_data['url']
         
+        # Update payload stats
+        if 'gitexposed' not in self.scan_stats['payload_stats']:
+            self.scan_stats['payload_stats']['gitexposed'] = {'payloads_used': 0, 'requests_made': 0, 'successful_payloads': 0}
+        
         # Remove query parameters from base URL
         if '?' in base_url:
             base_url = base_url.split('?')[0]
@@ -2163,18 +2167,34 @@ class VulnScanner:
             print(f"    [GITEXPOSED] Testing for exposed .git repository...")
             print(f"    [GITEXPOSED] Base directory: {base_dir}")
             
-            # Get git paths to test
+            # Get git paths to test - use fallback if GitPayloads not available
             try:
-                git_paths = GitPayloads.get_all_git_payloads()
+                git_paths = GitPayloads.get_git_paths()
             except:
-                git_paths = GitDetector.get_git_test_paths()
+                # Fallback git paths if GitPayloads is not available
+                git_paths = [
+                    '.git/',
+                    '.git/config',
+                    '.git/HEAD',
+                    '.git/index',
+                    '.git/logs/HEAD',
+                    '.git/logs/refs/heads/master',
+                    '.git/logs/refs/heads/main',
+                    '.git/refs/heads/master',
+                    '.git/refs/heads/main',
+                    '.git/objects/',
+                    '.git/info/refs',
+                    '.git/description',
+                    '.git/hooks/',
+                    '.git/packed-refs'
+                ]
+            
+            # Update payload stats
+            self.scan_stats['payload_stats']['gitexposed']['payloads_used'] += len(git_paths)
             
             print(f"    [GITEXPOSED] Testing {len(git_paths)} git paths...")
             
-            # Collect all exposed files for grouping
-            exposed_files = []
-            highest_severity = 'Low'
-            
+            # Test each git path individually like dirbrute does
             for git_path in git_paths:
                 try:
                     test_url = f"{base_dir}{git_path}"
@@ -2187,7 +2207,19 @@ class VulnScanner:
                         allow_redirects=False
                     )
                     
+                    # Update request count
+                    self.request_count += 1
+                    self.scan_stats['payload_stats']['gitexposed']['requests_made'] += 1
+                    
                     print(f"    [GITEXPOSED] Testing: {git_path} -> {response.status_code} ({len(response.text)} bytes)")
+                    
+                    # Check if we should stop due to request limit or max time
+                    if self._should_stop():
+                        if self.stop_requested:
+                            print(f"    [GITEXPOSED] Stopping - maximum time reached")
+                        else:
+                            print(f"    [GITEXPOSED] Stopping - reached request limit ({self.config.request_limit})")
+                        return results
                     
                     # Use Git detector
                     is_exposed, evidence, severity = GitDetector.detect_git_exposure(
@@ -2200,23 +2232,31 @@ class VulnScanner:
                         # Get detailed evidence
                         try:
                             detailed_evidence = GitDetector.get_evidence(git_path, response.text)
+                            response_snippet = GitDetector.get_response_snippet(response.text)
+                            remediation = GitDetector.get_remediation_advice(git_path)
                         except:
                             detailed_evidence = evidence
+                            response_snippet = response.text[:200] + "..." if len(response.text) > 200 else response.text
+                            remediation = "Remove .git directory from web-accessible locations and configure web server to deny access to .git directories"
                         
-                        # Add to exposed files list
-                        exposed_files.append({
-                            'path': git_path,
-                            'url': test_url,
-                            'evidence': detailed_evidence,
+                        # Update successful payload count
+                        self.scan_stats['payload_stats']['gitexposed']['successful_payloads'] += 1
+                        self.scan_stats['total_payloads_used'] += 1
+                        
+                        # Create individual vulnerability for each exposed file (like dirbrute does)
+                        results.append({
+                            'module': 'gitexposed',
+                            'target': test_url,
+                            'vulnerability': f'Git File Exposed: {git_path}',
                             'severity': severity,
-                            'response_size': len(response.text)
+                            'parameter': f'git_file: {git_path}',
+                            'payload': git_path,
+                            'evidence': detailed_evidence,
+                            'request_url': test_url,
+                            'detector': 'GitDetector.detect_git_exposure',
+                            'response_snippet': response_snippet,
+                            'remediation': remediation
                         })
-                        
-                        # Track highest severity
-                        if severity == 'High':
-                            highest_severity = 'High'
-                        elif severity == 'Medium' and highest_severity != 'High':
-                            highest_severity = 'Medium'
                         
                     else:
                         print(f"    [GITEXPOSED] No exposure: {git_path} - {evidence}")
@@ -2225,64 +2265,8 @@ class VulnScanner:
                     print(f"    [GITEXPOSED] Error testing {git_path}: {e}")
                     continue
             
-            # Create single grouped vulnerability if any files were found
-            if exposed_files:
-                print(f"    [GITEXPOSED] Found {len(exposed_files)} git exposures")
-                
-                # Create evidence summary
-                evidence_parts = []
-                file_list = []
-                
-                for file_info in exposed_files:
-                    file_list.append(f"• {file_info['path']} ({file_info['response_size']} bytes)")
-                    if len(evidence_parts) < 3:  # Show details for first 3 files
-                        evidence_parts.append(f"{file_info['path']}: {file_info['evidence']}")
-                
-                # Create comprehensive evidence
-                main_evidence = f"Git repository exposure detected with {len(exposed_files)} accessible files:\n" + "\n".join(file_list)
-                
-                if len(evidence_parts) > 0:
-                    main_evidence += f"\n\nDetailed analysis:\n" + "\n".join(evidence_parts)
-                
-                if len(exposed_files) > 3:
-                    main_evidence += f"\n\n... and {len(exposed_files) - 3} more files"
-                
-                # Get remediation advice
-                try:
-                    remediation = GitDetector.get_remediation_advice('.git')
-                except:
-                    remediation = "Remove .git directory from web-accessible locations and configure web server to deny access to .git directories"
-                
-                # Create response snippet with file listing
-                try:
-                    response_snippet = GitDetector.get_response_snippet(
-                        f"Exposed Git files ({len(exposed_files)} total):\n" + 
-                        "\n".join([f"- {file_info['path']}" for file_info in exposed_files[:10]]) +
-                        (f"\n... and {len(exposed_files) - 10} more files" if len(exposed_files) > 10 else "")
-                    )
-                except:
-                    response_snippet = f"Exposed Git files ({len(exposed_files)} total):\n"
-                    for file_info in exposed_files[:10]:  # Show first 10 files
-                        response_snippet += f"- {file_info['path']}\n"
-                    if len(exposed_files) > 10:
-                        response_snippet += f"... and {len(exposed_files) - 10} more files"
-                
-                # Create single grouped vulnerability (without scan_stats)
-                results.append({
-                    'module': 'gitexposed',
-                    'target': base_dir,
-                    'vulnerability': f'Git Repository Exposed ({len(exposed_files)} files)',
-                    'severity': highest_severity,
-                    'parameter': f'git_repository: {len(exposed_files)} files exposed',
-                    'payload': '.git/*',
-                    'evidence': main_evidence,
-                    'request_url': base_dir + '.git/',
-                    'detector': 'GitDetector.detect_git_exposure',
-                    'response_snippet': response_snippet,
-                    'remediation': remediation,
-                    'exposed_files_count': len(exposed_files),
-                    'exposed_files': [f['path'] for f in exposed_files]
-                })
+            if results:
+                print(f"    [GITEXPOSED] Found {len(results)} git file exposures")
             else:
                 print(f"    [GITEXPOSED] No git repository exposures found")
                 
