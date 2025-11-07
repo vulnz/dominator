@@ -79,6 +79,8 @@ Usage examples:
                        help='Maximum scan time in minutes (will stop scan and show report)')
     parser.add_argument('--threads', type=int, default=10,
                        help='Number of threads')
+    parser.add_argument('-threats', type=int, dest='threads',
+                       help='Number of threads (alias for --threads)')
     parser.add_argument('--limit', type=int,
                        help='Request limit before scan finish')
     parser.add_argument('--page-limit', type=int,
