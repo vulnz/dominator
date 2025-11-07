@@ -25,14 +25,14 @@ REM Monitor for completion or interruption
 timeout /t 1 /nobreak >nul 2>&1
 if !ERRORLEVEL! == 1 (
     echo.
-    echo [!] Ctrl+C обнаружен - немедленная остановка сканера...
+    echo [!] Ctrl+C detected - stopping scanner immediately...
     
     REM Kill Python processes forcefully
     taskkill /F /IM python.exe /T >nul 2>&1
     taskkill /F /IM python3.exe /T >nul 2>&1
     taskkill /F /IM py.exe /T >nul 2>&1
     
-    echo [!] Сканер остановлен принудительно
+    echo [!] Scanner stopped forcefully
     exit /b 130
 )
 
@@ -42,7 +42,7 @@ if !ERRORLEVEL! == 1 (
     tasklist /FI "IMAGENAME eq python3.exe" 2>NUL | find /I "python3.exe" >nul
     if !ERRORLEVEL! == 1 (
         echo.
-        echo [INFO] Сканер завершился нормально
+        echo [INFO] Scanner completed normally
         exit /b 0
     )
 )
