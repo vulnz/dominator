@@ -4561,8 +4561,15 @@ class VulnScanner:
                 else:
                     print(f"[DEBUG] Result {i+1}: No 'vulnerability' key - keys: {list(result.keys())}")
         
-        # Filter out scan stats and group by severity
-        vulnerabilities = [v for v in results if 'vulnerability' in v and v.get('vulnerability')]
+        # Filter out scan stats and group by severity - fix the filtering logic
+        vulnerabilities = []
+        for v in results:
+            # Skip scan stats entries
+            if 'scan_stats' in v and len(v) == 1:
+                continue
+            # Include entries that have vulnerability field
+            if 'vulnerability' in v and v.get('vulnerability'):
+                vulnerabilities.append(v)
         
         print(f"[DEBUG] Vulnerabilities after filtering: {len(vulnerabilities)}")
         
