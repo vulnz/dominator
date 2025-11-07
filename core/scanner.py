@@ -26,7 +26,26 @@ try:
     from payloads.lfi_payloads import LFIPayloads
     from payloads.csrf_payloads import CSRFPayloads
     from payloads.dirbrute_payloads import DirBrutePayloads
+except ImportError as e:
+    print(f"Warning: Could not import payload classes: {e}")
+    # Create dummy classes to prevent crashes
+    class DummyPayloads:
+        @staticmethod
+        def get_all_payloads():
+            return ["'", '"', "<script>alert(1)</script>"]
+    
+    XSSPayloads = SQLiPayloads = LFIPayloads = CSRFPayloads = DummyPayloads
+    DirBrutePayloads = DummyPayloads
+
+try:
     from payloads.git_payloads import GitPayloads
+except ImportError:
+    class GitPayloads:
+        @staticmethod
+        def get_all_git_payloads():
+            return ['.git/', '.git/config', '.git/HEAD', '.git/index', '.git/logs/HEAD']
+
+try:
     from payloads.directory_traversal_payloads import DirectoryTraversalPayloads
     from payloads.ssrf_payloads import SSRFPayloads
     from payloads.rfi_payloads import RFIPayloads
