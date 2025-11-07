@@ -522,8 +522,13 @@ class VulnScanner:
             # Add main page to testing list
             all_found_pages.append(parsed_data)
             
-            # Check if single URL mode is enabled
-            if not self.config.single_url:
+            # Check if single URL mode is enabled OR if specific modules are being used
+            skip_crawling = (self.config.single_url or 
+                           len(self.config.modules) == 1 or 
+                           any(module in ['dirbrute', 'gitexposed', 'phpinfo', 'ssltls', 'secheaders'] 
+                               for module in self.config.modules))
+            
+            if not skip_crawling:
                 # Always crawl for additional pages
                 print(f"  [DEBUG] Starting enhanced crawler to find additional pages...")
                 crawled_urls = self.crawler.crawl_for_pages(parsed_data['url'])
@@ -583,7 +588,12 @@ class VulnScanner:
                         print(f"  [DEBUG] Error testing page {test_url}: {e}")
                         continue
             else:
-                print(f"  [DEBUG] Single URL mode enabled - skipping crawler and additional pages")
+                if self.config.single_url:
+                    print(f"  [DEBUG] Single URL mode enabled - skipping crawler and additional pages")
+                elif len(self.config.modules) == 1:
+                    print(f"  [DEBUG] Single module specified ({self.config.modules[0]}) - skipping crawler to focus on target")
+                else:
+                    print(f"  [DEBUG] Specific modules detected - skipping crawler to avoid unnecessary requests")
             
             # Now test ALL found pages with ALL modules
             print(f"  [DEBUG] Testing {len(all_found_pages)} total pages with all modules")
