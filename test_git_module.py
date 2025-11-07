@@ -13,14 +13,30 @@ from core.scanner import VulnScanner
 def test_git_module():
     """Тест модуля gitexposed на указанной цели"""
     
+    # Создаем фиктивные аргументы для Config
+    class MockArgs:
+        def __init__(self):
+            self.target = "http://185.233.118.120:8082/xvwa/"
+            self.modules = ["gitexposed"]
+            self.single_url = True
+            self.threads = 1
+            self.timeout = 10
+            self.request_limit = 100
+            self.headers = None
+            self.headers_file = None
+            self.exclude = None
+            self.use_all_modules = False
+            self.output = None
+            self.format = 'txt'
+            self.screenshot = False
+            self.max_time = None
+            self.verbose = False
+    
     # Настройка конфигурации для single scan без crawling
-    config = Config()
-    config.target = "http://185.233.118.120:8082/xvwa/"
-    config.modules = ["gitexposed"]  # Только модуль git
-    config.single_url = True  # Single URL mode - без crawling
-    config.threads = 1
-    config.timeout = 10
-    config.request_limit = 100
+    mock_args = MockArgs()
+    config = Config(mock_args)
+    
+    # Переопределяем заголовки
     config.headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     }
