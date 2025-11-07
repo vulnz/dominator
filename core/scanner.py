@@ -4691,6 +4691,11 @@ class VulnScanner:
         if medium_vulns:
             print(f"[DEBUG] First medium vuln: {medium_vulns[0].get('vulnerability', 'UNKNOWN')}")
         
+        # Force show all vulnerabilities if none categorized properly
+        if not (high_vulns or medium_vulns or low_vulns or info_vulns) and vulnerabilities:
+            print(f"[DEBUG] FORCING display of all {len(vulnerabilities)} vulnerabilities due to categorization failure")
+            high_vulns = vulnerabilities  # Force all into high category for display
+        
         print(f"VULNERABILITY STATUS: {len(vulnerabilities)} ISSUES FOUND")
         print(f"High Severity:        {len(high_vulns)}")
         print(f"Medium Severity:      {len(medium_vulns)}")
@@ -4730,13 +4735,15 @@ class VulnScanner:
                 print(f"[DEBUG] Printing info vuln {i}")
                 self._print_vulnerability(i, result)
         
-        # Force print all vulnerabilities if none were categorized properly
-        if not (high_vulns or medium_vulns or low_vulns or info_vulns) and vulnerabilities:
-            print(f"\n[DEBUG] No vulnerabilities categorized properly, showing all {len(vulnerabilities)} vulnerabilities:")
+        # Always show vulnerabilities if we have any
+        if vulnerabilities and not (high_vulns or medium_vulns or low_vulns or info_vulns):
+            print(f"\n[DEBUG] CATEGORIZATION FAILED - Showing all {len(vulnerabilities)} vulnerabilities as HIGH:")
             print("-" * 50)
             for i, result in enumerate(vulnerabilities, 1):
-                print(f"[DEBUG] Severity: '{result.get('severity', 'UNKNOWN')}'")
+                print(f"[DEBUG] Original severity: '{result.get('severity', 'UNKNOWN')}'")
                 self._print_vulnerability(i, result)
+        elif vulnerabilities:
+            print(f"\n[DEBUG] Successfully categorized vulnerabilities - showing by severity")
         
         print("="*80)
         print("RECOMMENDATION: Review and remediate all vulnerabilities above.")
