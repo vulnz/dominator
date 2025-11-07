@@ -295,12 +295,24 @@ class DirBruteDetector:
                 len(redirect_response.text), baseline_404, baseline_size
             )
             
-            if is_404 and confidence > 0.7:
+            # Lower threshold for 404 detection in redirects - be more strict
+            if is_404 and confidence > 0.5:
                 return False, f"HTTP 302 -> {redirect_response.status_code} - Redirect leads to 404: {evidence}"
             
             # Check if redirected to main page or login page (common false positive)
             if DirBruteDetector._is_redirect_to_main_page(location, redirect_response.text):
                 return False, f"HTTP 302 -> {redirect_response.status_code} - Redirect to main/login page"
+            
+            # Additional check: if redirect response is identical to baseline 404, it's likely a false positive
+            if baseline_404 and len(baseline_404) > 100:
+                from libs.response_analyzer import ResponseAnalyzer
+                analyzer = ResponseAnalyzer()
+                redirect_fingerprint = analyzer.generate_fingerprint(redirect_response.text)
+                baseline_fingerprint = analyzer.generate_fingerprint(baseline_404)
+                
+                # If fingerprints are very similar, it's likely the same 404 page
+                if redirect_fingerprint == baseline_fingerprint:
+                    return False, f"HTTP 302 -> {redirect_response.status_code} - Redirect to baseline 404 page"
             
             # Check if redirected to same domain (good sign)
             from urllib.parse import urlparse
@@ -342,31 +354,52 @@ class DirBruteDetector:
         # Check URL patterns that suggest main page
         main_page_patterns = [
             '/index.php', '/index.html', '/index.htm', '/main.php',
-            '/home.php', '/login.php', '/default.php', '/welcome.php'
+            '/home.php', '/login.php', '/default.php', '/welcome.php',
+            '/dashboard.php', '/portal.php', '/admin.php'
         ]
         
         for pattern in main_page_patterns:
             if pattern in redirect_url_lower:
                 return True
         
-        # Check if URL ends with just domain (root)
+        # Check if URL ends with just domain (root) or common main page paths
         from urllib.parse import urlparse
         parsed = urlparse(redirect_url)
-        if parsed.path in ['/', '', '/index', '/main', '/home']:
+        if parsed.path in ['/', '', '/index', '/main', '/home', '/dashboard', '/portal']:
             return True
+        
+        # Check if redirect URL is significantly shorter than original (likely going to root/main)
+        # This catches cases where /admin/ redirects to /xvwa/ (main application path)
+        if len(parsed.path) <= 10 and ('/' in parsed.path or parsed.path.endswith('/')):
+            # Additional check: if path contains common application names
+            app_indicators = ['xvwa', 'dvwa', 'app', 'web', 'site', 'portal']
+            path_parts = parsed.path.lower().strip('/').split('/')
+            if any(indicator in part for part in path_parts for indicator in app_indicators):
+                return True
         
         # Check content for main page indicators
         main_content_indicators = [
             'welcome to', 'home page', 'main page', 'dashboard',
             'login form', 'sign in', 'username', 'password',
-            '<title>home', '<title>main', '<title>welcome', '<title>login'
+            '<title>home', '<title>main', '<title>welcome', '<title>login',
+            'navigation', 'menu', 'sidebar', 'header', 'footer',
+            'copyright', '&copy;', 'all rights reserved'
         ]
         
         main_indicators_found = sum(1 for indicator in main_content_indicators 
                                   if indicator in content_lower)
         
-        # If multiple main page indicators found, likely redirected to main page
-        return main_indicators_found >= 3
+        # Check for specific application indicators (like XVWA)
+        app_indicators = [
+            'xvwa', 'damn vulnerable', 'dvwa', 'vulnerable web application',
+            'security testing', 'penetration testing', 'vulnerability scanner'
+        ]
+        
+        app_indicators_found = sum(1 for indicator in app_indicators 
+                                 if indicator in content_lower)
+        
+        # If multiple main page indicators found OR app-specific indicators, likely redirected to main page
+        return main_indicators_found >= 2 or app_indicators_found >= 1
     
     @staticmethod
     def analyze_response_size(content_length: int, baseline_size: int = 0) -> str:
