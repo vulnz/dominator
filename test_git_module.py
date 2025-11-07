@@ -17,6 +17,7 @@ def test_git_module():
     class MockArgs:
         def __init__(self):
             self.target = "http://185.233.118.120:8082/xvwa/"
+            self.file = None
             self.modules = ["gitexposed"]
             self.single_url = True
             self.threads = 1
