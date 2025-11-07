@@ -4636,29 +4636,44 @@ class VulnScanner:
         print(f"Info:                 {len(info_vulns)}")
         print("="*80)
         
-        # Print vulnerability details
+        # Print vulnerability details - ALWAYS show details for found vulnerabilities
+        print(f"\n[DEBUG] About to print vulnerability details...")
+        print(f"[DEBUG] High vulns: {len(high_vulns)}, Medium: {len(medium_vulns)}, Low: {len(low_vulns)}, Info: {len(info_vulns)}")
+        
         if high_vulns:
             print(f"\nHIGH SEVERITY VULNERABILITIES ({len(high_vulns)} found):")
             print("-" * 50)
             for i, result in enumerate(high_vulns, 1):
+                print(f"[DEBUG] Printing high vuln {i}")
                 self._print_vulnerability(i, result)
         
         if medium_vulns:
             print(f"\nMEDIUM SEVERITY VULNERABILITIES ({len(medium_vulns)} found):")
             print("-" * 50)
             for i, result in enumerate(medium_vulns, 1):
+                print(f"[DEBUG] Printing medium vuln {i}")
                 self._print_vulnerability(i, result)
         
         if low_vulns:
             print(f"\nLOW SEVERITY VULNERABILITIES ({len(low_vulns)} found):")
             print("-" * 50)
             for i, result in enumerate(low_vulns, 1):
+                print(f"[DEBUG] Printing low vuln {i}")
                 self._print_vulnerability(i, result)
         
         if info_vulns:
             print(f"\nINFO VULNERABILITIES ({len(info_vulns)} found):")
             print("-" * 50)
             for i, result in enumerate(info_vulns, 1):
+                print(f"[DEBUG] Printing info vuln {i}")
+                self._print_vulnerability(i, result)
+        
+        # Force print all vulnerabilities if none were categorized properly
+        if not (high_vulns or medium_vulns or low_vulns or info_vulns) and vulnerabilities:
+            print(f"\n[DEBUG] No vulnerabilities categorized properly, showing all {len(vulnerabilities)} vulnerabilities:")
+            print("-" * 50)
+            for i, result in enumerate(vulnerabilities, 1):
+                print(f"[DEBUG] Severity: '{result.get('severity', 'UNKNOWN')}'")
                 self._print_vulnerability(i, result)
         
         print("="*80)
