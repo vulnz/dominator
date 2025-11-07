@@ -35,19 +35,19 @@ class ScannerWrapper:
                 # Ждем 2 секунды для корректного завершения
                 try:
                     self.process.wait(timeout=2)
-                    print("[WRAPPER] Дочерний процесс завершен корректно")
+                    print("[WRAPPER] Docherniy process zavershen korrektno")
                 except subprocess.TimeoutExpired:
                     # Принудительное завершение если не завершился за 2 секунды
-                    print("[WRAPPER] Принудительное завершение дочернего процесса...")
+                    print("[WRAPPER] Prinuditel'noe zavershenie docherniego processa...")
                     self.process.kill()
                     self.process.wait()
-                    print("[WRAPPER] Дочерний процесс принудительно завершен")
+                    print("[WRAPPER] Docherniy process prinuditel'no zavershen")
                     
             except Exception as e:
-                print(f"[WRAPPER] Ошибка при завершении процесса: {e}")
+                print(f"[WRAPPER] Oshibka pri zavershenii processa: {e}")
         
         self.monitoring = False
-        print("[WRAPPER] Выход из программы")
+        print("[WRAPPER] Vykhod iz programmy")
         sys.exit(0)
     
     def monitor_output(self):
@@ -80,16 +80,16 @@ class ScannerWrapper:
             
             # Показываем статус каждые 30 секунд
             if int(elapsed) % 30 == 0 and int(elapsed) > 0:
-                print(f"[WRAPPER] Сканирование выполняется: {minutes:02d}:{seconds:02d}")
+                print(f"[WRAPPER] Skanirovanie vypolnyaetsya: {minutes:02d}:{seconds:02d}")
                 
             time.sleep(1)
     
     def run_scanner(self, args):
         """Run the main scanner with monitoring"""
-        print("[WRAPPER] Запуск Web Vulnerability Scanner")
-        print(f"[WRAPPER] Время запуска: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"[WRAPPER] Аргументы: {' '.join(args)}")
-        print("[WRAPPER] Для остановки нажмите Ctrl+C")
+        print("[WRAPPER] Zapusk Web Vulnerability Scanner")
+        print(f"[WRAPPER] Vremya zapuska: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"[WRAPPER] Argumenty: {' '.join(args)}")
+        print("[WRAPPER] Dlya ostanovki nazhmite Ctrl+C")
         print("=" * 80)
         
         # Настройка обработчика сигналов
@@ -127,18 +127,18 @@ class ScannerWrapper:
             seconds = int(elapsed % 60)
             
             print("=" * 80)
-            print(f"[WRAPPER] Сканирование завершено")
-            print(f"[WRAPPER] Время выполнения: {minutes:02d}:{seconds:02d}")
-            print(f"[WRAPPER] Код возврата: {return_code}")
-            print(f"[WRAPPER] Время завершения: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"[WRAPPER] Skanirovanie zaversheno")
+            print(f"[WRAPPER] Vremya vypolneniya: {minutes:02d}:{seconds:02d}")
+            print(f"[WRAPPER] Kod vozvrata: {return_code}")
+            print(f"[WRAPPER] Vremya zaversheniya: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             
             return return_code
             
         except FileNotFoundError:
-            print("[WRAPPER] Ошибка: Файл main.py не найден")
+            print("[WRAPPER] Oshibka: Fayl main.py ne nayden")
             return 1
         except Exception as e:
-            print(f"[WRAPPER] Ошибка запуска: {e}")
+            print(f"[WRAPPER] Oshibka zapuska: {e}")
             return 1
         finally:
             self.monitoring = False
@@ -153,8 +153,8 @@ class ScannerWrapper:
 def main():
     """Main wrapper function"""
     if len(sys.argv) < 2:
-        print("Использование: python wrapper.py [аргументы для main.py]")
-        print("Примеры:")
+        print("Ispol'zovanie: python wrapper.py [argumenty dlya main.py]")
+        print("Primery:")
         print("  python wrapper.py -t example.com")
         print("  python wrapper.py -t 192.168.1.1 -m xss,sqli")
         print("  python wrapper.py -f targets.txt -o report.html")
