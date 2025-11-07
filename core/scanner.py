@@ -4506,6 +4506,9 @@ class VulnScanner:
             print("SCAN RESULTS SUMMARY".center(80))
             print("="*80)
         
+        # Debug: Print total results count
+        print(f"[DEBUG] Total results received: {len(results)}")
+        
         # Print scan statistics
         stats = self.scan_stats
         print(f"Scan Duration:        {stats.get('scan_duration', '0s')}")
@@ -4549,8 +4552,19 @@ class VulnScanner:
                       f"Rate: {success_rate:5.1f}%")
             print("-" * 80)
         
+        # Debug: Show structure of first few results
+        if results:
+            print(f"[DEBUG] First result keys: {list(results[0].keys())}")
+            for i, result in enumerate(results[:3]):
+                if 'vulnerability' in result:
+                    print(f"[DEBUG] Result {i+1}: {result['vulnerability']} - {result.get('severity', 'Unknown')}")
+                else:
+                    print(f"[DEBUG] Result {i+1}: No 'vulnerability' key - keys: {list(result.keys())}")
+        
         # Filter out scan stats and group by severity
-        vulnerabilities = [v for v in results if 'vulnerability' in v]
+        vulnerabilities = [v for v in results if 'vulnerability' in v and v.get('vulnerability')]
+        
+        print(f"[DEBUG] Vulnerabilities after filtering: {len(vulnerabilities)}")
         
         if not vulnerabilities:
             print("VULNERABILITY STATUS: CLEAN")
