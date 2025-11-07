@@ -69,7 +69,7 @@ class ScannerWrapper:
                     
         except Exception as e:
             if self.monitoring:  # Только показываем ошибку если мониторинг еще активен
-                print(f"[WRAPPER] Ошибка мониторинга вывода: {e}")
+                print(f"[WRAPPER] Oshibka monitoringa vyvoda: {e}")
     
     def print_status(self):
         """Print current status periodically"""
