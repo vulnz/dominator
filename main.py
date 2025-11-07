@@ -84,6 +84,14 @@ Usage examples:
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Verbose output')
     
+    # Deduplication options
+    parser.add_argument('--max-duplicates', type=int, default=3,
+                       help='Maximum number of duplicate findings to show (default: 3)')
+    parser.add_argument('--no-grouping', action='store_true',
+                       help='Disable grouping of similar findings')
+    parser.add_argument('--no-domain-dedupe', action='store_true',
+                       help='Disable domain-level deduplication')
+    
     # Reports
     parser.add_argument('-o', '--output',
                        help='File to save report')
@@ -254,6 +262,10 @@ def main():
         args.page_limit = None
     if not hasattr(args, 'format'):
         args.format = 'txt'
+    if not hasattr(args, 'group_findings'):
+        args.group_findings = not args.no_grouping
+    if not hasattr(args, 'dedupe_domain'):
+        args.dedupe_domain = not args.no_domain_dedupe
     
     # Check if modules are specified
     if not args.modules and not args.all:
