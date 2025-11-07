@@ -117,6 +117,8 @@ Usage examples:
                        choices=['xml', 'json', 'txt', 'html'],
                        default='txt',
                        help='Report format')
+    parser.add_argument('--auto-report', action='store_true',
+                       help='Automatically generate report with timestamp')
     
     # Information commands
     parser.add_argument('--modules-list', action='store_true',
@@ -357,6 +359,18 @@ def main():
         
         # Always print results to console first
         scanner.print_results(results)
+        
+        # Auto-generate report if flag is set
+        if args.auto_report and not args.output:
+            import datetime
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            target_name = args.target.replace(':', '_').replace('/', '_').replace('\\', '_')
+            auto_filename = f"scan_report_{target_name}_{timestamp}.{args.format}"
+            try:
+                scanner.save_report(results, auto_filename, args.format)
+                print(f"\nAuto-report saved to {auto_filename}")
+            except Exception as e:
+                print(f"Error saving auto-report: {e}")
         
         # Save results if output specified
         if args.output:
