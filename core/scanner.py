@@ -49,7 +49,9 @@ except ImportError as e:
             return ["'", '"', "<script>alert(1)</script>"]
     
     XSSPayloads = SQLiPayloads = LFIPayloads = CSRFPayloads = DummyPayloads
-    DirBrutePayloads = GitPayloads = DirectoryTraversalPayloads = DummyPayloads
+    DirBrutePayloads = DirectoryTraversalPayloads = DummyPayloads
+    if 'GitPayloads' not in locals():
+        GitPayloads = DummyPayloads
     SSRFPayloads = RFIPayloads = BlindXSSPayloads = PHPInfoPayloads = DummyPayloads
     XXEPayloads = CommandInjectionPayloads = IDORPayloads = NoSQLInjectionPayloads = DummyPayloads
     SSTIPayloads = CRLFPayloads = TextInjectionPayloads = HTMLInjectionPayloads = DummyPayloads
@@ -115,6 +117,15 @@ except ImportError:
         @staticmethod
         def detect_git_exposure(response_text, response_code, url):
             return '.git' in response_text, "Git content detected", "High"
+        @staticmethod
+        def get_evidence(file_type, response_text):
+            return f"Git exposure detected: {file_type}"
+        @staticmethod
+        def get_response_snippet(response_text, max_length=300):
+            return response_text[:max_length] + "..." if len(response_text) > max_length else response_text
+        @staticmethod
+        def get_remediation_advice(git_path):
+            return "Remove .git directory from web-accessible locations"
 
 try:
     from detectors.directory_traversal_detector import DirectoryTraversalDetector
@@ -2134,7 +2145,10 @@ class VulnScanner:
             print(f"    [GITEXPOSED] Base directory: {base_dir}")
             
             # Get git paths to test
-            git_paths = GitPayloads.get_all_git_payloads()
+            try:
+                git_paths = GitPayloads.get_all_git_payloads()
+            except:
+                git_paths = GitDetector.get_git_test_paths()
             
             print(f"    [GITEXPOSED] Testing {len(git_paths)} git paths...")
             
@@ -2164,11 +2178,17 @@ class VulnScanner:
                     if is_exposed:
                         print(f"    [GITEXPOSED] GIT EXPOSURE FOUND: {git_path} - {evidence}")
                         
+                        # Get detailed evidence
+                        try:
+                            detailed_evidence = GitDetector.get_evidence(git_path, response.text)
+                        except:
+                            detailed_evidence = evidence
+                        
                         # Add to exposed files list
                         exposed_files.append({
                             'path': git_path,
                             'url': test_url,
-                            'evidence': evidence,
+                            'evidence': detailed_evidence,
                             'severity': severity,
                             'response_size': len(response.text)
                         })
@@ -2209,14 +2229,24 @@ class VulnScanner:
                     main_evidence += f"\n\n... and {len(exposed_files) - 3} more files"
                 
                 # Get remediation advice
-                remediation = GitDetector.get_remediation_advice('.git')
+                try:
+                    remediation = GitDetector.get_remediation_advice('.git')
+                except:
+                    remediation = "Remove .git directory from web-accessible locations and configure web server to deny access to .git directories"
                 
                 # Create response snippet with file listing
-                response_snippet = f"Exposed Git files ({len(exposed_files)} total):\n"
-                for file_info in exposed_files[:10]:  # Show first 10 files
-                    response_snippet += f"- {file_info['path']}\n"
-                if len(exposed_files) > 10:
-                    response_snippet += f"... and {len(exposed_files) - 10} more files"
+                try:
+                    response_snippet = GitDetector.get_response_snippet(
+                        f"Exposed Git files ({len(exposed_files)} total):\n" + 
+                        "\n".join([f"- {file_info['path']}" for file_info in exposed_files[:10]]) +
+                        (f"\n... and {len(exposed_files) - 10} more files" if len(exposed_files) > 10 else "")
+                    )
+                except:
+                    response_snippet = f"Exposed Git files ({len(exposed_files)} total):\n"
+                    for file_info in exposed_files[:10]:  # Show first 10 files
+                        response_snippet += f"- {file_info['path']}\n"
+                    if len(exposed_files) > 10:
+                        response_snippet += f"... and {len(exposed_files) - 10} more files"
                 
                 # Create single grouped vulnerability
                 results.append({
