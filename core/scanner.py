@@ -2267,7 +2267,7 @@ class VulnScanner:
                     if len(exposed_files) > 10:
                         response_snippet += f"... and {len(exposed_files) - 10} more files"
                 
-                # Create single grouped vulnerability
+                # Create single grouped vulnerability (without scan_stats)
                 results.append({
                     'module': 'gitexposed',
                     'target': base_dir,
@@ -4654,17 +4654,19 @@ class VulnScanner:
                 else:
                     print(f"[DEBUG] Result {i+1}: No 'vulnerability' key - keys: {list(result.keys())}")
         
-        # Filter out scan stats and group by severity - FIXED filtering logic
+        # Filter out scan stats and group by severity - IMPROVED filtering logic
         vulnerabilities = []
         for v in results:
-            # Skip ONLY entries that contain ONLY scan_stats and nothing else
-            if 'scan_stats' in v and len([k for k in v.keys() if k != 'scan_stats']) == 0:
+            # Skip entries that are ONLY scan_stats (no vulnerability data)
+            if 'scan_stats' in v and 'vulnerability' not in v:
                 print(f"[DEBUG] Skipping scan_stats only entry")
                 continue
-            # Include ALL entries that have vulnerability field, regardless of other fields
+            # Include ALL entries that have vulnerability field
             if 'vulnerability' in v and v.get('vulnerability'):
                 print(f"[DEBUG] Including vulnerability: {v.get('vulnerability', 'UNKNOWN')}")
-                vulnerabilities.append(v)
+                # Create clean vulnerability object without scan_stats for display
+                clean_vuln = {k: v for k, v in v.items() if k != 'scan_stats'}
+                vulnerabilities.append(clean_vuln)
             else:
                 print(f"[DEBUG] Skipping entry without vulnerability: {list(v.keys())}")
         
