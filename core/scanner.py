@@ -697,6 +697,22 @@ class VulnScanner:
                 'successful_payloads': 0
             }
         
+        # Ensure forms are extracted if not already done
+        if 'forms' not in parsed_data or not parsed_data['forms']:
+            try:
+                response = requests.get(
+                    parsed_data['url'],
+                    timeout=self.config.timeout,
+                    headers=self.config.headers,
+                    verify=False
+                )
+                if response.status_code == 200:
+                    forms = self.url_parser.extract_forms(response.text)
+                    parsed_data['forms'] = forms
+                    print(f"    [MODULE] {module_name.upper()}: Extracted {len(forms)} forms from page")
+            except:
+                parsed_data['forms'] = []
+        
         try:
             if module_name == "xss":
                 results.extend(self._test_xss(parsed_data))
@@ -1052,7 +1068,7 @@ class VulnScanner:
         
         # Test GET parameters
         for param, values in parsed_data['query_params'].items():
-            print(f"    [SQLI] Testing parameter: {param}")
+            print(f"    [SQLI] Testing GET parameter: {param}")
             
             # Create deduplication key for this parameter and base URL
             base_url_clean = base_url.split('?')[0]
@@ -1063,7 +1079,7 @@ class VulnScanner:
             
             for payload in sqli_payloads:
                 try:
-                    print(f"    [SQLI] Trying payload: {payload[:50]}...")
+                    print(f"    [SQLI] Trying GET payload: {payload[:50]}...")
                     
                     # Create test URL
                     test_params = parsed_data['query_params'].copy()
@@ -1150,6 +1166,126 @@ class VulnScanner:
                     print(f"    [SQLI] Error testing payload: {e}")
                     continue
         
+        # Test POST forms
+        forms_data = parsed_data.get('forms', [])
+        for i, form_data in enumerate(forms_data):
+            form_method = form_data.get('method', 'GET').upper()
+            form_action = form_data.get('action', '')
+            form_inputs = form_data.get('inputs', [])
+            
+            if form_method in ['POST', 'PUT'] and form_inputs:
+                print(f"    [SQLI] Testing {form_method} form {i+1}: {form_action}")
+                
+                # Build form URL
+                if form_action.startswith('/'):
+                    form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
+                elif form_action.startswith('http'):
+                    form_url = form_action
+                else:
+                    form_url = f"{base_url.rstrip('/')}/{form_action}" if form_action else base_url
+                
+                # Test each form input
+                for input_data in form_inputs:
+                    input_name = input_data.get('name')
+                    input_type = input_data.get('type', 'text')
+                    
+                    if not input_name or input_type in ['submit', 'button', 'hidden']:
+                        continue
+                    
+                    print(f"    [SQLI] Testing form input: {input_name}")
+                    
+                    # Create deduplication key for this form input
+                    form_key = f"sqli_form_{form_url.split('?')[0]}_{input_name}"
+                    if form_key in self.found_vulnerabilities:
+                        print(f"    [SQLI] Skipping form input {input_name} - already tested")
+                        continue
+                    
+                    for payload in sqli_payloads[:10]:  # Test first 10 payloads for forms
+                        try:
+                            print(f"    [SQLI] Trying form payload: {payload[:50]}...")
+                            
+                            # Prepare form data
+                            post_data = {}
+                            for inp in form_inputs:
+                                inp_name = inp.get('name')
+                                inp_value = inp.get('value', 'test')
+                                inp_type = inp.get('type', 'text')
+                                
+                                if inp_name and inp_type not in ['submit', 'button']:
+                                    if inp_name == input_name:
+                                        post_data[inp_name] = payload
+                                    else:
+                                        post_data[inp_name] = inp_value
+                            
+                            if form_method == 'POST':
+                                response = requests.post(
+                                    form_url,
+                                    data=post_data,
+                                    timeout=self.config.timeout,
+                                    headers=self.config.headers,
+                                    verify=False
+                                )
+                            else:  # PUT
+                                response = requests.put(
+                                    form_url,
+                                    data=post_data,
+                                    timeout=self.config.timeout,
+                                    headers=self.config.headers,
+                                    verify=False
+                                )
+                            
+                            # Update request count
+                            self.request_count += 1
+                            self.scan_stats['payload_stats']['sqli']['requests_made'] += 1
+                            
+                            print(f"    [SQLI] Form response code: {response.status_code}")
+                            
+                            # Use SQLi detector
+                            try:
+                                is_vulnerable, pattern = SQLiDetector.detect_error_based_sqli(response.text, response.status_code)
+                            except:
+                                is_vulnerable = False
+                                pattern = "Detection failed"
+                            
+                            if is_vulnerable:
+                                evidence = f"SQL injection in {form_method} form - error pattern: {pattern}"
+                                response_snippet = response.text[:200] + "..." if len(response.text) > 200 else response.text
+                                print(f"    [SQLI] FORM VULNERABILITY FOUND! Input: {input_name}")
+                                
+                                # Mark as found to prevent duplicates
+                                self.found_vulnerabilities.add(form_key)
+                                
+                                vulnerability = {
+                                    'module': 'sqli',
+                                    'target': form_url,
+                                    'vulnerability': f'SQL Injection in {form_method} Form',
+                                    'severity': 'High',
+                                    'parameter': input_name,
+                                    'payload': payload,
+                                    'evidence': evidence,
+                                    'request_url': form_url,
+                                    'detector': 'SQLiDetector.detect_error_based_sqli',
+                                    'response_snippet': response_snippet
+                                }
+                                
+                                # Filter false positives
+                                try:
+                                    is_valid, filter_reason = self.false_positive_filter.filter_vulnerability(vulnerability)
+                                except:
+                                    is_valid = True
+                                
+                                if is_valid:
+                                    # Update successful payload count
+                                    self.scan_stats['payload_stats']['sqli']['successful_payloads'] += 1
+                                    self.scan_stats['total_payloads_used'] += 1
+                                    
+                                    results.append(vulnerability)
+                                    break  # Found SQLi, no need to test more payloads for this input
+                                
+                        except Exception as e:
+                            print(f"    [SQLI] Error testing form payload: {e}")
+                            continue
+        
         return results
     
     def _test_lfi(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -1167,11 +1303,17 @@ class VulnScanner:
         
         # Test GET parameters
         for param, values in parsed_data['query_params'].items():
-            print(f"    [LFI] Testing parameter: {param}")
+            print(f"    [LFI] Testing GET parameter: {param}")
+            
+            # Create deduplication key for this parameter
+            param_key = f"lfi_{base_url.split('?')[0]}_{param}"
+            if param_key in self.found_vulnerabilities:
+                print(f"    [LFI] Skipping parameter {param} - already tested")
+                continue
             
             for payload in lfi_payloads:
                 try:
-                    print(f"    [LFI] Trying payload: {payload[:50]}...")
+                    print(f"    [LFI] Trying GET payload: {payload[:50]}...")
                     
                     # Create test URL
                     test_params = parsed_data['query_params'].copy()
@@ -1216,6 +1358,9 @@ class VulnScanner:
                             response_snippet = "Response analysis failed"
                         print(f"    [LFI] VULNERABILITY FOUND! Parameter: {param}")
                         
+                        # Mark as found to prevent duplicates
+                        self.found_vulnerabilities.add(param_key)
+                        
                         vulnerability = {
                             'module': 'lfi',
                             'target': base_url,
@@ -1246,6 +1391,126 @@ class VulnScanner:
                 except Exception as e:
                     print(f"    [LFI] Error testing payload: {e}")
                     continue
+        
+        # Test POST forms
+        forms_data = parsed_data.get('forms', [])
+        for i, form_data in enumerate(forms_data):
+            form_method = form_data.get('method', 'GET').upper()
+            form_action = form_data.get('action', '')
+            form_inputs = form_data.get('inputs', [])
+            
+            if form_method in ['POST', 'PUT'] and form_inputs:
+                print(f"    [LFI] Testing {form_method} form {i+1}: {form_action}")
+                
+                # Build form URL
+                if form_action.startswith('/'):
+                    form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
+                elif form_action.startswith('http'):
+                    form_url = form_action
+                else:
+                    form_url = f"{base_url.rstrip('/')}/{form_action}" if form_action else base_url
+                
+                # Test each form input
+                for input_data in form_inputs:
+                    input_name = input_data.get('name')
+                    input_type = input_data.get('type', 'text')
+                    
+                    if not input_name or input_type in ['submit', 'button', 'hidden']:
+                        continue
+                    
+                    print(f"    [LFI] Testing form input: {input_name}")
+                    
+                    # Create deduplication key for this form input
+                    form_key = f"lfi_form_{form_url.split('?')[0]}_{input_name}"
+                    if form_key in self.found_vulnerabilities:
+                        print(f"    [LFI] Skipping form input {input_name} - already tested")
+                        continue
+                    
+                    for payload in lfi_payloads[:10]:  # Test first 10 payloads for forms
+                        try:
+                            print(f"    [LFI] Trying form payload: {payload[:50]}...")
+                            
+                            # Prepare form data
+                            post_data = {}
+                            for inp in form_inputs:
+                                inp_name = inp.get('name')
+                                inp_value = inp.get('value', 'test')
+                                inp_type = inp.get('type', 'text')
+                                
+                                if inp_name and inp_type not in ['submit', 'button']:
+                                    if inp_name == input_name:
+                                        post_data[inp_name] = payload
+                                    else:
+                                        post_data[inp_name] = inp_value
+                            
+                            if form_method == 'POST':
+                                response = requests.post(
+                                    form_url,
+                                    data=post_data,
+                                    timeout=self.config.timeout,
+                                    headers=self.config.headers,
+                                    verify=False
+                                )
+                            else:  # PUT
+                                response = requests.put(
+                                    form_url,
+                                    data=post_data,
+                                    timeout=self.config.timeout,
+                                    headers=self.config.headers,
+                                    verify=False
+                                )
+                            
+                            # Update request count
+                            self.request_count += 1
+                            self.scan_stats['payload_stats']['lfi']['requests_made'] += 1
+                            
+                            print(f"    [LFI] Form response code: {response.status_code}")
+                            
+                            # Use LFI detector
+                            try:
+                                is_vulnerable, pattern = LFIDetector.detect_lfi(response.text, response.status_code)
+                            except:
+                                is_vulnerable = False
+                                pattern = "Detection failed"
+                            
+                            if is_vulnerable:
+                                evidence = f"Local file inclusion in {form_method} form - pattern: {pattern}"
+                                response_snippet = response.text[:200] + "..." if len(response.text) > 200 else response.text
+                                print(f"    [LFI] FORM VULNERABILITY FOUND! Input: {input_name}")
+                                
+                                # Mark as found to prevent duplicates
+                                self.found_vulnerabilities.add(form_key)
+                                
+                                vulnerability = {
+                                    'module': 'lfi',
+                                    'target': form_url,
+                                    'vulnerability': f'Local File Inclusion in {form_method} Form',
+                                    'severity': 'High',
+                                    'parameter': input_name,
+                                    'payload': payload,
+                                    'evidence': evidence,
+                                    'request_url': form_url,
+                                    'detector': 'LFIDetector.detect_lfi',
+                                    'response_snippet': response_snippet
+                                }
+                                
+                                # Filter false positives
+                                try:
+                                    is_valid, filter_reason = self.false_positive_filter.filter_vulnerability(vulnerability)
+                                except:
+                                    is_valid = True
+                                
+                                if is_valid:
+                                    # Update successful payload count
+                                    self.scan_stats['payload_stats']['lfi']['successful_payloads'] += 1
+                                    self.scan_stats['total_payloads_used'] += 1
+                                    
+                                    results.append(vulnerability)
+                                    break  # Found LFI, no need to test more payloads for this input
+                                
+                        except Exception as e:
+                            print(f"    [LFI] Error testing form payload: {e}")
+                            continue
         
         return results
 
