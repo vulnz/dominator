@@ -4654,15 +4654,19 @@ class VulnScanner:
                 else:
                     print(f"[DEBUG] Result {i+1}: No 'vulnerability' key - keys: {list(result.keys())}")
         
-        # Filter out scan stats and group by severity - fix the filtering logic
+        # Filter out scan stats and group by severity - FIXED filtering logic
         vulnerabilities = []
         for v in results:
-            # Skip scan stats entries (entries that ONLY contain scan_stats)
-            if 'scan_stats' in v and len(v) == 1:
+            # Skip ONLY entries that contain ONLY scan_stats and nothing else
+            if 'scan_stats' in v and len([k for k in v.keys() if k != 'scan_stats']) == 0:
+                print(f"[DEBUG] Skipping scan_stats only entry")
                 continue
-            # Include entries that have vulnerability field (even if they also have scan_stats)
+            # Include ALL entries that have vulnerability field, regardless of other fields
             if 'vulnerability' in v and v.get('vulnerability'):
+                print(f"[DEBUG] Including vulnerability: {v.get('vulnerability', 'UNKNOWN')}")
                 vulnerabilities.append(v)
+            else:
+                print(f"[DEBUG] Skipping entry without vulnerability: {list(v.keys())}")
         
         print(f"[DEBUG] Vulnerabilities after filtering: {len(vulnerabilities)}")
         
@@ -4674,27 +4678,44 @@ class VulnScanner:
         
         # Debug: Show what we're about to categorize
         print(f"[DEBUG] About to categorize {len(vulnerabilities)} vulnerabilities")
-        for i, v in enumerate(vulnerabilities[:3]):
-            print(f"[DEBUG] Vuln {i+1}: '{v.get('vulnerability', 'NO_VULN')}' severity='{v.get('severity', 'NO_SEV')}'")
+        for i, v in enumerate(vulnerabilities[:5]):
+            severity = v.get('severity', 'NO_SEV')
+            vuln_name = v.get('vulnerability', 'NO_VULN')
+            print(f"[DEBUG] Vuln {i+1}: '{vuln_name}' severity='{severity}' (raw: '{severity}', lower: '{severity.lower()}')")
             
-        # Group vulnerabilities by severity
-        high_vulns = [v for v in vulnerabilities if v.get('severity', '').lower() == 'high']
-        medium_vulns = [v for v in vulnerabilities if v.get('severity', '').lower() == 'medium']
-        low_vulns = [v for v in vulnerabilities if v.get('severity', '').lower() == 'low']
-        info_vulns = [v for v in vulnerabilities if v.get('severity', '').lower() == 'info']
+        # Group vulnerabilities by severity with better debugging
+        high_vulns = []
+        medium_vulns = []
+        low_vulns = []
+        info_vulns = []
+        
+        for v in vulnerabilities:
+            severity = str(v.get('severity', '')).strip().lower()
+            vuln_name = v.get('vulnerability', 'Unknown')
+            
+            if severity == 'high':
+                high_vulns.append(v)
+                print(f"[DEBUG] Added to HIGH: {vuln_name}")
+            elif severity == 'medium':
+                medium_vulns.append(v)
+                print(f"[DEBUG] Added to MEDIUM: {vuln_name}")
+            elif severity == 'low':
+                low_vulns.append(v)
+                print(f"[DEBUG] Added to LOW: {vuln_name}")
+            elif severity == 'info':
+                info_vulns.append(v)
+                print(f"[DEBUG] Added to INFO: {vuln_name}")
+            else:
+                print(f"[DEBUG] UNCATEGORIZED severity '{severity}' for {vuln_name} - adding to HIGH")
+                high_vulns.append(v)  # Add uncategorized to high for visibility
         
         # Debug: Show categorization results
-        print(f"[DEBUG] Categorization results:")
+        print(f"[DEBUG] Final categorization results:")
         print(f"[DEBUG] High: {len(high_vulns)}, Medium: {len(medium_vulns)}, Low: {len(low_vulns)}, Info: {len(info_vulns)}")
         if high_vulns:
             print(f"[DEBUG] First high vuln: {high_vulns[0].get('vulnerability', 'UNKNOWN')}")
         if medium_vulns:
             print(f"[DEBUG] First medium vuln: {medium_vulns[0].get('vulnerability', 'UNKNOWN')}")
-        
-        # Force show all vulnerabilities if none categorized properly
-        if not (high_vulns or medium_vulns or low_vulns or info_vulns) and vulnerabilities:
-            print(f"[DEBUG] FORCING display of all {len(vulnerabilities)} vulnerabilities due to categorization failure")
-            high_vulns = vulnerabilities  # Force all into high category for display
         
         print(f"VULNERABILITY STATUS: {len(vulnerabilities)} ISSUES FOUND")
         print(f"High Severity:        {len(high_vulns)}")
@@ -4735,15 +4756,10 @@ class VulnScanner:
                 print(f"[DEBUG] Printing info vuln {i}")
                 self._print_vulnerability(i, result)
         
-        # Always show vulnerabilities if we have any
-        if vulnerabilities and not (high_vulns or medium_vulns or low_vulns or info_vulns):
-            print(f"\n[DEBUG] CATEGORIZATION FAILED - Showing all {len(vulnerabilities)} vulnerabilities as HIGH:")
-            print("-" * 50)
-            for i, result in enumerate(vulnerabilities, 1):
-                print(f"[DEBUG] Original severity: '{result.get('severity', 'UNKNOWN')}'")
-                self._print_vulnerability(i, result)
-        elif vulnerabilities:
-            print(f"\n[DEBUG] Successfully categorized vulnerabilities - showing by severity")
+        # Always show vulnerabilities if we have any - REMOVED this condition that was preventing display
+        print(f"\n[DEBUG] Preparing to display vulnerabilities...")
+        print(f"[DEBUG] Total vulnerabilities: {len(vulnerabilities)}")
+        print(f"[DEBUG] High: {len(high_vulns)}, Medium: {len(medium_vulns)}, Low: {len(low_vulns)}, Info: {len(info_vulns)}")
         
         print("="*80)
         print("RECOMMENDATION: Review and remediate all vulnerabilities above.")
