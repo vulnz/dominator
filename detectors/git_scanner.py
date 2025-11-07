@@ -41,8 +41,8 @@ class GitScanner:
         base_dir = self._get_base_directory(base_url)
         
         try:
-            print(f"    [GITEXPOSED] Testing for exposed .git repository...")
-            print(f"    [GITEXPOSED] Base directory: {base_dir}")
+            print(f"    [GIT] Testing for exposed .git repository...")
+            print(f"    [GIT] Base directory: {base_dir}")
             
             # Get git paths to test
             git_paths = self._get_git_paths()
@@ -50,7 +50,7 @@ class GitScanner:
             # Update payload stats
             self.scan_stats['payload_stats'][module_key]['payloads_used'] += len(git_paths)
             
-            print(f"    [GITEXPOSED] Testing {len(git_paths)} git paths...")
+            print(f"    [GIT] Testing {len(git_paths)} git paths...")
             
             # Collect all exposed git files
             exposed_files = []
@@ -72,7 +72,7 @@ class GitScanner:
                     # Update request count
                     self._update_request_count(module_key)
                     
-                    print(f"    [GITEXPOSED] Testing: {git_path} -> {response.status_code} ({len(response.text)} bytes)")
+                    print(f"    [GIT] Testing: {git_path} -> {response.status_code} ({len(response.text)} bytes)")
                     
                     # Use Git detector
                     is_exposed, evidence, severity = GitDetector.detect_git_exposure(
@@ -80,7 +80,7 @@ class GitScanner:
                     )
                     
                     if is_exposed:
-                        print(f"    [GITEXPOSED] GIT EXPOSURE FOUND: {git_path} - {evidence}")
+                        print(f"    [GIT] GIT EXPOSURE FOUND: {git_path} - {evidence}")
                         
                         # Get detailed evidence
                         file_info = self._process_exposed_file(git_path, response, evidence, severity)
@@ -96,21 +96,21 @@ class GitScanner:
                             highest_severity = 'Medium'
                         
                     else:
-                        print(f"    [GITEXPOSED] No exposure: {git_path} - {evidence}")
+                        print(f"    [GIT] No exposure: {git_path} - {evidence}")
                         
                 except Exception as e:
-                    print(f"    [GITEXPOSED] Error testing {git_path}: {e}")
+                    print(f"    [GIT] Error testing {git_path}: {e}")
                     continue
             
             # Create grouped or individual vulnerabilities
             if exposed_files:
                 results = self._create_vulnerability_results(exposed_files, base_dir, highest_severity)
-                print(f"    [GITEXPOSED] Found {len(exposed_files)} git file exposures")
+                print(f"    [GIT] Found {len(exposed_files)} git file exposures")
             else:
-                print(f"    [GITEXPOSED] No git repository exposures found")
+                print(f"    [GIT] No git repository exposures found")
                 
         except Exception as e:
-            print(f"    [GITEXPOSED] Error during git exposure testing: {e}")
+            print(f"    [GIT] Error during git exposure testing: {e}")
         
         return results
     
@@ -162,7 +162,7 @@ class GitScanner:
             )
             return response
         except Exception as e:
-            print(f"    [GITEXPOSED] Request error for {test_url}: {e}")
+            print(f"    [GIT] Request error for {test_url}: {e}")
             return None
     
     def _update_request_count(self, module_key: str):
@@ -210,7 +210,7 @@ class GitScanner:
         
         if len(exposed_files) <= 7:
             # Group into single vulnerability
-            print(f"    [GITEXPOSED] Grouping {len(exposed_files)} git exposures into single finding")
+            print(f"    [GIT] Grouping {len(exposed_files)} git exposures into single finding")
             
             # Build comprehensive evidence
             file_list = []
@@ -237,7 +237,7 @@ class GitScanner:
             remediation = GitDetector.get_remediation_advice('.git')
             
             results.append({
-                'module': 'gitexposed',
+                'module': 'git',
                 'target': base_dir,
                 'vulnerability': f'Git Repository Exposed ({len(exposed_files)} files)',
                 'severity': highest_severity,
@@ -252,7 +252,7 @@ class GitScanner:
             })
         else:
             # Too many files, create individual vulnerabilities
-            print(f"    [GITEXPOSED] Found {len(exposed_files)} git exposures - creating individual findings")
+            print(f"    [GIT] Found {len(exposed_files)} git exposures - creating individual findings")
             for file_info in exposed_files:
                 remediation = GitDetector.get_remediation_advice(file_info['path'])
                 
