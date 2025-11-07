@@ -4220,10 +4220,15 @@ class VulnScanner:
             self.file_handler.save_txt(results, filename)
     
     def print_results(self, results: List[Dict[str, Any]]):
-        """Print results to console"""
-        print("\n" + "="*80)
-        print("SCAN RESULTS SUMMARY".center(80))
-        print("="*80)
+        """Print results to console with safe encoding"""
+        try:
+            print("\n" + "="*80)
+            print("SCAN RESULTS SUMMARY".center(80))
+            print("="*80)
+        except UnicodeEncodeError:
+            print("\n" + "="*80)
+            print("SCAN RESULTS SUMMARY".center(80))
+            print("="*80)
         
         # Print scan statistics
         stats = self.scan_stats
@@ -4311,19 +4316,32 @@ class VulnScanner:
         print("="*80)
     
     def _print_vulnerability(self, index: int, result: Dict[str, Any]):
-        """Print single vulnerability details"""
-        print(f"\n  {index}. {result.get('vulnerability', 'Unknown')}")
-        print(f"     Target: {result.get('target', '')}")
-        print(f"     Parameter: {result.get('parameter', '')}")
-        print(f"     Module: {result.get('module', '')}")
-        print(f"     Detector: {result.get('detector', 'Unknown')}")
-        print(f"     Payload: {result.get('payload', '')[:100]}{'...' if len(str(result.get('payload', ''))) > 100 else ''}")
-        print(f"     Request: {result.get('request_url', '')}")
+        """Print single vulnerability details with safe encoding"""
+        def safe_print(text):
+            """Safely print text, handling encoding issues"""
+            try:
+                print(text)
+            except UnicodeEncodeError:
+                # Replace problematic characters with safe alternatives
+                safe_text = text.encode('ascii', 'replace').decode('ascii')
+                print(safe_text)
+        
+        safe_print(f"\n  {index}. {result.get('vulnerability', 'Unknown')}")
+        safe_print(f"     Target: {result.get('target', '')}")
+        safe_print(f"     Parameter: {result.get('parameter', '')}")
+        safe_print(f"     Module: {result.get('module', '')}")
+        safe_print(f"     Detector: {result.get('detector', 'Unknown')}")
+        
+        payload = str(result.get('payload', ''))
+        payload_display = payload[:100] + ('...' if len(payload) > 100 else '')
+        safe_print(f"     Payload: {payload_display}")
+        safe_print(f"     Request: {result.get('request_url', '')}")
         
         # Show response snippet if available
         response_snippet = result.get('response_snippet', '')
         if response_snippet:
-            print(f"     Response: ...{response_snippet[:80]}{'...' if len(response_snippet) > 80 else ''}")
+            snippet_display = response_snippet[:80] + ('...' if len(response_snippet) > 80 else '')
+            safe_print(f"     Response: ...{snippet_display}")
         
-        print(f"     Evidence: {result.get('evidence', '')}")
-        print("     " + "-"*50)
+        safe_print(f"     Evidence: {result.get('evidence', '')}")
+        safe_print("     " + "-"*50)
