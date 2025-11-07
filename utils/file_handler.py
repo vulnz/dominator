@@ -56,14 +56,21 @@ class FileHandler:
         vulnerabilities = []
         scan_stats = {}
         
-        for item in data:
+        print(f"[DEBUG] save_html: Processing {len(data)} items")
+        for i, item in enumerate(data):
+            print(f"[DEBUG] Item {i}: keys = {list(item.keys()) if isinstance(item, dict) else 'not dict'}")
+            
             if 'scan_stats' in item:
                 scan_stats = item['scan_stats']
+                print(f"[DEBUG] Found scan_stats")
                 continue
             
             # Skip items without vulnerability field
-            if 'vulnerability' not in item:
+            if 'vulnerability' not in item or not item.get('vulnerability'):
+                print(f"[DEBUG] Skipping item {i}: no vulnerability field")
                 continue
+            
+            print(f"[DEBUG] Found vulnerability: {item.get('vulnerability', 'UNKNOWN')}")
             
             # Process screenshot if present
             screenshot_base64 = None
@@ -100,6 +107,11 @@ class FileHandler:
             'vulnerabilities': vulnerabilities,
             'scan_stats': scan_stats
         }
+        
+        print(f"[DEBUG] Final report_data: {len(vulnerabilities)} vulnerabilities")
+        if vulnerabilities:
+            for i, v in enumerate(vulnerabilities[:3]):
+                print(f"[DEBUG] Vuln {i+1}: {v.get('vulnerability', 'NO_VULN')} - {v.get('severity', 'NO_SEV')}")
         
         # Get advanced HTML template
         template = self._get_advanced_html_template()
