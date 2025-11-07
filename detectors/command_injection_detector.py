@@ -157,3 +157,112 @@ class CommandInjectionDetector:
             "If shell commands are necessary, use proper input validation and sanitization. "
             "Run applications with minimal privileges and use sandboxing."
         )
+import re
+from typing import List, Dict, Any, Tuple
+
+class CommandInjectionDetector:
+    """Command Injection vulnerability detection logic optimized for XVWA"""
+    
+    @staticmethod
+    def get_command_indicators() -> List[str]:
+        """Get command injection indicators commonly found in XVWA"""
+        return [
+            # Linux/Unix command indicators
+            'uid=', 'gid=', 'groups=',
+            'root:x:0:0:', 'daemon:x:1:1:', 'bin:x:2:2:',
+            'Linux', 'GNU/Linux', 'Ubuntu',
+            'total ', 'drwx', '-rw-', '-rwx',
+            'PID', 'TTY', 'TIME', 'CMD',
+            '/bin/bash', '/bin/sh', '/usr/bin/',
+            'Permission denied', 'No such file or directory',
+            'command not found', 'bash:', 'sh:',
+            
+            # Windows command indicators
+            'Volume in drive', 'Directory of',
+            'Windows NT', 'Microsoft Windows',
+            'SYSTEM', 'Administrator',
+            'C:\\Windows', 'C:\\Program Files',
+            'The system cannot find', 'Access is denied',
+            'is not recognized as an internal or external command',
+            
+            # Network command indicators
+            'PING', 'ping statistics', 'packets transmitted',
+            'Tracing route to', 'traceroute to',
+            'nslookup', 'Non-authoritative answer:',
+            
+            # File system indicators
+            'etc/passwd', 'etc/shadow', 'etc/hosts',
+            'boot.ini', 'win.ini', 'system.ini'
+        ]
+
+    @staticmethod
+    def detect_command_injection(payload: str, response_text: str, response_code: int) -> Tuple[bool, str, str, Dict[str, Any]]:
+        """Enhanced command injection detection for XVWA"""
+        if response_code not in [200, 201, 202, 500, 400, 403]:
+            return False, "", "", {}
+
+        indicators = CommandInjectionDetector.get_command_indicators()
+        
+        # Check for command execution indicators in response
+        found_indicators = []
+        for indicator in indicators:
+            if indicator.lower() in response_text.lower():
+                found_indicators.append(indicator)
+        
+        if found_indicators:
+            severity, cvss = CommandInjectionDetector._determine_severity(found_indicators)
+            evidence = f"Command injection indicators found: {', '.join(found_indicators[:3])}"
+            if len(found_indicators) > 3:
+                evidence += f" and {len(found_indicators) - 3} more"
+            
+            return True, evidence, severity, {
+                'cwe': 'CWE-78',
+                'cvss': cvss,
+                'owasp': 'A03:2021 – Injection',
+                'recommendation': 'Avoid executing system commands with user input. Use parameterized APIs and input validation.'
+            }
+
+        # Check for specific command injection patterns
+        injection_patterns = [
+            r'uid=\d+\(.*?\)\s+gid=\d+\(.*?\)',
+            r'total\s+\d+.*?drwx.*?-rw-.*?',
+            r'PID\s+TTY\s+TIME\s+CMD',
+            r'Volume in drive [A-Z] is.*?Directory of',
+            r'ping statistics.*?packets transmitted',
+            r'root:x:0:0:.*?:/bin/bash',
+            r'Windows NT.*?Microsoft Windows'
+        ]
+        
+        for pattern in injection_patterns:
+            if re.search(pattern, response_text, re.IGNORECASE | re.DOTALL):
+                return True, f"Command injection pattern detected: {pattern}", "Critical", {
+                    'cwe': 'CWE-78',
+                    'cvss': '9.8',
+                    'owasp': 'A03:2021 – Injection',
+                    'recommendation': 'Avoid executing system commands with user input. Use parameterized APIs and input validation.'
+                }
+
+        return False, "", "", {}
+
+    @staticmethod
+    def _determine_severity(indicators: List[str]) -> Tuple[str, str]:
+        """Determine severity based on found indicators"""
+        critical_indicators = [
+            'uid=', 'gid=', 'root:x:0:0:', '/etc/passwd',
+            'Administrator', 'SYSTEM', 'C:\\Windows\\System32'
+        ]
+        
+        high_indicators = [
+            'Linux', 'Windows NT', 'Microsoft Windows',
+            'ping statistics', 'PID', 'TTY', 'CMD'
+        ]
+        
+        for indicator in indicators:
+            if any(critical in indicator.lower() for critical in critical_indicators):
+                return "Critical", "9.8"
+        
+        for indicator in indicators:
+            if any(high in indicator.lower() for high in high_indicators):
+                return "High", "8.8"
+        
+        return "Medium", "6.5"

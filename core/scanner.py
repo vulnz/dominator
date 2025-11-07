@@ -4581,7 +4581,7 @@ class VulnScanner:
         print("="*80)
     
     def _print_vulnerability(self, index: int, result: Dict[str, Any]):
-        """Print single vulnerability details with safe encoding"""
+        """Print single vulnerability details with safe encoding and enhanced metadata"""
         def safe_print(text):
             """Safely print text, handling encoding issues"""
             try:

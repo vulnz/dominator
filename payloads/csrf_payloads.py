@@ -155,3 +155,45 @@ class CSRFPayloads:
 </body>
 </html>
         '''
+class CSRFPayloads:
+    """CSRF payload collection optimized for XVWA"""
+    
+    @staticmethod
+    def get_basic_payloads():
+        """Basic CSRF test payloads"""
+        return [
+            # These are conceptual - CSRF testing requires actual form submission
+            "<!-- CSRF Test: Form without token -->",
+            "<!-- CSRF Test: Missing Referer header -->",
+            "<!-- CSRF Test: Cross-origin request -->",
+            "<!-- CSRF Test: Modified token value -->",
+            "<!-- CSRF Test: Empty token value -->",
+            "<!-- CSRF Test: Reused token -->",
+            "<!-- CSRF Test: Predictable token -->"
+        ]
+
+    @staticmethod
+    def get_advanced_payloads():
+        """Advanced CSRF bypass payloads"""
+        return [
+            "<!-- CSRF Bypass: Double submit cookie -->",
+            "<!-- CSRF Bypass: Origin header manipulation -->",
+            "<!-- CSRF Bypass: Referer header manipulation -->",
+            "<!-- CSRF Bypass: Content-Type manipulation -->",
+            "<!-- CSRF Bypass: Method override -->",
+            "<!-- CSRF Bypass: Token in URL parameter -->",
+            "<!-- CSRF Bypass: Case sensitivity bypass -->"
+        ]
+
+    @staticmethod
+    def get_bypass_payloads():
+        """CSRF protection bypass payloads"""
+        return [
+            "<!-- Bypass: Remove token parameter -->",
+            "<!-- Bypass: Change token parameter name -->",
+            "<!-- Bypass: Use empty token value -->",
+            "<!-- Bypass: Use null token value -->",
+            "<!-- Bypass: Use array instead of string -->",
+            "<!-- Bypass: Use different HTTP method -->",
+            "<!-- Bypass: Use different Content-Type -->"
+        ]

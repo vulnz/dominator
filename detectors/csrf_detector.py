@@ -181,3 +181,99 @@ class CSRFDetector:
         if len(response_text) > max_length:
             return response_text[:max_length] + "..."
         return response_text
+import re
+from typing import List, Dict, Any, Tuple
+from urllib.parse import parse_qs, urlparse
+
+class CSRFDetector:
+    """CSRF vulnerability detection logic optimized for XVWA"""
+    
+    @staticmethod
+    def get_csrf_indicators() -> List[str]:
+        """Get CSRF token field names commonly used"""
+        return [
+            'csrf_token',
+            'csrftoken',
+            'csrf-token',
+            '_token',
+            'authenticity_token',
+            'anti_csrf_token',
+            'csrf_protection',
+            'csrf_key',
+            'csrf_hash',
+            'csrf_value',
+            'xsrf_token',
+            'xsrftoken',
+            'request_token',
+            'form_token',
+            'security_token',
+            'session_token',
+            'nonce',
+            'state'
+        ]
+
+    @staticmethod
+    def get_csrf_headers() -> List[str]:
+        """Get CSRF protection headers"""
+        return [
+            'X-CSRF-Token',
+            'X-CSRFToken',
+            'X-XSRF-TOKEN',
+            'X-Requested-With',
+            'Referer',
+            'Origin'
+        ]
+
+    @staticmethod
+    def detect_csrf_vulnerability(response_text: str, response_headers: Dict[str, str], url: str) -> Tuple[bool, str, str, Dict[str, Any]]:
+        """Detect CSRF vulnerabilities in forms"""
+        if not response_text:
+            return False, "", "", {}
+
+        # Find all forms in the response
+        form_pattern = r'<form[^>]*>(.*?)</form>'
+        forms = re.findall(form_pattern, response_text, re.IGNORECASE | re.DOTALL)
+        
+        vulnerable_forms = []
+        csrf_indicators = CSRFDetector.get_csrf_indicators()
+        
+        for form in forms:
+            # Check if form has CSRF protection
+            has_csrf_token = False
+            for indicator in csrf_indicators:
+                if re.search(rf'name\s*=\s*["\']?{indicator}["\']?', form, re.IGNORECASE):
+                    has_csrf_token = True
+                    break
+            
+            # Check if form modifies data (POST, PUT, DELETE methods)
+            method_match = re.search(r'method\s*=\s*["\']?(post|put|delete)["\']?', form, re.IGNORECASE)
+            if method_match and not has_csrf_token:
+                action_match = re.search(r'action\s*=\s*["\']?([^"\'>\s]+)["\']?', form, re.IGNORECASE)
+                action = action_match.group(1) if action_match else "current page"
+                vulnerable_forms.append(f"Form with action '{action}' (method: {method_match.group(1).upper()})")
+
+        if vulnerable_forms:
+            evidence = f"Found {len(vulnerable_forms)} form(s) without CSRF protection: {'; '.join(vulnerable_forms)}"
+            return True, evidence, "Medium", {
+                'cwe': 'CWE-352',
+                'cvss': '6.5',
+                'owasp': 'A01:2021 – Broken Access Control',
+                'recommendation': 'Implement CSRF tokens in all state-changing forms. Use SameSite cookie attributes and validate Referer headers.'
+            }
+
+        return False, "", "", {}
+
+    @staticmethod
+    def check_csrf_headers(headers: Dict[str, str]) -> Tuple[bool, str]:
+        """Check for CSRF protection headers"""
+        csrf_headers = CSRFDetector.get_csrf_headers()
+        missing_headers = []
+        
+        for header in csrf_headers:
+            if header.lower() not in [h.lower() for h in headers.keys()]:
+                missing_headers.append(header)
+        
+        if missing_headers:
+            return True, f"Missing CSRF protection headers: {', '.join(missing_headers)}"
+        
+        return False, ""
