@@ -139,6 +139,7 @@ def show_modules():
     print("- ssrf: Server-Side Request Forgery")
     print("- dirbrute: Directory and File Bruteforce")
     print("- gitexposed: Exposed Git Repository")
+    print("- git: Git Repository Exposure")
     print("- dirtraversal: Directory Traversal")
     print("- secheaders: Security Headers and Cookie Flags")
     print("- clickjacking: Clickjacking Protection")

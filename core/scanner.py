@@ -764,7 +764,7 @@ class VulnScanner:
                 results.extend(self._test_csrf(parsed_data))
             elif module_name == "dirbrute":
                 results.extend(self._test_dirbrute(parsed_data))
-            elif module_name == "gitexposed":
+            elif module_name == "gitexposed" or module_name == "git":
                 results.extend(self._test_git_exposed(parsed_data))
             elif module_name == "dirtraversal":
                 results.extend(self._test_directory_traversal(parsed_data))
@@ -2146,8 +2146,9 @@ class VulnScanner:
         base_url = parsed_data['url']
         
         # Update payload stats
-        if 'gitexposed' not in self.scan_stats['payload_stats']:
-            self.scan_stats['payload_stats']['gitexposed'] = {'payloads_used': 0, 'requests_made': 0, 'successful_payloads': 0}
+        module_key = 'gitexposed'
+        if module_key not in self.scan_stats['payload_stats']:
+            self.scan_stats['payload_stats'][module_key] = {'payloads_used': 0, 'requests_made': 0, 'successful_payloads': 0}
         
         # Remove query parameters from base URL
         if '?' in base_url:
@@ -2190,7 +2191,7 @@ class VulnScanner:
                 ]
             
             # Update payload stats
-            self.scan_stats['payload_stats']['gitexposed']['payloads_used'] += len(git_paths)
+            self.scan_stats['payload_stats'][module_key]['payloads_used'] += len(git_paths)
             
             print(f"    [GITEXPOSED] Testing {len(git_paths)} git paths...")
             
@@ -2209,7 +2210,7 @@ class VulnScanner:
                     
                     # Update request count
                     self.request_count += 1
-                    self.scan_stats['payload_stats']['gitexposed']['requests_made'] += 1
+                    self.scan_stats['payload_stats'][module_key]['requests_made'] += 1
                     
                     print(f"    [GITEXPOSED] Testing: {git_path} -> {response.status_code} ({len(response.text)} bytes)")
                     
@@ -2240,7 +2241,7 @@ class VulnScanner:
                             remediation = "Remove .git directory from web-accessible locations and configure web server to deny access to .git directories"
                         
                         # Update successful payload count
-                        self.scan_stats['payload_stats']['gitexposed']['successful_payloads'] += 1
+                        self.scan_stats['payload_stats'][module_key]['successful_payloads'] += 1
                         self.scan_stats['total_payloads_used'] += 1
                         
                         # Create individual vulnerability for each exposed file (like dirbrute does)
