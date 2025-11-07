@@ -58,7 +58,10 @@ class DirBrutePayloads:
             
             # Hidden directories
             '.git', '.svn', '.hg', '.bzr', '.cvs',
-            '.env', '.config', '.settings', '.cache', '.tmp'
+            '.env', '.config', '.settings', '.cache', '.tmp',
+            # 10 новых крутых payload'ов
+            '.well-known', 'actuator', 'health', 'metrics', 'prometheus',
+            'swagger', 'graphql', 'graphiql', 'kibana', 'elasticsearch'
         ]
     
     @staticmethod
@@ -113,7 +116,10 @@ class DirBrutePayloads:
             
             # Sensitive files
             'passwords.txt', 'users.txt', 'accounts.txt', 'credentials.txt',
-            'keys.txt', 'tokens.txt', 'secrets.txt', 'private.key'
+            'keys.txt', 'tokens.txt', 'secrets.txt', 'private.key',
+            # 10 новых крутых файлов
+            '.env', '.env.local', '.env.production', '.env.development', '.env.staging',
+            'docker-compose.yml', 'Dockerfile', 'package.json', 'composer.json', 'yarn.lock'
         ]
     
     @staticmethod
