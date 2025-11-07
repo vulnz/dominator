@@ -14,11 +14,11 @@ if !ERRORLEVEL! neq 0 (
     exit /b 1
 )
 
-echo Starting scanner with arguments: %*
+echo Starting scanner with arguments: -t http://185.233.118.120:8082/xvwa/login.php -m dirbrute --timeout 15 --threads 5
 echo.
 
 REM Start Python script in background and get PID
-for /f "tokens=2" %%i in ('wmic process call create "python main.py %*" ^| find "ProcessId"') do set PID=%%i
+for /f "tokens=2" %%i in ('wmic process call create "python main.py -t http://185.233.118.120:8082/xvwa/login.php -m dirbrute --timeout 15 --threads 5" ^| find "ProcessId"') do set PID=%%i
 
 REM Monitor for completion or interruption
 :WAIT_LOOP
