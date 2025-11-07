@@ -23,7 +23,7 @@ class Config:
         self.page_limit = args.page_limit
         self.output_file = args.output
         self.output_format = args.format
-        self.single_url = getattr(args, 'single_url', False)
+        self.single_url = getattr(args, 'single_url', False) or getattr(args, 'nocrawl', False)
         
         # Crawler settings
         self.crawler_depth = getattr(args, 'crawler_depth', 3)

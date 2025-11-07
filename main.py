@@ -79,6 +79,8 @@ Usage examples:
                        help='Scan only the specified URL without crawling or testing other pages')
     parser.add_argument('--crawl', action='store_true',
                        help='Enable web crawling to find more pages')
+    parser.add_argument('--nocrawl', action='store_true',
+                       help='Disable web crawling completely (same as --single-url)')
     parser.add_argument('--max-crawl-pages', type=int, default=20,
                        help='Maximum pages to crawl (default: 20)')
     parser.add_argument('--verbose', '-v', action='store_true',
@@ -266,6 +268,12 @@ def main():
         args.group_findings = not args.no_grouping
     if not hasattr(args, 'dedupe_domain'):
         args.dedupe_domain = not args.no_domain_dedupe
+    if not hasattr(args, 'nocrawl'):
+        args.nocrawl = False
+    
+    # Apply nocrawl logic
+    if args.nocrawl:
+        args.single_url = True
     
     # Check if modules are specified
     if not args.modules and not args.all:
