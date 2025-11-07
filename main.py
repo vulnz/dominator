@@ -291,6 +291,10 @@ def main():
         args.limit = args.request_limit
     if not hasattr(args, 'page_limit'):
         args.page_limit = None
+    if not hasattr(args, 'output'):
+        args.output = None
+    if not hasattr(args, 'proxy'):
+        args.proxy = None
     # Ensure format is always HTML for auto-reports
     if hasattr(args, 'format') and args.format != 'html':
         print("Warning: Only HTML format is supported for auto-reports. Using HTML format.")
