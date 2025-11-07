@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Web Vulnerability Scanner
 Main file for running the scanner
@@ -10,6 +11,15 @@ import os
 import time
 import threading
 import signal
+
+# Set console encoding for Windows
+if sys.platform.startswith('win'):
+    try:
+        import codecs
+        sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
+        sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
+    except:
+        pass
 from core.scanner import VulnScanner
 from core.config import Config
 from utils.file_handler import FileHandler
@@ -213,8 +223,8 @@ class MaxTimeHandler:
 
 def signal_handler(sig, frame):
     """Handle Ctrl+C signal for immediate exit"""
-    print("\n[!] Получен сигнал прерывания (Ctrl+C)")
-    print("[!] Немедленное завершение программы...")
+    print("\n[!] Interrupt signal received (Ctrl+C)")
+    print("[!] Terminating program immediately...")
     os._exit(1)
 
 def print_banner():
@@ -359,7 +369,7 @@ def main():
             print(f"Warning: Error during cleanup: {e}")
             
     except KeyboardInterrupt:
-        print("\n[!] Сканирование прервано пользователем")
+        print("\n[!] Scan interrupted by user")
         if 'timeout_handler' in locals() and timeout_handler:
             timeout_handler.cancel()
         if 'max_time_handler' in locals() and max_time_handler:

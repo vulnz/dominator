@@ -4598,10 +4598,14 @@ class VulnScanner:
         def safe_print(text):
             """Safely print text, handling encoding issues"""
             try:
-                print(text)
-            except UnicodeEncodeError:
+                # Ensure text is properly encoded for console output
+                if isinstance(text, str):
+                    print(text.encode('utf-8', 'replace').decode('utf-8', 'replace'))
+                else:
+                    print(str(text))
+            except (UnicodeEncodeError, UnicodeDecodeError):
                 # Replace problematic characters with safe alternatives
-                safe_text = text.encode('ascii', 'replace').decode('ascii')
+                safe_text = str(text).encode('ascii', 'replace').decode('ascii')
                 print(safe_text)
         
         safe_print(f"\n  {index}. {result.get('vulnerability', 'Unknown')}")
