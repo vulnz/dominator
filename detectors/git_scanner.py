@@ -25,7 +25,7 @@ class GitScanner:
         base_url = parsed_data['url']
         
         # Update payload stats
-        module_key = 'gitexposed'
+        module_key = 'git'
         if module_key not in self.scan_stats.get('payload_stats', {}):
             if 'payload_stats' not in self.scan_stats:
                 self.scan_stats['payload_stats'] = {}
@@ -257,7 +257,7 @@ class GitScanner:
                 remediation = GitDetector.get_remediation_advice(file_info['path'])
                 
                 results.append({
-                    'module': 'gitexposed',
+                    'module': 'git',
                     'target': file_info['url'],
                     'vulnerability': f'Git File Exposed: {file_info["path"]}',
                     'severity': file_info['severity'],
