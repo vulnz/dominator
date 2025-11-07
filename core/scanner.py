@@ -2244,12 +2244,26 @@ class VulnScanner:
         return results
     
     def _test_security_headers(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Test for missing security headers and insecure cookies"""
+        """Test for missing security headers and insecure cookies with grouping"""
         results = []
         base_url = parsed_data['url']
         
+        # Extract domain for deduplication
+        from urllib.parse import urlparse
+        parsed_url = urlparse(base_url)
+        domain = parsed_url.hostname
+        
+        # Create deduplication key for this domain
+        domain_key = f"secheaders_{domain}"
+        if domain_key in self.found_vulnerabilities:
+            print(f"    [SECHEADERS] Skipping security headers test for {domain} - already tested")
+            return results
+        
         try:
-            print(f"    [SECHEADERS] Testing security headers...")
+            print(f"    [SECHEADERS] Testing security headers for domain: {domain}")
+            
+            # Mark domain as tested
+            self.found_vulnerabilities.add(domain_key)
             
             # Make request to get headers
             response = requests.get(
@@ -2266,6 +2280,10 @@ class VulnScanner:
                 print(f"    [SECHEADERS] Skipping - error response ({response.status_code})")
                 return results
             
+            # Collect all security issues
+            all_issues = []
+            highest_severity = 'Info'
+            
             # Check for missing security headers
             missing_headers = SecurityHeadersDetector.detect_missing_security_headers(response.headers)
             
@@ -2273,18 +2291,22 @@ class VulnScanner:
                 print(f"    [SECHEADERS] Found {len(missing_headers)} missing security headers")
                 
                 for header_info in missing_headers:
-                    results.append({
-                        'module': 'secheaders',
-                        'target': base_url,
-                        'vulnerability': f'Missing Security Header: {header_info["header"]}',
+                    all_issues.append({
+                        'type': 'missing_header',
+                        'header': header_info["header"],
                         'severity': header_info['severity'],
-                        'parameter': f'header: {header_info["header"]}',
-                        'payload': 'N/A',
-                        'evidence': f'{header_info["description"]}. {header_info["recommendation"]}',
-                        'request_url': base_url,
-                        'detector': 'SecurityHeadersDetector.detect_missing_security_headers',
-                        'response_snippet': f'Current value: {header_info.get("current_value", "Not set")}'
+                        'description': header_info["description"],
+                        'recommendation': header_info["recommendation"],
+                        'current_value': header_info.get("current_value", "Not set")
                     })
+                    
+                    # Track highest severity
+                    if header_info['severity'] == 'High':
+                        highest_severity = 'High'
+                    elif header_info['severity'] == 'Medium' and highest_severity != 'High':
+                        highest_severity = 'Medium'
+                    elif header_info['severity'] == 'Low' and highest_severity not in ['High', 'Medium']:
+                        highest_severity = 'Low'
             else:
                 print(f"    [SECHEADERS] All important security headers are present")
             
@@ -2296,20 +2318,108 @@ class VulnScanner:
                 
                 for cookie_info in insecure_cookies:
                     for issue in cookie_info['issues']:
-                        results.append({
-                            'module': 'secheaders',
-                            'target': base_url,
-                            'vulnerability': f'Insecure Cookie: {issue["issue"]}',
+                        all_issues.append({
+                            'type': 'insecure_cookie',
+                            'cookie_name': cookie_info["cookie_name"],
+                            'issue': issue["issue"],
                             'severity': issue['severity'],
-                            'parameter': f'cookie: {cookie_info["cookie_name"]}',
-                            'payload': 'N/A',
-                            'evidence': f'Cookie "{cookie_info["cookie_name"]}" {issue["description"]}',
-                            'request_url': base_url,
-                            'detector': 'SecurityHeadersDetector.detect_insecure_cookies',
-                            'response_snippet': cookie_info['cookie_header']
+                            'description': issue["description"],
+                            'cookie_header': cookie_info['cookie_header']
                         })
+                        
+                        # Track highest severity
+                        if issue['severity'] == 'High':
+                            highest_severity = 'High'
+                        elif issue['severity'] == 'Medium' and highest_severity != 'High':
+                            highest_severity = 'Medium'
+                        elif issue['severity'] == 'Low' and highest_severity not in ['High', 'Medium']:
+                            highest_severity = 'Low'
             else:
                 print(f"    [SECHEADERS] No insecure cookies found")
+            
+            # Create grouped vulnerability if issues found
+            if all_issues:
+                if len(all_issues) <= 10:  # Group if 10 or fewer issues
+                    print(f"    [SECHEADERS] Grouping {len(all_issues)} security issues into single finding")
+                    
+                    # Build comprehensive evidence
+                    issue_list = []
+                    critical_issues = []
+                    
+                    for issue in all_issues:
+                        if issue['type'] == 'missing_header':
+                            issue_list.append(f"• Missing {issue['header']} header ({issue['severity']})")
+                            if issue['severity'] == 'High':
+                                critical_issues.append(f"Missing {issue['header']}")
+                        else:  # insecure_cookie
+                            issue_list.append(f"• Cookie {issue['cookie_name']}: {issue['issue']} ({issue['severity']})")
+                            if issue['severity'] == 'High':
+                                critical_issues.append(f"Cookie {issue['cookie_name']}")
+                    
+                    evidence = f"Security configuration issues found ({len(all_issues)} issues):\n" + "\n".join(issue_list)
+                    if critical_issues:
+                        evidence += f"\n\nCRITICAL ISSUES: {', '.join(critical_issues)}"
+                    
+                    # Build response snippet from most critical issues
+                    response_snippets = []
+                    for issue in all_issues[:5]:  # Show first 5 issues
+                        if issue['type'] == 'missing_header':
+                            response_snippets.append(f"{issue['header']}: {issue['current_value']}")
+                        else:
+                            response_snippets.append(f"Cookie {issue['cookie_name']}: {issue['issue']}")
+                    
+                    response_snippet = "\n".join(response_snippets)
+                    if len(all_issues) > 5:
+                        response_snippet += f"\n... and {len(all_issues) - 5} more issues"
+                    
+                    results.append({
+                        'module': 'secheaders',
+                        'target': base_url,
+                        'vulnerability': f'Security Configuration Issues ({len(all_issues)} issues)',
+                        'severity': highest_severity,
+                        'parameter': f'security_config: {len(all_issues)} issues',
+                        'payload': 'N/A',
+                        'evidence': evidence,
+                        'request_url': base_url,
+                        'detector': 'SecurityHeadersDetector (grouped)',
+                        'response_snippet': response_snippet,
+                        'security_issues': all_issues  # Keep detailed info for reports
+                    })
+                else:
+                    # Too many issues, create individual vulnerabilities
+                    print(f"    [SECHEADERS] Found {len(all_issues)} security issues - creating individual findings")
+                    
+                    for issue in all_issues:
+                        if issue['type'] == 'missing_header':
+                            results.append({
+                                'module': 'secheaders',
+                                'target': base_url,
+                                'vulnerability': f'Missing Security Header: {issue["header"]}',
+                                'severity': issue['severity'],
+                                'parameter': f'header: {issue["header"]}',
+                                'payload': 'N/A',
+                                'evidence': f'{issue["description"]}. {issue["recommendation"]}',
+                                'request_url': base_url,
+                                'detector': 'SecurityHeadersDetector.detect_missing_security_headers',
+                                'response_snippet': f'Current value: {issue["current_value"]}'
+                            })
+                        else:  # insecure_cookie
+                            results.append({
+                                'module': 'secheaders',
+                                'target': base_url,
+                                'vulnerability': f'Insecure Cookie: {issue["issue"]}',
+                                'severity': issue['severity'],
+                                'parameter': f'cookie: {issue["cookie_name"]}',
+                                'payload': 'N/A',
+                                'evidence': f'Cookie "{issue["cookie_name"]}" {issue["description"]}',
+                                'request_url': base_url,
+                                'detector': 'SecurityHeadersDetector.detect_insecure_cookies',
+                                'response_snippet': issue['cookie_header']
+                            })
+                
+                print(f"    [SECHEADERS] Found {len(all_issues)} security configuration issues")
+            else:
+                print(f"    [SECHEADERS] No security configuration issues found")
             
         except Exception as e:
             print(f"    [SECHEADERS] Error during security headers testing: {e}")
@@ -3101,12 +3211,26 @@ class VulnScanner:
         return results
     
     def _test_httponly_cookies(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Test for HttpOnly cookie security"""
+        """Test for HttpOnly cookie security with grouping"""
         results = []
         base_url = parsed_data['url']
         
+        # Extract domain for deduplication
+        from urllib.parse import urlparse
+        parsed_url = urlparse(base_url)
+        domain = parsed_url.hostname
+        
+        # Create deduplication key for this domain
+        domain_key = f"httponlycookies_{domain}"
+        if domain_key in self.found_vulnerabilities:
+            print(f"    [HTTPONLYCOOKIES] Skipping HttpOnly cookie test for {domain} - already tested")
+            return results
+        
         try:
-            print(f"    [HTTPONLYCOOKIES] Testing HttpOnly cookie security...")
+            print(f"    [HTTPONLYCOOKIES] Testing HttpOnly cookie security for domain: {domain}")
+            
+            # Mark domain as tested
+            self.found_vulnerabilities.add(domain_key)
             
             # Make request to get cookies
             response = requests.get(
@@ -3127,23 +3251,86 @@ class VulnScanner:
             insecure_cookies = HttpOnlyCookieDetector.detect_httponly_cookies(dict(response.headers))
             
             if insecure_cookies:
-                print(f"    [HTTPONLYCOOKIES] Found {len(insecure_cookies)} insecure cookies")
+                # Collect all cookie issues
+                all_cookie_issues = []
+                highest_severity = 'Info'
                 
                 for cookie_info in insecure_cookies:
                     for issue in cookie_info['issues']:
+                        all_cookie_issues.append({
+                            'cookie_name': cookie_info["cookie_name"],
+                            'issue': issue["issue"],
+                            'severity': issue['severity'],
+                            'description': issue["description"],
+                            'cookie_header': cookie_info['cookie_header']
+                        })
+                        
+                        # Track highest severity
+                        if issue['severity'] == 'High':
+                            highest_severity = 'High'
+                        elif issue['severity'] == 'Medium' and highest_severity != 'High':
+                            highest_severity = 'Medium'
+                        elif issue['severity'] == 'Low' and highest_severity not in ['High', 'Medium']:
+                            highest_severity = 'Low'
+                
+                if len(all_cookie_issues) <= 8:  # Group if 8 or fewer cookie issues
+                    print(f"    [HTTPONLYCOOKIES] Grouping {len(all_cookie_issues)} cookie issues into single finding")
+                    
+                    # Build comprehensive evidence
+                    issue_list = []
+                    critical_cookies = []
+                    
+                    for issue in all_cookie_issues:
+                        issue_list.append(f"• Cookie {issue['cookie_name']}: {issue['issue']} ({issue['severity']})")
+                        if issue['severity'] == 'High':
+                            critical_cookies.append(issue['cookie_name'])
+                    
+                    evidence = f"Cookie security issues found ({len(all_cookie_issues)} issues):\n" + "\n".join(issue_list)
+                    if critical_cookies:
+                        evidence += f"\n\nCRITICAL COOKIES: {', '.join(critical_cookies)}"
+                    
+                    # Build response snippet from most critical cookies
+                    response_snippets = []
+                    for issue in all_cookie_issues[:4]:  # Show first 4 cookies
+                        response_snippets.append(f"{issue['cookie_name']}: {issue['issue']}")
+                    
+                    response_snippet = "\n".join(response_snippets)
+                    if len(all_cookie_issues) > 4:
+                        response_snippet += f"\n... and {len(all_cookie_issues) - 4} more cookies"
+                    
+                    results.append({
+                        'module': 'httponlycookies',
+                        'target': base_url,
+                        'vulnerability': f'Cookie Security Issues ({len(all_cookie_issues)} cookies)',
+                        'severity': highest_severity,
+                        'parameter': f'cookie_security: {len(all_cookie_issues)} issues',
+                        'payload': 'N/A',
+                        'evidence': evidence,
+                        'request_url': base_url,
+                        'detector': 'HttpOnlyCookieDetector (grouped)',
+                        'response_snippet': response_snippet,
+                        'cookie_issues': all_cookie_issues  # Keep detailed info for reports
+                    })
+                else:
+                    # Too many cookie issues, create individual vulnerabilities
+                    print(f"    [HTTPONLYCOOKIES] Found {len(all_cookie_issues)} cookie issues - creating individual findings")
+                    
+                    for issue in all_cookie_issues:
                         results.append({
                             'module': 'httponlycookies',
                             'target': base_url,
                             'vulnerability': f'Cookie Security Issue: {issue["issue"]}',
                             'severity': issue['severity'],
-                            'parameter': f'cookie: {cookie_info["cookie_name"]}',
+                            'parameter': f'cookie: {issue["cookie_name"]}',
                             'payload': 'N/A',
-                            'evidence': f'Cookie "{cookie_info["cookie_name"]}" {issue["description"]}',
+                            'evidence': f'Cookie "{issue["cookie_name"]}" {issue["description"]}',
                             'request_url': base_url,
                             'detector': 'HttpOnlyCookieDetector.detect_httponly_cookies',
-                            'response_snippet': cookie_info['cookie_header'],
+                            'response_snippet': issue['cookie_header'],
                             'remediation': HttpOnlyCookieDetector.get_remediation_advice(issue['issue'])
                         })
+                
+                print(f"    [HTTPONLYCOOKIES] Found {len(all_cookie_issues)} cookie security issues")
             else:
                 print(f"    [HTTPONLYCOOKIES] No insecure cookies found")
             
