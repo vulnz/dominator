@@ -4592,6 +4592,35 @@ class VulnScanner:
         print(f"Info:                 {len(info_vulns)}")
         print("="*80)
         
+        # Print vulnerability details
+        if high_vulns:
+            print(f"\nHIGH SEVERITY VULNERABILITIES ({len(high_vulns)} found):")
+            print("-" * 50)
+            for i, result in enumerate(high_vulns, 1):
+                self._print_vulnerability(i, result)
+        
+        if medium_vulns:
+            print(f"\nMEDIUM SEVERITY VULNERABILITIES ({len(medium_vulns)} found):")
+            print("-" * 50)
+            for i, result in enumerate(medium_vulns, 1):
+                self._print_vulnerability(i, result)
+        
+        if low_vulns:
+            print(f"\nLOW SEVERITY VULNERABILITIES ({len(low_vulns)} found):")
+            print("-" * 50)
+            for i, result in enumerate(low_vulns, 1):
+                self._print_vulnerability(i, result)
+        
+        if info_vulns:
+            print(f"\nINFO VULNERABILITIES ({len(info_vulns)} found):")
+            print("-" * 50)
+            for i, result in enumerate(info_vulns, 1):
+                self._print_vulnerability(i, result)
+        
+        print("="*80)
+        print("RECOMMENDATION: Review and remediate all vulnerabilities above.")
+        print("="*80)
+        
         if high_vulns:
             print(f"\nHIGH SEVERITY VULNERABILITIES ({len(high_vulns)} found):")
             print("-" * 50)
