@@ -1885,7 +1885,8 @@ class VulnScanner:
                     print(f"    [DIRBRUTE] Testing directory: {directory} -> {response.status_code} ({len(response.text)} bytes)")
                     
                     is_valid, evidence = DirBruteDetector.is_valid_response(
-                        response.text, response.status_code, len(response.text), baseline_404_text, baseline_404_size
+                        response.text, response.status_code, len(response.text), baseline_404_text, baseline_404_size,
+                        dict(response.headers), requests.Session(), test_url
                     )
                     
                     # Additional checks for false positives
@@ -1968,7 +1969,8 @@ class VulnScanner:
                     print(f"    [DIRBRUTE] Testing file: {file} -> {response.status_code} ({len(response.text)} bytes)")
                     
                     is_valid, evidence = DirBruteDetector.is_valid_response(
-                        response.text, response.status_code, len(response.text), baseline_404_text, baseline_404_size
+                        response.text, response.status_code, len(response.text), baseline_404_text, baseline_404_size,
+                        dict(response.headers), requests.Session(), test_url
                     )
                     
                     # Additional checks for false positives
@@ -2048,7 +2050,8 @@ class VulnScanner:
                 )
                 
                 is_valid, evidence = DirBruteDetector.is_valid_response(
-                    response.text, response.status_code, len(response.text), baseline_404_text, baseline_404_size
+                    response.text, response.status_code, len(response.text), baseline_404_text, baseline_404_size,
+                    dict(response.headers), requests.Session(), test_url
                 )
                 
                 # Additional checks for false positives

@@ -10,7 +10,8 @@ class DirBruteDetector:
     
     @staticmethod
     def is_valid_response(response_text: str, response_code: int, content_length: int, 
-                         baseline_404: str = None, baseline_size: int = 0) -> Tuple[bool, str]:
+                         baseline_404: str = None, baseline_size: int = 0, 
+                         response_headers: dict = None, session=None, url: str = None) -> Tuple[bool, str]:
         """
         Check if response indicates a valid directory/file using enhanced 404 detection
         Returns (is_valid, evidence)
@@ -82,9 +83,11 @@ class DirBruteDetector:
         if response_code in [201, 202, 203, 206]:
             return True, f"HTTP {response_code} - Resource found"
         
-        # Redirect codes (might indicate valid resource)
+        # Enhanced redirect handling - check where redirect leads
         if response_code in [301, 302, 303, 307, 308]:
-            return True, f"HTTP {response_code} - Redirect found"
+            return DirBruteDetector._validate_redirect(
+                response_headers, session, url, baseline_404, baseline_size
+            )
         
         # Forbidden (resource exists but access denied)
         if response_code == 403:
@@ -251,6 +254,119 @@ class DirBruteDetector:
         if len(response_text) > max_length:
             return response_text[:max_length] + "..."
         return response_text
+    
+    @staticmethod
+    def _validate_redirect(response_headers: dict, session, url: str, 
+                          baseline_404: str = None, baseline_size: int = 0) -> Tuple[bool, str]:
+        """
+        Validate redirect responses by following them and checking final destination
+        Returns (is_valid, evidence)
+        """
+        if not response_headers or not session or not url:
+            return False, "HTTP 302 - Cannot validate redirect (missing data)"
+        
+        # Get redirect location
+        location = response_headers.get('Location') or response_headers.get('location')
+        if not location:
+            return False, "HTTP 302 - No redirect location found"
+        
+        try:
+            # Handle relative redirects
+            if location.startswith('/'):
+                from urllib.parse import urlparse
+                parsed_url = urlparse(url)
+                location = f"{parsed_url.scheme}://{parsed_url.netloc}{location}"
+            elif not location.startswith('http'):
+                # Relative to current path
+                base_url = url.rsplit('/', 1)[0]
+                location = f"{base_url}/{location}"
+            
+            print(f"    [DIRBRUTE] Following redirect: {location}")
+            
+            # Follow redirect with timeout
+            redirect_response = session.get(location, timeout=10, verify=False, allow_redirects=True)
+            
+            # Analyze final destination
+            from .real404_detector import Real404Detector
+            
+            # Check if final destination is a 404 page
+            is_404, evidence, confidence = Real404Detector.detect_real_404(
+                redirect_response.text, redirect_response.status_code, 
+                len(redirect_response.text), baseline_404, baseline_size
+            )
+            
+            if is_404 and confidence > 0.7:
+                return False, f"HTTP 302 -> {redirect_response.status_code} - Redirect leads to 404: {evidence}"
+            
+            # Check if redirected to main page or login page (common false positive)
+            if DirBruteDetector._is_redirect_to_main_page(location, redirect_response.text):
+                return False, f"HTTP 302 -> {redirect_response.status_code} - Redirect to main/login page"
+            
+            # Check if redirected to same domain (good sign)
+            from urllib.parse import urlparse
+            original_domain = urlparse(url).netloc
+            redirect_domain = urlparse(location).netloc
+            
+            if original_domain != redirect_domain:
+                return False, f"HTTP 302 -> {redirect_response.status_code} - External redirect to {redirect_domain}"
+            
+            # If final response is successful and has content, consider valid
+            if redirect_response.status_code == 200:
+                if len(redirect_response.text) > 1000:
+                    return True, f"HTTP 302 -> 200 - Valid redirect to content ({len(redirect_response.text)} bytes)"
+                elif DirBruteDetector._has_directory_file_content(redirect_response.text):
+                    return True, f"HTTP 302 -> 200 - Valid redirect to directory/file content"
+                else:
+                    return False, f"HTTP 302 -> 200 - Redirect to minimal content ({len(redirect_response.text)} bytes)"
+            
+            # Other successful status codes
+            if redirect_response.status_code in [201, 202, 203]:
+                return True, f"HTTP 302 -> {redirect_response.status_code} - Valid redirect"
+            
+            # Forbidden or method not allowed (resource exists)
+            if redirect_response.status_code in [403, 405]:
+                return True, f"HTTP 302 -> {redirect_response.status_code} - Redirect to existing resource"
+            
+            return False, f"HTTP 302 -> {redirect_response.status_code} - Redirect to error page"
+            
+        except Exception as e:
+            print(f"    [DIRBRUTE] Error following redirect: {e}")
+            return False, f"HTTP 302 - Error following redirect: {str(e)}"
+    
+    @staticmethod
+    def _is_redirect_to_main_page(redirect_url: str, redirect_content: str) -> bool:
+        """Check if redirect leads to main page, login page, or index page"""
+        redirect_url_lower = redirect_url.lower()
+        content_lower = redirect_content.lower()
+        
+        # Check URL patterns that suggest main page
+        main_page_patterns = [
+            '/index.php', '/index.html', '/index.htm', '/main.php',
+            '/home.php', '/login.php', '/default.php', '/welcome.php'
+        ]
+        
+        for pattern in main_page_patterns:
+            if pattern in redirect_url_lower:
+                return True
+        
+        # Check if URL ends with just domain (root)
+        from urllib.parse import urlparse
+        parsed = urlparse(redirect_url)
+        if parsed.path in ['/', '', '/index', '/main', '/home']:
+            return True
+        
+        # Check content for main page indicators
+        main_content_indicators = [
+            'welcome to', 'home page', 'main page', 'dashboard',
+            'login form', 'sign in', 'username', 'password',
+            '<title>home', '<title>main', '<title>welcome', '<title>login'
+        ]
+        
+        main_indicators_found = sum(1 for indicator in main_content_indicators 
+                                  if indicator in content_lower)
+        
+        # If multiple main page indicators found, likely redirected to main page
+        return main_indicators_found >= 3
     
     @staticmethod
     def analyze_response_size(content_length: int, baseline_size: int = 0) -> str:
