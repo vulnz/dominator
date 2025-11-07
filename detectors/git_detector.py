@@ -269,28 +269,35 @@ class GitDetector:
         """Get detailed evidence for git exposure"""
         evidence_parts = []
         
-        if 'config' in file_type:
+        if 'config' in file_type.lower():
             evidence_parts.append("Git configuration file exposed")
-        elif 'head' in file_type:
+            if '[core]' in response_text:
+                evidence_parts.append("contains core git settings")
+            if 'repositoryformatversion' in response_text:
+                evidence_parts.append("contains repository metadata")
+            if '[remote' in response_text:
+                evidence_parts.append("contains remote repository URLs")
+        elif 'head' in file_type.lower():
             evidence_parts.append("Git HEAD file exposed")
-        elif 'index' in file_type:
+            if 'ref:' in response_text:
+                branch = response_text.split('ref: refs/heads/')[-1].strip() if 'ref: refs/heads/' in response_text else 'unknown'
+                evidence_parts.append(f"reveals current branch: {branch}")
+        elif 'index' in file_type.lower():
             evidence_parts.append("Git index file exposed")
-        elif 'log' in file_type:
+            evidence_parts.append(f"contains staging area data ({len(response_text)} bytes)")
+        elif 'log' in file_type.lower():
             evidence_parts.append("Git log file exposed")
-        elif 'ref' in file_type:
+            commits = len([line for line in response_text.split('\n') if len(line.strip()) == 40])
+            if commits > 0:
+                evidence_parts.append(f"reveals {commits} commit hashes")
+        elif 'ref' in file_type.lower():
             evidence_parts.append("Git reference file exposed")
-        elif 'object' in file_type:
+            if len(response_text.strip()) == 40:
+                evidence_parts.append("contains commit hash")
+        elif 'object' in file_type.lower():
             evidence_parts.append("Git object file exposed")
         else:
             evidence_parts.append("Git repository file exposed")
-        
-        # Add content indicators
-        if '[core]' in response_text:
-            evidence_parts.append("contains git configuration")
-        if 'ref:' in response_text:
-            evidence_parts.append("contains git references")
-        if 'repositoryformatversion' in response_text:
-            evidence_parts.append("contains repository metadata")
         
         return "; ".join(evidence_parts)
     
@@ -304,10 +311,20 @@ class GitDetector:
     @staticmethod
     def get_remediation_advice(git_path: str) -> str:
         """Get remediation advice for git exposure"""
-        return (
+        base_advice = (
             "CRITICAL: Git repository is exposed! "
             "This can leak source code, credentials, and sensitive information. "
-            "Immediately block access to .git directory in web server configuration. "
-            "For Apache: add 'RedirectMatch 404 /\\.git' to .htaccess. "
-            "For Nginx: add 'location ~ /\\.git { deny all; }' to server config."
+            "Immediate actions required:\n"
+            "1. Remove .git directory from web-accessible locations\n"
+            "2. Configure web server to deny access to .git directories\n"
+            "3. For Apache: add 'RedirectMatch 404 /\\.git' to .htaccess\n"
+            "4. For Nginx: add 'location ~ /\\.git { deny all; }' to server config\n"
+            "5. Use proper deployment practices (deploy only necessary files)"
         )
+        
+        if 'config' in git_path:
+            return base_advice + "\n6. URGENT: Git config may contain repository URLs and credentials"
+        elif 'index' in git_path:
+            return base_advice + "\n6. URGENT: Git index reveals complete file structure and metadata"
+        
+        return base_advice
