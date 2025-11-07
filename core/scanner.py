@@ -4578,6 +4578,8 @@ class VulnScanner:
             print("No vulnerabilities found during the scan.")
             print("="*80)
             return
+            
+        # Group vulnerabilities by severity
         high_vulns = [v for v in vulnerabilities if v.get('severity', '').lower() == 'high']
         medium_vulns = [v for v in vulnerabilities if v.get('severity', '').lower() == 'medium']
         low_vulns = [v for v in vulnerabilities if v.get('severity', '').lower() == 'low']
