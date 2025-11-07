@@ -236,35 +236,6 @@ class GitDetector:
         ]
     
     @staticmethod
-    def get_evidence(file_type: str, response_snippet: str) -> str:
-        """Get detailed evidence for git exposure"""
-        evidence_templates = {
-            'config': 'Git configuration file exposed containing repository settings',
-            'HEAD': 'Git HEAD file exposed revealing current branch',
-            'index': 'Git index file exposed containing staging area information',
-            'log': 'Git log file exposed containing commit history',
-            'reference': 'Git reference file exposed containing commit hashes',
-            'object': 'Git object file exposed containing repository data',
-            'directory': 'Git directory listing exposed showing repository structure'
-        }
-        
-        base_evidence = evidence_templates.get(file_type, 'Git repository exposure detected')
-        
-        if response_snippet:
-            return f"{base_evidence}. Content preview: {response_snippet[:100]}..."
-        
-        return base_evidence
-    
-    @staticmethod
-    def get_response_snippet(response_text: str, max_length: int = 200) -> str:
-        """Get relevant response snippet for git files"""
-        if len(response_text) <= max_length:
-            return response_text
-        
-        # For git files, show the beginning which usually contains the most relevant info
-        return response_text[:max_length] + "..."
-    
-    @staticmethod
     def get_evidence(file_type: str, response_text: str) -> str:
         """Get detailed evidence for git exposure"""
         evidence_parts = []
@@ -302,10 +273,10 @@ class GitDetector:
         return "; ".join(evidence_parts)
     
     @staticmethod
-    def get_response_snippet(response_text: str) -> str:
+    def get_response_snippet(response_text: str, max_length: int = 300) -> str:
         """Get response snippet for git exposure"""
-        if len(response_text) > 300:
-            return response_text[:300] + "..."
+        if len(response_text) > max_length:
+            return response_text[:max_length] + "..."
         return response_text
     
     @staticmethod
