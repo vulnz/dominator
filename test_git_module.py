@@ -27,6 +27,7 @@ def test_git_module():
             self.headers_file = None
             self.exclude = None
             self.use_all_modules = False
+            self.all = False
             self.output = None
             self.format = 'txt'
             self.screenshot = False
