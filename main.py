@@ -9,6 +9,7 @@ import sys
 import os
 import time
 import threading
+import signal
 from core.scanner import VulnScanner
 from core.config import Config
 from utils.file_handler import FileHandler
@@ -210,6 +211,12 @@ class MaxTimeHandler:
         """Check if max time was reached"""
         return self.stopped
 
+def signal_handler(sig, frame):
+    """Handle Ctrl+C signal for immediate exit"""
+    print("\n[!] Получен сигнал прерывания (Ctrl+C)")
+    print("[!] Немедленное завершение программы...")
+    os._exit(1)
+
 def print_banner():
     """Print scanner banner"""
     banner = """
@@ -222,6 +229,9 @@ def print_banner():
 
 def main():
     """Main function"""
+    # Set up signal handler for immediate Ctrl+C exit
+    signal.signal(signal.SIGINT, signal_handler)
+    
     parser = create_parser()
     args = parser.parse_args()
     
@@ -349,10 +359,12 @@ def main():
             print(f"Warning: Error during cleanup: {e}")
             
     except KeyboardInterrupt:
-        print("\nScan interrupted by user")
+        print("\n[!] Сканирование прервано пользователем")
         if 'timeout_handler' in locals() and timeout_handler:
             timeout_handler.cancel()
-        sys.exit(1)
+        if 'max_time_handler' in locals() and max_time_handler:
+            max_time_handler.cancel()
+        os._exit(1)
     except Exception as e:
         print(f"Error: {e}")
         import traceback
