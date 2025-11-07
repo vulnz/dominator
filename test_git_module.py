@@ -37,6 +37,7 @@ def test_git_module():
             self.user_agent = None
             self.delay = 0
             self.random_agent = False
+            self.auth = None
     
     # Настройка конфигурации для single scan без crawling
     mock_args = MockArgs()
