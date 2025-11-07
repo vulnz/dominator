@@ -113,6 +113,10 @@ Usage examples:
     # Auto Reports
     parser.add_argument('--auto-report', action='store_true',
                        help='Automatically generate HTML report with timestamp')
+    parser.add_argument('--format', 
+                       choices=['html'],
+                       default='html',
+                       help='Report format (only HTML supported for auto-reports)')
     
     # Information commands
     parser.add_argument('--modules-list', action='store_true',
@@ -287,7 +291,11 @@ def main():
         args.limit = args.request_limit
     if not hasattr(args, 'page_limit'):
         args.page_limit = None
-    if not hasattr(args, 'format'):
+    # Ensure format is always HTML for auto-reports
+    if hasattr(args, 'format') and args.format != 'html':
+        print("Warning: Only HTML format is supported for auto-reports. Using HTML format.")
+        args.format = 'html'
+    elif not hasattr(args, 'format'):
         args.format = 'html'
     if not hasattr(args, 'group_findings'):
         args.group_findings = not args.no_grouping
