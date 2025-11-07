@@ -12,6 +12,9 @@ import time
 import threading
 import signal
 
+# Global flag for shutdown
+shutdown_requested = False
+
 # Set console encoding for Windows
 if sys.platform.startswith('win'):
     try:
@@ -225,6 +228,7 @@ def signal_handler(sig, frame):
     """Handle Ctrl+C signal for immediate exit"""
     print("\n[!] Interrupt signal received (Ctrl+C)")
     print("[!] Terminating program immediately...")
+    # Принудительный выход без cleanup
     os._exit(1)
 
 def print_banner():
@@ -239,6 +243,9 @@ def print_banner():
 
 def main():
     """Main function"""
+    global shutdown_requested
+    shutdown_requested = False
+    
     # Set up signal handler for immediate Ctrl+C exit
     signal.signal(signal.SIGINT, signal_handler)
     
@@ -327,6 +334,8 @@ def main():
         results = []
         if timeout_handler and timeout_handler.is_timed_out():
             print("\nScan stopped due to timeout before starting")
+        elif shutdown_requested:
+            print("\nScan stopped due to shutdown request")
         else:
             results = scanner.scan()
         
