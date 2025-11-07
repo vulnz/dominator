@@ -32,6 +32,11 @@ def test_git_module():
             self.screenshot = False
             self.max_time = None
             self.verbose = False
+            self.cookies = None
+            self.proxy = None
+            self.user_agent = None
+            self.delay = 0
+            self.random_agent = False
     
     # Настройка конфигурации для single scan без crawling
     mock_args = MockArgs()
