@@ -62,7 +62,7 @@ class HttpOnlyCookieDetector:
         if 'httponly' not in cookie_lower:
             issues.append({
                 'issue': 'Missing HttpOnly Flag',
-                'severity': 'Medium',
+                'severity': 'Low',
                 'description': 'Cookie can be accessed via JavaScript, making it vulnerable to XSS attacks'
             })
         
@@ -70,7 +70,7 @@ class HttpOnlyCookieDetector:
         if 'secure' not in cookie_lower:
             issues.append({
                 'issue': 'Missing Secure Flag',
-                'severity': 'Medium',
+                'severity': 'Low',
                 'description': 'Cookie can be transmitted over unencrypted HTTP connections'
             })
         

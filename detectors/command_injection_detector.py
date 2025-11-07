@@ -210,14 +210,13 @@ class CommandInjectionDetector:
                 found_indicators.append(indicator)
         
         if found_indicators:
-            severity, cvss = CommandInjectionDetector._determine_severity(found_indicators)
             evidence = f"Command injection indicators found: {', '.join(found_indicators[:3])}"
             if len(found_indicators) > 3:
                 evidence += f" and {len(found_indicators) - 3} more"
             
-            return True, evidence, severity, {
+            return True, evidence, "Critical", {
                 'cwe': 'CWE-78',
-                'cvss': cvss,
+                'cvss': '9.8',
                 'owasp': 'A03:2021 – Injection',
                 'recommendation': 'Avoid executing system commands with user input. Use parameterized APIs and input validation.'
             }

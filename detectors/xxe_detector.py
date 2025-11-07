@@ -11,7 +11,7 @@ class XXEDetector:
     def detect_xxe(response_text, response_code, payload):
         """Detect XXE vulnerability with enhanced validation"""
         if response_code >= 500:
-            return False
+            return False, "", "Critical", {}
         
         # Check for XXE-specific markers in payload
         if 'xxe_marker' not in payload.lower():
@@ -56,9 +56,19 @@ class XXEDetector:
         
         # Require at least 2 matches for /etc/passwd or 1 strong match for Windows
         if matches >= 2:
-            return True
+            return True, "XXE vulnerability detected - system file content found", "Critical", {
+                'cwe': 'CWE-611',
+                'cvss': '9.8',
+                'owasp': 'A05:2021 – Security Misconfiguration',
+                'recommendation': 'Disable external entity processing in XML parsers and implement proper input validation.'
+            }
         elif matches >= 1 and any('fonts' in p or 'extensions' in p or 'boot loader' in p for p in matched_patterns):
-            return True
+            return True, "XXE vulnerability detected - Windows system file content found", "Critical", {
+                'cwe': 'CWE-611',
+                'cvss': '9.8',
+                'owasp': 'A05:2021 – Security Misconfiguration',
+                'recommendation': 'Disable external entity processing in XML parsers and implement proper input validation.'
+            }
         
         # Check for XML parsing errors that might indicate XXE processing
         xml_error_patterns = [
@@ -73,9 +83,14 @@ class XXEDetector:
             if re.search(pattern, response_text, re.IGNORECASE):
                 # Only consider as XXE if we also have entity references in payload
                 if 'ENTITY' in payload and ('SYSTEM' in payload or 'PUBLIC' in payload):
-                    return True
+                    return True, "XXE vulnerability detected - XML parsing errors with entity references", "Critical", {
+                        'cwe': 'CWE-611',
+                        'cvss': '9.8',
+                        'owasp': 'A05:2021 – Security Misconfiguration',
+                        'recommendation': 'Disable external entity processing in XML parsers and implement proper input validation.'
+                    }
         
-        return False
+        return False, "", "", {}
     
     @staticmethod
     def get_evidence(payload, response_text):

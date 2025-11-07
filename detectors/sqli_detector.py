@@ -224,8 +224,8 @@ class SQLiDetector:
         for db_type, patterns in error_patterns.items():
             for pattern in patterns:
                 if re.search(pattern, response_text, re.IGNORECASE):
-                    severity = "Critical" if db_type != "generic" else "High"
-                    cvss = "9.8" if severity == "Critical" else "8.8"
+                    severity = "Critical"
+                    cvss = "9.8"
                     return True, f"SQL injection detected via {db_type.upper()} error: {pattern}", severity, {
                         'cwe': 'CWE-89',
                         'cvss': cvss,
@@ -242,18 +242,18 @@ class SQLiDetector:
         for pattern in union_patterns:
             if re.search(pattern, payload, re.IGNORECASE):
                 if SQLiDetector._check_union_response(response_text):
-                    return True, f"Potential UNION-based SQL injection detected: {pattern}", "High", {
+                    return True, f"Potential UNION-based SQL injection detected: {pattern}", "Critical", {
                         'cwe': 'CWE-89',
-                        'cvss': '8.8',
+                        'cvss': '9.8',
                         'owasp': 'A03:2021 – Injection',
                         'recommendation': 'Use parameterized queries/prepared statements. Implement proper input validation and sanitization.'
                     }
 
         # Check for boolean-based blind SQL injection
         if SQLiDetector._check_boolean_sqli_indicators(payload, response_text):
-            return True, "Potential boolean-based blind SQL injection detected", "High", {
+            return True, "Potential boolean-based blind SQL injection detected", "Critical", {
                 'cwe': 'CWE-89',
-                'cvss': '8.8',
+                'cvss': '9.8',
                 'owasp': 'A03:2021 – Injection',
                 'recommendation': 'Use parameterized queries/prepared statements. Implement proper input validation and sanitization.'
             }

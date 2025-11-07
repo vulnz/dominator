@@ -55,14 +55,14 @@ class SecurityHeadersDetector:
             {
                 'name': 'X-Frame-Options',
                 'description': 'Prevents clickjacking attacks',
-                'severity': 'Medium',
+                'severity': 'Low',
                 'recommendation': 'Set to DENY or SAMEORIGIN',
                 'insecure_values': ['ALLOWALL']
             },
             {
                 'name': 'X-Content-Type-Options',
                 'description': 'Prevents MIME type sniffing',
-                'severity': 'Medium',
+                'severity': 'Low',
                 'recommendation': 'Set to nosniff'
             },
             {
@@ -75,13 +75,13 @@ class SecurityHeadersDetector:
             {
                 'name': 'Strict-Transport-Security',
                 'description': 'Enforces HTTPS connections',
-                'severity': 'High',
+                'severity': 'Low',
                 'recommendation': 'Set to max-age=31536000; includeSubDomains'
             },
             {
                 'name': 'Content-Security-Policy',
                 'description': 'Prevents XSS and data injection attacks',
-                'severity': 'High',
+                'severity': 'Low',
                 'recommendation': 'Configure appropriate CSP policy',
                 'insecure_values': ['unsafe-inline', 'unsafe-eval', '*']
             },
@@ -143,7 +143,7 @@ class SecurityHeadersDetector:
         if 'secure' not in cookie_lower:
             issues.append({
                 'issue': 'Missing Secure flag',
-                'severity': 'Medium',
+                'severity': 'Low',
                 'description': 'Cookie can be transmitted over unencrypted connections'
             })
         
@@ -151,7 +151,7 @@ class SecurityHeadersDetector:
         if 'httponly' not in cookie_lower:
             issues.append({
                 'issue': 'Missing HttpOnly flag',
-                'severity': 'Medium',
+                'severity': 'Low',
                 'description': 'Cookie accessible via JavaScript (XSS risk)'
             })
         
@@ -167,7 +167,7 @@ class SecurityHeadersDetector:
         elif 'samesite=none' in cookie_lower:
             issues.append({
                 'issue': 'Weak SameSite value',
-                'severity': 'Medium',
+                'severity': 'Low',
                 'description': 'SameSite=None allows cross-site requests'
             })
         
