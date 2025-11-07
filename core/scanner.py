@@ -4639,15 +4639,136 @@ class VulnScanner:
         return False
     
     def save_report(self, results: List[Dict[str, Any]], filename: str, format_type: str):
-        """Save report"""
-        if format_type == 'json':
-            self.file_handler.save_json(results, filename)
-        elif format_type == 'xml':
-            self.file_handler.save_xml(results, filename)
-        elif format_type == 'html':
-            self.file_handler.save_html(results, filename)
+        """Save auto-report (HTML only)"""
+        # Ensure all vulnerabilities have required metadata
+        enhanced_results = self._ensure_vulnerability_metadata(results)
+        
+        if format_type == 'html':
+            self.file_handler.save_html(enhanced_results, filename)
         else:
-            self.file_handler.save_txt(results, filename)
+            # Force HTML format for all reports
+            self.file_handler.save_html(enhanced_results, filename.replace('.txt', '.html').replace('.json', '.html').replace('.xml', '.html'))
+    
+    def _ensure_vulnerability_metadata(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Ensure all vulnerabilities have CVSS, OWASP, and CWE metadata"""
+        enhanced_results = []
+        
+        for result in results:
+            if 'vulnerability' in result and result.get('vulnerability'):
+                # Ensure required metadata exists
+                if 'cvss' not in result:
+                    result['cvss'] = self._get_default_cvss(result.get('severity', 'Medium'))
+                if 'owasp' not in result:
+                    result['owasp'] = self._get_default_owasp(result.get('module', 'unknown'))
+                if 'cwe' not in result:
+                    result['cwe'] = self._get_default_cwe(result.get('module', 'unknown'))
+                if 'recommendation' not in result:
+                    result['recommendation'] = self._get_default_recommendation(result.get('module', 'unknown'))
+            
+            enhanced_results.append(result)
+        
+        return enhanced_results
+    
+    def _get_default_cvss(self, severity: str) -> str:
+        """Get default CVSS score based on severity"""
+        cvss_mapping = {
+            'Critical': '9.8',
+            'High': '8.8', 
+            'Medium': '6.5',
+            'Low': '3.1',
+            'Info': '0.0'
+        }
+        return cvss_mapping.get(severity, '6.5')
+    
+    def _get_default_owasp(self, module: str) -> str:
+        """Get default OWASP classification based on module"""
+        owasp_mapping = {
+            'xss': 'A03:2021 – Injection',
+            'sqli': 'A03:2021 – Injection', 
+            'lfi': 'A03:2021 – Injection',
+            'rfi': 'A03:2021 – Injection',
+            'xxe': 'A05:2021 – Security Misconfiguration',
+            'csrf': 'A01:2021 – Broken Access Control',
+            'idor': 'A01:2021 – Broken Access Control',
+            'commandinjection': 'A03:2021 – Injection',
+            'pathtraversal': 'A03:2021 – Injection',
+            'ldapinjection': 'A03:2021 – Injection',
+            'nosqlinjection': 'A03:2021 – Injection',
+            'ssti': 'A03:2021 – Injection',
+            'crlf': 'A03:2021 – Injection',
+            'htmlinjection': 'A03:2021 – Injection',
+            'textinjection': 'A03:2021 – Injection',
+            'secheaders': 'A05:2021 – Security Misconfiguration',
+            'httponlycookies': 'A05:2021 – Security Misconfiguration',
+            'ssltls': 'A02:2021 – Cryptographic Failures',
+            'cors': 'A05:2021 – Security Misconfiguration',
+            'clickjacking': 'A05:2021 – Security Misconfiguration',
+            'fileupload': 'A03:2021 – Injection',
+            'jwt': 'A02:2021 – Cryptographic Failures',
+            'deserialization': 'A08:2021 – Software and Data Integrity Failures',
+            'responsesplitting': 'A03:2021 – Injection'
+        }
+        return owasp_mapping.get(module, 'A06:2021 – Vulnerable and Outdated Components')
+    
+    def _get_default_cwe(self, module: str) -> str:
+        """Get default CWE classification based on module"""
+        cwe_mapping = {
+            'xss': 'CWE-79',
+            'sqli': 'CWE-89',
+            'lfi': 'CWE-22',
+            'rfi': 'CWE-98', 
+            'xxe': 'CWE-611',
+            'csrf': 'CWE-352',
+            'idor': 'CWE-639',
+            'commandinjection': 'CWE-78',
+            'pathtraversal': 'CWE-22',
+            'ldapinjection': 'CWE-90',
+            'nosqlinjection': 'CWE-943',
+            'ssti': 'CWE-94',
+            'crlf': 'CWE-93',
+            'htmlinjection': 'CWE-79',
+            'textinjection': 'CWE-74',
+            'secheaders': 'CWE-16',
+            'httponlycookies': 'CWE-614',
+            'ssltls': 'CWE-326',
+            'cors': 'CWE-346',
+            'clickjacking': 'CWE-1021',
+            'fileupload': 'CWE-434',
+            'jwt': 'CWE-287',
+            'deserialization': 'CWE-502',
+            'responsesplitting': 'CWE-113'
+        }
+        return cwe_mapping.get(module, 'CWE-200')
+    
+    def _get_default_recommendation(self, module: str) -> str:
+        """Get default recommendation based on module"""
+        recommendations = {
+            'xss': 'Implement proper input validation and output encoding. Use Content Security Policy (CSP).',
+            'sqli': 'Use parameterized queries/prepared statements. Implement proper input validation.',
+            'lfi': 'Validate and sanitize file paths. Use whitelisting for allowed files.',
+            'rfi': 'Disable remote file inclusion. Validate and sanitize all file inputs.',
+            'xxe': 'Disable external entity processing in XML parsers. Use secure XML parsing libraries.',
+            'csrf': 'Implement CSRF tokens. Use SameSite cookie attributes.',
+            'idor': 'Implement proper access controls and authorization checks.',
+            'commandinjection': 'Avoid executing system commands with user input. Use parameterized APIs.',
+            'pathtraversal': 'Validate and sanitize file paths. Use whitelisting for allowed directories.',
+            'ldapinjection': 'Use parameterized LDAP queries. Implement proper input validation.',
+            'nosqlinjection': 'Use parameterized queries. Implement proper input validation and sanitization.',
+            'ssti': 'Use safe template engines. Implement proper input validation and sandboxing.',
+            'crlf': 'Validate and sanitize all user inputs. Encode special characters.',
+            'htmlinjection': 'Implement proper HTML encoding and Content Security Policy (CSP).',
+            'textinjection': 'Implement proper input validation and output encoding.',
+            'secheaders': 'Configure proper security headers to protect against common attacks.',
+            'httponlycookies': 'Set HttpOnly, Secure, and SameSite flags on all cookies.',
+            'ssltls': 'Use strong TLS configuration with modern cipher suites.',
+            'cors': 'Configure CORS policy properly. Avoid using wildcard origins.',
+            'clickjacking': 'Implement X-Frame-Options or CSP frame-ancestors directive.',
+            'fileupload': 'Validate file types, scan for malware, and store uploads securely.',
+            'jwt': 'Use strong signing algorithms and validate JWT tokens properly.',
+            'deserialization': 'Avoid deserializing untrusted data. Use safe serialization formats.',
+            'responsesplitting': 'Validate and sanitize all user inputs used in HTTP responses.'
+        }
+        return recommendations.get(module, 'Review and implement appropriate security controls.')
     
     def print_results(self, results: List[Dict[str, Any]]):
         """Print results to console with safe encoding"""

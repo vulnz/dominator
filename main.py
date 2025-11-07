@@ -110,15 +110,9 @@ Usage examples:
     parser.add_argument('--no-domain-dedupe', action='store_true',
                        help='Disable domain-level deduplication')
     
-    # Reports
-    parser.add_argument('-o', '--output',
-                       help='File to save report')
-    parser.add_argument('--format', 
-                       choices=['xml', 'json', 'txt', 'html'],
-                       default='txt',
-                       help='Report format')
+    # Auto Reports
     parser.add_argument('--auto-report', action='store_true',
-                       help='Automatically generate report with timestamp')
+                       help='Automatically generate HTML report with timestamp')
     
     # Information commands
     parser.add_argument('--modules-list', action='store_true',
@@ -294,7 +288,7 @@ def main():
     if not hasattr(args, 'page_limit'):
         args.page_limit = None
     if not hasattr(args, 'format'):
-        args.format = 'txt'
+        args.format = 'html'
     if not hasattr(args, 'group_findings'):
         args.group_findings = not args.no_grouping
     if not hasattr(args, 'dedupe_domain'):
@@ -360,27 +354,17 @@ def main():
         # Always print results to console first
         scanner.print_results(results)
         
-        # Auto-generate report if flag is set
-        if args.auto_report and not args.output:
+        # Auto-generate HTML report if flag is set
+        if args.auto_report:
             import datetime
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             target_name = args.target.replace(':', '_').replace('/', '_').replace('\\', '_')
-            auto_filename = f"scan_report_{target_name}_{timestamp}.{args.format}"
+            auto_filename = f"scan_report_{target_name}_{timestamp}.html"
             try:
-                scanner.save_report(results, auto_filename, args.format)
+                scanner.save_report(results, auto_filename, 'html')
                 print(f"\nAuto-report saved to {auto_filename}")
             except Exception as e:
                 print(f"Error saving auto-report: {e}")
-        
-        # Save results if output specified
-        if args.output:
-            try:
-                scanner.save_report(results, args.output, args.format)
-                print(f"\nReport saved to {args.output}")
-            except Exception as e:
-                print(f"Error saving report: {e}")
-                import traceback
-                traceback.print_exc()
         
         # Exit with appropriate code
         vulnerabilities_found = any(r.get('vulnerability') for r in results)
