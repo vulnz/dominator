@@ -1100,12 +1100,15 @@ class FileHandler:
         
         function generateBenchmarkSection() {
             const benchmarkData = reportData.benchmark_analysis;
-            if (!benchmarkData) return;
+            if (!benchmarkData || !benchmarkData.summary) {
+                console.log('No benchmark data or summary available');
+                return;
+            }
             
             console.log('Generating benchmark section...');
             
-            const summary = benchmarkData.summary;
-            const byCategory = benchmarkData.by_category;
+            const summary = benchmarkData.summary || {};
+            const byCategory = benchmarkData.by_category || {};
             
             let benchmarkHtml = `
                 <div class="executive-summary" style="margin: 25px 0;">
@@ -1119,14 +1122,14 @@ class FileHandler:
                                 <h3>Общая эффективность</h3>
                                 <div class="risk-meter">
                                     <div class="risk-level">
-                                        <span style="font-size: 1.2rem; font-weight: bold;">${summary.detection_rate.toFixed(1)}%</span>
+                                        <span style="font-size: 1.2rem; font-weight: bold;">${(summary.detection_rate || 0).toFixed(1)}%</span>
                                     </div>
                                 </div>
                                 <p>Коэффициент обнаружения</p>
                                 <div style="margin-top: 15px; font-size: 0.9rem;">
-                                    <div>Найдено: ${summary.total_found_vulnerabilities}</div>
-                                    <div>Известно: ${summary.total_known_vulnerabilities}</div>
-                                    <div>Ложных: ${benchmarkData.false_positives.length}</div>
+                                    <div>Найдено: ${summary.total_found_vulnerabilities || 0}</div>
+                                    <div>Известно: ${summary.total_known_vulnerabilities || 0}</div>
+                                    <div>Ложных: ${(benchmarkData.false_positives || []).length}</div>
                                 </div>
                             </div>
                         </div>
@@ -1192,10 +1195,10 @@ class FileHandler:
             const ctx = document.getElementById('benchmarkChart');
             if (!ctx) return;
             
-            const summary = benchmarkData.summary;
-            const correctlyIdentified = benchmarkData.correctly_identified.length;
-            const missed = benchmarkData.missed_vulnerabilities.length;
-            const falsePositives = benchmarkData.false_positives.length;
+            const summary = benchmarkData.summary || {};
+            const correctlyIdentified = (benchmarkData.correctly_identified || []).length;
+            const missed = (benchmarkData.missed_vulnerabilities || []).length;
+            const falsePositives = (benchmarkData.false_positives || []).length;
             
             new Chart(ctx.getContext('2d'), {
                 type: 'doughnut',
