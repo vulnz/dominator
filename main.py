@@ -174,6 +174,8 @@ def show_modules():
     print("- hostheader: Host Header Injection")
     print("- prototypepollution: Prototype Pollution")
     print("- vhost: Virtual Host Discovery")
+    print("- infoleak: Information Leakage Detection")
+    print("- openredirect: Open Redirect Vulnerabilities")
 
 class ScanTimeout:
     """Handle scan timeout using threading"""

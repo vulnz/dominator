@@ -903,6 +903,10 @@ class VulnScanner:
                 results.extend(self._test_prototype_pollution(parsed_data))
             elif module_name == "vhost":
                 results.extend(self._test_vhost(parsed_data))
+            elif module_name == "infoleak":
+                results.extend(self._test_information_leakage(parsed_data))
+            elif module_name == "openredirect":
+                results.extend(self._test_open_redirect(parsed_data))
             else:
                 print(f"    [WARNING] Unknown module: {module_name}")
                 
@@ -945,14 +949,14 @@ class VulnScanner:
                     test_params[param] = [payload]
                     
                     # Build query string with minimal encoding for XSS payloads
-                    from urllib.parse import quote
+                    from urllib.parse import quote_plus
                     query_parts = []
                     for k, v_list in test_params.items():
                         for v in v_list:
-                            # Minimal encoding to preserve XSS characters
-                            encoded_key = quote(k, safe='')
-                            # Don't encode XSS-critical characters
-                            encoded_value = str(v).replace('#', '%23').replace('&', '%26').replace('+', '%2B')
+                            # Use quote_plus but preserve XSS characters
+                            encoded_key = quote_plus(k)
+                            # Minimal encoding - only encode & and # to prevent URL breaking
+                            encoded_value = str(v).replace('&', '%26').replace('#', '%23')
                             query_parts.append(f"{encoded_key}={encoded_value}")
                     
                     test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
@@ -995,13 +999,22 @@ class VulnScanner:
                     # Расширенная проверка отражения payload (включая различные кодировки)
                     payload_lower = payload.lower()
                     response_lower = response.text.lower()
-                    payload_in_response = (payload in response.text or 
-                                         payload_lower in response_lower or
-                                         payload.replace('<', '&lt;').replace('>', '&gt;') in response.text or
-                                         payload.replace('<', '%3C').replace('>', '%3E') in response.text or
-                                         payload.replace('"', '&quot;').replace("'", '&#x27;') in response.text or
-                                         payload.replace(' ', '+') in response.text or
-                                         payload.replace(' ', '%20') in response.text)
+                        
+                    # Проверяем различные варианты кодирования payload
+                    payload_variants = [
+                        payload,  # Оригинальный
+                        payload_lower,  # Нижний регистр
+                        payload.replace('<', '&lt;').replace('>', '&gt;'),  # HTML entities
+                        payload.replace('<', '%3C').replace('>', '%3E'),  # URL encoding
+                        payload.replace('"', '&quot;').replace("'", '&#x27;'),  # Quote encoding
+                        payload.replace(' ', '+'),  # Space to plus
+                        payload.replace(' ', '%20'),  # Space to %20
+                        payload.replace('<script>', '&lt;script&gt;'),  # Script tag encoding
+                        payload.replace('alert', 'alert'),  # Keep alert as is
+                        payload.replace('javascript:', 'javascript%3A')  # JS protocol encoding
+                    ]
+                        
+                    payload_in_response = any(variant in response.text or variant in response_lower for variant in payload_variants)
                     
                     print(f"    [XSS] Payload reflected: {payload_in_response}")
                     
@@ -1289,14 +1302,14 @@ class VulnScanner:
                     test_params[param] = [payload]
                     
                     # Build query string with minimal encoding for SQL injection
-                    from urllib.parse import quote
+                    from urllib.parse import quote_plus
                     query_parts = []
                     for k, v_list in test_params.items():
                         for v in v_list:
-                            # Minimal encoding to preserve SQL injection characters
-                            encoded_key = quote(k, safe='')
-                            # Don't encode single quotes, spaces, or SQL keywords
-                            encoded_value = str(v).replace('#', '%23').replace('&', '%26')
+                            # Use quote_plus but preserve SQL injection characters
+                            encoded_key = quote_plus(k)
+                            # Only encode & and # to prevent URL breaking, preserve SQL chars
+                            encoded_value = str(v).replace('&', '%26').replace('#', '%23')
                             query_parts.append(f"{encoded_key}={encoded_value}")
                     
                     test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
@@ -1333,14 +1346,21 @@ class VulnScanner:
                         if not is_vulnerable:
                             print(f"    [SQLI] Running extended SQL error pattern checks...")
                             # Проверяем расширенный список SQL ошибок
-                            sql_errors = ['mysql', 'sql syntax', 'ora-', 'postgresql', 'sqlite', 'mssql', 
-                                        'warning:', 'error:', 'exception', 'stack trace', 'fatal error',
-                                        'syntax error', 'database error', 'query failed', 'connection failed',
-                                        'table', 'column', 'constraint', 'duplicate entry', 'access denied',
-                                        'unknown column', 'unknown table', 'subquery', 'operand', 'operands',
-                                        'you have an error in your sql syntax', 'check the manual that corresponds']
+                            sql_errors = [
+                                'mysql', 'sql syntax', 'ora-', 'postgresql', 'sqlite', 'mssql', 
+                                'warning:', 'error:', 'exception', 'stack trace', 'fatal error',
+                                'syntax error', 'database error', 'query failed', 'connection failed',
+                                'table', 'column', 'constraint', 'duplicate entry', 'access denied',
+                                'unknown column', 'unknown table', 'subquery', 'operand', 'operands',
+                                'you have an error in your sql syntax', 'check the manual that corresponds',
+                                # Добавляем специфичные для testphp.vulnweb.com ошибки
+                                'supplied argument is not a valid mysql', 'mysql_fetch_array()',
+                                'mysql_num_rows()', 'division by zero', 'invalid query',
+                                'mysql_fetch_assoc()', 'mysql_fetch_row()', 'mysql_result()',
+                                'call to undefined function', 'unexpected end of file'
+                            ]
                             response_lower = response.text.lower()
-                            
+                                
                             for error in sql_errors:
                                 if error in response_lower:
                                     is_vulnerable = True
@@ -3608,12 +3628,26 @@ class VulnScanner:
         return results
 
     def _test_technology_detection(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Test for technology detection using Wappalyzer"""
+        """Test for technology detection using Wappalyzer with deduplication"""
         results = []
         base_url = parsed_data['url']
         
+        # Extract domain for deduplication
+        from urllib.parse import urlparse
+        parsed_url = urlparse(base_url)
+        domain = parsed_url.hostname
+        
+        # Create deduplication key for this domain
+        domain_key = f"technology_{domain}"
+        if domain_key in self.found_vulnerabilities:
+            print(f"    [TECHNOLOGY] Skipping technology detection for {domain} - already tested")
+            return results
+        
         try:
-            print(f"    [TECHNOLOGY] Detecting technologies with Wappalyzer...")
+            print(f"    [TECHNOLOGY] Detecting technologies with Wappalyzer for domain: {domain}")
+            
+            # Mark domain as tested
+            self.found_vulnerabilities.add(domain_key)
             
             # Make request to get headers and content
             response = requests.get(
@@ -3638,23 +3672,45 @@ class VulnScanner:
             if technologies:
                 print(f"    [TECHNOLOGY] Found {len(technologies)} technologies")
                 
-                # Store technologies in scan stats
-                domain = parsed_data.get('host', 'unknown')
+                # Store technologies in scan stats (deduplicated by domain)
                 self.scan_stats['technologies'][domain] = list(technologies)
                 
-                for tech_name in technologies:
+                # Group all technologies into single finding to avoid spam
+                tech_list = list(technologies)
+                if len(tech_list) <= 10:  # Group if 10 or fewer technologies
+                    tech_names = ', '.join(tech_list)
+                    evidence = f"Technologies detected: {tech_names}"
+                    
                     results.append({
                         'module': 'technology',
                         'target': base_url,
-                        'vulnerability': f'Technology Detected: {tech_name}',
+                        'vulnerability': f'Technologies Detected ({len(tech_list)} found)',
                         'severity': 'Info',
-                        'parameter': f'technology: {tech_name}',
+                        'parameter': f'technologies: {len(tech_list)} found',
                         'payload': 'N/A',
-                        'evidence': f'Technology {tech_name} detected by Wappalyzer',
+                        'evidence': evidence,
                         'request_url': base_url,
                         'detector': 'Wappalyzer.analyze',
-                        'response_snippet': f'Technology: {tech_name}'
+                        'response_snippet': f'Technologies: {tech_names}',
+                        'technologies': tech_list  # Keep detailed list for reports
                     })
+                else:
+                    # Too many technologies, create individual findings for important ones
+                    important_techs = ['PHP', 'Apache', 'MySQL', 'WordPress', 'Joomla', 'Drupal']
+                    for tech_name in tech_list:
+                        if any(important in tech_name for important in important_techs):
+                            results.append({
+                                'module': 'technology',
+                                'target': base_url,
+                                'vulnerability': f'Technology Detected: {tech_name}',
+                                'severity': 'Info',
+                                'parameter': f'technology: {tech_name}',
+                                'payload': 'N/A',
+                                'evidence': f'Technology {tech_name} detected by Wappalyzer',
+                                'request_url': base_url,
+                                'detector': 'Wappalyzer.analyze',
+                                'response_snippet': f'Technology: {tech_name}'
+                            })
             else:
                 print(f"    [TECHNOLOGY] No technologies detected")
             
@@ -4937,6 +4993,193 @@ class VulnScanner:
         
         return results
     
+    def _test_information_leakage(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for information leakage vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        try:
+            print(f"    [INFOLEAK] Testing for information leakage...")
+            
+            # Make request to get page content
+            response = requests.get(
+                base_url,
+                timeout=self.config.timeout,
+                headers=self.config.headers,
+                verify=False
+            )
+            
+            print(f"    [INFOLEAK] Response code: {response.status_code}")
+            
+            # Check for email addresses
+            import re
+            email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+            emails = re.findall(email_pattern, response.text)
+            
+            if emails:
+                unique_emails = list(set(emails))
+                print(f"    [INFOLEAK] Found {len(unique_emails)} email addresses")
+                
+                evidence = f"Email addresses found: {', '.join(unique_emails[:5])}"
+                if len(unique_emails) > 5:
+                    evidence += f" and {len(unique_emails) - 5} more"
+                
+                results.append({
+                    'module': 'infoleak',
+                    'target': base_url,
+                    'vulnerability': 'Email Address Disclosure',
+                    'severity': 'Low',
+                    'parameter': 'response_content',
+                    'payload': 'N/A',
+                    'evidence': evidence,
+                    'request_url': base_url,
+                    'detector': 'regex_email_detection',
+                    'response_snippet': f'Found {len(unique_emails)} email addresses'
+                })
+            
+            # Check for internal IP addresses
+            ip_pattern = r'\b(?:127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b'
+            internal_ips = re.findall(ip_pattern, response.text)
+            
+            if internal_ips:
+                unique_ips = list(set(internal_ips))
+                print(f"    [INFOLEAK] Found {len(unique_ips)} internal IP addresses")
+                
+                evidence = f"Internal IP addresses found: {', '.join(unique_ips)}"
+                
+                results.append({
+                    'module': 'infoleak',
+                    'target': base_url,
+                    'vulnerability': 'Internal IP Address Disclosure',
+                    'severity': 'Medium',
+                    'parameter': 'response_content',
+                    'payload': 'N/A',
+                    'evidence': evidence,
+                    'request_url': base_url,
+                    'detector': 'regex_ip_detection',
+                    'response_snippet': f'Found {len(unique_ips)} internal IPs'
+                })
+            
+            # Check for debug information
+            debug_patterns = [
+                'debug', 'trace', 'stack trace', 'error_reporting',
+                'display_errors', 'var_dump', 'print_r'
+            ]
+            
+            response_lower = response.text.lower()
+            found_debug = [pattern for pattern in debug_patterns if pattern in response_lower]
+            
+            if found_debug:
+                print(f"    [INFOLEAK] Found debug information: {found_debug}")
+                
+                evidence = f"Debug information found: {', '.join(found_debug)}"
+                
+                results.append({
+                    'module': 'infoleak',
+                    'target': base_url,
+                    'vulnerability': 'Debug Information Disclosure',
+                    'severity': 'Low',
+                    'parameter': 'response_content',
+                    'payload': 'N/A',
+                    'evidence': evidence,
+                    'request_url': base_url,
+                    'detector': 'debug_pattern_detection',
+                    'response_snippet': f'Debug patterns: {", ".join(found_debug)}'
+                })
+            
+        except Exception as e:
+            print(f"    [INFOLEAK] Error during information leakage testing: {e}")
+        
+        return results
+    
+    def _test_open_redirect(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for Open Redirect vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # Open redirect payloads
+        redirect_payloads = [
+            'http://evil.com',
+            'https://attacker.com',
+            '//evil.com',
+            '///evil.com',
+            'http://google.com',
+            'https://example.com',
+            'javascript:alert(1)',
+            'data:text/html,<script>alert(1)</script>'
+        ]
+        
+        # Test GET parameters that might be used for redirects
+        redirect_params = ['url', 'redirect', 'return', 'next', 'goto', 'target', 'link', 'site']
+        
+        for param, values in parsed_data['query_params'].items():
+            # Check if parameter name suggests it might be used for redirects
+            if any(redirect_param in param.lower() for redirect_param in redirect_params):
+                print(f"    [OPENREDIRECT] Testing parameter: {param}")
+                
+                # Create deduplication key for this parameter
+                param_key = f"openredirect_{base_url.split('?')[0]}_{param}"
+                if param_key in self.found_vulnerabilities:
+                    print(f"    [OPENREDIRECT] Skipping parameter {param} - already tested")
+                    continue
+                
+                for payload in redirect_payloads:
+                    try:
+                        print(f"    [OPENREDIRECT] Trying payload: {payload}")
+                        
+                        # Create test URL
+                        test_params = parsed_data['query_params'].copy()
+                        test_params[param] = [payload]
+                        
+                        # Build query string
+                        query_parts = []
+                        for k, v_list in test_params.items():
+                            for v in v_list:
+                                query_parts.append(f"{k}={v}")
+                        
+                        test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                        
+                        response = requests.get(
+                            test_url,
+                            timeout=self.config.timeout,
+                            headers=self.config.headers,
+                            verify=False,
+                            allow_redirects=False  # Don't follow redirects
+                        )
+                        
+                        print(f"    [OPENREDIRECT] Response code: {response.status_code}")
+                        
+                        # Check for redirect responses
+                        if response.status_code in [301, 302, 303, 307, 308]:
+                            location = response.headers.get('Location', '')
+                            if payload in location or 'evil.com' in location or 'attacker.com' in location:
+                                print(f"    [OPENREDIRECT] VULNERABILITY FOUND! Parameter: {param}")
+                                
+                                # Mark as found to prevent duplicates
+                                self.found_vulnerabilities.add(param_key)
+                                
+                                evidence = f"Open redirect detected - Location header: {location}"
+                                
+                                results.append({
+                                    'module': 'openredirect',
+                                    'target': base_url,
+                                    'vulnerability': 'Open Redirect',
+                                    'severity': 'Medium',
+                                    'parameter': param,
+                                    'payload': payload,
+                                    'evidence': evidence,
+                                    'request_url': test_url,
+                                    'detector': 'redirect_header_analysis',
+                                    'response_snippet': f'Location: {location}',
+                                    'remediation': 'Validate redirect URLs against a whitelist of allowed domains'
+                                })
+                                break  # Found open redirect, no need to test more payloads for this param
+                                
+                    except Exception as e:
+                        print(f"    [OPENREDIRECT] Error testing payload: {e}")
+                        continue
+        
+        return results
     
     def _get_success_indicators(self) -> List[str]:
         """Get indicators that suggest a request was successful"""
