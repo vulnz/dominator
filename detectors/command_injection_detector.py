@@ -63,43 +63,6 @@ class CommandInjectionDetector:
     
     @staticmethod
     def get_evidence(payload: str, response_text: str) -> str:
-        """Get evidence of command injection vulnerability"""
-        indicators = CommandInjectionDetector.get_command_indicators()
-        found_indicators = []
-        
-        response_lower = response_text.lower()
-        for indicator in indicators:
-            if indicator.lower() in response_lower:
-                found_indicators.append(indicator)
-        
-        if found_indicators:
-            return f"Command injection detected. Found command output: {', '.join(found_indicators[:3])}"
-        
-        return "Command injection vulnerability detected based on response patterns"
-    
-    @staticmethod
-    def get_response_snippet(payload: str, response_text: str) -> str:
-        """Get relevant response snippet"""
-        # Look for command output patterns
-        patterns = [
-            r'uid=\d+.*gid=\d+.*',
-            r'total \d+.*',
-            r'PING .*',
-            r'Directory of .*',
-            r'Linux.*\d+\.\d+\.\d+.*'
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, response_text, re.IGNORECASE)
-            if match:
-                start = max(0, match.start() - 20)
-                end = min(len(response_text), match.end() + 100)
-                return response_text[start:end]
-        
-        return response_text[:200]
-    
-    @staticmethod
-    def get_evidence(payload: str, response_text: str) -> str:
         """Get evidence for command injection"""
         evidence_parts = []
         
@@ -138,15 +101,6 @@ class CommandInjectionDetector:
         if len(response_text) > 300:
             return response_text[:300] + "..."
         return response_text
-    
-    @staticmethod
-    def get_remediation_advice() -> str:
-        """Get remediation advice for command injection"""
-        return (
-            "Use parameterized commands and avoid shell execution. "
-            "Implement input validation and sanitization. "
-            "Use whitelisting for allowed commands and parameters."
-        )
     
     @staticmethod
     def get_remediation_advice() -> str:
