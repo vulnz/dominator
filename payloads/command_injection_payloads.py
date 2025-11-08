@@ -142,6 +142,15 @@ class CommandInjectionPayloads:
         ]
 
     @staticmethod
+    def get_all_payloads() -> List[str]:
+        """Get all command injection payloads"""
+        payloads = []
+        payloads.extend(CommandInjectionPayloads.get_linux_payloads())
+        payloads.extend(CommandInjectionPayloads.get_windows_payloads())
+        payloads.extend(CommandInjectionPayloads.get_blind_payloads())
+        return payloads
+
+    @staticmethod
     def get_windows_payloads() -> List[str]:
         """Windows command injection payloads that work on XVWA"""
         return [
