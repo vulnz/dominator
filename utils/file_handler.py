@@ -134,7 +134,21 @@ class FileHandler:
         # Debug: Show what we're putting into the template
         print(f"[DEBUG] About to insert into template: vulnerabilities={len(report_data['vulnerabilities'])}")
         
-        html_content = template.replace('{report_data}', json.dumps(report_data, ensure_ascii=False, indent=2))
+        # Safely serialize data to JSON
+        try:
+            json_data = json.dumps(report_data, ensure_ascii=False, indent=2, default=self._json_serializer)
+        except Exception as e:
+            print(f"[ERROR] JSON serialization failed: {e}")
+            # Fallback: create minimal report data
+            fallback_data = {
+                'vulnerabilities': [],
+                'scan_stats': report_data.get('scan_stats', {}),
+                'filetree_enabled': False,
+                'benchmark_analysis': None
+            }
+            json_data = json.dumps(fallback_data, ensure_ascii=False, indent=2, default=self._json_serializer)
+        
+        html_content = template.replace('{report_data}', json_data)
         
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(html_content)
@@ -154,6 +168,36 @@ class FileHandler:
             # Error absence indicators
             'no error', 'valid', 'accepted', 'approved'
         ]
+    
+    def _json_serializer(self, obj):
+        """Custom JSON serializer for non-serializable objects"""
+        import datetime
+        
+        # Handle datetime objects
+        if isinstance(obj, datetime.datetime):
+            return obj.isoformat()
+        elif isinstance(obj, datetime.date):
+            return obj.isoformat()
+        elif isinstance(obj, datetime.time):
+            return obj.isoformat()
+        
+        # Handle sets
+        elif isinstance(obj, set):
+            return list(obj)
+        
+        # Handle bytes
+        elif isinstance(obj, bytes):
+            try:
+                return obj.decode('utf-8')
+            except UnicodeDecodeError:
+                return obj.decode('utf-8', errors='replace')
+        
+        # Handle other objects by converting to string
+        else:
+            try:
+                return str(obj)
+            except Exception:
+                return f"<non-serializable: {type(obj).__name__}>"
     
     def _escape_html(self, text: str) -> str:
         """Escape HTML characters"""

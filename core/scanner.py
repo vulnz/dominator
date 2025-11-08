@@ -5360,18 +5360,37 @@ class VulnScanner:
         enhanced_results = []
         
         for result in results:
-            if 'vulnerability' in result and result.get('vulnerability'):
-                # Ensure required metadata exists
-                if 'cvss' not in result:
-                    result['cvss'] = self._get_default_cvss(result.get('severity', 'Medium'))
-                if 'owasp' not in result:
-                    result['owasp'] = self._get_default_owasp(result.get('module', 'unknown'))
-                if 'cwe' not in result:
-                    result['cwe'] = self._get_default_cwe(result.get('module', 'unknown'))
-                if 'recommendation' not in result:
-                    result['recommendation'] = self._get_default_recommendation(result.get('module', 'unknown'))
+            # Create a clean copy of the result to avoid reference issues
+            clean_result = {}
             
-            enhanced_results.append(result)
+            # Copy all serializable data
+            for key, value in result.items():
+                try:
+                    # Test if value is JSON serializable
+                    json.dumps(value)
+                    clean_result[key] = value
+                except (TypeError, ValueError):
+                    # Convert non-serializable values to strings
+                    if isinstance(value, (list, dict, set)):
+                        try:
+                            clean_result[key] = self._clean_data_structure(value)
+                        except:
+                            clean_result[key] = str(value)
+                    else:
+                        clean_result[key] = str(value)
+            
+            if 'vulnerability' in clean_result and clean_result.get('vulnerability'):
+                # Ensure required metadata exists
+                if 'cvss' not in clean_result:
+                    clean_result['cvss'] = self._get_default_cvss(clean_result.get('severity', 'Medium'))
+                if 'owasp' not in clean_result:
+                    clean_result['owasp'] = self._get_default_owasp(clean_result.get('module', 'unknown'))
+                if 'cwe' not in clean_result:
+                    clean_result['cwe'] = self._get_default_cwe(clean_result.get('module', 'unknown'))
+                if 'recommendation' not in clean_result:
+                    clean_result['recommendation'] = self._get_default_recommendation(clean_result.get('module', 'unknown'))
+            
+            enhanced_results.append(clean_result)
         
         return enhanced_results
     
@@ -5475,6 +5494,37 @@ class VulnScanner:
             'responsesplitting': 'Validate and sanitize all user inputs used in HTTP responses.'
         }
         return recommendations.get(module, 'Review and implement appropriate security controls.')
+    
+    def _clean_data_structure(self, data):
+        """Recursively clean data structures to make them JSON serializable"""
+        if isinstance(data, dict):
+            cleaned = {}
+            for k, v in data.items():
+                try:
+                    json.dumps(v)
+                    cleaned[str(k)] = v
+                except (TypeError, ValueError):
+                    if isinstance(v, (dict, list, set)):
+                        cleaned[str(k)] = self._clean_data_structure(v)
+                    else:
+                        cleaned[str(k)] = str(v)
+            return cleaned
+        elif isinstance(data, list):
+            cleaned = []
+            for item in data:
+                try:
+                    json.dumps(item)
+                    cleaned.append(item)
+                except (TypeError, ValueError):
+                    if isinstance(item, (dict, list, set)):
+                        cleaned.append(self._clean_data_structure(item))
+                    else:
+                        cleaned.append(str(item))
+            return cleaned
+        elif isinstance(data, set):
+            return list(data)
+        else:
+            return str(data)
     
     def print_results(self, results: List[Dict[str, Any]]):
         """Print results to console with safe encoding"""
