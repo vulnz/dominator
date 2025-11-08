@@ -1866,7 +1866,180 @@ class VulnScanner:
                             continue
         
         return results
-
+    
+    def _test_lfi_endpoint(self, parsed_data: Dict[str, Any], lfi_payloads: List[str]) -> List[Dict[str, Any]]:
+        """Test specific endpoint for LFI vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        for param, values in parsed_data['query_params'].items():
+            print(f"    [LFI] Testing endpoint parameter: {param}")
+            
+            # Create deduplication key for this parameter
+            param_key = f"lfi_{base_url.split('?')[0]}_{param}"
+            if param_key in self.found_vulnerabilities:
+                print(f"    [LFI] Skipping endpoint parameter {param} - already tested")
+                continue
+            
+            for payload in lfi_payloads[:40]:  # More payloads for known endpoints
+                try:
+                    print(f"    [LFI] Trying endpoint payload: {payload[:50]}...")
+                    
+                    # Create test URL
+                    test_params = parsed_data['query_params'].copy()
+                    test_params[param] = [payload]
+                    
+                    test_url = self._build_test_url(base_url, test_params)
+                    print(f"    [LFI] Endpoint request URL: {test_url}")
+                    
+                    response = requests.get(
+                        test_url,
+                        timeout=self.config.timeout,
+                        headers=self.config.headers,
+                        verify=False
+                    )
+                    
+                    # Update request count
+                    self.request_count += 1
+                    self.scan_stats['payload_stats']['lfi']['requests_made'] += 1
+                    
+                    print(f"    [LFI] Endpoint response code: {response.status_code}")
+                    
+                    # Enhanced LFI detection
+                    is_vulnerable, pattern = self._enhanced_lfi_detection(response.text, response.status_code, payload)
+                    
+                    if is_vulnerable:
+                        print(f"    [LFI] ENDPOINT VULNERABILITY FOUND! Parameter: {param}")
+                        
+                        # Mark as found to prevent duplicates
+                        self.found_vulnerabilities.add(param_key)
+                        
+                        evidence = f"Local file inclusion detected in endpoint - pattern: {pattern}"
+                        response_snippet = response.text[:200] + "..." if len(response.text) > 200 else response.text
+                        
+                        vulnerability = {
+                            'module': 'lfi',
+                            'target': base_url,
+                            'vulnerability': 'Local File Inclusion (Known Endpoint)',
+                            'severity': 'High',
+                            'parameter': param,
+                            'payload': payload,
+                            'evidence': evidence,
+                            'request_url': test_url,
+                            'detector': 'Enhanced LFI Detection (Known Endpoint)',
+                            'response_snippet': response_snippet
+                        }
+                        
+                        # Update successful payload count
+                        self.scan_stats['payload_stats']['lfi']['successful_payloads'] += 1
+                        self.scan_stats['total_payloads_used'] += 1
+                        
+                        results.append(vulnerability)
+                        break  # Found LFI, no need to test more payloads for this param
+                        
+                except Exception as e:
+                    print(f"    [LFI] Error testing endpoint payload: {e}")
+                    continue
+        
+        return results
+    
+    def _enhanced_lfi_detection(self, response_text: str, response_code: int, payload: str) -> tuple:
+        """Enhanced LFI detection with multiple methods"""
+        try:
+            # Primary detection using LFIDetector
+            is_vulnerable, pattern = LFIDetector.detect_lfi(response_text, response_code)
+            if is_vulnerable:
+                print(f"    [LFI] Primary detector found LFI: {pattern}")
+                return True, pattern
+            
+            # Enhanced detection for common LFI indicators
+            lfi_indicators = [
+                # Linux/Unix files
+                'root:x:0:0:root:/root:/bin/bash',
+                'root:x:0:0:root:/root:/bin/sh',
+                'daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin',
+                'bin:x:2:2:bin:/bin:/usr/sbin/nologin',
+                'sys:x:3:3:sys:/dev:/usr/sbin/nologin',
+                'nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin',
+                
+                # Windows files
+                '[extensions]',
+                '; for 16-bit app support',
+                '[fonts]',
+                '[Mail]',
+                'MAPI=1',
+                
+                # PHP files
+                '<?php',
+                '<?=',
+                'php_value',
+                'extension=',
+                
+                # Apache/Nginx config
+                'ServerRoot',
+                'DocumentRoot',
+                'LoadModule',
+                'server_name',
+                'location /',
+                
+                # Common file patterns
+                'root:',
+                '/etc/passwd',
+                '/etc/shadow',
+                'C:\\Windows\\',
+                'C:\\WINDOWS\\',
+                
+                # Error patterns that might indicate file access
+                'failed to open stream',
+                'No such file or directory',
+                'Permission denied',
+                'include_path',
+                'fopen(',
+                'file_get_contents(',
+            ]
+            
+            response_lower = response_text.lower()
+            for indicator in lfi_indicators:
+                if indicator.lower() in response_lower:
+                    print(f"    [LFI] Enhanced detection found indicator: {indicator}")
+                    return True, f"LFI indicator found: {indicator}"
+            
+            # Check for file content patterns
+            if len(response_text) > 100:  # Only check substantial responses
+                # Look for passwd file structure
+                if ':x:' in response_text and '/bin/' in response_text:
+                    print(f"    [LFI] Enhanced detection found passwd file structure")
+                    return True, "Unix passwd file structure detected"
+                
+                # Look for Windows ini file structure
+                if '[' in response_text and ']' in response_text and '=' in response_text:
+                    lines = response_text.split('\n')
+                    ini_sections = [line.strip() for line in lines if line.strip().startswith('[') and line.strip().endswith(']')]
+                    if len(ini_sections) >= 2:
+                        print(f"    [LFI] Enhanced detection found Windows INI file structure")
+                        return True, "Windows INI file structure detected"
+                
+                # Look for PHP code
+                if '<?php' in response_text or '<?=' in response_text:
+                    print(f"    [LFI] Enhanced detection found PHP code")
+                    return True, "PHP source code detected"
+            
+            # Check response size and content type changes
+            if response_code == 200 and len(response_text) > 500:
+                # Look for significant content that might be a file
+                if any(keyword in payload.lower() for keyword in ['etc/passwd', 'win.ini', 'boot.ini']):
+                    # If we requested a system file and got substantial content, it might be LFI
+                    if not any(html_tag in response_lower for html_tag in ['<html', '<body', '<div', '<script']):
+                        print(f"    [LFI] Enhanced detection found non-HTML response to system file request")
+                        return True, "Non-HTML response to system file request"
+            
+            print(f"    [LFI] Enhanced detection found no LFI indicators")
+            return False, "No LFI detected"
+            
+        except Exception as e:
+            print(f"    [LFI] Enhanced detection error: {e}")
+            return False, f"Detection error: {e}"
+    
     def _test_csrf(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Test for CSRF vulnerabilities"""
         results = []
