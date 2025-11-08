@@ -1015,28 +1015,14 @@ class FileHandler:
         }
         
         function generateFileTreeSection() {
-            const vulnerabilities = reportData.vulnerabilities || [];
+            const scanStats = reportData.scan_stats || {};
+            const filePaths = scanStats.file_tree_paths || [];
             
-            // Extract file paths
-            const filePaths = new Set();
-            vulnerabilities.forEach(vuln => {
-                if (vuln.request_url) {
-                    try {
-                        const url = new URL(vuln.request_url);
-                        if (url.pathname && url.pathname !== '/') {
-                            filePaths.add(url.pathname);
-                        }
-                    } catch (e) {
-                        // Ignore invalid URLs
-                    }
-                }
-            });
-            
-            if (filePaths.size === 0) return;
+            if (filePaths.length === 0) return;
             
             // Build tree structure
             const tree = {};
-            Array.from(filePaths).forEach(path => {
+            filePaths.forEach(path => {
                 const parts = path.split('/').filter(part => part);
                 let current = tree;
                 parts.forEach(part => {
@@ -1047,22 +1033,24 @@ class FileHandler:
                 });
             });
             
-            let filetreeHtml = `
-                <div class="filetree-section">
-                    <div class="filetree-header">
-                        <h2><i class="fas fa-folder-tree"></i> File Tree Structure</h2>
-                        <p>Discovered files and directories during scanning</p>
+            if (Object.keys(tree).length > 0) {
+                let filetreeHtml = `
+                    <div class="filetree-section">
+                        <div class="filetree-header">
+                            <h2><i class="fas fa-folder-tree"></i> File Tree Structure</h2>
+                            <p>Discovered files and directories during scanning (${filePaths.length} paths)</p>
+                        </div>
+                        <div class="file-tree">
+                            ${generateTreeHtml(tree, 0)}
+                        </div>
                     </div>
-                    <div class="file-tree">
-                        ${generateTreeHtml(tree, 0)}
-                    </div>
-                </div>
-            `;
-            
-            // Insert before vulnerabilities
-            const vulnSection = document.querySelector('.vulnerabilities');
-            if (vulnSection) {
-                vulnSection.insertAdjacentHTML('beforebegin', filetreeHtml);
+                `;
+                
+                // Insert before vulnerabilities
+                const vulnSection = document.querySelector('.vulnerabilities');
+                if (vulnSection) {
+                    vulnSection.insertAdjacentHTML('beforebegin', filetreeHtml);
+                }
             }
         }
         

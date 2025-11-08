@@ -639,10 +639,29 @@ class VulnScanner:
                     else:
                         print(f"  [DEBUG] Specific modules detected - skipping crawler to avoid unnecessary requests")
             
+            # Collect file tree data if filetree is enabled
+            if getattr(self.config, 'filetree', False):
+                file_paths = set()
+                for page_data in all_found_pages:
+                    if page_data.get('url'):
+                        try:
+                            from urllib.parse import urlparse
+                            parsed_url = urlparse(page_data['url'])
+                            if parsed_url.path and parsed_url.path != '/':
+                                file_paths.add(parsed_url.path)
+                        except:
+                            pass
+            
+                # Store file tree data in scan stats
+                if file_paths:
+                    self.scan_stats['file_tree_paths'] = list(file_paths)
+                    if self.debug:
+                        print(f"  [DEBUG] Collected {len(file_paths)} file paths for tree structure")
+        
             # Now test ALL found pages with ALL modules
             if self.debug:
                 print(f"  [DEBUG] Testing {len(all_found_pages)} total pages with all modules")
-            
+        
             for page_data in all_found_pages:
                 # Extract forms if not already done
                 if 'forms' not in page_data:
@@ -654,12 +673,12 @@ class VulnScanner:
                             self.scan_stats['total_forms'] += len(forms)
                     except:
                         page_data['forms'] = []
-                
+            
                 # Test each module on this page
                 for module_name in self.config.modules:
                     if self._should_stop() or self.stop_requested:
                         break
-                    
+                
                     # Initialize module stats if not exists
                     if module_name not in self.scan_stats['module_stats']:
                         self.scan_stats['module_stats'][module_name] = {
@@ -668,19 +687,19 @@ class VulnScanner:
                             'forms_tested': 0,
                             'vulnerabilities_found': 0
                         }
-                    
+                
                     # Update module stats
                     self.scan_stats['module_stats'][module_name]['pages_tested'] += 1
                     self.scan_stats['module_stats'][module_name]['parameters_tested'] += len(page_data['query_params'])
                     self.scan_stats['module_stats'][module_name]['forms_tested'] += len(page_data.get('forms', []))
-                    
+                
                     if self.debug:
                         print(f"  [DEBUG] Testing {module_name.upper()} on {page_data['url']}")
                     module_results = self._run_module(module_name, page_data)
-                    
+                
                     # Count vulnerabilities found by this module
                     self.scan_stats['module_stats'][module_name]['vulnerabilities_found'] += len(module_results)
-                    
+                
                     target_results.extend(module_results)
             
             # Legacy code for backward compatibility - remove this section
@@ -2391,7 +2410,7 @@ class VulnScanner:
                     results.append({
                         'module': 'secheaders',
                         'target': base_url,
-                        'vulnerability': f'Security Configuration Issues ({len(all_issues)} issues)',
+                        'vulnerability': f'Missing Security Headers ({len(all_issues)} issues)',
                         'severity': highest_severity,
                         'parameter': f'security_config: {len(all_issues)} issues',
                         'payload': 'N/A',
