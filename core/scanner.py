@@ -871,6 +871,7 @@ class VulnScanner:
         # Ensure forms are extracted if not already done
         if 'forms' not in parsed_data or not parsed_data['forms']:
             try:
+                print(f"    [MODULE] {module_name.upper()}: Extracting forms from {parsed_data['url']}")
                 response = requests.get(
                     parsed_data['url'],
                     timeout=self.config.timeout,
@@ -880,9 +881,29 @@ class VulnScanner:
                 if response.status_code == 200:
                     forms = self.url_parser.extract_forms(response.text)
                     parsed_data['forms'] = forms
-                    print(f"    [MODULE] {module_name.upper()}: Extracted {len(forms)} forms from page")
-            except:
+                    print(f"    [MODULE] {module_name.upper()}: Successfully extracted {len(forms)} forms from page")
+                    
+                    # Log detailed form information
+                    for i, form in enumerate(forms):
+                        form_method = form.get('method', 'GET').upper()
+                        form_action = form.get('action', '')
+                        form_inputs = form.get('inputs', [])
+                        print(f"    [FORM] Form {i+1}: Method={form_method}, Action='{form_action}', Inputs={len(form_inputs)}")
+                        
+                        # Log input details
+                        for j, input_field in enumerate(form_inputs):
+                            input_name = input_field.get('name', 'unnamed')
+                            input_type = input_field.get('type', 'text')
+                            input_value = input_field.get('value', '')
+                            print(f"    [FORM] Input {j+1}: name='{input_name}', type='{input_type}', value='{input_value}'")
+                else:
+                    print(f"    [MODULE] {module_name.upper()}: Failed to extract forms - HTTP {response.status_code}")
+                    parsed_data['forms'] = []
+            except Exception as e:
+                print(f"    [MODULE] {module_name.upper()}: Error extracting forms: {e}")
                 parsed_data['forms'] = []
+        else:
+            print(f"    [MODULE] {module_name.upper()}: Using cached {len(parsed_data.get('forms', []))} forms")
         
         try:
             if module_name == "xss":
@@ -977,8 +998,10 @@ class VulnScanner:
         self.scan_stats['payload_stats']['xss']['payloads_used'] += len(xss_payloads)
         
         # Test GET parameters
+        print(f"    [XSS] Found {len(parsed_data['query_params'])} GET parameters to test: {list(parsed_data['query_params'].keys())}")
+        
         for param, values in parsed_data['query_params'].items():
-            print(f"    [XSS] Testing GET parameter: {param}")
+            print(f"    [XSS] Testing GET parameter: {param} with values: {values}")
             
             # Create deduplication key for this parameter
             param_key = f"xss_{base_url.split('?')[0]}_{param}"
@@ -1058,22 +1081,31 @@ class VulnScanner:
                     
                     # Enhanced XSS detection with multiple checks
                     xss_detected = False
+                    detection_method = ""
                     
                     # Primary detection
-                    if XSSDetector.detect_reflected_xss(payload, response.text, response.status_code):
+                    primary_result = XSSDetector.detect_reflected_xss(payload, response.text, response.status_code)
+                    print(f"    [XSS] Primary detector result: {primary_result}")
+                    
+                    if primary_result:
                         xss_detected = True
+                        detection_method = "primary_detector"
                         print(f"    [XSS] XSS detected by primary detector")
                     
                     # Secondary detection - payload reflection
                     elif payload_in_response:
                         xss_detected = True
+                        detection_method = "payload_reflection"
                         print(f"    [XSS] XSS detected by payload reflection")
                     
                     # Tertiary detection - check for common XSS indicators
                     elif any(indicator in response.text.lower() for indicator in ['<script', 'javascript:', 'onerror=', 'onload=']):
                         if any(xss_char in payload for xss_char in ['<', '>', 'script', 'alert']):
                             xss_detected = True
+                            detection_method = "indicator_matching"
                             print(f"    [XSS] XSS detected by indicator matching")
+                    
+                    print(f"    [XSS] Final XSS detection result: {xss_detected} (method: {detection_method})")
                     
                     if xss_detected:
                         try:
@@ -1150,13 +1182,23 @@ class VulnScanner:
         
         # Test POST forms
         forms_data = parsed_data.get('forms', [])
+        print(f"    [XSS] Found {len(forms_data)} forms to test")
+        
         for i, form_data in enumerate(forms_data):
             form_method = form_data.get('method', 'GET').upper()
             form_action = form_data.get('action', '')
             form_inputs = form_data.get('inputs', [])
             
+            print(f"    [XSS] Analyzing form {i+1}: method={form_method}, action='{form_action}', inputs={len(form_inputs)}")
+            
             if form_method in ['POST', 'PUT'] and form_inputs:
-                print(f"    [XSS] Testing {form_method} form {i+1}: {form_action}")
+                print(f"    [XSS] Testing {form_method} form {i+1}: {form_action} with {len(form_inputs)} inputs")
+            elif form_method == 'GET':
+                print(f"    [XSS] Skipping GET form {i+1} (GET forms tested via parameters)")
+            elif not form_inputs:
+                print(f"    [XSS] Skipping form {i+1} - no inputs found")
+            else:
+                print(f"    [XSS] Skipping form {i+1} - unsupported method: {form_method}")
                 
                 # Build form URL
                 if form_action.startswith('/'):
@@ -1167,14 +1209,28 @@ class VulnScanner:
                     form_url = f"{base_url.rstrip('/')}/{form_action}" if form_action else base_url
                 
                 # Test each form input
+                testable_inputs = []
                 for input_data in form_inputs:
                     input_name = input_data.get('name')
                     input_type = input_data.get('type', 'text')
                     
-                    if not input_name or input_type in ['submit', 'button', 'hidden']:
+                    if not input_name:
+                        print(f"    [XSS] Skipping input without name: type={input_type}")
                         continue
+                    elif input_type in ['submit', 'button', 'hidden']:
+                        print(f"    [XSS] Skipping non-testable input: name={input_name}, type={input_type}")
+                        continue
+                    else:
+                        testable_inputs.append(input_data)
+                        print(f"    [XSS] Found testable input: name={input_name}, type={input_type}")
+                
+                print(f"    [XSS] Testing {len(testable_inputs)} testable inputs in form {i+1}")
+                
+                for input_data in testable_inputs:
+                    input_name = input_data.get('name')
+                    input_type = input_data.get('type', 'text')
                     
-                    print(f"    [XSS] Testing form input: {input_name}")
+                    print(f"    [XSS] Testing form input: {input_name} (type: {input_type})")
                     
                     # Create deduplication key for this form input
                     form_key = f"xss_form_{form_url.split('?')[0]}_{input_name}"
@@ -1199,6 +1255,9 @@ class VulnScanner:
                                     else:
                                         post_data[inp_name] = inp_value
                             
+                            print(f"    [XSS] Sending {form_method} request to {form_url}")
+                            print(f"    [XSS] POST data: {post_data}")
+                            
                             if form_method == 'POST':
                                 response = requests.post(
                                     form_url,
@@ -1217,9 +1276,17 @@ class VulnScanner:
                                 )
                             
                             print(f"    [XSS] Form response code: {response.status_code}")
+                            print(f"    [XSS] Response length: {len(response.text)} chars")
+                            
+                            # Check if payload is reflected in form response
+                            form_payload_reflected = payload in response.text
+                            print(f"    [XSS] Payload reflected in form response: {form_payload_reflected}")
                             
                             # Use XSS detector
-                            if XSSDetector.detect_reflected_xss(payload, response.text, response.status_code):
+                            form_xss_detected = XSSDetector.detect_reflected_xss(payload, response.text, response.status_code)
+                            print(f"    [XSS] Form XSS detector result: {form_xss_detected}")
+                            
+                            if form_xss_detected or form_payload_reflected:
                                 evidence = f"XSS payload '{payload}' reflected in {form_method} form response"
                                 response_snippet = response.text[:200] + "..." if len(response.text) > 200 else response.text
                                 print(f"    [XSS] FORM VULNERABILITY FOUND! Input: {input_name}")
@@ -1270,8 +1337,10 @@ class VulnScanner:
         self.scan_stats['payload_stats']['sqli']['payloads_used'] += len(sqli_payloads)
         
         # Test GET parameters
+        print(f"    [SQLI] Found {len(parsed_data['query_params'])} GET parameters to test: {list(parsed_data['query_params'].keys())}")
+        
         for param, values in parsed_data['query_params'].items():
-            print(f"    [SQLI] Testing GET parameter: {param}")
+            print(f"    [SQLI] Testing GET parameter: {param} with values: {values}")
             
             # Create deduplication key for this parameter and base URL
             base_url_clean = base_url.split('?')[0]
@@ -1323,12 +1392,15 @@ class VulnScanner:
                             print(f"    [SQLI] Stopping - reached request limit ({self.config.request_limit})")
                         break  # Break from payload loop, not return from function
                     
-                    # Enhanced SQLi detection
+                    # Enhanced SQLi detection with detailed logging
                     try:
+                        print(f"    [SQLI] Running primary SQL injection detector...")
                         is_vulnerable, pattern = SQLiDetector.detect_error_based_sqli(response.text, response.status_code)
+                        print(f"    [SQLI] Primary detector result: vulnerable={is_vulnerable}, pattern='{pattern}'")
                         
                         # Расширенные проверки для всех сайтов
                         if not is_vulnerable:
+                            print(f"    [SQLI] Running extended SQL error pattern checks...")
                             # Проверяем расширенный список SQL ошибок
                             sql_errors = ['mysql', 'sql syntax', 'ora-', 'postgresql', 'sqlite', 'mssql', 
                                         'warning:', 'error:', 'exception', 'stack trace', 'fatal error',
@@ -1337,6 +1409,7 @@ class VulnScanner:
                                         'unknown column', 'unknown table', 'subquery', 'operand', 'operands',
                                         'you have an error in your sql syntax', 'check the manual that corresponds']
                             response_lower = response.text.lower()
+                            
                             for error in sql_errors:
                                 if error in response_lower:
                                     is_vulnerable = True
@@ -1346,6 +1419,7 @@ class VulnScanner:
                             
                             # Additional check for SQL injection indicators
                             if not is_vulnerable and "'" in payload:
+                                print(f"    [SQLI] Checking for SQL function indicators...")
                                 sql_indicators = ['mysql_fetch', 'pg_exec', 'sqlite_query', 'odbc_exec']
                                 for indicator in sql_indicators:
                                     if indicator in response_lower:
@@ -1353,6 +1427,13 @@ class VulnScanner:
                                         pattern = f"SQL function detected: {indicator}"
                                         print(f"    [SQLI] SQL injection detected by function: {indicator}")
                                         break
+                            
+                            if not is_vulnerable:
+                                print(f"    [SQLI] No SQL injection indicators found in response")
+                                # Show response snippet for debugging
+                                response_snippet = response.text[:200].replace('\n', ' ').replace('\r', ' ')
+                                print(f"    [SQLI] Response snippet: {response_snippet}...")
+                        
                     except Exception as e:
                         print(f"    [SQLI] SQLi detector error: {e}")
                         is_vulnerable = False
@@ -1577,10 +1658,28 @@ class VulnScanner:
                     
                     print(f"    [LFI] Response code: {response.status_code}")
                     
-                    # Use LFI detector
+                    # Use LFI detector with detailed logging
                     try:
+                        print(f"    [LFI] Running LFI detector on response...")
                         is_vulnerable, pattern = LFIDetector.detect_lfi(response.text, response.status_code)
-                    except:
+                        print(f"    [LFI] LFI detector result: vulnerable={is_vulnerable}, pattern='{pattern}'")
+                        
+                        if not is_vulnerable:
+                            # Show response snippet for debugging
+                            response_snippet = response.text[:200].replace('\n', ' ').replace('\r', ' ')
+                            print(f"    [LFI] Response snippet: {response_snippet}...")
+                            
+                            # Manual check for common LFI indicators
+                            lfi_indicators = ['root:', '[extensions]', '<?php', '/etc/passwd', 'win.ini']
+                            for indicator in lfi_indicators:
+                                if indicator in response.text:
+                                    print(f"    [LFI] Manual check found LFI indicator: {indicator}")
+                                    break
+                            else:
+                                print(f"    [LFI] No LFI indicators found in response")
+                        
+                    except Exception as e:
+                        print(f"    [LFI] LFI detector error: {e}")
                         is_vulnerable = False
                         pattern = "Detection failed"
                     
