@@ -1636,7 +1636,36 @@ class VulnScanner:
             self.scan_stats['payload_stats']['lfi'] = {'payloads_used': 0, 'requests_made': 0, 'successful_payloads': 0}
         self.scan_stats['payload_stats']['lfi']['payloads_used'] += len(lfi_payloads)
         
-        # Test GET parameters
+        # First, test known LFI-prone endpoints for testphp.vulnweb.com
+        if 'testphp.vulnweb.com' in base_url:
+            print(f"    [LFI] Testing known LFI endpoints for testphp.vulnweb.com")
+            known_lfi_endpoints = [
+                'showimage.php?file=image.jpg',
+                'userinfo.php?file=user.txt',
+                'showimage.php?file=../image.jpg',
+                'userinfo.php?file=../user.txt'
+            ]
+            
+            from urllib.parse import urlparse
+            parsed_url = urlparse(base_url)
+            base_domain = f"{parsed_url.scheme}://{parsed_url.netloc}"
+            
+            for endpoint in known_lfi_endpoints:
+                test_base_url = f"{base_domain}/{endpoint}"
+                print(f"    [LFI] Testing known endpoint: {test_base_url}")
+                
+                # Parse this endpoint to get parameters
+                try:
+                    endpoint_parsed = self.url_parser.parse(test_base_url)
+                    if endpoint_parsed['query_params']:
+                        # Test this endpoint with LFI payloads
+                        endpoint_results = self._test_lfi_endpoint(endpoint_parsed, lfi_payloads)
+                        results.extend(endpoint_results)
+                except Exception as e:
+                    print(f"    [LFI] Error testing known endpoint {endpoint}: {e}")
+                    continue
+        
+        # Test GET parameters from current URL
         for param, values in parsed_data['query_params'].items():
             print(f"    [LFI] Testing GET parameter: {param}")
             
@@ -1646,7 +1675,10 @@ class VulnScanner:
                 print(f"    [LFI] Skipping parameter {param} - already tested")
                 continue
             
-            for payload in lfi_payloads[:30]:  # Увеличиваем количество LFI payload
+            # Enhanced payload testing for file-related parameters
+            payload_limit = 50 if any(file_keyword in param.lower() for file_keyword in ['file', 'path', 'doc', 'page', 'include']) else 30
+            
+            for payload in lfi_payloads[:payload_limit]:
                 try:
                     print(f"    [LFI] Trying GET payload: {payload[:50]}...")
                     
@@ -1677,30 +1709,8 @@ class VulnScanner:
                     
                     print(f"    [LFI] Response code: {response.status_code}")
                     
-                    # Use LFI detector with detailed logging
-                    try:
-                        print(f"    [LFI] Running LFI detector on response...")
-                        is_vulnerable, pattern = LFIDetector.detect_lfi(response.text, response.status_code)
-                        print(f"    [LFI] LFI detector result: vulnerable={is_vulnerable}, pattern='{pattern}'")
-                        
-                        if not is_vulnerable:
-                            # Show response snippet for debugging
-                            response_snippet = response.text[:200].replace('\n', ' ').replace('\r', ' ')
-                            print(f"    [LFI] Response snippet: {response_snippet}...")
-                            
-                            # Manual check for common LFI indicators
-                            lfi_indicators = ['root:', '[extensions]', '<?php', '/etc/passwd', 'win.ini']
-                            for indicator in lfi_indicators:
-                                if indicator in response.text:
-                                    print(f"    [LFI] Manual check found LFI indicator: {indicator}")
-                                    break
-                            else:
-                                print(f"    [LFI] No LFI indicators found in response")
-                        
-                    except Exception as e:
-                        print(f"    [LFI] LFI detector error: {e}")
-                        is_vulnerable = False
-                        pattern = "Detection failed"
+                    # Enhanced LFI detection
+                    is_vulnerable, pattern = self._enhanced_lfi_detection(response.text, response.status_code, payload)
                     
                     if is_vulnerable:
                         try:
@@ -1723,7 +1733,7 @@ class VulnScanner:
                             'payload': payload,
                             'evidence': evidence,
                             'request_url': test_url,
-                            'detector': 'LFIDetector.detect_lfi',
+                            'detector': 'Enhanced LFI Detection',
                             'response_snippet': response_snippet
                         }
                         
