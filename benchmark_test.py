@@ -29,12 +29,26 @@ def run_benchmark():
             self.headers = None
             self.headers_file = None
             self.cookies = None
+            self.auth = None
             self.exclude = None
             self.use_all = False
             self.filetree_mode = False
             self.single_url = False
             self.nocrawl = False
             self.max_time = None
+            self.filetree = False
+            self.proxy = None
+            self.user_agent = None
+            self.delay = 0
+            self.random_agent = False
+            self.output = None
+            self.format = 'html'
+            self.verbose = False
+            self.quiet = False
+            self.no_color = False
+            self.screenshot = False
+            self.crawl_depth = 2
+            self.crawl_limit = 100
     
     try:
         # Создаем конфигурацию с mock args
