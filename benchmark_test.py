@@ -75,17 +75,22 @@ def run_benchmark():
         config = Config(mock_args)
         
         # Устанавливаем дополнительные параметры
-        if hasattr(config, 'headers') and isinstance(config.headers, dict):
-            config.headers.update({
+        if hasattr(config, 'headers'):
+            if isinstance(getattr(config, 'headers', None), dict):
+                config.headers.update({
+                    'User-Agent': 'Dominator Security Scanner - Benchmark Test'
+                })
+            else:
+                config.headers = {
+                    'User-Agent': 'Dominator Security Scanner - Benchmark Test'
+                }
+        else:
+            setattr(config, 'headers', {
                 'User-Agent': 'Dominator Security Scanner - Benchmark Test'
             })
-        else:
-            config.headers = {
-                'User-Agent': 'Dominator Security Scanner - Benchmark Test'
-            }
         
-        print(f"Tsel: {config.targets[0] if config.targets else 'N/A'}")
-        print(f"Moduli: {', '.join(config.modules) if hasattr(config, 'modules') and config.modules else 'N/A'}")
+        print(f"Tsel: {getattr(config, 'targets', ['N/A'])[0] if getattr(config, 'targets', None) else 'N/A'}")
+        print(f"Moduli: {', '.join(getattr(config, 'modules', [])) if getattr(config, 'modules', None) else 'N/A'}")
         print(f"Potoki: {getattr(config, 'threads', 'N/A')}")
         print(f"Limit zaprosov: {getattr(config, 'request_limit', 'N/A')}")
         print("-" * 60)
