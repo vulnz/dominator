@@ -195,10 +195,99 @@ class FileHandler:
             margin-bottom: 15px;
         }
         
+        .stat-card.critical .icon { color: #8b0000; }
         .stat-card.high .icon { color: #e74c3c; }
         .stat-card.medium .icon { color: #f39c12; }
         .stat-card.low .icon { color: #3498db; }
         .stat-card.info .icon { color: #2ecc71; }
+        
+        .executive-summary {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            margin: 30px 0;
+            overflow: hidden;
+        }
+        
+        .summary-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .summary-header h2 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+        
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 0;
+        }
+        
+        .summary-card {
+            padding: 30px;
+            border-right: 1px solid #e9ecef;
+            min-height: 250px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .summary-card:last-child {
+            border-right: none;
+        }
+        
+        .summary-content {
+            text-align: center;
+            width: 100%;
+        }
+        
+        .summary-content h3 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.3rem;
+        }
+        
+        .risk-meter {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            background: conic-gradient(from 0deg, #2ecc71 0deg 90deg, #f39c12 90deg 180deg, #e74c3c 180deg 270deg, #8b0000 270deg 360deg);
+        }
+        
+        .risk-level {
+            width: 80px;
+            height: 80px;
+            background: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+        
+        .chart-container {
+            width: 200px;
+            height: 200px;
+            margin: 0 auto;
+            position: relative;
+        }
+        
+        .severity-critical { background: #8b0000; color: white; }
+        .severity-high { background: #fee; color: #c53030; }
+        .severity-medium { background: #fff3cd; color: #b45309; }
+        .severity-low { background: #e3f2fd; color: #1565c0; }
+        .severity-info { background: #e8f5e8; color: #2d7d32; }
         
         .stat-card h3 {
             font-size: 2rem;
@@ -427,8 +516,53 @@ class FileHandler:
     </div>
     
     <div class="container">
+        <!-- Executive Summary -->
+        <div class="executive-summary">
+            <div class="summary-header">
+                <h2><i class="fas fa-chart-pie"></i> Executive Summary</h2>
+                <p>Comprehensive security assessment results and risk analysis</p>
+            </div>
+            
+            <div class="summary-grid">
+                <div class="summary-card">
+                    <div class="summary-content">
+                        <h3>Security Posture</h3>
+                        <div class="risk-meter">
+                            <div class="risk-level" id="risk-level">
+                                <span class="risk-text" id="risk-text">Calculating...</span>
+                            </div>
+                        </div>
+                        <p id="risk-description">Analyzing security findings...</p>
+                    </div>
+                </div>
+                
+                <div class="summary-card">
+                    <div class="summary-content">
+                        <h3>Vulnerability Distribution</h3>
+                        <div class="chart-container">
+                            <canvas id="severityChart" width="200" height="200"></canvas>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="summary-card">
+                    <div class="summary-content">
+                        <h3>Testing Coverage</h3>
+                        <div class="chart-container">
+                            <canvas id="payloadChart" width="200" height="200"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Dashboard Stats -->
         <div class="dashboard">
+            <div class="stat-card critical">
+                <div class="icon"><i class="fas fa-skull-crossbones"></i></div>
+                <h3 id="critical-count">0</h3>
+                <p>Critical Severity</p>
+            </div>
             <div class="stat-card high">
                 <div class="icon"><i class="fas fa-exclamation-triangle"></i></div>
                 <h3 id="high-count">0</h3>
@@ -480,6 +614,7 @@ class FileHandler:
                 <label for="severity-filter">Severity:</label>
                 <select id="severity-filter" class="filter-select">
                     <option value="">All Severities</option>
+                    <option value="Critical">Critical</option>
                     <option value="High">High</option>
                     <option value="Medium">Medium</option>
                     <option value="Low">Low</option>
@@ -512,10 +647,11 @@ class FileHandler:
     
     <div class="footer">
         <div class="container">
-            <p>&copy; 2024 Dominator Web Security Scanner. Generated on <span id="report-date"></span></p>
+            <p>&copy; 2025 Dominator Web Security Scanner. Generated on <span id="report-date"></span></p>
         </div>
     </div>
     
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         // Report data will be injected here
         const reportData = {report_data};
@@ -546,16 +682,25 @@ class FileHandler:
             
             // Count by severity
             const counts = {
+                critical: vulnerabilities.filter(v => v.severity === 'Critical').length,
                 high: vulnerabilities.filter(v => v.severity === 'High').length,
                 medium: vulnerabilities.filter(v => v.severity === 'Medium').length,
                 low: vulnerabilities.filter(v => v.severity === 'Low').length,
                 info: vulnerabilities.filter(v => v.severity === 'Info').length
             };
             
+            document.getElementById('critical-count').textContent = counts.critical;
             document.getElementById('high-count').textContent = counts.high;
             document.getElementById('medium-count').textContent = counts.medium;
             document.getElementById('low-count').textContent = counts.low;
             document.getElementById('info-count').textContent = counts.info;
+            
+            // Update risk assessment
+            updateRiskAssessment(counts);
+            
+            // Create charts
+            createSeverityChart(counts);
+            createPayloadChart(stats);
             
             // Scan stats
             document.getElementById('scan-duration').textContent = stats.scan_duration || '-';
@@ -579,6 +724,187 @@ class FileHandler:
             document.getElementById('max-cvss').textContent = maxCvss > 0 ? maxCvss.toFixed(1) : '-';
             document.getElementById('owasp-categories').textContent = owaspCategories.size > 0 ? 
                 Array.from(owaspCategories).slice(0, 3).join(', ') + (owaspCategories.size > 3 ? '...' : '') : '-';
+        }
+        
+        function updateRiskAssessment(counts) {
+            const total = counts.critical + counts.high + counts.medium + counts.low + counts.info;
+            const riskScore = (counts.critical * 10 + counts.high * 7 + counts.medium * 4 + counts.low * 2 + counts.info * 1);
+            
+            let riskLevel, riskText, riskDescription;
+            
+            if (counts.critical > 0) {
+                riskLevel = 'critical';
+                riskText = 'CRITICAL';
+                riskDescription = `Immediate action required! ${counts.critical} critical vulnerabilities found that pose severe security risks.`;
+            } else if (counts.high > 0) {
+                riskLevel = 'high';
+                riskText = 'HIGH';
+                riskDescription = `High priority remediation needed. ${counts.high} high-severity vulnerabilities require prompt attention.`;
+            } else if (counts.medium > 0) {
+                riskLevel = 'medium';
+                riskText = 'MEDIUM';
+                riskDescription = `Moderate security concerns identified. ${counts.medium} medium-severity issues should be addressed.`;
+            } else if (counts.low > 0) {
+                riskLevel = 'low';
+                riskText = 'LOW';
+                riskDescription = `Minor security improvements recommended. ${counts.low} low-severity findings detected.`;
+            } else if (total > 0) {
+                riskLevel = 'info';
+                riskText = 'INFO';
+                riskDescription = `Security assessment complete. Only informational findings detected.`;
+            } else {
+                riskLevel = 'secure';
+                riskText = 'SECURE';
+                riskDescription = `Excellent! No security vulnerabilities detected during the assessment.`;
+            }
+            
+            document.getElementById('risk-text').textContent = riskText;
+            document.getElementById('risk-text').className = `risk-text ${riskLevel}`;
+            document.getElementById('risk-description').textContent = riskDescription;
+        }
+        
+        function createSeverityChart(counts) {
+            const ctx = document.getElementById('severityChart').getContext('2d');
+            const data = [
+                counts.critical,
+                counts.high,
+                counts.medium,
+                counts.low,
+                counts.info
+            ];
+            const labels = ['Critical', 'High', 'Medium', 'Low', 'Info'];
+            const colors = ['#8b0000', '#e74c3c', '#f39c12', '#3498db', '#2ecc71'];
+            
+            // Filter out zero values
+            const filteredData = [];
+            const filteredLabels = [];
+            const filteredColors = [];
+            
+            data.forEach((value, index) => {
+                if (value > 0) {
+                    filteredData.push(value);
+                    filteredLabels.push(labels[index]);
+                    filteredColors.push(colors[index]);
+                }
+            });
+            
+            if (filteredData.length === 0) {
+                // Show "No vulnerabilities" chart
+                filteredData.push(1);
+                filteredLabels.push('No Vulnerabilities');
+                filteredColors.push('#2ecc71');
+            }
+            
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: filteredLabels,
+                    datasets: [{
+                        data: filteredData,
+                        backgroundColor: filteredColors,
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 15,
+                                usePointStyle: true,
+                                font: {
+                                    size: 11
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        function createPayloadChart(stats) {
+            const ctx = document.getElementById('payloadChart').getContext('2d');
+            const payloadStats = stats.payload_stats || {};
+            
+            const modules = Object.keys(payloadStats);
+            const payloadCounts = modules.map(module => payloadStats[module].payloads_used || 0);
+            const successCounts = modules.map(module => payloadStats[module].successful_payloads || 0);
+            
+            if (modules.length === 0) {
+                // Show "No data" chart
+                new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['No Testing Data'],
+                        datasets: [{
+                            data: [1],
+                            backgroundColor: ['#95a5a6'],
+                            borderWidth: 2,
+                            borderColor: '#fff'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'bottom'
+                            }
+                        }
+                    }
+                });
+                return;
+            }
+            
+            // Create color palette
+            const colors = [
+                '#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
+                '#1abc9c', '#34495e', '#e67e22', '#95a5a6', '#f1c40f'
+            ];
+            
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: modules.map(m => m.toUpperCase()),
+                    datasets: [{
+                        label: 'Payloads Used',
+                        data: payloadCounts,
+                        backgroundColor: colors.slice(0, modules.length),
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 10,
+                                usePointStyle: true,
+                                font: {
+                                    size: 10
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                afterLabel: function(context) {
+                                    const moduleIndex = context.dataIndex;
+                                    const successful = successCounts[moduleIndex];
+                                    const total = payloadCounts[moduleIndex];
+                                    const rate = total > 0 ? ((successful / total) * 100).toFixed(1) : 0;
+                                    return `Success: ${successful}/${total} (${rate}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
         }
         
         function populateTechnologies() {
@@ -633,6 +959,14 @@ class FileHandler:
             }
             
             console.log('Processing', vulnerabilities.length, 'vulnerabilities');
+            
+            // Sort vulnerabilities by severity (Critical -> High -> Medium -> Low -> Info)
+            const severityOrder = { 'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3, 'Info': 4 };
+            vulnerabilities.sort((a, b) => {
+                const severityA = severityOrder[a.severity] !== undefined ? severityOrder[a.severity] : 5;
+                const severityB = severityOrder[b.severity] !== undefined ? severityOrder[b.severity] : 5;
+                return severityA - severityB;
+            });
             
             // Populate module filter
             const modules = [...new Set(vulnerabilities.map(v => v.module))];
