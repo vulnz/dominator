@@ -10,6 +10,12 @@ from typing import List, Dict, Any, Set
 from urllib.parse import urljoin, urlparse, parse_qs, unquote
 from core.url_parser import URLParser
 
+# Import passive detectors
+from passive_detectors.security_headers_detector import SecurityHeadersDetector
+from passive_detectors.sensitive_data_detector import SensitiveDataDetector
+from passive_detectors.technology_detector import TechnologyDetector
+from passive_detectors.version_disclosure_detector import VersionDisclosureDetector
+
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -27,6 +33,13 @@ class WebCrawler:
         self.sitemap_urls: List[str] = []
         self.robots_urls: List[str] = []
         self.discovered_directories: Set[str] = set()
+        
+        # Passive detection results
+        self.passive_findings: List[Dict[str, Any]] = []
+        self.security_issues: List[Dict[str, Any]] = []
+        self.sensitive_data_leaks: List[Dict[str, Any]] = []
+        self.detected_technologies: List[Dict[str, Any]] = []
+        self.version_disclosures: List[Dict[str, Any]] = []
         
     def crawl_for_pages(self, base_url: str, max_pages: int = 50) -> List[str]:
         """Crawl website to find pages with parameters"""
@@ -49,6 +62,9 @@ class WebCrawler:
             
             if response.status_code == 200:
                 print(f"    [CRAWLER] Successfully connected to {base_url}")
+                
+                # Run passive analysis on initial response
+                self._run_passive_analysis(response.headers, response.text, base_url)
                 
                 # Extract JavaScript and AJAX endpoints
                 self._extract_js_endpoints(response.text, base_url)
@@ -107,6 +123,9 @@ class WebCrawler:
         print(f"    [CRAWLER] Found {len(found_urls)} pages with parameters")
         print(f"    [CRAWLER] Found {len(self.found_forms)} forms")
         print(f"    [CRAWLER] Found {len(self.ajax_endpoints)} AJAX endpoints")
+        
+        # Print passive detection summary
+        self.print_passive_summary()
         
         return found_urls
     
@@ -366,6 +385,9 @@ class WebCrawler:
                 )
                 
                 if response.status_code == 200:
+                    # Run passive analysis on each crawled page
+                    self._run_passive_analysis(response.headers, response.text, url)
+                    
                     # Extract all URLs from this page
                     page_urls = self._extract_all_urls(response.text, url)
                     
@@ -421,6 +443,9 @@ class WebCrawler:
                 )
                 
                 if response.status_code == 200:
+                    # Run passive analysis on deep crawled pages
+                    self._run_passive_analysis(response.headers, response.text, current_url)
+                    
                     # Extract JavaScript endpoints
                     self._extract_js_endpoints(response.text, current_url)
                     
@@ -587,3 +612,101 @@ class WebCrawler:
     def get_discovered_directories(self) -> Set[str]:
         """Get directories discovered during crawling"""
         return self.discovered_directories
+    
+    def _run_passive_analysis(self, headers: Dict[str, str], response_text: str, url: str):
+        """
+        Run all passive detectors on the response
+        
+        How it works:
+        1. Analyzes each HTTP response during crawling
+        2. Runs multiple passive detectors simultaneously
+        3. Collects findings without sending additional requests
+        4. Stores results for later reporting
+        """
+        try:
+            print(f"    [PASSIVE] Running passive analysis on {url}")
+            
+            # Security headers analysis
+            has_security_issues, security_issues = SecurityHeadersDetector.analyze(headers, url)
+            if has_security_issues:
+                self.security_issues.extend(security_issues)
+                print(f"    [PASSIVE] Found {len(security_issues)} security header issues")
+            
+            # Cookie security analysis
+            has_cookie_issues, cookie_issues = SecurityHeadersDetector.analyze_cookies(headers, url)
+            if has_cookie_issues:
+                self.security_issues.extend(cookie_issues)
+                print(f"    [PASSIVE] Found {len(cookie_issues)} cookie security issues")
+            
+            # Sensitive data detection
+            has_sensitive_data, sensitive_leaks = SensitiveDataDetector.analyze(response_text, url, headers)
+            if has_sensitive_data:
+                self.sensitive_data_leaks.extend(sensitive_leaks)
+                print(f"    [PASSIVE] Found {len(sensitive_leaks)} sensitive data leaks")
+                
+                # Log specific types of sensitive data found
+                leak_types = set(leak.get('type', 'unknown') for leak in sensitive_leaks)
+                print(f"    [PASSIVE] Leak types: {', '.join(leak_types)}")
+            
+            # Technology detection
+            has_technologies, technologies = TechnologyDetector.analyze(headers, response_text, url)
+            if has_technologies:
+                self.detected_technologies.extend(technologies)
+                tech_names = [tech.get('name', 'Unknown') for tech in technologies]
+                print(f"    [PASSIVE] Detected technologies: {', '.join(tech_names)}")
+            
+            # Version disclosure detection
+            has_versions, version_disclosures = VersionDisclosureDetector.analyze(headers, response_text, url)
+            if has_versions:
+                self.version_disclosures.extend(version_disclosures)
+                print(f"    [PASSIVE] Found {len(version_disclosures)} version disclosures")
+            
+            # Combine all findings
+            all_findings = []
+            all_findings.extend(security_issues if has_security_issues else [])
+            all_findings.extend(cookie_issues if has_cookie_issues else [])
+            all_findings.extend(sensitive_leaks if has_sensitive_data else [])
+            all_findings.extend(technologies if has_technologies else [])
+            all_findings.extend(version_disclosures if has_versions else [])
+            
+            if all_findings:
+                self.passive_findings.extend(all_findings)
+                print(f"    [PASSIVE] Total findings for {url}: {len(all_findings)}")
+            
+        except Exception as e:
+            print(f"    [PASSIVE] Error during passive analysis of {url}: {e}")
+    
+    def get_passive_findings(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Get all passive detection findings"""
+        return {
+            'security_issues': self.security_issues,
+            'sensitive_data_leaks': self.sensitive_data_leaks,
+            'detected_technologies': self.detected_technologies,
+            'version_disclosures': self.version_disclosures,
+            'all_findings': self.passive_findings
+        }
+    
+    def print_passive_summary(self):
+        """Print summary of passive detection findings"""
+        print(f"\n    [PASSIVE SUMMARY]")
+        print(f"    Security Issues: {len(self.security_issues)}")
+        print(f"    Sensitive Data Leaks: {len(self.sensitive_data_leaks)}")
+        print(f"    Detected Technologies: {len(self.detected_technologies)}")
+        print(f"    Version Disclosures: {len(self.version_disclosures)}")
+        print(f"    Total Passive Findings: {len(self.passive_findings)}")
+        
+        # Print top sensitive data types found
+        if self.sensitive_data_leaks:
+            leak_types = {}
+            for leak in self.sensitive_data_leaks:
+                leak_type = leak.get('type', 'unknown')
+                leak_types[leak_type] = leak_types.get(leak_type, 0) + 1
+            
+            print(f"    Top Sensitive Data Types:")
+            for leak_type, count in sorted(leak_types.items(), key=lambda x: x[1], reverse=True)[:5]:
+                print(f"      {leak_type}: {count}")
+        
+        # Print detected technologies
+        if self.detected_technologies:
+            tech_names = set(tech.get('name', 'Unknown') for tech in self.detected_technologies)
+            print(f"    Detected Technologies: {', '.join(list(tech_names)[:10])}")
