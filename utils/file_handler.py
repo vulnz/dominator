@@ -106,7 +106,7 @@ class FileHandler:
         report_data = {
             'vulnerabilities': vulnerabilities,
             'scan_stats': scan_stats,
-            'filetree_enabled': getattr(self, 'config', None) and getattr(self.config, 'filetree', False)
+            'filetree_enabled': bool(scan_stats.get('file_tree_paths'))
         }
         
         print(f"[DEBUG] Final report_data: {len(vulnerabilities)} vulnerabilities")

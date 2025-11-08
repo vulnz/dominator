@@ -62,7 +62,7 @@ class Config:
         """Parse scanning modules"""
         all_modules = [
             'xss', 'sqli', 'lfi', 'rfi', 'xxe', 'csrf', 'idor', 'ssrf',
-            'dirbrute', 'gitexposed', 'dirtraversal', 'secheaders',
+            'dirbrute', 'git', 'dirtraversal', 'secheaders',
             'versiondisclosure', 'clickjacking', 'blindxss', 'passwordoverhttp',
             'outdatedsoftware', 'databaseerrors', 'phpinfo', 'ssltls',
             'httponlycookies', 'technology', 'commandinjection', 'pathtraversal',
@@ -75,7 +75,9 @@ class Config:
             # Handle special case where user specifies "all" as module name
             if modules_str.strip().lower() == 'all':
                 return all_modules
-            return [m.strip() for m in modules_str.split(',')]
+            modules = [m.strip() for m in modules_str.split(',')]
+            # Normalize module names
+            return [self._normalize_module_name(m) for m in modules]
         elif use_all:
             return all_modules
         else:
@@ -105,3 +107,15 @@ class Config:
                         targets.append(line)
         
         return targets
+    
+    def _normalize_module_name(self, module_name: str) -> str:
+        """Normalize module names for consistency"""
+        module_mapping = {
+            'gitexposed': 'git',
+            'git-exposed': 'git',
+            'securityheaders': 'secheaders',
+            'security-headers': 'secheaders',
+            'httponlycookie': 'httponlycookies',
+            'httponly-cookies': 'httponlycookies'
+        }
+        return module_mapping.get(module_name.lower(), module_name.lower())

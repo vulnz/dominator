@@ -799,7 +799,7 @@ class VulnScanner:
                 results.extend(self._test_csrf(parsed_data))
             elif module_name == "dirbrute":
                 results.extend(self._test_dirbrute(parsed_data))
-            elif module_name == "git":
+            elif module_name == "git" or module_name == "gitexposed":
                 results.extend(self._test_git_exposed(parsed_data))
             elif module_name == "dirtraversal":
                 results.extend(self._test_directory_traversal(parsed_data))
