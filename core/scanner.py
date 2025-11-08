@@ -420,6 +420,7 @@ class VulnScanner:
     def __init__(self, config: Config):
         """Initialize scanner"""
         self.config = config
+        self.debug = getattr(config, 'debug', False)
         self.url_parser = URLParser()
         self.crawler = WebCrawler(config)
         self.file_handler = FileHandler()
@@ -530,20 +531,23 @@ class VulnScanner:
                 return target_results
             
             # Debug: Show detected URL and parameters
-            print(f"  [DEBUG] Parsed URL: {parsed_data['url']}")
-            print(f"  [DEBUG] Host: {parsed_data['host']}")
-            print(f"  [DEBUG] Path: {parsed_data['path']}")
-            print(f"  [DEBUG] Query parameters: {list(parsed_data['query_params'].keys())}")
+            if self.debug:
+                print(f"  [DEBUG] Parsed URL: {parsed_data['url']}")
+                print(f"  [DEBUG] Host: {parsed_data['host']}")
+                print(f"  [DEBUG] Path: {parsed_data['path']}")
+                print(f"  [DEBUG] Query parameters: {list(parsed_data['query_params'].keys())}")
             
             # If no parameters found but URL has query string, try manual parsing
             if not parsed_data['query_params'] and '?' in parsed_data['url']:
-                print(f"  [DEBUG] Manual parameter extraction from URL...")
+                if self.debug:
+                    print(f"  [DEBUG] Manual parameter extraction from URL...")
                 from urllib.parse import urlparse, parse_qs
                 parsed_url = urlparse(parsed_data['url'])
                 if parsed_url.query:
                     manual_params = parse_qs(parsed_url.query, keep_blank_values=True)
                     parsed_data['query_params'] = manual_params
-                    print(f"  [DEBUG] Manually extracted parameters: {list(manual_params.keys())}")
+                    if self.debug:
+                        print(f"  [DEBUG] Manually extracted parameters: {list(manual_params.keys())}")
             
             # Update stats
             self.scan_stats['total_urls'] += 1
@@ -560,7 +564,8 @@ class VulnScanner:
             
             if not skip_crawling:
                 # Always crawl for additional pages
-                print(f"  [DEBUG] Starting enhanced crawler to find additional pages...")
+                if self.debug:
+                    print(f"  [DEBUG] Starting enhanced crawler to find additional pages...")
                 crawled_urls = self.crawler.crawl_for_pages(parsed_data['url'])
                 
                 # Update crawler stats
@@ -568,7 +573,8 @@ class VulnScanner:
                 self.scan_stats['total_js_files'] = len(self.crawler.js_urls)
                 
                 if crawled_urls:
-                    print(f"  [DEBUG] Crawler found {len(crawled_urls)} additional pages")
+                    if self.debug:
+                        print(f"  [DEBUG] Crawler found {len(crawled_urls)} additional pages")
                     for url in crawled_urls:
                         crawled_data = self.url_parser.parse(url)
                         all_found_pages.append(crawled_data)
@@ -577,11 +583,13 @@ class VulnScanner:
                         self.scan_stats['total_urls'] += 1
                         self.scan_stats['total_params'] += len(crawled_data['query_params'])
                 else:
-                    print(f"  [DEBUG] No additional pages found by crawler")
+                    if self.debug:
+                        print(f"  [DEBUG] No additional pages found by crawler")
                 
                 # Test important pages that might have forms or vulnerabilities
                 important_pages = self._get_important_pages()
-                print(f"  [DEBUG] Testing {len(important_pages)} important pages")
+                if self.debug:
+                    print(f"  [DEBUG] Testing {len(important_pages)} important pages")
                 
                 for page in important_pages[:40]:  # Increase limit to 40 pages
                     if page.startswith('http'):
@@ -593,7 +601,8 @@ class VulnScanner:
                         test_url = f"{parsed_data['scheme']}://{parsed_data['host']}{port_part}{base_path}{page}"
                     
                     try:
-                        print(f"  [DEBUG] Testing important page: {test_url}")
+                        if self.debug:
+                            print(f"  [DEBUG] Testing important page: {test_url}")
                         test_response = requests.get(test_url, timeout=15, verify=False)
                         if test_response.status_code == 200:
                             page_data = self.url_parser.parse(test_url)
@@ -609,24 +618,30 @@ class VulnScanner:
                             self.scan_stats['total_urls'] += 1
                             self.scan_stats['total_params'] += len(page_data['query_params'])
                             
-                            print(f"  [DEBUG] Page has {len(page_data['query_params'])} parameters and {len(forms)} forms")
+                            if self.debug:
+                                print(f"  [DEBUG] Page has {len(page_data['query_params'])} parameters and {len(forms)} forms")
                         elif test_response.status_code == 404:
-                            print(f"  [DEBUG] Page not found: {test_url}")
+                            if self.debug:
+                                print(f"  [DEBUG] Page not found: {test_url}")
                         else:
-                            print(f"  [DEBUG] Page returned {test_response.status_code}: {test_url}")
+                            if self.debug:
+                                print(f"  [DEBUG] Page returned {test_response.status_code}: {test_url}")
                     except Exception as e:
-                        print(f"  [DEBUG] Error testing page {test_url}: {e}")
+                        if self.debug:
+                            print(f"  [DEBUG] Error testing page {test_url}: {e}")
                         continue
             else:
-                if self.config.single_url:
-                    print(f"  [DEBUG] Single URL mode enabled - skipping crawler and additional pages")
-                elif len(self.config.modules) == 1:
-                    print(f"  [DEBUG] Single module specified ({self.config.modules[0]}) - skipping crawler to focus on target")
-                else:
-                    print(f"  [DEBUG] Specific modules detected - skipping crawler to avoid unnecessary requests")
+                if self.debug:
+                    if self.config.single_url:
+                        print(f"  [DEBUG] Single URL mode enabled - skipping crawler and additional pages")
+                    elif len(self.config.modules) == 1:
+                        print(f"  [DEBUG] Single module specified ({self.config.modules[0]}) - skipping crawler to focus on target")
+                    else:
+                        print(f"  [DEBUG] Specific modules detected - skipping crawler to avoid unnecessary requests")
             
             # Now test ALL found pages with ALL modules
-            print(f"  [DEBUG] Testing {len(all_found_pages)} total pages with all modules")
+            if self.debug:
+                print(f"  [DEBUG] Testing {len(all_found_pages)} total pages with all modules")
             
             for page_data in all_found_pages:
                 # Extract forms if not already done
@@ -659,7 +674,8 @@ class VulnScanner:
                     self.scan_stats['module_stats'][module_name]['parameters_tested'] += len(page_data['query_params'])
                     self.scan_stats['module_stats'][module_name]['forms_tested'] += len(page_data.get('forms', []))
                     
-                    print(f"  [DEBUG] Testing {module_name.upper()} on {page_data['url']}")
+                    if self.debug:
+                        print(f"  [DEBUG] Testing {module_name.upper()} on {page_data['url']}")
                     module_results = self._run_module(module_name, page_data)
                     
                     # Count vulnerabilities found by this module
@@ -2876,7 +2892,13 @@ class VulnScanner:
                     software = detection['software']
                     version = detection['version']
                     severity = detection['severity']
-                    known_vulns = detection.get('known_vulnerabilities', [])
+                    cve_count = detection.get('cve_count', 0)
+                    critical_cves = detection.get('critical_cves', [])
+                    high_cves = detection.get('high_cves', [])
+                    cve_links = detection.get('cve_links', [])
+                    latest_version = detection.get('latest_version')
+                    is_eol = detection.get('is_eol', False)
+                    eol_date = detection.get('eol_date')
                     
                     # Create deduplication key for this software version
                     version_key = f"{software}_{version}"
@@ -2886,11 +2908,30 @@ class VulnScanner:
                     
                     seen_versions.add(version_key)
                     
+                    # Build evidence with CVE information
                     evidence = f"{software.upper()} version {version}"
-                    if known_vulns:
-                        evidence += f" has known vulnerabilities: {', '.join(known_vulns[:3])}"
+                    if latest_version:
+                        evidence += f" (Latest: {latest_version})"
+                    if is_eol:
+                        evidence += f" [EOL: {eol_date}]" if eol_date else " [EOL]"
+                    if cve_count > 0:
+                        evidence += f" - {cve_count} CVE(s) found"
+                        if critical_cves:
+                            evidence += f" ({len(critical_cves)} Critical)"
+                        elif high_cves:
+                            evidence += f" ({len(high_cves)} High)"
                     
-                    remediation = OutdatedSoftwareDetector.get_remediation_advice(software, version)
+                    # Get remediation advice
+                    remediation = OutdatedSoftwareDetector.get_remediation_advice(software, version, detection)
+                    
+                    # Build response snippet with CVE links
+                    response_snippet = f"Version: {version}"
+                    if cve_links:
+                        top_cves = cve_links[:3]
+                        cve_list = [f"{cve['cve_id']} (CVSS: {cve.get('score', 'N/A')})" for cve in top_cves]
+                        response_snippet += f" | CVEs: {', '.join(cve_list)}"
+                        if len(cve_links) > 3:
+                            response_snippet += f" and {len(cve_links) - 3} more"
                     
                     results.append({
                         'module': 'outdatedsoftware',
@@ -2902,8 +2943,17 @@ class VulnScanner:
                         'evidence': evidence,
                         'request_url': base_url,
                         'detector': 'OutdatedSoftwareDetector.detect_outdated_software',
-                        'response_snippet': f'Version: {version}',
-                        'remediation': remediation
+                        'response_snippet': response_snippet,
+                        'remediation': remediation,
+                        'software_name': software,
+                        'software_version': version,
+                        'latest_version': latest_version,
+                        'cve_count': cve_count,
+                        'critical_cves': critical_cves,
+                        'high_cves': high_cves,
+                        'cve_links': cve_links,
+                        'is_eol': is_eol,
+                        'eol_date': eol_date
                     })
             else:
                 print(f"    [OUTDATEDSOFTWARE] No outdated software detected")
@@ -4782,7 +4832,8 @@ class VulnScanner:
             print("="*80)
         
         # Debug: Print total results count
-        print(f"[DEBUG] Total results received: {len(results)}")
+        if self.debug:
+            print(f"[DEBUG] Total results received: {len(results)}")
         
         # Print scan statistics
         stats = self.scan_stats
@@ -4828,7 +4879,7 @@ class VulnScanner:
             print("-" * 80)
         
         # Debug: Show structure of first few results
-        if results:
+        if self.debug and results:
             print(f"[DEBUG] First result keys: {list(results[0].keys())}")
             for i, result in enumerate(results[:3]):
                 if 'vulnerability' in result:
@@ -4841,18 +4892,22 @@ class VulnScanner:
         for v in results:
             # Skip entries that are ONLY scan_stats (no vulnerability data)
             if 'scan_stats' in v and 'vulnerability' not in v:
-                print(f"[DEBUG] Skipping scan_stats only entry")
+                if self.debug:
+                    print(f"[DEBUG] Skipping scan_stats only entry")
                 continue
             # Include ALL entries that have vulnerability field
             if 'vulnerability' in v and v.get('vulnerability'):
-                print(f"[DEBUG] Including vulnerability: {v.get('vulnerability', 'UNKNOWN')}")
+                if self.debug:
+                    print(f"[DEBUG] Including vulnerability: {v.get('vulnerability', 'UNKNOWN')}")
                 # Create clean vulnerability object without scan_stats for display
                 clean_vuln = {k: v for k, v in v.items() if k != 'scan_stats'}
                 vulnerabilities.append(clean_vuln)
             else:
-                print(f"[DEBUG] Skipping entry without vulnerability: {list(v.keys())}")
+                if self.debug:
+                    print(f"[DEBUG] Skipping entry without vulnerability: {list(v.keys())}")
         
-        print(f"[DEBUG] Vulnerabilities after filtering: {len(vulnerabilities)}")
+        if self.debug:
+            print(f"[DEBUG] Vulnerabilities after filtering: {len(vulnerabilities)}")
         
         if not vulnerabilities:
             print("VULNERABILITY STATUS: CLEAN")
@@ -4861,11 +4916,12 @@ class VulnScanner:
             return
         
         # Debug: Show what we're about to categorize
-        print(f"[DEBUG] About to categorize {len(vulnerabilities)} vulnerabilities")
-        for i, v in enumerate(vulnerabilities[:5]):
-            severity = v.get('severity', 'NO_SEV')
-            vuln_name = v.get('vulnerability', 'NO_VULN')
-            print(f"[DEBUG] Vuln {i+1}: '{vuln_name}' severity='{severity}' (raw: '{severity}', lower: '{severity.lower()}')")
+        if self.debug:
+            print(f"[DEBUG] About to categorize {len(vulnerabilities)} vulnerabilities")
+            for i, v in enumerate(vulnerabilities[:5]):
+                severity = v.get('severity', 'NO_SEV')
+                vuln_name = v.get('vulnerability', 'NO_VULN')
+                print(f"[DEBUG] Vuln {i+1}: '{vuln_name}' severity='{severity}' (raw: '{severity}', lower: '{severity.lower()}')")
             
         # Group vulnerabilities by severity with better debugging
         critical_vulns = []
@@ -4880,32 +4936,39 @@ class VulnScanner:
             
             if severity == 'critical':
                 critical_vulns.append(v)
-                print(f"[DEBUG] Added to CRITICAL: {vuln_name}")
+                if self.debug:
+                    print(f"[DEBUG] Added to CRITICAL: {vuln_name}")
             elif severity == 'high':
                 high_vulns.append(v)
-                print(f"[DEBUG] Added to HIGH: {vuln_name}")
+                if self.debug:
+                    print(f"[DEBUG] Added to HIGH: {vuln_name}")
             elif severity == 'medium':
                 medium_vulns.append(v)
-                print(f"[DEBUG] Added to MEDIUM: {vuln_name}")
+                if self.debug:
+                    print(f"[DEBUG] Added to MEDIUM: {vuln_name}")
             elif severity == 'low':
                 low_vulns.append(v)
-                print(f"[DEBUG] Added to LOW: {vuln_name}")
+                if self.debug:
+                    print(f"[DEBUG] Added to LOW: {vuln_name}")
             elif severity == 'info':
                 info_vulns.append(v)
-                print(f"[DEBUG] Added to INFO: {vuln_name}")
+                if self.debug:
+                    print(f"[DEBUG] Added to INFO: {vuln_name}")
             else:
-                print(f"[DEBUG] UNCATEGORIZED severity '{severity}' for {vuln_name} - adding to HIGH")
+                if self.debug:
+                    print(f"[DEBUG] UNCATEGORIZED severity '{severity}' for {vuln_name} - adding to HIGH")
                 high_vulns.append(v)  # Add uncategorized to high for visibility
         
         # Debug: Show categorization results
-        print(f"[DEBUG] Final categorization results:")
-        print(f"[DEBUG] Critical: {len(critical_vulns)}, High: {len(high_vulns)}, Medium: {len(medium_vulns)}, Low: {len(low_vulns)}, Info: {len(info_vulns)}")
-        if critical_vulns:
-            print(f"[DEBUG] First critical vuln: {critical_vulns[0].get('vulnerability', 'UNKNOWN')}")
-        if high_vulns:
-            print(f"[DEBUG] First high vuln: {high_vulns[0].get('vulnerability', 'UNKNOWN')}")
-        if medium_vulns:
-            print(f"[DEBUG] First medium vuln: {medium_vulns[0].get('vulnerability', 'UNKNOWN')}")
+        if self.debug:
+            print(f"[DEBUG] Final categorization results:")
+            print(f"[DEBUG] Critical: {len(critical_vulns)}, High: {len(high_vulns)}, Medium: {len(medium_vulns)}, Low: {len(low_vulns)}, Info: {len(info_vulns)}")
+            if critical_vulns:
+                print(f"[DEBUG] First critical vuln: {critical_vulns[0].get('vulnerability', 'UNKNOWN')}")
+            if high_vulns:
+                print(f"[DEBUG] First high vuln: {high_vulns[0].get('vulnerability', 'UNKNOWN')}")
+            if medium_vulns:
+                print(f"[DEBUG] First medium vuln: {medium_vulns[0].get('vulnerability', 'UNKNOWN')}")
         
         print(f"VULNERABILITY STATUS: {len(vulnerabilities)} ISSUES FOUND")
         print(f"Critical Severity:    {len(critical_vulns)}")
@@ -4916,48 +4979,55 @@ class VulnScanner:
         print("="*80)
         
         # Print vulnerability details - ALWAYS show details for found vulnerabilities
-        print(f"\n[DEBUG] About to print vulnerability details...")
-        print(f"[DEBUG] Critical: {len(critical_vulns)}, High vulns: {len(high_vulns)}, Medium: {len(medium_vulns)}, Low: {len(low_vulns)}, Info: {len(info_vulns)}")
+        if self.debug:
+            print(f"\n[DEBUG] About to print vulnerability details...")
+            print(f"[DEBUG] Critical: {len(critical_vulns)}, High vulns: {len(high_vulns)}, Medium: {len(medium_vulns)}, Low: {len(low_vulns)}, Info: {len(info_vulns)}")
         
         if critical_vulns:
             print(f"\nCRITICAL SEVERITY VULNERABILITIES ({len(critical_vulns)} found):")
             print("-" * 50)
             for i, result in enumerate(critical_vulns, 1):
-                print(f"[DEBUG] Printing critical vuln {i}")
+                if self.debug:
+                    print(f"[DEBUG] Printing critical vuln {i}")
                 self._print_vulnerability(i, result)
         
         if high_vulns:
             print(f"\nHIGH SEVERITY VULNERABILITIES ({len(high_vulns)} found):")
             print("-" * 50)
             for i, result in enumerate(high_vulns, 1):
-                print(f"[DEBUG] Printing high vuln {i}")
+                if self.debug:
+                    print(f"[DEBUG] Printing high vuln {i}")
                 self._print_vulnerability(i, result)
         
         if medium_vulns:
             print(f"\nMEDIUM SEVERITY VULNERABILITIES ({len(medium_vulns)} found):")
             print("-" * 50)
             for i, result in enumerate(medium_vulns, 1):
-                print(f"[DEBUG] Printing medium vuln {i}")
+                if self.debug:
+                    print(f"[DEBUG] Printing medium vuln {i}")
                 self._print_vulnerability(i, result)
         
         if low_vulns:
             print(f"\nLOW SEVERITY VULNERABILITIES ({len(low_vulns)} found):")
             print("-" * 50)
             for i, result in enumerate(low_vulns, 1):
-                print(f"[DEBUG] Printing low vuln {i}")
+                if self.debug:
+                    print(f"[DEBUG] Printing low vuln {i}")
                 self._print_vulnerability(i, result)
         
         if info_vulns:
             print(f"\nINFO VULNERABILITIES ({len(info_vulns)} found):")
             print("-" * 50)
             for i, result in enumerate(info_vulns, 1):
-                print(f"[DEBUG] Printing info vuln {i}")
+                if self.debug:
+                    print(f"[DEBUG] Printing info vuln {i}")
                 self._print_vulnerability(i, result)
         
         # Always show vulnerabilities if we have any - REMOVED this condition that was preventing display
-        print(f"\n[DEBUG] Preparing to display vulnerabilities...")
-        print(f"[DEBUG] Total vulnerabilities: {len(vulnerabilities)}")
-        print(f"[DEBUG] Critical: {len(critical_vulns)}, High: {len(high_vulns)}, Medium: {len(medium_vulns)}, Low: {len(low_vulns)}, Info: {len(info_vulns)}")
+        if self.debug:
+            print(f"\n[DEBUG] Preparing to display vulnerabilities...")
+            print(f"[DEBUG] Total vulnerabilities: {len(vulnerabilities)}")
+            print(f"[DEBUG] Critical: {len(critical_vulns)}, High: {len(high_vulns)}, Medium: {len(medium_vulns)}, Low: {len(low_vulns)}, Info: {len(info_vulns)}")
         
         print("="*80)
         print("RECOMMENDATION: Review and remediate all vulnerabilities above.")

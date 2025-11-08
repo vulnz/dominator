@@ -101,6 +101,8 @@ Usage examples:
                        help='Maximum pages to crawl (default: 20)')
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Verbose output')
+    parser.add_argument('--debug', action='store_true',
+                       help='Enable debug output')
     
     # Deduplication options
     parser.add_argument('--max-duplicates', type=int, default=3,
@@ -306,6 +308,8 @@ def main():
         args.dedupe_domain = not args.no_domain_dedupe
     if not hasattr(args, 'nocrawl'):
         args.nocrawl = False
+    if not hasattr(args, 'debug'):
+        args.debug = False
     
     # Apply nocrawl logic
     if args.nocrawl:

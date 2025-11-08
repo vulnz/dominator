@@ -1,5 +1,5 @@
 """
-Outdated software detection logic with dynamic CVE checking from external APIs
+Outdated software detection logic with CVE API integration
 """
 
 import re
@@ -8,14 +8,15 @@ import requests
 from typing import Dict, Any, List, Tuple, Optional
 from datetime import datetime, timedelta
 import time
+import hashlib
 
 class OutdatedSoftwareDetector:
-    """Enhanced outdated software vulnerability detection with real-time CVE integration"""
+    """Enhanced outdated software vulnerability detection with CVE API integration"""
     
     # Cache for API responses to avoid repeated calls
     _api_cache = {}
     _cache_expiry = {}
-    _rate_limit_delay = 1  # Delay between API calls in seconds
+    _rate_limit_delay = 2  # Delay between API calls in seconds
     _last_api_call = 0
     
     @staticmethod
@@ -91,7 +92,7 @@ class OutdatedSoftwareDetector:
     @staticmethod
     def detect_outdated_software(response_headers: Dict[str, str], response_text: str, wappalyzer_technologies: List = None) -> List[Dict[str, Any]]:
         """
-        Enhanced detection of outdated software versions with real-time CVE checking
+        Enhanced detection of outdated software versions with CVE API integration
         
         Args:
             response_headers: HTTP response headers
@@ -99,7 +100,7 @@ class OutdatedSoftwareDetector:
             wappalyzer_technologies: Technologies detected by Wappalyzer
         
         Returns:
-            List of detected outdated software with real CVE information
+            List of detected outdated software with CVE information and links
         """
         detections = []
         patterns = OutdatedSoftwareDetector.get_software_version_patterns()
@@ -108,36 +109,7 @@ class OutdatedSoftwareDetector:
         headers_text = '\n'.join([f"{k}: {v}" for k, v in response_headers.items()])
         search_text = headers_text + '\n' + response_text
         
-        # First, process Wappalyzer technologies if available
-        if wappalyzer_technologies:
-            for tech in wappalyzer_technologies:
-                tech_name = tech.lower() if isinstance(tech, str) else str(tech).lower()
-                
-                # Map Wappalyzer technology names to our software categories
-                software_mapping = OutdatedSoftwareDetector._get_software_mapping()
-                
-                for wapp_name, software_key in software_mapping.items():
-                    if wapp_name in tech_name:
-                        # Try to extract version from Wappalyzer data or search for it
-                        version = OutdatedSoftwareDetector._extract_version_from_wappalyzer(tech, search_text, software_key)
-                        if version:
-                            # Get real CVE data from external APIs
-                            cves = OutdatedSoftwareDetector._fetch_cves_from_apis(software_key, version)
-                            severity = OutdatedSoftwareDetector._calculate_severity_from_cves(cves)
-                            
-                            detection = {
-                                'software': software_key,
-                                'version': version,
-                                'severity': severity,
-                                'cves': cves,
-                                'detection_method': 'wappalyzer_integration',
-                                'exploit_available': any(cve.get('exploit_available', False) for cve in cves),
-                                'max_cvss_score': max([cve.get('score', 0) for cve in cves], default=0),
-                                'eol_status': OutdatedSoftwareDetector._check_eol_status(software_key, version)
-                            }
-                            detections.append(detection)
-        
-        # Then, use traditional pattern matching for additional detection
+        # Process pattern matching for software detection
         for software, pattern_list in patterns.items():
             for pattern in pattern_list:
                 matches = re.finditer(pattern, search_text, re.IGNORECASE)
@@ -146,23 +118,25 @@ class OutdatedSoftwareDetector:
                     if not version:
                         continue
                     
-                    # Skip if we already detected this software via Wappalyzer
+                    # Skip if we already detected this software version
                     if any(d['software'] == software and d['version'] == version for d in detections):
                         continue
                     
-                    # Get real CVE data from external APIs
-                    cves = OutdatedSoftwareDetector._fetch_cves_from_apis(software, version)
-                    severity = OutdatedSoftwareDetector._calculate_severity_from_cves(cves)
+                    # Get CVE data from APIs
+                    cve_data = OutdatedSoftwareDetector._fetch_cve_data(software, version)
                     
                     detection = {
                         'software': software,
                         'version': version,
-                        'severity': severity,
-                        'cves': cves,
-                        'detection_method': 'header_analysis' if 'Server:' in match.group(0) or 'X-Powered-By:' in match.group(0) else 'content_analysis',
-                        'exploit_available': any(cve.get('exploit_available', False) for cve in cves),
-                        'max_cvss_score': max([cve.get('score', 0) for cve in cves], default=0),
-                        'eol_status': OutdatedSoftwareDetector._check_eol_status(software, version)
+                        'severity': cve_data['severity'],
+                        'cve_count': cve_data['cve_count'],
+                        'critical_cves': cve_data['critical_cves'],
+                        'high_cves': cve_data['high_cves'],
+                        'cve_links': cve_data['cve_links'],
+                        'latest_version': cve_data['latest_version'],
+                        'is_eol': cve_data['is_eol'],
+                        'eol_date': cve_data['eol_date'],
+                        'detection_method': 'header_analysis' if 'Server:' in match.group(0) or 'X-Powered-By:' in match.group(0) else 'content_analysis'
                     }
                     detections.append(detection)
         
@@ -206,10 +180,8 @@ class OutdatedSoftwareDetector:
         return None
     
     @staticmethod
-    def _fetch_cves_from_apis(software: str, version: str) -> List[Dict[str, Any]]:
-        """Fetch CVE data from external APIs"""
-        cves = []
-        
+    def _fetch_cve_data(software: str, version: str) -> Dict[str, Any]:
+        """Fetch comprehensive CVE data from multiple APIs"""
         # Rate limiting
         current_time = time.time()
         if current_time - OutdatedSoftwareDetector._last_api_call < OutdatedSoftwareDetector._rate_limit_delay:
@@ -217,253 +189,257 @@ class OutdatedSoftwareDetector:
         OutdatedSoftwareDetector._last_api_call = time.time()
         
         # Check cache first
-        cache_key = f"{software}_{version}"
+        cache_key = hashlib.md5(f"{software}_{version}".encode()).hexdigest()
         if cache_key in OutdatedSoftwareDetector._api_cache:
             cache_time = OutdatedSoftwareDetector._cache_expiry.get(cache_key)
             if cache_time and datetime.now() < cache_time:
                 return OutdatedSoftwareDetector._api_cache[cache_key]
         
+        # Initialize result structure
+        result = {
+            'severity': 'Info',
+            'cve_count': 0,
+            'critical_cves': [],
+            'high_cves': [],
+            'cve_links': [],
+            'latest_version': None,
+            'is_eol': False,
+            'eol_date': None
+        }
+        
         try:
-            # Try multiple CVE data sources
-            cves.extend(OutdatedSoftwareDetector._fetch_from_nist_nvd(software, version))
-            cves.extend(OutdatedSoftwareDetector._fetch_from_cve_circl(software, version))
+            # Fetch from NVD API
+            nvd_data = OutdatedSoftwareDetector._fetch_from_nvd_api(software, version)
+            if nvd_data:
+                result.update(nvd_data)
             
-            # Cache the results for 24 hours
-            OutdatedSoftwareDetector._api_cache[cache_key] = cves
-            OutdatedSoftwareDetector._cache_expiry[cache_key] = datetime.now() + timedelta(hours=24)
+            # Fetch EOL information
+            eol_data = OutdatedSoftwareDetector._fetch_eol_data(software, version)
+            if eol_data:
+                result['is_eol'] = eol_data.get('is_eol', False)
+                result['eol_date'] = eol_data.get('eol_date')
+            
+            # Fetch latest version info
+            latest_version = OutdatedSoftwareDetector._fetch_latest_version(software)
+            if latest_version:
+                result['latest_version'] = latest_version
+            
+            # Cache the results for 6 hours
+            OutdatedSoftwareDetector._api_cache[cache_key] = result
+            OutdatedSoftwareDetector._cache_expiry[cache_key] = datetime.now() + timedelta(hours=6)
             
         except Exception as e:
             print(f"Error fetching CVE data for {software} {version}: {e}")
         
-        return cves
+        return result
     
     @staticmethod
-    def _fetch_from_nist_nvd(software: str, version: str) -> List[Dict[str, Any]]:
-        """Fetch CVE data from NIST NVD API"""
-        cves = []
+    def _fetch_from_nvd_api(software: str, version: str) -> Optional[Dict[str, Any]]:
+        """Fetch CVE data from NIST NVD API v2"""
         try:
-            # NIST NVD API v2 - search by keyword
+            # Map software names to CPE format
+            cpe_name = OutdatedSoftwareDetector._get_cpe_name(software)
+            if not cpe_name:
+                return None
+            
+            # NIST NVD API v2 - search by CPE
             url = "https://services.nvd.nist.gov/rest/json/cves/2.0"
             params = {
-                'keywordSearch': f"{software} {version}",
-                'resultsPerPage': 10
+                'cpeName': f"cpe:2.3:a:*:{cpe_name}:{version}:*:*:*:*:*:*:*",
+                'resultsPerPage': 20
             }
             headers = {'User-Agent': 'Dominator-Security-Scanner/1.0'}
             
-            response = requests.get(url, params=params, headers=headers, timeout=10)
+            response = requests.get(url, params=params, headers=headers, timeout=15)
+            if response.status_code != 200:
+                # Fallback to keyword search
+                params = {
+                    'keywordSearch': f"{software} {version}",
+                    'resultsPerPage': 10
+                }
+                response = requests.get(url, params=params, headers=headers, timeout=15)
+            
             if response.status_code == 200:
                 data = response.json()
-                for vuln in data.get('vulnerabilities', []):
+                vulnerabilities = data.get('vulnerabilities', [])
+                
+                if not vulnerabilities:
+                    return None
+                
+                critical_cves = []
+                high_cves = []
+                cve_links = []
+                max_score = 0
+                
+                for vuln in vulnerabilities[:15]:  # Limit to first 15 CVEs
                     cve_data = vuln.get('cve', {})
                     cve_id = cve_data.get('id', '')
                     
-                    # Extract CVSS score
+                    if not cve_id:
+                        continue
+                    
+                    # Extract CVSS score and severity
                     cvss_score = 0
                     severity = 'Unknown'
                     metrics = cve_data.get('metrics', {})
-                    if 'cvssMetricV31' in metrics:
+                    
+                    if 'cvssMetricV31' in metrics and metrics['cvssMetricV31']:
                         cvss = metrics['cvssMetricV31'][0]['cvssData']
                         cvss_score = cvss.get('baseScore', 0)
                         severity = cvss.get('baseSeverity', 'Unknown')
-                    elif 'cvssMetricV30' in metrics:
+                    elif 'cvssMetricV30' in metrics and metrics['cvssMetricV30']:
                         cvss = metrics['cvssMetricV30'][0]['cvssData']
                         cvss_score = cvss.get('baseScore', 0)
                         severity = cvss.get('baseSeverity', 'Unknown')
+                    elif 'cvssMetricV2' in metrics and metrics['cvssMetricV2']:
+                        cvss = metrics['cvssMetricV2'][0]['cvssData']
+                        cvss_score = cvss.get('baseScore', 0)
+                        # Convert CVSS v2 to severity
+                        if cvss_score >= 9.0:
+                            severity = 'CRITICAL'
+                        elif cvss_score >= 7.0:
+                            severity = 'HIGH'
+                        elif cvss_score >= 4.0:
+                            severity = 'MEDIUM'
+                        else:
+                            severity = 'LOW'
                     
-                    description = ''
-                    descriptions = cve_data.get('descriptions', [])
-                    if descriptions:
-                        description = descriptions[0].get('value', '')
+                    max_score = max(max_score, cvss_score)
                     
-                    cves.append({
-                        'cve': cve_id,
+                    # Create CVE link
+                    cve_link = f"https://nvd.nist.gov/vuln/detail/{cve_id}"
+                    cve_links.append({
+                        'cve_id': cve_id,
+                        'url': cve_link,
                         'score': cvss_score,
-                        'severity': severity,
-                        'description': description,
-                        'source': 'NIST NVD',
-                        'exploit_available': OutdatedSoftwareDetector._check_exploit_availability(cve_id)
+                        'severity': severity
                     })
+                    
+                    # Categorize by severity
+                    if cvss_score >= 9.0:
+                        critical_cves.append({
+                            'cve_id': cve_id,
+                            'score': cvss_score,
+                            'url': cve_link
+                        })
+                    elif cvss_score >= 7.0:
+                        high_cves.append({
+                            'cve_id': cve_id,
+                            'score': cvss_score,
+                            'url': cve_link
+                        })
+                
+                # Determine overall severity
+                overall_severity = 'Info'
+                if max_score >= 9.0:
+                    overall_severity = 'Critical'
+                elif max_score >= 7.0:
+                    overall_severity = 'High'
+                elif max_score >= 4.0:
+                    overall_severity = 'Medium'
+                elif max_score > 0:
+                    overall_severity = 'Low'
+                
+                return {
+                    'severity': overall_severity,
+                    'cve_count': len(vulnerabilities),
+                    'critical_cves': critical_cves,
+                    'high_cves': high_cves,
+                    'cve_links': cve_links
+                }
+                
         except Exception as e:
-            print(f"Error fetching from NIST NVD: {e}")
+            print(f"Error fetching from NVD API: {e}")
         
-        return cves
+        return None
     
     @staticmethod
-    def _fetch_from_cve_circl(software: str, version: str) -> List[Dict[str, Any]]:
-        """Fetch CVE data from CVE-CIRCL API"""
-        cves = []
+    def _get_cpe_name(software: str) -> Optional[str]:
+        """Map software names to CPE format names"""
+        cpe_mapping = {
+            'php': 'php',
+            'apache': 'apache_http_server',
+            'nginx': 'nginx',
+            'iis': 'internet_information_server',
+            'wordpress': 'wordpress',
+            'drupal': 'drupal',
+            'joomla': 'joomla',
+            'mysql': 'mysql',
+            'postgresql': 'postgresql',
+            'tomcat': 'tomcat',
+            'jenkins': 'jenkins',
+            'node': 'node.js',
+            'express': 'express',
+            'react': 'react',
+            'vue': 'vue.js',
+            'angular': 'angular'
+        }
+        return cpe_mapping.get(software.lower())
+    
+    @staticmethod
+    def _fetch_eol_data(software: str, version: str) -> Optional[Dict[str, Any]]:
+        """Fetch End-of-Life data from endoflife.date API"""
         try:
-            # CVE-CIRCL API
-            url = f"https://cve.circl.lu/api/search/{software}"
+            # Map software names to endoflife.date product names
+            eol_mapping = {
+                'php': 'php',
+                'apache': 'apache',
+                'nginx': 'nginx',
+                'wordpress': 'wordpress',
+                'drupal': 'drupal',
+                'mysql': 'mysql',
+                'postgresql': 'postgresql',
+                'nodejs': 'nodejs',
+                'node': 'nodejs'
+            }
+            
+            product = eol_mapping.get(software.lower())
+            if not product:
+                return None
+            
+            url = f"https://endoflife.date/api/{product}.json"
             headers = {'User-Agent': 'Dominator-Security-Scanner/1.0'}
             
             response = requests.get(url, headers=headers, timeout=10)
             if response.status_code == 200:
                 data = response.json()
-                count = 0
-                for cve_id, cve_data in data.items():
-                    if count >= 5:  # Limit results
-                        break
-                    if version in str(cve_data.get('vulnerable_product', [])):
-                        cvss_score = float(cve_data.get('cvss', 0))
-                        
-                        cves.append({
-                            'cve': cve_id,
-                            'score': cvss_score,
-                            'description': cve_data.get('summary', ''),
-                            'source': 'CVE-CIRCL',
-                            'exploit_available': OutdatedSoftwareDetector._check_exploit_availability(cve_id)
-                        })
-                        count += 1
-        except Exception as e:
-            print(f"Error fetching from CVE-CIRCL: {e}")
-        
-        return cves
-    
-    @staticmethod
-    def _check_exploit_availability(cve_id: str) -> bool:
-        """Check if exploits are available for a CVE"""
-        try:
-            # Check ExploitDB API
-            url = f"https://www.exploit-db.com/search?cve={cve_id}"
-            headers = {'User-Agent': 'Dominator-Security-Scanner/1.0'}
-            
-            response = requests.get(url, headers=headers, timeout=5)
-            return 'No Results' not in response.text and response.status_code == 200
-        except:
-            return False
-    
-    @staticmethod
-    def _check_eol_status(software: str, version: str) -> Dict[str, Any]:
-        """Check End-of-Life status for software version"""
-        try:
-            # Use endoflife.date API
-            url = f"https://endoflife.date/api/{software}.json"
-            headers = {'User-Agent': 'Dominator-Security-Scanner/1.0'}
-            
-            response = requests.get(url, headers=headers, timeout=5)
-            if response.status_code == 200:
-                data = response.json()
+                
+                # Find matching version
+                version_major = version.split('.')[0]
                 for release in data:
-                    if str(release.get('cycle', '')).startswith(version.split('.')[0]):
+                    cycle = str(release.get('cycle', ''))
+                    if cycle.startswith(version_major) or version.startswith(cycle):
+                        eol_date = release.get('eol')
+                        is_eol = False
+                        
+                        if eol_date:
+                            if isinstance(eol_date, bool):
+                                is_eol = eol_date
+                            else:
+                                try:
+                                    eol_datetime = datetime.strptime(str(eol_date), '%Y-%m-%d')
+                                    is_eol = datetime.now() > eol_datetime
+                                except:
+                                    is_eol = False
+                        
                         return {
-                            'is_eol': release.get('eol', False),
-                            'eol_date': release.get('eol'),
-                            'support_status': 'EOL' if release.get('eol', False) else 'Supported'
+                            'is_eol': is_eol,
+                            'eol_date': str(eol_date) if eol_date else None
                         }
         except Exception as e:
-            print(f"Error checking EOL status: {e}")
+            print(f"Error fetching EOL data: {e}")
         
-        return {'is_eol': False, 'eol_date': None, 'support_status': 'Unknown'}
+        return None
     
     @staticmethod
-    def _calculate_severity_from_cves(cves: List[Dict[str, Any]]) -> str:
-        """Calculate severity based on CVE scores, exploit availability, and EOL status"""
-        if not cves:
-            return 'Info'
-        
-        max_score = max([cve.get('score', 0) for cve in cves], default=0)
-        has_exploit = any(cve.get('exploit_available', False) for cve in cves)
-        critical_cves = len([cve for cve in cves if cve.get('score', 0) >= 9.0])
-        
-        # Enhanced severity calculation
-        if max_score >= 9.0 and has_exploit:
-            return 'Critical'
-        elif max_score >= 9.0 or (max_score >= 7.0 and has_exploit) or critical_cves >= 3:
-            return 'Critical'
-        elif max_score >= 7.0 or (max_score >= 5.0 and has_exploit):
-            return 'High'
-        elif max_score >= 4.0:
-            return 'Medium'
-        elif max_score > 0:
-            return 'Low'
-        else:
-            return 'Info'
-    
-    @staticmethod
-    def get_evidence(detections: List[Dict[str, Any]]) -> str:
-        """Get evidence of outdated software with real CVE information"""
-        if not detections:
-            return "No outdated software detected"
-        
-        evidence_parts = []
-        for detection in detections:
-            software = detection['software']
-            version = detection['version']
-            cves = detection.get('cves', [])
-            max_score = detection.get('max_cvss_score', 0)
-            eol_status = detection.get('eol_status', {})
-            
-            evidence = f"{software.upper()} {version}"
-            
-            # Add EOL information
-            if eol_status.get('is_eol', False):
-                evidence += f" (EOL: {eol_status.get('eol_date', 'Yes')})"
-            
-            # Add CVE information
-            if cves:
-                cve_names = [cve['cve'] for cve in cves[:3]]
-                evidence += f" (CVEs: {', '.join(cve_names)}"
-                if max_score > 0:
-                    evidence += f", Max CVSS: {max_score}"
-                if detection.get('exploit_available'):
-                    evidence += f", Exploits Available"
-                
-                # Add data sources
-                sources = list(set([cve.get('source', 'Unknown') for cve in cves]))
-                evidence += f", Sources: {', '.join(sources)}"
-                evidence += ")"
-            
-            evidence_parts.append(evidence)
-        
-        return "; ".join(evidence_parts)
-    
-    @staticmethod
-    def get_remediation_advice(software: str, version: str, cves: List[Dict[str, Any]] = None, eol_status: Dict[str, Any] = None) -> str:
-        """Get detailed remediation advice with real CVE and EOL information"""
-        # Get latest version information from external sources
-        latest_version = OutdatedSoftwareDetector._get_latest_version(software)
-        
-        base_advice = f"Upgrade {software.title()} from version {version} to the latest stable version"
-        if latest_version:
-            base_advice += f" ({latest_version})"
-        base_advice += "."
-        
-        # Add EOL-specific advice
-        if eol_status and eol_status.get('is_eol', False):
-            base_advice += f" URGENT: This version reached End-of-Life on {eol_status.get('eol_date', 'unknown date')} and no longer receives security updates."
-        
-        # Add CVE-specific advice
-        if cves:
-            critical_cves = [cve for cve in cves if cve.get('score', 0) >= 9.0]
-            high_cves = [cve for cve in cves if 7.0 <= cve.get('score', 0) < 9.0]
-            exploit_cves = [cve for cve in cves if cve.get('exploit_available', False)]
-            
-            if critical_cves:
-                base_advice += f" CRITICAL: {len(critical_cves)} critical vulnerabilities (CVSS ≥9.0) found."
-            if high_cves:
-                base_advice += f" HIGH: {len(high_cves)} high-severity vulnerabilities (CVSS 7.0-8.9) found."
-            if exploit_cves:
-                base_advice += f" EXPLOITABLE: {len(exploit_cves)} vulnerabilities have publicly available exploits."
-            
-            # Add specific CVE references
-            top_cves = sorted(cves, key=lambda x: x.get('score', 0), reverse=True)[:3]
-            if top_cves:
-                cve_refs = [f"{cve['cve']} (CVSS: {cve.get('score', 'N/A')})" for cve in top_cves]
-                base_advice += f" Top CVEs: {', '.join(cve_refs)}."
-        
-        return base_advice
-    
-    @staticmethod
-    def _get_latest_version(software: str) -> Optional[str]:
-        """Get latest version information from external sources"""
+    def _fetch_latest_version(software: str) -> Optional[str]:
+        """Fetch latest version information from various APIs"""
         try:
-            # Try different APIs for version information
-            if software == 'php':
+            if software.lower() == 'php':
                 return OutdatedSoftwareDetector._get_php_latest_version()
-            elif software in ['apache', 'nginx', 'wordpress', 'drupal', 'joomla']:
+            elif software.lower() in ['wordpress', 'drupal', 'joomla']:
                 return OutdatedSoftwareDetector._get_github_latest_version(software)
-            elif software in ['jquery', 'bootstrap', 'react', 'vue', 'angular']:
+            elif software.lower() in ['jquery', 'bootstrap', 'react', 'vue', 'angular']:
                 return OutdatedSoftwareDetector._get_npm_latest_version(software)
         except Exception as e:
             print(f"Error getting latest version for {software}: {e}")
@@ -471,44 +447,145 @@ class OutdatedSoftwareDetector:
         return None
     
     @staticmethod
+    def get_evidence(detections: List[Dict[str, Any]]) -> str:
+        """Get evidence of outdated software with CVE information and links"""
+        if not detections:
+            return "No outdated software detected"
+        
+        evidence_parts = []
+        for detection in detections:
+            software = detection['software']
+            version = detection['version']
+            cve_count = detection.get('cve_count', 0)
+            critical_cves = detection.get('critical_cves', [])
+            high_cves = detection.get('high_cves', [])
+            latest_version = detection.get('latest_version')
+            is_eol = detection.get('is_eol', False)
+            eol_date = detection.get('eol_date')
+            
+            evidence = f"{software.upper()} {version}"
+            
+            # Add version comparison
+            if latest_version:
+                evidence += f" (Latest: {latest_version})"
+            
+            # Add EOL information
+            if is_eol:
+                evidence += f" [EOL: {eol_date}]" if eol_date else " [EOL]"
+            
+            # Add CVE information
+            if cve_count > 0:
+                evidence += f" - {cve_count} CVE(s)"
+                if critical_cves:
+                    evidence += f" ({len(critical_cves)} Critical"
+                    if high_cves:
+                        evidence += f", {len(high_cves)} High)"
+                    else:
+                        evidence += ")"
+                elif high_cves:
+                    evidence += f" ({len(high_cves)} High)"
+            
+            evidence_parts.append(evidence)
+        
+        return "; ".join(evidence_parts)
+    
+    @staticmethod
+    def get_remediation_advice(software: str, version: str, detection_data: Dict[str, Any] = None) -> str:
+        """Get detailed remediation advice with CVE and version information"""
+        latest_version = detection_data.get('latest_version') if detection_data else None
+        is_eol = detection_data.get('is_eol', False) if detection_data else False
+        eol_date = detection_data.get('eol_date') if detection_data else None
+        critical_cves = detection_data.get('critical_cves', []) if detection_data else []
+        high_cves = detection_data.get('high_cves', []) if detection_data else []
+        
+        base_advice = f"Upgrade {software.title()} from version {version}"
+        if latest_version:
+            base_advice += f" to the latest stable version ({latest_version})"
+        base_advice += "."
+        
+        # Add EOL-specific advice
+        if is_eol:
+            urgency = " URGENT:"
+            if eol_date:
+                base_advice += f"{urgency} This version reached End-of-Life on {eol_date} and no longer receives security updates."
+            else:
+                base_advice += f"{urgency} This version has reached End-of-Life and no longer receives security updates."
+        
+        # Add CVE-specific advice
+        if critical_cves:
+            base_advice += f" CRITICAL: {len(critical_cves)} critical vulnerabilities (CVSS ≥9.0) found."
+        if high_cves:
+            base_advice += f" HIGH: {len(high_cves)} high-severity vulnerabilities (CVSS 7.0-8.9) found."
+        
+        # Add specific CVE references with links
+        if critical_cves or high_cves:
+            top_cves = (critical_cves + high_cves)[:3]
+            if top_cves:
+                cve_refs = []
+                for cve in top_cves:
+                    cve_refs.append(f"{cve['cve_id']} (CVSS: {cve.get('score', 'N/A')}) - {cve.get('url', '')}")
+                base_advice += f" Top CVEs: {'; '.join(cve_refs)}."
+        
+        return base_advice
+    
+    @staticmethod
+    def get_cve_links_html(cve_links: List[Dict[str, Any]]) -> str:
+        """Generate HTML links for CVEs"""
+        if not cve_links:
+            return "No CVEs found"
+        
+        html_links = []
+        for cve in cve_links[:10]:  # Limit to first 10 CVEs
+            cve_id = cve.get('cve_id', '')
+            url = cve.get('url', '')
+            score = cve.get('score', 0)
+            severity = cve.get('severity', 'Unknown')
+            
+            if url:
+                html_links.append(f'<a href="{url}" target="_blank">{cve_id}</a> (CVSS: {score}, {severity})')
+            else:
+                html_links.append(f'{cve_id} (CVSS: {score}, {severity})')
+        
+        return '<br>'.join(html_links)
+    
+    @staticmethod
     def _get_php_latest_version() -> Optional[str]:
         """Get latest PHP version from official API"""
         try:
             url = "https://www.php.net/releases/index.php?json&version=8"
-            response = requests.get(url, timeout=5)
+            headers = {'User-Agent': 'Dominator-Security-Scanner/1.0'}
+            response = requests.get(url, headers=headers, timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 return data.get('version')
-        except:
-            pass
+        except Exception as e:
+            print(f"Error fetching PHP version: {e}")
         return None
     
     @staticmethod
     def _get_github_latest_version(software: str) -> Optional[str]:
         """Get latest version from GitHub releases"""
         repo_mapping = {
-            'apache': 'apache/httpd',
-            'nginx': 'nginx/nginx',
             'wordpress': 'WordPress/WordPress',
             'drupal': 'drupal/drupal',
             'joomla': 'joomla/joomla-cms'
         }
         
-        repo = repo_mapping.get(software)
+        repo = repo_mapping.get(software.lower())
         if not repo:
             return None
         
         try:
             url = f"https://api.github.com/repos/{repo}/releases/latest"
             headers = {'User-Agent': 'Dominator-Security-Scanner/1.0'}
-            response = requests.get(url, headers=headers, timeout=5)
+            response = requests.get(url, headers=headers, timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 tag = data.get('tag_name', '')
                 # Clean version tag (remove 'v' prefix, etc.)
                 return re.sub(r'^[vV]', '', tag)
-        except:
-            pass
+        except Exception as e:
+            print(f"Error fetching GitHub version for {software}: {e}")
         return None
     
     @staticmethod
@@ -516,10 +593,11 @@ class OutdatedSoftwareDetector:
         """Get latest version from NPM registry"""
         try:
             url = f"https://registry.npmjs.org/{package}/latest"
-            response = requests.get(url, timeout=5)
+            headers = {'User-Agent': 'Dominator-Security-Scanner/1.0'}
+            response = requests.get(url, headers=headers, timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 return data.get('version')
-        except:
-            pass
+        except Exception as e:
+            print(f"Error fetching NPM version for {package}: {e}")
         return None
