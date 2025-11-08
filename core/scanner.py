@@ -617,66 +617,9 @@ class VulnScanner:
                     if self.debug:
                         print(f"  [DEBUG] No additional pages found by crawler")
                 
-                # Test important pages that might have forms or vulnerabilities
-                important_pages = self._get_important_pages()
-            
-                # Generate dynamic pages based on discovered patterns
-                dynamic_pages = self._generate_dynamic_pages(parsed_data['url'])
-                important_pages.extend(dynamic_pages)
+                # Only test pages that were actually discovered by the crawler
                 if self.debug:
-                    print(f"  [DEBUG] Added {len(dynamic_pages)} dynamically generated pages")
-            
-                if self.debug:
-                    print(f"  [DEBUG] Testing {len(important_pages)} important pages")
-            
-                for page in important_pages[:120]:  # Увеличиваем до 120 страниц для глубокого аудита
-                    if page.startswith('http'):
-                        test_url = page
-                    else:
-                        # Build URL with correct port and base path
-                        port_part = f":{parsed_data['port']}" if parsed_data.get('port') and parsed_data['port'] != 80 else ""
-                        base_path = parsed_data.get('path', '/').rstrip('/')
-                        test_url = f"{parsed_data['scheme']}://{parsed_data['host']}{port_part}{base_path}{page}"
-                    
-                    try:
-                        if self.debug:
-                            print(f"  [DEBUG] Testing important page: {test_url}")
-                        test_response = requests.get(test_url, timeout=15, verify=False)
-                        if test_response.status_code == 200:
-                            page_data = self.url_parser.parse(test_url)
-                            
-                            # Extract forms from the page
-                            forms = self.url_parser.extract_forms(test_response.text)
-                            page_data['forms'] = forms
-                            self.scan_stats['total_forms'] += len(forms)
-                            
-                            # Ensure parameters are properly extracted for vulnerable pages
-                            if not page_data['query_params'] and '?' in test_url:
-                                from urllib.parse import urlparse, parse_qs
-                                parsed_url = urlparse(test_url)
-                                if parsed_url.query:
-                                    page_data['query_params'] = parse_qs(parsed_url.query, keep_blank_values=True)
-                            
-                            all_found_pages.append(page_data)
-                            
-                            # Update stats
-                            self.scan_stats['total_urls'] += 1
-                            self.scan_stats['total_params'] += len(page_data['query_params'])
-                            
-                            if self.debug:
-                                print(f"  [DEBUG] Page has {len(page_data['query_params'])} parameters and {len(forms)} forms")
-                                if page_data['query_params']:
-                                    print(f"  [DEBUG] Parameters found: {list(page_data['query_params'].keys())}")
-                        elif test_response.status_code == 404:
-                            if self.debug:
-                                print(f"  [DEBUG] Page not found: {test_url}")
-                        else:
-                            if self.debug:
-                                print(f"  [DEBUG] Page returned {test_response.status_code}: {test_url}")
-                    except Exception as e:
-                        if self.debug:
-                            print(f"  [DEBUG] Error testing page {test_url}: {e}")
-                        continue
+                    print(f"  [DEBUG] Using only crawler-discovered pages")
             else:
                 if self.debug:
                     if getattr(self.config, 'single_url', False):
@@ -4994,16 +4937,6 @@ class VulnScanner:
         
         return results
     
-    def _get_important_pages(self) -> List[str]:
-        """Get list of important pages from path manager only"""
-        # Get common paths from path manager
-        common_paths = self.path_manager.generate_common_paths("")
-        
-        important_pages = []
-        for path_type, paths in common_paths.items():
-            important_pages.extend(paths)
-        
-        return list(set(important_pages))[:50]  # Limit to 50 pages from path manager
     
     def _get_success_indicators(self) -> List[str]:
         """Get indicators that suggest a request was successful"""
@@ -5053,37 +4986,6 @@ class VulnScanner:
         return normalized
     
     
-    def _generate_dynamic_pages(self, base_url: str) -> List[str]:
-        """Generate dynamic pages based on discovered patterns only"""
-        from urllib.parse import urlparse
-        parsed = urlparse(base_url)
-        base_path = parsed.path.rstrip('/')
-        
-        # Only generate pages if we have a base path
-        if not base_path or base_path == '/':
-            return []
-        
-        # Extract file extension from current URL
-        current_file = parsed.path.split('/')[-1] if '/' in parsed.path else ''
-        if '.' not in current_file:
-            return []
-        
-        file_extension = '.' + current_file.split('.')[-1]
-        base_name = current_file.split('.')[0]
-        
-        # Generate similar files with same extension
-        dynamic_pages = []
-        similar_names = [
-            'index', 'main', 'home', 'admin', 'login', 'search',
-            'list', 'view', 'show', 'edit', 'add', 'delete'
-        ]
-        
-        for name in similar_names:
-            if name != base_name:  # Don't duplicate current file
-                page_url = f"{base_path}/{name}{file_extension}"
-                dynamic_pages.append(page_url)
-        
-        return dynamic_pages[:20]  # Limit to 20 similar pages
     
     def _is_meaningful_404(self, response_text: str) -> bool:
         """Check if 404 response contains meaningful content that might indicate vulnerabilities"""
