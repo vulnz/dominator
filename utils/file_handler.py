@@ -12,7 +12,7 @@ class FileHandler:
     
     
     def save_html(self, data: List[Dict[str, Any]], filename: str):
-        """Save data as advanced HTML report"""
+        """Save data as advanced HTML report with enhanced features"""
         import json
         import time
         
@@ -64,14 +64,49 @@ class FileHandler:
                 'remediation': self._escape_html(item.get('remediation', '')),
                 'detector': item.get('detector', 'Unknown'),
                 'screenshot': item.get('screenshot'),
-                'screenshot_base64': screenshot_base64
+                'screenshot_base64': screenshot_base64,
+                'cve_links': item.get('cve_links', []),
+                'exploit_links': item.get('exploit_links', []),
+                'technologies': item.get('technologies', [])
             }
             vulnerabilities.append(vuln_data)
+        
+        # Deduplicate technologies across all vulnerabilities
+        all_technologies = set()
+        for vuln in vulnerabilities:
+            if vuln.get('technologies'):
+                all_technologies.update(vuln['technologies'])
+        
+        # Update scan_stats with deduplicated technologies
+        if 'technologies' not in scan_stats:
+            scan_stats['technologies'] = {}
+        
+        # Group technologies by domain and deduplicate
+        tech_by_domain = {}
+        for vuln in vulnerabilities:
+            if vuln.get('target'):
+                from urllib.parse import urlparse
+                try:
+                    parsed = urlparse(vuln['target'])
+                    domain = parsed.netloc
+                    if domain not in tech_by_domain:
+                        tech_by_domain[domain] = set()
+                    if vuln.get('technologies'):
+                        tech_by_domain[domain].update(vuln['technologies'])
+                except:
+                    pass
+        
+        # Convert sets to lists for JSON serialization
+        for domain in tech_by_domain:
+            tech_by_domain[domain] = list(tech_by_domain[domain])
+        
+        scan_stats['technologies'] = tech_by_domain
         
         # Prepare report data
         report_data = {
             'vulnerabilities': vulnerabilities,
-            'scan_stats': scan_stats
+            'scan_stats': scan_stats,
+            'filetree_enabled': getattr(self, 'config', None) and getattr(self.config, 'filetree', False)
         }
         
         print(f"[DEBUG] Final report_data: {len(vulnerabilities)} vulnerabilities")
@@ -122,7 +157,7 @@ class FileHandler:
                    .replace("'", '&#x27;'))
     
     def _get_advanced_html_template(self) -> str:
-        """Get advanced HTML report template"""
+        """Get advanced HTML report template with enhanced features"""
         return """
 <!DOCTYPE html>
 <html lang="en">
@@ -130,6 +165,7 @@ class FileHandler:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dominator Security Scan Report</title>
+    <link rel="icon" type="image/x-icon" id="dynamic-favicon">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         * {
@@ -490,6 +526,197 @@ class FileHandler:
             margin-top: 40px;
         }
         
+        /* Scope Section Styles */
+        .scope-section {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 15px;
+            padding: 25px;
+            margin: 25px 0;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .scope-header {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .scope-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        
+        .scope-item {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #28a745;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .scope-label {
+            font-weight: bold;
+            color: #28a745;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+        
+        .target-badge, .module-badge, .tech-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            margin: 3px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+        
+        .target-badge {
+            background: linear-gradient(135deg, #007bff, #0056b3);
+            color: white;
+        }
+        
+        .module-badge {
+            background: linear-gradient(135deg, #28a745, #1e7e34);
+            color: white;
+        }
+        
+        .tech-badge {
+            background: linear-gradient(135deg, #17a2b8, #138496);
+            color: white;
+        }
+        
+        .target-badge:hover, .module-badge:hover, .tech-badge:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        /* File Tree Styles */
+        .filetree-section {
+            background: #2d3748;
+            color: #e2e8f0;
+            border-radius: 15px;
+            padding: 25px;
+            margin: 25px 0;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        
+        .filetree-header {
+            background: linear-gradient(135deg, #4a5568, #2d3748);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .file-tree {
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            line-height: 1.6;
+        }
+        
+        .tree-level {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .tree-item {
+            margin: 3px 0;
+            padding: 2px 0;
+            transition: background-color 0.3s ease;
+        }
+        
+        .tree-item:hover {
+            background-color: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            padding-left: 5px;
+        }
+        
+        .folder-icon {
+            color: #ffd700;
+            margin-right: 8px;
+        }
+        
+        .file-icon {
+            color: #87ceeb;
+            margin-right: 8px;
+        }
+        
+        /* CVE and Exploit Link Styles */
+        .cve-link, .exploit-link {
+            display: inline-block;
+            padding: 4px 8px;
+            margin: 2px 4px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 0.9em;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+        
+        .cve-link {
+            background: linear-gradient(135deg, #007bff, #0056b3);
+            color: white;
+        }
+        
+        .cve-link:hover {
+            background: linear-gradient(135deg, #0056b3, #004085);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,123,255,0.3);
+            border-color: #007bff;
+        }
+        
+        .exploit-link {
+            background: linear-gradient(135deg, #dc3545, #c82333);
+            color: white;
+        }
+        
+        .exploit-link:hover {
+            background: linear-gradient(135deg, #c82333, #a71e2a);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(220,53,69,0.3);
+            border-color: #dc3545;
+        }
+        
+        .cve-info, .exploit-info {
+            color: #6c757d;
+            font-size: 0.85em;
+            margin-left: 5px;
+        }
+        
+        /* Screenshot Thumbnail Styles */
+        .screenshot-thumbnail {
+            max-width: 200px;
+            height: auto;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .screenshot-thumbnail:hover {
+            transform: scale(1.05);
+            border-color: #007bff;
+            box-shadow: 0 4px 15px rgba(0,123,255,0.3);
+        }
+        
+        .screenshot-caption {
+            font-size: 0.8em;
+            color: #6c757d;
+            margin-top: 8px;
+            text-align: center;
+            font-style: italic;
+        }
+        
         @media (max-width: 768px) {
             .dashboard {
                 grid-template-columns: 1fr;
@@ -666,6 +893,17 @@ class FileHandler:
             console.log('Report data:', reportData);
             console.log('Vulnerabilities count:', reportData.vulnerabilities ? reportData.vulnerabilities.length : 'undefined');
             
+            // Set favicon from target
+            setDynamicFavicon();
+            
+            // Generate scope section
+            generateScopeSection();
+            
+            // Generate file tree if enabled
+            if (reportData.filetree_enabled) {
+                generateFileTreeSection();
+            }
+            
             populateStats();
             populateTechnologies();
             populateVulnerabilities();
@@ -674,6 +912,180 @@ class FileHandler:
             
             // Set report date
             document.getElementById('report-date').textContent = new Date().toLocaleString();
+        }
+        
+        function setDynamicFavicon() {
+            const vulnerabilities = reportData.vulnerabilities || [];
+            if (vulnerabilities.length > 0) {
+                const firstTarget = vulnerabilities[0].target;
+                if (firstTarget) {
+                    try {
+                        const url = new URL(firstTarget);
+                        const faviconUrl = `${url.protocol}//${url.host}/favicon.ico`;
+                        document.getElementById('dynamic-favicon').href = faviconUrl;
+                    } catch (e) {
+                        console.log('Could not set dynamic favicon:', e);
+                    }
+                }
+            }
+        }
+        
+        function generateScopeSection() {
+            const vulnerabilities = reportData.vulnerabilities || [];
+            const scanStats = reportData.scan_stats || {};
+            
+            // Extract unique targets
+            const targets = new Set();
+            vulnerabilities.forEach(vuln => {
+                if (vuln.target) {
+                    try {
+                        const url = new URL(vuln.target);
+                        targets.add(`${url.protocol}//${url.host}`);
+                    } catch (e) {
+                        targets.add(vuln.target);
+                    }
+                }
+            });
+            
+            // Get modules and technologies
+            const modules = Object.keys(scanStats.module_stats || {});
+            const technologies = scanStats.technologies || {};
+            const allTechs = new Set();
+            Object.values(technologies).forEach(domainTechs => {
+                if (Array.isArray(domainTechs)) {
+                    domainTechs.forEach(tech => allTechs.add(tech));
+                }
+            });
+            
+            let scopeHtml = `
+                <div class="scope-section">
+                    <div class="scope-header">
+                        <h2><i class="fas fa-crosshairs"></i> Scan Scope</h2>
+                        <p>Overview of targets, modules, and technologies analyzed</p>
+                    </div>
+                    <div class="scope-grid">
+            `;
+            
+            // Targets
+            if (targets.size > 0) {
+                scopeHtml += `
+                    <div class="scope-item">
+                        <div class="scope-label"><i class="fas fa-globe"></i> Target Domains (${targets.size})</div>
+                        <div class="scope-value">
+                `;
+                Array.from(targets).sort().forEach(target => {
+                    scopeHtml += `<span class="target-badge">${target}</span>`;
+                });
+                scopeHtml += `</div></div>`;
+            }
+            
+            // Modules
+            if (modules.length > 0) {
+                scopeHtml += `
+                    <div class="scope-item">
+                        <div class="scope-label"><i class="fas fa-cogs"></i> Security Modules (${modules.length})</div>
+                        <div class="scope-value">
+                `;
+                modules.sort().forEach(module => {
+                    scopeHtml += `<span class="module-badge">${module.toUpperCase()}</span>`;
+                });
+                scopeHtml += `</div></div>`;
+            }
+            
+            // Technologies
+            if (allTechs.size > 0) {
+                scopeHtml += `
+                    <div class="scope-item">
+                        <div class="scope-label"><i class="fas fa-microchip"></i> Technologies Detected (${allTechs.size})</div>
+                        <div class="scope-value">
+                `;
+                Array.from(allTechs).sort().forEach(tech => {
+                    scopeHtml += `<span class="tech-badge">${tech}</span>`;
+                });
+                scopeHtml += `</div></div>`;
+            }
+            
+            scopeHtml += `</div></div>`;
+            
+            // Insert before dashboard
+            const dashboard = document.querySelector('.dashboard');
+            if (dashboard) {
+                dashboard.insertAdjacentHTML('beforebegin', scopeHtml);
+            }
+        }
+        
+        function generateFileTreeSection() {
+            const vulnerabilities = reportData.vulnerabilities || [];
+            
+            // Extract file paths
+            const filePaths = new Set();
+            vulnerabilities.forEach(vuln => {
+                if (vuln.request_url) {
+                    try {
+                        const url = new URL(vuln.request_url);
+                        if (url.pathname && url.pathname !== '/') {
+                            filePaths.add(url.pathname);
+                        }
+                    } catch (e) {
+                        // Ignore invalid URLs
+                    }
+                }
+            });
+            
+            if (filePaths.size === 0) return;
+            
+            // Build tree structure
+            const tree = {};
+            Array.from(filePaths).forEach(path => {
+                const parts = path.split('/').filter(part => part);
+                let current = tree;
+                parts.forEach(part => {
+                    if (!current[part]) {
+                        current[part] = {};
+                    }
+                    current = current[part];
+                });
+            });
+            
+            let filetreeHtml = `
+                <div class="filetree-section">
+                    <div class="filetree-header">
+                        <h2><i class="fas fa-folder-tree"></i> File Tree Structure</h2>
+                        <p>Discovered files and directories during scanning</p>
+                    </div>
+                    <div class="file-tree">
+                        ${generateTreeHtml(tree, 0)}
+                    </div>
+                </div>
+            `;
+            
+            // Insert before vulnerabilities
+            const vulnSection = document.querySelector('.vulnerabilities');
+            if (vulnSection) {
+                vulnSection.insertAdjacentHTML('beforebegin', filetreeHtml);
+            }
+        }
+        
+        function generateTreeHtml(tree, level) {
+            let html = '<ul class="tree-level">';
+            const entries = Object.entries(tree).sort();
+            
+            entries.forEach(([name, subtree]) => {
+                const indent = level * 20;
+                html += `<li class="tree-item" style="margin-left: ${indent}px;">`;
+                
+                if (Object.keys(subtree).length > 0) {
+                    html += `<span class="folder-icon"><i class="fas fa-folder"></i></span><strong>${name}/</strong>`;
+                    html += generateTreeHtml(subtree, level + 1);
+                } else {
+                    html += `<span class="file-icon"><i class="fas fa-file"></i></span>${name}`;
+                }
+                
+                html += '</li>';
+            });
+            
+            html += '</ul>';
+            return html;
         }
         
         function populateStats() {
@@ -912,34 +1324,36 @@ class FileHandler:
             const techGrid = document.getElementById('tech-grid');
             const techSection = document.getElementById('tech-section');
             
+            // Deduplicate technologies across all domains
+            const allTechs = new Set();
             let hasAnyTech = false;
             
             for (const [domain, techs] of Object.entries(technologies)) {
                 if (techs && techs.length > 0) {
                     hasAnyTech = true;
                     techs.forEach(tech => {
-                        const techItem = document.createElement('div');
-                        techItem.className = 'tech-item';
-                        
-                        // Handle both string and object tech formats
                         const techName = typeof tech === 'string' ? tech : (tech.name || tech);
-                        const techVersion = typeof tech === 'object' ? (tech.version || 'Unknown Version') : 'Unknown Version';
-                        const techCategory = typeof tech === 'object' ? (tech.category || 'Unknown') : 'Unknown';
-                        const techConfidence = typeof tech === 'object' ? (tech.confidence || 'N/A') : 'N/A';
-                        
-                        techItem.innerHTML = `
-                            <div class="tech-name">${techName}</div>
-                            <div class="tech-version">${techVersion}</div>
-                            <div style="font-size: 0.8rem; color: #888; margin-top: 5px;">
-                                ${techCategory} ${techConfidence !== 'N/A' ? '(' + techConfidence + '%)' : ''}
-                            </div>
-                        `;
-                        techGrid.appendChild(techItem);
+                        allTechs.add(techName);
                     });
                 }
             }
             
+            // Create deduplicated technology items
             if (hasAnyTech) {
+                Array.from(allTechs).sort().forEach(techName => {
+                    const techItem = document.createElement('div');
+                    techItem.className = 'tech-item';
+                    
+                    techItem.innerHTML = `
+                        <div class="tech-name">${techName}</div>
+                        <div class="tech-version">Detected</div>
+                        <div style="font-size: 0.8rem; color: #888; margin-top: 5px;">
+                            Technology Stack
+                        </div>
+                    `;
+                    techGrid.appendChild(techItem);
+                });
+                
                 techSection.style.display = 'block';
             }
         }
@@ -1028,7 +1442,34 @@ class FileHandler:
                     ${vuln.screenshot_base64 ? `
                     <div class="detail-section">
                         <h4><i class="fas fa-camera"></i> Proof of Concept Screenshot</h4>
-                        <img src="data:image/png;base64,${vuln.screenshot_base64}" class="screenshot" alt="Vulnerability Screenshot">
+                        <a href="data:image/png;base64,${vuln.screenshot_base64}" target="_blank">
+                            <img src="data:image/png;base64,${vuln.screenshot_base64}" class="screenshot-thumbnail" alt="Vulnerability Screenshot">
+                        </a>
+                        <div class="screenshot-caption">Click to view full size</div>
+                    </div>
+                    ` : ''}
+                    ${vuln.cve_links && vuln.cve_links.length > 0 ? `
+                    <div class="detail-section">
+                        <h4><i class="fas fa-shield-alt"></i> CVE References</h4>
+                        <div class="detail-content">
+                            ${vuln.cve_links.slice(0, 5).map(cve => 
+                                `<a href="${cve.url}" target="_blank" class="cve-link">${cve.cve_id}</a>
+                                 <span class="cve-info">(CVSS: ${cve.score || 'N/A'}, ${cve.severity || 'Unknown'})</span>`
+                            ).join('<br>')}
+                            ${vuln.cve_links.length > 5 ? `<br><em>... and ${vuln.cve_links.length - 5} more CVEs</em>` : ''}
+                        </div>
+                    </div>
+                    ` : ''}
+                    ${vuln.exploit_links && vuln.exploit_links.length > 0 ? `
+                    <div class="detail-section">
+                        <h4><i class="fas fa-bomb"></i> Exploit References</h4>
+                        <div class="detail-content">
+                            ${vuln.exploit_links.slice(0, 3).map(exploit => 
+                                `<a href="${exploit.url}" target="_blank" class="exploit-link">${exploit.exploit_id}</a>
+                                 <span class="exploit-info">(${exploit.type || 'Unknown'})</span>`
+                            ).join('<br>')}
+                            ${vuln.exploit_links.length > 3 ? `<br><em>... and ${vuln.exploit_links.length - 3} more exploits</em>` : ''}
+                        </div>
                     </div>
                     ` : ''}
                     <div class="detail-section">
