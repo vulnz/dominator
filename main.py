@@ -94,11 +94,11 @@ Usage examples:
     parser.add_argument('--single-url', action='store_true',
                        help='Scan only the specified URL without crawling or testing other pages')
     parser.add_argument('--crawl', action='store_true',
-                       help='Enable web crawling to find more pages')
+                       help='Force enable web crawling (enabled by default)')
     parser.add_argument('--nocrawl', action='store_true',
-                       help='Disable web crawling completely (same as --single-url)')
-    parser.add_argument('--max-crawl-pages', type=int, default=20,
-                       help='Maximum pages to crawl (default: 20)')
+                       help='Disable web crawling completely')
+    parser.add_argument('--max-crawl-pages', type=int, default=50,
+                       help='Maximum pages to crawl (default: 50)')
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Verbose output')
     parser.add_argument('--debug', action='store_true',
@@ -322,6 +322,7 @@ def main():
     # Check if modules are specified
     if not args.modules and not args.all and not args.filetree:
         print("Warning: No modules specified, using all modules by default")
+        args.all = True
     elif args.filetree and not args.modules:
         print("File tree mode enabled - using file discovery modules (dirbrute, git, phpinfo)")
     

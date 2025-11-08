@@ -30,7 +30,7 @@ class WebCrawler:
         found_urls = []
         
         try:
-            print(f"    [CRAWLER] Starting enhanced crawl of {base_url}")
+            print(f"    [CRAWLER] Starting enhanced crawl of {base_url} (max_pages: {max_pages})")
             response = requests.get(
                 base_url,
                 timeout=self.config.timeout,
@@ -51,8 +51,8 @@ class WebCrawler:
                 # Add AJAX endpoints to URLs
                 urls.extend(self.ajax_endpoints)
                 
-                # Filter and normalize URLs - increase limit
-                normalized_urls = self._normalize_and_filter_urls(urls, base_url, max_pages * 2)
+                # Filter and normalize URLs - increase limit significantly
+                normalized_urls = self._normalize_and_filter_urls(urls, base_url, max_pages * 3)
                 print(f"    [CRAWLER] Analyzing {len(normalized_urls)} normalized URLs for parameters...")
                 
                 # First pass - collect URLs with parameters
@@ -77,7 +77,7 @@ class WebCrawler:
                 
                 # Second pass - crawl individual pages to find more URLs
                 print(f"    [CRAWLER] Starting second pass crawling...")
-                additional_urls = self._crawl_individual_pages(normalized_urls[:20], base_url)
+                additional_urls = self._crawl_individual_pages(normalized_urls[:30], base_url)
                 found_urls.extend(additional_urls)
                         
             else:

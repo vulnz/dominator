@@ -565,13 +565,10 @@ class VulnScanner:
             # Add main page to testing list
             all_found_pages.append(parsed_data)
             
-            # Check if single URL mode is enabled OR if specific modules are being used
-            # For filetree mode, always enable crawling to discover more files
-            skip_crawling = (self.config.single_url and not getattr(self.config, 'filetree', False)) or \
-                           (len(self.config.modules) == 1 and not getattr(self.config, 'filetree', False)) or \
-                           (any(module in ['ssltls', 'secheaders'] for module in self.config.modules) and not getattr(self.config, 'filetree', False))
+            # Always enable crawling unless explicitly disabled with --single-url or --nocrawl
+            skip_crawling = getattr(self.config, 'single_url', False) or getattr(self.config, 'nocrawl', False)
             
-            if not skip_crawling or getattr(self.config, 'filetree', False):
+            if not skip_crawling:
                 # Always crawl for additional pages
                 if self.debug:
                     print(f"  [DEBUG] Starting enhanced crawler to find additional pages...")
@@ -657,14 +654,12 @@ class VulnScanner:
                         continue
             else:
                 if self.debug:
-                    if getattr(self.config, 'filetree', False):
-                        print(f"  [DEBUG] Filetree mode enabled - enhanced crawling for file discovery")
-                    elif self.config.single_url:
-                        print(f"  [DEBUG] Single URL mode enabled - skipping crawler and additional pages")
-                    elif len(self.config.modules) == 1:
-                        print(f"  [DEBUG] Single module specified ({self.config.modules[0]}) - skipping crawler to focus on target")
+                    if getattr(self.config, 'single_url', False):
+                        print(f"  [DEBUG] Single URL mode enabled - skipping crawler")
+                    elif getattr(self.config, 'nocrawl', False):
+                        print(f"  [DEBUG] No-crawl mode enabled - skipping crawler")
                     else:
-                        print(f"  [DEBUG] Specific modules detected - skipping crawler to avoid unnecessary requests")
+                        print(f"  [DEBUG] Crawling disabled by configuration")
             
             # Collect file tree data if filetree is enabled
             if getattr(self.config, 'filetree', False):
