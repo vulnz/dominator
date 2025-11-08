@@ -1,0 +1,205 @@
+"""
+Passive version disclosure detector
+Detects software version disclosures in responses without sending additional requests
+"""
+
+import re
+from typing import Dict, List, Tuple, Any
+
+class VersionDisclosureDetector:
+    """Passive version disclosure detection"""
+    
+    @staticmethod
+    def analyze(headers: Dict[str, str], response_text: str, url: str) -> Tuple[bool, List[Dict[str, Any]]]:
+        """
+        Passive version disclosure detection
+        
+        How it works:
+        1. Analyzes HTTP headers for software versions during crawling
+        2. Searches response content for version patterns
+        3. Identifies potential vulnerabilities based on found versions
+        4. No additional requests sent
+        
+        Args:
+            headers: HTTP response headers
+            response_text: HTTP response content
+            url: URL being analyzed
+            
+        Returns:
+            Tuple[bool, List[Dict]]: (found_versions, list_of_disclosures)
+        """
+        disclosures = []
+        
+        # Header analysis
+        header_disclosures = VersionDisclosureDetector._analyze_headers(headers, url)
+        disclosures.extend(header_disclosures)
+        
+        # Content analysis
+        content_disclosures = VersionDisclosureDetector._analyze_content(response_text, url)
+        disclosures.extend(content_disclosures)
+        
+        # Error message analysis
+        error_disclosures = VersionDisclosureDetector._analyze_error_messages(response_text, url)
+        disclosures.extend(error_disclosures)
+        
+        return len(disclosures) > 0, disclosures
+    
+    @staticmethod
+    def _analyze_headers(headers: Dict[str, str], url: str) -> List[Dict[str, Any]]:
+        """Analyze version disclosures in HTTP headers"""
+        disclosures = []
+        
+        version_headers = {
+            'Server': {
+                'patterns': [
+                    r'Apache/(\d+\.\d+\.\d+)',
+                    r'nginx/(\d+\.\d+\.\d+)',
+                    r'Microsoft-IIS/(\d+\.\d+)',
+                    r'OpenSSL/(\d+\.\d+\.\d+[a-z]?)'
+                ],
+                'severity': 'Low',
+                'description': 'Web server version disclosure'
+            },
+            'X-Powered-By': {
+                'patterns': [
+                    r'PHP/(\d+\.\d+\.\d+)',
+                    r'ASP\.NET',
+                    r'Express'
+                ],
+                'severity': 'Low',
+                'description': 'Technology and version disclosure'
+            },
+            'X-AspNet-Version': {
+                'patterns': [r'(\d+\.\d+\.\d+)'],
+                'severity': 'Low',
+                'description': 'ASP.NET version disclosure'
+            }
+        }
+        
+        for header_name, config in version_headers.items():
+            header_value = headers.get(header_name, '')
+            if not header_value:
+                continue
+            
+            for pattern in config['patterns']:
+                match = re.search(pattern, header_value, re.IGNORECASE)
+                if match:
+                    disclosure = {
+                        'type': 'version_disclosure',
+                        'severity': config['severity'],
+                        'location': 'HTTP Header',
+                        'url': url,
+                        'header': header_name,
+                        'value': header_value,
+                        'description': config['description'],
+                        'recommendation': f'Hide or remove {header_name} header'
+                    }
+                    
+                    if match.groups():
+                        disclosure['version'] = match.group(1)
+                    
+                    disclosures.append(disclosure)
+        
+        return disclosures
+    
+    @staticmethod
+    def _analyze_content(response_text: str, url: str) -> List[Dict[str, Any]]:
+        """Analyze version disclosures in response content"""
+        disclosures = []
+        
+        version_patterns = {
+            r'<meta name="generator" content="WordPress (\d+\.\d+\.\d+)"': {
+                'software': 'WordPress',
+                'severity': 'Medium',
+                'description': 'WordPress version disclosure in meta tag'
+            },
+            r'<meta name="generator" content="Drupal (\d+)"': {
+                'software': 'Drupal',
+                'severity': 'Medium',
+                'description': 'Drupal version disclosure in meta tag'
+            },
+            r'jquery[/-](\d+\.\d+\.\d+)': {
+                'software': 'jQuery',
+                'severity': 'Low',
+                'description': 'jQuery version disclosure'
+            },
+            r'bootstrap[/-](\d+\.\d+\.\d+)': {
+                'software': 'Bootstrap',
+                'severity': 'Low',
+                'description': 'Bootstrap version disclosure'
+            },
+            r'<!-- Generated by phpMyAdmin (\d+\.\d+\.\d+)': {
+                'software': 'phpMyAdmin',
+                'severity': 'Medium',
+                'description': 'phpMyAdmin version disclosure in comment'
+            }
+        }
+        
+        for pattern, info in version_patterns.items():
+            matches = re.finditer(pattern, response_text, re.IGNORECASE)
+            for match in matches:
+                disclosure = {
+                    'type': 'version_disclosure',
+                    'severity': info['severity'],
+                    'location': 'Response Content',
+                    'url': url,
+                    'software': info['software'],
+                    'description': info['description'],
+                    'pattern': pattern,
+                    'recommendation': 'Remove version information from public responses'
+                }
+                
+                if match.groups():
+                    disclosure['version'] = match.group(1)
+                
+                disclosures.append(disclosure)
+        
+        return disclosures
+    
+    @staticmethod
+    def _analyze_error_messages(response_text: str, url: str) -> List[Dict[str, Any]]:
+        """Analyze error messages for version disclosures"""
+        disclosures = []
+        
+        error_patterns = {
+            r'PHP (\d+\.\d+\.\d+) Development Server': {
+                'software': 'PHP Development Server',
+                'severity': 'High',
+                'description': 'PHP version disclosure in error message'
+            },
+            r'Apache/(\d+\.\d+\.\d+) .* Server at': {
+                'software': 'Apache HTTP Server',
+                'severity': 'Medium',
+                'description': 'Apache version disclosure in error page'
+            },
+            r'Microsoft-IIS/(\d+\.\d+)': {
+                'software': 'Microsoft IIS',
+                'severity': 'Medium',
+                'description': 'IIS version disclosure in error message'
+            },
+            r'MySQL server version for the right syntax to use near': {
+                'software': 'MySQL',
+                'severity': 'Medium',
+                'description': 'MySQL version hint in error message'
+            }
+        }
+        
+        for pattern, info in error_patterns.items():
+            matches = re.finditer(pattern, response_text, re.IGNORECASE)
+            for match in matches:
+                disclosure = {
+                    'type': 'version_disclosure',
+                    'severity': info['severity'],
+                    'location': 'Error Message',
+                    'url': url,
+                    'software': info['software'],
+                    'description': info['description'],
+                    'recommendation': 'Configure custom error pages to hide version information'
+                }
+                
+                if match.groups():
+                    disclosure['version'] = match.group(1)
+                
+                disclosures.append(disclosure)
+        
+        return disclosures
