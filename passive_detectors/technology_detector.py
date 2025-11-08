@@ -4,7 +4,11 @@ Identifies technologies used by analyzing HTTP headers and response content duri
 """
 
 import re
+import warnings
 from typing import Dict, List, Tuple, Any
+
+# Suppress Wappalyzer regex warnings globally for this module
+warnings.filterwarnings("ignore", category=UserWarning, module="Wappalyzer")
 
 class TechnologyDetector:
     """Passive technology detection"""

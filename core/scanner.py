@@ -257,7 +257,11 @@ except ImportError:
             return []
 
 try:
-    from Wappalyzer import Wappalyzer, WebPage
+    import warnings
+    # Suppress Wappalyzer regex warnings
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning, module="Wappalyzer")
+        from Wappalyzer import Wappalyzer, WebPage
 except ImportError:
     class Wappalyzer:
         @staticmethod
@@ -3664,10 +3668,17 @@ class VulnScanner:
                 print(f"    [TECHNOLOGY] Skipping - error response ({response.status_code})")
                 return results
             
-            # Use Wappalyzer to detect technologies
-            wappalyzer = Wappalyzer.latest()
-            webpage = WebPage.new_from_response(response)
-            technologies = wappalyzer.analyze(webpage)
+            # Use Wappalyzer to detect technologies with warning suppression
+            try:
+                import warnings
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", category=UserWarning, module="Wappalyzer")
+                    wappalyzer = Wappalyzer.latest()
+                    webpage = WebPage.new_from_response(response)
+                    technologies = wappalyzer.analyze(webpage)
+            except Exception as e:
+                print(f"    [TECHNOLOGY] Wappalyzer error: {e}")
+                technologies = []
             
             if technologies:
                 print(f"    [TECHNOLOGY] Found {len(technologies)} technologies")
