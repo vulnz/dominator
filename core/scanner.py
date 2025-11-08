@@ -1320,10 +1320,14 @@ class VulnScanner:
                     try:
                         is_vulnerable, pattern = SQLiDetector.detect_error_based_sqli(response.text, response.status_code)
                         
-                        # Additional checks for testphp.vulnweb.com
-                        if not is_vulnerable and 'testphp.vulnweb.com' in base_url:
-                            # Check for common SQL error patterns
-                            sql_errors = ['mysql', 'sql syntax', 'ora-', 'postgresql', 'sqlite', 'mssql']
+                        # Расширенные проверки для всех сайтов
+                        if not is_vulnerable:
+                            # Проверяем расширенный список SQL ошибок
+                            sql_errors = ['mysql', 'sql syntax', 'ora-', 'postgresql', 'sqlite', 'mssql', 
+                                        'warning:', 'error:', 'exception', 'stack trace', 'fatal error',
+                                        'syntax error', 'database error', 'query failed', 'connection failed',
+                                        'table', 'column', 'constraint', 'duplicate entry', 'access denied',
+                                        'unknown column', 'unknown table', 'subquery', 'operand', 'operands']
                             response_lower = response.text.lower()
                             for error in sql_errors:
                                 if error in response_lower:
