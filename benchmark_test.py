@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Скрипт для запуска бенчмарк-теста на testphp.vulnweb.com
 """
@@ -11,49 +12,51 @@ from core.scanner import VulnScanner
 def run_benchmark():
     """Запуск бенчмарк-теста"""
     print("=" * 60)
-    print("ЗАПУСК БЕНЧМАРК-ТЕСТА TESTPHP.VULNWEB.COM")
+    print("ZAPUSK BENCHMARK-TESTA TESTPHP.VULNWEB.COM")
     print("=" * 60)
     
     # Настройка конфигурации для бенчмарка
-    config_args = {
-        'targets': ['http://testphp.vulnweb.com/'],
-        'modules': ['xss', 'sqli', 'lfi', 'ssrf', 'dirbrute', 'infoleak'],
-        'threads': 5,
-        'timeout': 10,
-        'request_limit': 1000,
-        'debug': True,
-        'headers': {
-            'User-Agent': 'Dominator Security Scanner - Benchmark Test'
-        }
-    }
+    class MockArgs:
+        def __init__(self):
+            self.targets = ['http://testphp.vulnweb.com/']
+            self.modules = 'xss,sqli,lfi,ssrf,dirbrute,infoleak'
+            self.threads = 5
+            self.timeout = 10
+            self.request_limit = 1000
+            self.debug = True
+            self.headers = None
+            self.headers_file = None
+            self.exclude = None
+            self.use_all = False
+            self.filetree_mode = False
+            self.single_url = False
+            self.nocrawl = False
+            self.max_time = None
     
     try:
-        # Создаем конфигурацию
-        config = Config()
+        # Создаем конфигурацию с mock args
+        mock_args = MockArgs()
+        config = Config(mock_args)
         
-        # Устанавливаем параметры
-        config.targets = config_args['targets']
-        config.modules = config_args['modules']
-        config.threads = config_args['threads']
-        config.timeout = config_args['timeout']
-        config.request_limit = config_args['request_limit']
-        config.debug = config_args['debug']
-        config.headers = config_args['headers']
+        # Устанавливаем дополнительные параметры
+        config.headers = {
+            'User-Agent': 'Dominator Security Scanner - Benchmark Test'
+        }
         
-        print(f"Цель: {config.targets[0]}")
-        print(f"Модули: {', '.join(config.modules)}")
-        print(f"Потоки: {config.threads}")
-        print(f"Лимит запросов: {config.request_limit}")
+        print(f"Tsel: {config.targets[0]}")
+        print(f"Moduli: {', '.join(config.modules)}")
+        print(f"Potoki: {config.threads}")
+        print(f"Limit zaprosov: {config.request_limit}")
         print("-" * 60)
         
         # Создаем и запускаем сканер
         scanner = VulnScanner(config)
         
-        print("Начинаем сканирование...")
+        print("Nachinaem skanirovanie...")
         results = scanner.scan()
         
-        print("\nСканирование завершено!")
-        print(f"Найдено результатов: {len(results)}")
+        print("\nSkanirovanie zaversheno!")
+        print(f"Najdeno rezultatov: {len(results)}")
         
         # Выводим результаты в консоль
         scanner.print_results(results)
@@ -62,7 +65,7 @@ def run_benchmark():
         report_filename = "benchmark_report.html"
         scanner.save_report(results, report_filename, 'html')
         
-        print(f"\nОтчет сохранен: {report_filename}")
+        print(f"\nOtchet sohranen: {report_filename}")
         
         # Проверяем наличие анализа бенчмарка
         benchmark_found = False
@@ -72,16 +75,16 @@ def run_benchmark():
                 break
         
         if benchmark_found:
-            print("✅ Анализ бенчмарка выполнен успешно!")
-            print("📊 Проверьте HTML отчет для детального анализа эффективности")
-            print("📄 Также создан текстовый отчет benchmark_report_benchmark.txt")
+            print("[OK] Analiz benchmarka vypolnen uspeshno!")
+            print("[INFO] Proverte HTML otchet dlya detalnogo analiza effektivnosti")
+            print("[INFO] Takzhe sozdan tekstovyj otchet benchmark_report_benchmark.txt")
         else:
-            print("⚠️  Анализ бенчмарка не был выполнен")
+            print("[WARNING] Analiz benchmarka ne byl vypolnen")
         
         return results
         
     except Exception as e:
-        print(f"Ошибка при выполнении бенчмарка: {e}")
+        print(f"Oshibka pri vypolnenii benchmarka: {e}")
         import traceback
         traceback.print_exc()
         return None
@@ -92,17 +95,17 @@ def run_benchmark():
 
 if __name__ == "__main__":
     print("Dominator Security Scanner - Benchmark Test")
-    print("Тестирование эффективности на testphp.vulnweb.com")
+    print("Testirovanie effektivnosti na testphp.vulnweb.com")
     print()
     
     results = run_benchmark()
     
     if results:
         print("\n" + "=" * 60)
-        print("БЕНЧМАРК-ТЕСТ ЗАВЕРШЕН")
+        print("BENCHMARK-TEST ZAVERSHEN")
         print("=" * 60)
-        print("Результаты сохранены в benchmark_report.html")
-        print("Откройте файл в браузере для просмотра детального анализа")
+        print("Rezultaty sohraneny v benchmark_report.html")
+        print("Otkrojte fajl v brauzere dlya prosmotra detalnogo analiza")
     else:
-        print("\n❌ Бенчмарк-тест не удался")
+        print("\n[ERROR] Benchmark-test ne udalsya")
         sys.exit(1)
