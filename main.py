@@ -144,7 +144,7 @@ def show_modules():
     print("- clickjacking: Clickjacking Protection")
     print("- blindxss: Blind Cross-Site Scripting")
     print("- passwordoverhttp: Password Over HTTP")
-    print("- outdatedsoftware: Outdated Software Detection")
+    print("- outdatedsoftware: Outdated Software Detection with CVE Integration")
     print("- databaseerrors: Database Error Messages")
     print("- phpinfo: PHPInfo Exposure")
     print("- ssltls: SSL/TLS Configuration")
@@ -162,7 +162,6 @@ def show_modules():
     print("- ssti: Server-Side Template Injection")
     print("- crlf: CRLF Injection")
     print("- textinjection: Text Injection")
-    print("- contentreflection: Content Reflection")
     print("- htmlinjection: HTML Injection")
 
 class ScanTimeout:
@@ -203,8 +202,8 @@ class MaxTimeHandler:
     def timeout_handler(self):
         """Handle max time timeout"""
         self.stopped = True
-        print(f"\n[!] Maximum scan time ({self.max_minutes} minutes) reached!")
-        print("[!] Stopping scan and generating report with current results...")
+        print(f"\nMaximum scan time ({self.max_minutes} minutes) reached!")
+        print("Stopping scan and generating report with current results...")
         # Set a flag in scanner to stop gracefully
         if hasattr(self.scanner, 'stop_requested'):
             self.scanner.stop_requested = True
@@ -215,7 +214,7 @@ class MaxTimeHandler:
             timeout_seconds = self.max_minutes * 60
             self.timer = threading.Timer(timeout_seconds, self.timeout_handler)
             self.timer.start()
-            print(f"[INFO] Maximum scan time set to {self.max_minutes} minutes")
+            print(f"Maximum scan time set to {self.max_minutes} minutes")
     
     def cancel(self):
         """Cancel max time timer"""
@@ -228,8 +227,8 @@ class MaxTimeHandler:
 
 def signal_handler(sig, frame):
     """Handle Ctrl+C signal for immediate exit"""
-    print("\n[!] Interrupt signal received (Ctrl+C)")
-    print("[!] Terminating program immediately...")
+    print("\nInterrupt signal received (Ctrl+C)")
+    print("Terminating program immediately...")
     # Принудительный выход без cleanup
     os._exit(1)
 
@@ -322,7 +321,6 @@ def main():
         if hasattr(args, 'scan_timeout') and args.scan_timeout:
             timeout_handler = ScanTimeout(args.scan_timeout)
             timeout_handler.start()
-            print(f"Scan timeout set to {args.scan_timeout} seconds")
         
         # Create configuration
         config = Config(args)
@@ -338,7 +336,6 @@ def main():
         
         # Start scanning
         start_time = time.time()
-        print(f"Starting scan...")
         
         # Check for timeout during scan
         results = []
@@ -357,8 +354,8 @@ def main():
         
         # Check if scan was stopped due to max time
         if max_time_handler and max_time_handler.is_stopped():
-            print(f"\n[INFO] Scan was stopped after {args.max_time} minutes")
-            print("[INFO] Showing results collected so far...")
+            print(f"\nScan was stopped after {args.max_time} minutes")
+            print("Showing results collected so far...")
         
         scan_duration = time.time() - start_time
         print(f"\nScan completed in {scan_duration:.2f} seconds")
@@ -374,7 +371,7 @@ def main():
             auto_filename = f"scan_report_{target_name}_{timestamp}.html"
             try:
                 scanner.save_report(results, auto_filename, 'html')
-                print(f"\nAuto-report saved to {auto_filename}")
+                print(f"\nHTML report saved to {auto_filename}")
             except Exception as e:
                 print(f"Error saving auto-report: {e}")
         
@@ -390,7 +387,7 @@ def main():
             print(f"Warning: Error during cleanup: {e}")
             
     except KeyboardInterrupt:
-        print("\n[!] Scan interrupted by user")
+        print("\nScan interrupted by user")
         if 'timeout_handler' in locals() and timeout_handler:
             timeout_handler.cancel()
         if 'max_time_handler' in locals() and max_time_handler:
