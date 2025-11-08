@@ -900,7 +900,7 @@ class FileHandler:
             generateScopeSection();
             
             // Generate file tree if enabled
-            if (reportData.filetree_enabled) {
+            if (reportData.filetree_enabled && reportData.scan_stats && reportData.scan_stats.file_tree_paths) {
                 generateFileTreeSection();
             }
             
