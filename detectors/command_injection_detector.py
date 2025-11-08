@@ -6,22 +6,38 @@ import re
 from typing import Tuple, List, Dict, Any
 
 class CommandInjectionDetector:
-    """Command Injection vulnerability detection logic"""
+    """Command Injection vulnerability detection logic optimized for XVWA"""
     
     @staticmethod
     def get_command_indicators() -> List[str]:
-        """Get command injection indicators"""
+        """Get command injection indicators commonly found in XVWA"""
         return [
-            'uid=', 'gid=', 'groups=',  # id command output
-            'total ', 'drwx', '-rw-',   # ls command output
-            'root:', 'bin:', 'daemon:', # /etc/passwd content
-            'PING ', 'ping statistics', # ping command output
-            'Directory of C:\\', 'Volume in drive', # Windows dir command
-            'Microsoft Windows', 'Copyright (c)', # Windows ver command
-            'Linux', 'GNU/', 'kernel',  # uname output
-            'command not found', 'is not recognized',
-            'syntax error', 'unexpected token',
-            '/bin/sh', '/bin/bash', 'cmd.exe'
+            # Linux/Unix command indicators
+            'uid=', 'gid=', 'groups=',
+            'root:x:0:0:', 'daemon:x:1:1:', 'bin:x:2:2:',
+            'Linux', 'GNU/Linux', 'Ubuntu',
+            'total ', 'drwx', '-rw-', '-rwx',
+            'PID', 'TTY', 'TIME', 'CMD',
+            '/bin/bash', '/bin/sh', '/usr/bin/',
+            'Permission denied', 'No such file or directory',
+            'command not found', 'bash:', 'sh:',
+            
+            # Windows command indicators
+            'Volume in drive', 'Directory of',
+            'Windows NT', 'Microsoft Windows',
+            'SYSTEM', 'Administrator',
+            'C:\\Windows', 'C:\\Program Files',
+            'The system cannot find', 'Access is denied',
+            'is not recognized as an internal or external command',
+            
+            # Network command indicators
+            'PING', 'ping statistics', 'packets transmitted',
+            'Tracing route to', 'traceroute to',
+            'nslookup', 'Non-authoritative answer:',
+            
+            # File system indicators
+            'etc/passwd', 'etc/shadow', 'etc/hosts',
+            'boot.ini', 'win.ini', 'system.ini'
         ]
     
     @staticmethod
@@ -111,43 +127,6 @@ class CommandInjectionDetector:
             "If shell commands are necessary, use proper input validation and sanitization. "
             "Run applications with minimal privileges and use sandboxing."
         )
-import re
-from typing import List, Dict, Any, Tuple
-
-class CommandInjectionDetector:
-    """Command Injection vulnerability detection logic optimized for XVWA"""
-    
-    @staticmethod
-    def get_command_indicators() -> List[str]:
-        """Get command injection indicators commonly found in XVWA"""
-        return [
-            # Linux/Unix command indicators
-            'uid=', 'gid=', 'groups=',
-            'root:x:0:0:', 'daemon:x:1:1:', 'bin:x:2:2:',
-            'Linux', 'GNU/Linux', 'Ubuntu',
-            'total ', 'drwx', '-rw-', '-rwx',
-            'PID', 'TTY', 'TIME', 'CMD',
-            '/bin/bash', '/bin/sh', '/usr/bin/',
-            'Permission denied', 'No such file or directory',
-            'command not found', 'bash:', 'sh:',
-            
-            # Windows command indicators
-            'Volume in drive', 'Directory of',
-            'Windows NT', 'Microsoft Windows',
-            'SYSTEM', 'Administrator',
-            'C:\\Windows', 'C:\\Program Files',
-            'The system cannot find', 'Access is denied',
-            'is not recognized as an internal or external command',
-            
-            # Network command indicators
-            'PING', 'ping statistics', 'packets transmitted',
-            'Tracing route to', 'traceroute to',
-            'nslookup', 'Non-authoritative answer:',
-            
-            # File system indicators
-            'etc/passwd', 'etc/shadow', 'etc/hosts',
-            'boot.ini', 'win.ini', 'system.ini'
-        ]
 
     @staticmethod
     def detect_command_injection(payload: str, response_text: str, response_code: int) -> Tuple[bool, str, str, Dict[str, Any]]:

@@ -3,10 +3,37 @@ XSS vulnerability detector
 """
 
 import re
+from typing import List, Dict, Any, Tuple
+from urllib.parse import unquote
 
 class XSSDetector:
-    """XSS vulnerability detection logic"""
+    """XSS vulnerability detection logic optimized for XVWA"""
     
+    @staticmethod
+    def get_xss_indicators() -> List[str]:
+        """Get XSS detection indicators"""
+        return [
+            '<script>alert(',
+            'javascript:alert(',
+            'onload=alert(',
+            'onerror=alert(',
+            'onmouseover=alert(',
+            'onclick=alert(',
+            'prompt(',
+            'confirm(',
+            'document.cookie',
+            'document.write(',
+            'innerHTML=',
+            'eval(',
+            'String.fromCharCode',
+            'unescape(',
+            'decodeURI(',
+            'atob(',
+            'Function(',
+            'setTimeout(',
+            'setInterval('
+        ]
+
     @staticmethod
     def detect_reflected_xss(payload: str, response_text: str, response_code: int) -> bool:
         """Universal XSS detection for any website"""
@@ -63,6 +90,41 @@ class XSSDetector:
                 return True
         
         return False
+
+    @staticmethod
+    def detect_xss(payload: str, response_text: str, response_code: int) -> Tuple[bool, str, str, Dict[str, Any]]:
+        """Enhanced XSS detection for XVWA"""
+        if response_code not in [200, 201, 202]:
+            return False, "", "", {}
+
+        # Decode response for better analysis
+        decoded_response = unquote(response_text)
+        decoded_payload = unquote(payload)
+        
+        # Check for direct payload reflection (most common in XVWA)
+        if decoded_payload.lower() in decoded_response.lower():
+            context = XSSDetector._analyze_xss_context(decoded_payload, decoded_response)
+            if context['vulnerable']:
+                return True, context['evidence'], context['severity'], {
+                    'cwe': 'CWE-79',
+                    'cvss': context['cvss'],
+                    'owasp': 'A03:2021 – Injection',
+                    'recommendation': 'Implement proper input validation and output encoding. Use Content Security Policy (CSP) headers.'
+                }
+
+        # Check for XSS indicators in response
+        indicators = XSSDetector.get_xss_indicators()
+        for indicator in indicators:
+            if indicator.lower() in decoded_response.lower():
+                if XSSDetector._is_dangerous_context(indicator, decoded_response):
+                    return True, f"XSS indicator found: {indicator}", "High", {
+                        'cwe': 'CWE-79',
+                        'cvss': '6.1',
+                        'owasp': 'A03:2021 – Injection',
+                        'recommendation': 'Implement proper input validation and output encoding. Use Content Security Policy (CSP) headers.'
+                    }
+
+        return False, "", "", {}
     
     @staticmethod
     def _analyze_xss_context(payload: str, response_text: str) -> bool:
@@ -179,72 +241,6 @@ class XSSDetector:
             context_end = min(len(response_text), start_pos + len(payload) + 40)
             return response_text[context_start:context_end]
         return "Payload not found in response"
-import re
-from typing import List, Dict, Any, Tuple
-from urllib.parse import unquote
-
-class XSSDetector:
-    """XSS vulnerability detection logic optimized for XVWA"""
-    
-    @staticmethod
-    def get_xss_indicators() -> List[str]:
-        """Get XSS detection indicators"""
-        return [
-            '<script>alert(',
-            'javascript:alert(',
-            'onload=alert(',
-            'onerror=alert(',
-            'onmouseover=alert(',
-            'onclick=alert(',
-            'prompt(',
-            'confirm(',
-            'document.cookie',
-            'document.write(',
-            'innerHTML=',
-            'eval(',
-            'String.fromCharCode',
-            'unescape(',
-            'decodeURI(',
-            'atob(',
-            'Function(',
-            'setTimeout(',
-            'setInterval('
-        ]
-
-    @staticmethod
-    def detect_xss(payload: str, response_text: str, response_code: int) -> Tuple[bool, str, str, Dict[str, Any]]:
-        """Enhanced XSS detection for XVWA"""
-        if response_code not in [200, 201, 202]:
-            return False, "", "", {}
-
-        # Decode response for better analysis
-        decoded_response = unquote(response_text)
-        decoded_payload = unquote(payload)
-        
-        # Check for direct payload reflection (most common in XVWA)
-        if decoded_payload.lower() in decoded_response.lower():
-            context = XSSDetector._analyze_xss_context(decoded_payload, decoded_response)
-            if context['vulnerable']:
-                return True, context['evidence'], context['severity'], {
-                    'cwe': 'CWE-79',
-                    'cvss': context['cvss'],
-                    'owasp': 'A03:2021 – Injection',
-                    'recommendation': 'Implement proper input validation and output encoding. Use Content Security Policy (CSP) headers.'
-                }
-
-        # Check for XSS indicators in response
-        indicators = XSSDetector.get_xss_indicators()
-        for indicator in indicators:
-            if indicator.lower() in decoded_response.lower():
-                if XSSDetector._is_dangerous_context(indicator, decoded_response):
-                    return True, f"XSS indicator found: {indicator}", "High", {
-                        'cwe': 'CWE-79',
-                        'cvss': '6.1',
-                        'owasp': 'A03:2021 – Injection',
-                        'recommendation': 'Implement proper input validation and output encoding. Use Content Security Policy (CSP) headers.'
-                    }
-
-        return False, "", "", {}
 
     @staticmethod
     def _analyze_xss_context(payload: str, response_text: str) -> Dict[str, Any]:
