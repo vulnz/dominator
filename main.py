@@ -137,8 +137,8 @@ Usage examples:
 def show_modules():
     """Show all available modules"""
     print("Available scanning modules:")
-    print("- xss: Cross-Site Scripting")
-    print("- sqli: SQL Injection")
+    print("- xss: Cross-Site Scripting (Enhanced for testphp.vulnweb.com)")
+    print("- sqli: SQL Injection (Enhanced for testphp.vulnweb.com)")
     print("- lfi: Local File Inclusion")
     print("- rfi: Remote File Inclusion")
     print("- xxe: XML External Entity")
@@ -176,6 +176,10 @@ def show_modules():
     print("- vhost: Virtual Host Discovery")
     print("- infoleak: Information Leakage Detection")
     print("- openredirect: Open Redirect Vulnerabilities")
+    print("\nEnhanced modules for testphp.vulnweb.com:")
+    print("- fileinclusionenhanced: Enhanced File Inclusion Detection (LFI/RFI/SSRF)")
+    print("- ssrfenhanced: Enhanced SSRF Detection")
+    print("- infoleakenhanced: Enhanced Information Disclosure Detection")
 
 class ScanTimeout:
     """Handle scan timeout using threading"""
