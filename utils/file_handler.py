@@ -906,6 +906,11 @@ class FileHandler:
             // Generate scope section
             generateScopeSection();
             
+            // Generate benchmark analysis if available
+            if (reportData.benchmark_analysis) {
+                generateBenchmarkSection();
+            }
+            
             // Generate file tree if enabled
             if (reportData.filetree_enabled && reportData.scan_stats && reportData.scan_stats.file_tree_paths) {
                 generateFileTreeSection();

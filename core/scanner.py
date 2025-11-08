@@ -544,6 +544,53 @@ class VulnScanner:
         
         return self.results
     
+    def analyze_benchmark_performance(self, results: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Анализ эффективности сканирования по сравнению с testphp.vulnweb.com"""
+        try:
+            from analysis.testphp_benchmark import TestPHPBenchmark
+            
+            # Проверяем, что сканируем testphp.vulnweb.com
+            is_testphp = False
+            for result in results:
+                if result.get('target') and 'testphp.vulnweb.com' in result['target']:
+                    is_testphp = True
+                    break
+            
+            if not is_testphp:
+                return None
+            
+            print("\n" + "="*60)
+            print("АНАЛИЗ ЭФФЕКТИВНОСТИ ПО TESTPHP.VULNWEB.COM")
+            print("="*60)
+            
+            benchmark = TestPHPBenchmark()
+            analysis = benchmark.analyze_scan_results(results)
+            
+            # Выводим краткий анализ в консоль
+            summary = analysis['summary']
+            print(f"Известных уязвимостей: {summary['total_known_vulnerabilities']}")
+            print(f"Найдено сканером: {summary['total_found_vulnerabilities']}")
+            print(f"Правильно определено: {len(analysis['correctly_identified'])}")
+            print(f"Коэффициент обнаружения: {summary['detection_rate']:.1f}%")
+            print(f"Коэффициент ложных срабатываний: {summary['false_positive_rate']:.1f}%")
+            
+            # Показываем результаты по категориям
+            print("\nРезультаты по категориям:")
+            for category, data in analysis['by_category'].items():
+                if data['total_known'] > 0:
+                    print(f"  {category.upper()}: {data['detection_rate']:.1f}% ({len(data['correctly_identified'])}/{data['total_known']})")
+            
+            print("="*60)
+            
+            return analysis
+            
+        except ImportError:
+            print("Модуль анализа бенчмарка недоступен")
+            return None
+        except Exception as e:
+            print(f"Ошибка при анализе бенчмарка: {e}")
+            return None
+    
     def cleanup(self):
         """Cleanup resources"""
         if hasattr(self, 'screenshot_handler'):
