@@ -5396,13 +5396,13 @@ class VulnScanner:
             found_count = len(found_vulns.get(vuln_type, []))
             
             if found_count >= expected_count:
-                status = "✓ ОТЛИЧНО"
+                status = "[+] ОТЛИЧНО"
                 recommendations = "Продолжайте мониторинг"
             elif found_count > 0:
-                status = "⚠ ЧАСТИЧНО"
+                status = "[!] ЧАСТИЧНО"
                 recommendations = "Улучшить детекцию"
             else:
-                status = "✗ НЕ НАЙДЕНО"
+                status = "[-] НЕ НАЙДЕНО"
                 recommendations = "Требуется доработка"
             
             print(f"{vuln_type:<20} {expected_count:<15} {found_count:<10} {status:<15} {recommendations}")
@@ -5414,17 +5414,17 @@ class VulnScanner:
         print("-" * 50)
         
         if 'LFI' not in found_vulns or len(found_vulns.get('LFI', [])) == 0:
-            print("• LFI: Проверьте детектор LFI - возможно, нужно улучшить паттерны обнаружения")
+            print("- LFI: Проверьте детектор LFI - возможно, нужно улучшить паттерны обнаружения")
             print("  Ожидаемые endpoints: showimage.php?file=, userinfo.php?file=")
         
         if 'Directory Traversal' not in found_vulns:
-            print("• Directory Traversal: Добавьте специфичные паттерны для path traversal")
+            print("- Directory Traversal: Добавьте специфичные паттерны для path traversal")
         
         if 'Command Injection' not in found_vulns:
-            print("• Command Injection: Проверьте rfi.php endpoint")
+            print("- Command Injection: Проверьте rfi.php endpoint")
         
         if 'CSRF' not in found_vulns:
-            print("• CSRF: Улучшите анализ форм на отсутствие CSRF токенов")
+            print("- CSRF: Улучшите анализ форм на отсутствие CSRF токенов")
         
         # False positives analysis
         false_positives = []
@@ -5437,7 +5437,7 @@ class VulnScanner:
             print(f"\nВОЗМОЖНЫЕ ЛОЖНЫЕ СРАБАТЫВАНИЯ ({len(false_positives)}):")
             print("-" * 50)
             for fp in false_positives[:5]:
-                print(f"• {fp}")
+                print(f"- {fp}")
         
         print("\n" + "="*100)
     
