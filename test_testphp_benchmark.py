@@ -113,6 +113,13 @@ def test_vulnerability_matching():
 
 def main():
     """Главная функция теста"""
+    # Дополнительная настройка кодировки
+    try:
+        if sys.platform.startswith('win'):
+            os.system('chcp 65001 >nul 2>&1')
+    except:
+        pass
+    
     print("=" * 60)
     print("ТЕСТ TESTPHP BENCHMARK")
     print("=" * 60)
