@@ -1759,7 +1759,17 @@ class FileHandler:
     def save_benchmark_report(self, benchmark_analysis: Dict[str, Any], filename: str):
         """Сохранение отчета о бенчмарке в текстовом формате"""
         try:
-            from analysis.testphp_benchmark import TestPHPBenchmark
+            import sys
+            import os
+            
+            # Добавляем путь к модулю анализа
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            parent_dir = os.path.dirname(current_dir)
+            analysis_path = os.path.join(parent_dir, 'analysis')
+            if analysis_path not in sys.path:
+                sys.path.insert(0, analysis_path)
+            
+            from testphp_benchmark import TestPHPBenchmark
             
             benchmark = TestPHPBenchmark()
             report_text = benchmark.generate_benchmark_report(benchmark_analysis)

@@ -547,7 +547,17 @@ class VulnScanner:
     def analyze_benchmark_performance(self, results: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Анализ эффективности сканирования по сравнению с testphp.vulnweb.com"""
         try:
-            from analysis.testphp_benchmark import TestPHPBenchmark
+            import sys
+            import os
+            
+            # Добавляем путь к модулю анализа
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            parent_dir = os.path.dirname(current_dir)
+            analysis_path = os.path.join(parent_dir, 'analysis')
+            if analysis_path not in sys.path:
+                sys.path.insert(0, analysis_path)
+            
+            from testphp_benchmark import TestPHPBenchmark
             
             # Проверяем, что сканируем testphp.vulnweb.com
             is_testphp = False
