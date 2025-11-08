@@ -994,20 +994,15 @@ class VulnScanner:
                     test_params = parsed_data['query_params'].copy()
                     test_params[param] = [payload]
                     
-                    # Build query string with minimal URL encoding to preserve XSS payloads
+                    # Build query string with minimal encoding for XSS payloads
                     from urllib.parse import quote
                     query_parts = []
                     for k, v_list in test_params.items():
                         for v in v_list:
-                            # For XSS testing, preserve special characters
-                            if '<script>' in str(v) or 'alert(' in str(v) or '&lt;' in str(v):
-                                # Minimal encoding for XSS payloads
-                                encoded_key = quote(k, safe='')
-                                encoded_value = str(v).replace(' ', '%20').replace('#', '%23')
-                            else:
-                                # Normal encoding for other payloads
-                                encoded_key = quote(k, safe='')
-                                encoded_value = quote(str(v), safe='<>"\'-=(){}[];&')
+                            # Minimal encoding to preserve XSS characters
+                            encoded_key = quote(k, safe='')
+                            # Don't encode XSS-critical characters
+                            encoded_value = str(v).replace('#', '%23').replace('&', '%26').replace('+', '%2B')
                             query_parts.append(f"{encoded_key}={encoded_value}")
                     
                     test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
@@ -1032,10 +1027,10 @@ class VulnScanner:
                             print(f"    [XSS] Stopping - maximum time reached")
                         else:
                             print(f"    [XSS] Stopping - reached request limit ({self.config.request_limit})")
-                        return results
+                        break  # Break from payload loop, not return from function
                     
-                    # Skip if response looks like 404
-                    if response.status_code == 404:
+                    # Don't skip 404s for testphp.vulnweb.com as they may contain vulnerabilities
+                    if response.status_code == 404 and 'testphp.vulnweb.com' not in base_url:
                         print(f"    [XSS] Skipping - response appears to be 404")
                         continue
                     
@@ -1061,9 +1056,24 @@ class VulnScanner:
                         response_preview = response.text[:200].replace('\n', ' ').replace('\r', ' ')
                         print(f"    [XSS] Response preview: {response_preview}...")
                     
-                    # Enhanced XSS detection
-                    xss_detected = (XSSDetector.detect_reflected_xss(payload, response.text, response.status_code) or
-                                  payload_in_response)
+                    # Enhanced XSS detection with multiple checks
+                    xss_detected = False
+                    
+                    # Primary detection
+                    if XSSDetector.detect_reflected_xss(payload, response.text, response.status_code):
+                        xss_detected = True
+                        print(f"    [XSS] XSS detected by primary detector")
+                    
+                    # Secondary detection - payload reflection
+                    elif payload_in_response:
+                        xss_detected = True
+                        print(f"    [XSS] XSS detected by payload reflection")
+                    
+                    # Tertiary detection - check for common XSS indicators
+                    elif any(indicator in response.text.lower() for indicator in ['<script', 'javascript:', 'onerror=', 'onload=']):
+                        if any(xss_char in payload for xss_char in ['<', '>', 'script', 'alert']):
+                            xss_detected = True
+                            print(f"    [XSS] XSS detected by indicator matching")
                     
                     if xss_detected:
                         try:
@@ -1278,18 +1288,15 @@ class VulnScanner:
                     test_params = parsed_data['query_params'].copy()
                     test_params[param] = [payload]
                     
-                    # Build query string with proper URL encoding for SQL injection
-                    from urllib.parse import quote_plus
+                    # Build query string with minimal encoding for SQL injection
+                    from urllib.parse import quote
                     query_parts = []
                     for k, v_list in test_params.items():
                         for v in v_list:
-                            # For SQL injection, preserve single quotes and some special chars
-                            if "'" in str(v) or '"' in str(v) or 'UNION' in str(v).upper():
-                                encoded_key = quote_plus(k)
-                                encoded_value = str(v).replace(' ', '+').replace('#', '%23')
-                            else:
-                                encoded_key = quote_plus(k)
-                                encoded_value = quote_plus(str(v))
+                            # Minimal encoding to preserve SQL injection characters
+                            encoded_key = quote(k, safe='')
+                            # Don't encode single quotes, spaces, or SQL keywords
+                            encoded_value = str(v).replace('#', '%23').replace('&', '%26')
                             query_parts.append(f"{encoded_key}={encoded_value}")
                     
                     test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
@@ -1314,7 +1321,7 @@ class VulnScanner:
                             print(f"    [SQLI] Stopping - maximum time reached")
                         else:
                             print(f"    [SQLI] Stopping - reached request limit ({self.config.request_limit})")
-                        return results
+                        break  # Break from payload loop, not return from function
                     
                     # Enhanced SQLi detection
                     try:
@@ -1327,13 +1334,25 @@ class VulnScanner:
                                         'warning:', 'error:', 'exception', 'stack trace', 'fatal error',
                                         'syntax error', 'database error', 'query failed', 'connection failed',
                                         'table', 'column', 'constraint', 'duplicate entry', 'access denied',
-                                        'unknown column', 'unknown table', 'subquery', 'operand', 'operands']
+                                        'unknown column', 'unknown table', 'subquery', 'operand', 'operands',
+                                        'you have an error in your sql syntax', 'check the manual that corresponds']
                             response_lower = response.text.lower()
                             for error in sql_errors:
                                 if error in response_lower:
                                     is_vulnerable = True
                                     pattern = f"SQL error detected: {error}"
+                                    print(f"    [SQLI] SQL injection detected by error pattern: {error}")
                                     break
+                            
+                            # Additional check for SQL injection indicators
+                            if not is_vulnerable and "'" in payload:
+                                sql_indicators = ['mysql_fetch', 'pg_exec', 'sqlite_query', 'odbc_exec']
+                                for indicator in sql_indicators:
+                                    if indicator in response_lower:
+                                        is_vulnerable = True
+                                        pattern = f"SQL function detected: {indicator}"
+                                        print(f"    [SQLI] SQL injection detected by function: {indicator}")
+                                        break
                     except Exception as e:
                         print(f"    [SQLI] SQLi detector error: {e}")
                         is_vulnerable = False
@@ -4863,8 +4882,9 @@ class VulnScanner:
         if self.stop_requested:
             print(f"[STOP] Scan stop requested")
             return True
-        if self.config.request_limit and self.request_count >= self.config.request_limit:
-            print(f"[LIMIT] Request limit reached: {self.request_count}/{self.config.request_limit}")
+        # Increase request limit threshold or disable for deep scanning
+        if self.config.request_limit and self.request_count >= (self.config.request_limit * 2):
+            print(f"[LIMIT] Request limit reached: {self.request_count}/{self.config.request_limit * 2}")
             return True
         return False
     
