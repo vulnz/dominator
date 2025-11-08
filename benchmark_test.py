@@ -18,38 +18,87 @@ def run_benchmark():
     # Настройка конфигурации для бенчмарка
     class MockArgs:
         def __init__(self):
+            # Основные параметры сканирования
             self.target = 'http://testphp.vulnweb.com/'
             self.targets = ['http://testphp.vulnweb.com/']
             self.file = None
             self.modules = 'xss,sqli,lfi,ssrf,dirbrute,infoleak'
             self.all = False
+            
+            # Параметры производительности
             self.threads = 5
             self.timeout = 10
             self.request_limit = 1000
+            self.delay = 0
+            self.max_time = None
+            
+            # Параметры отладки и вывода
             self.debug = True
+            self.verbose = False
+            self.quiet = False
+            self.no_color = False
+            
+            # Параметры HTTP
             self.headers = None
             self.headers_file = None
             self.cookies = None
             self.auth = None
-            self.exclude = None
-            self.use_all = False
-            self.filetree_mode = False
-            self.single_url = False
-            self.nocrawl = False
-            self.max_time = None
-            self.filetree = False
             self.proxy = None
             self.user_agent = None
-            self.delay = 0
             self.random_agent = False
-            self.output = None
-            self.format = 'html'
-            self.verbose = False
-            self.quiet = False
-            self.no_color = False
+            
+            # Параметры фильтрации
+            self.exclude = None
+            self.use_all = False
+            
+            # Параметры режимов сканирования
+            self.filetree_mode = False
+            self.filetree = False
+            self.single_url = False
+            self.nocrawl = False
             self.screenshot = False
+            
+            # Параметры краулера
             self.crawl_depth = 2
             self.crawl_limit = 100
+            
+            # Параметры вывода
+            self.output = None
+            self.format = 'html'
+            
+            # Дополнительные параметры, которые могут потребоваться
+            self.wordlist = None
+            self.extensions = None
+            self.status_codes = None
+            self.follow_redirects = True
+            self.verify_ssl = False
+            self.session = None
+            self.rate_limit = None
+            self.retry_count = 3
+            self.backoff_factor = 1.0
+            self.custom_payloads = None
+            self.payload_file = None
+            self.scope = None
+            self.out_of_scope = None
+            self.include_status = None
+            self.exclude_status = None
+            self.match_regex = None
+            self.filter_regex = None
+            self.match_size = None
+            self.filter_size = None
+            self.match_words = None
+            self.filter_words = None
+            self.match_lines = None
+            self.filter_lines = None
+            self.recursion_depth = 3
+            self.force = False
+            self.update = False
+            self.config_file = None
+            self.save_config = None
+            self.load_config = None
+            self.resume = None
+            self.save_state = None
+            self.load_state = None
     
     try:
         # Создаем конфигурацию с mock args
