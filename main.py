@@ -125,6 +125,8 @@ Usage examples:
                        help='Show all available modules')
     parser.add_argument('--help-examples', action='store_true',
                        help='Show usage examples')
+    parser.add_argument('--filetree', action='store_true',
+                       help='Show file tree structure during scan')
     
     return parser
 
@@ -310,6 +312,8 @@ def main():
         args.nocrawl = False
     if not hasattr(args, 'debug'):
         args.debug = False
+    if not hasattr(args, 'filetree'):
+        args.filetree = False
     
     # Apply nocrawl logic
     if args.nocrawl:
