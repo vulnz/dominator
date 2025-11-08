@@ -33,7 +33,7 @@ class WebCrawler:
         found_urls = []
         
         try:
-            print(f"    [CRAWLER] Starting enhanced crawl of {base_url} (max_pages: {max_pages})")
+            print(f"    [CRAWLER] Starting crawl of {base_url} (max_pages: {max_pages})")
             
             # First, get data from sitemap and robots.txt
             print(f"    [CRAWLER] Extracting URLs from sitemap and robots.txt...")
@@ -64,8 +64,8 @@ class WebCrawler:
                 # Add AJAX endpoints to URLs
                 urls.extend(self.ajax_endpoints)
                 
-                # Filter and normalize URLs - increase limit significantly
-                normalized_urls = self._normalize_and_filter_urls(urls, base_url, max_pages * 3)
+                # Filter and normalize URLs
+                normalized_urls = self._normalize_and_filter_urls(urls, base_url, max_pages * 2)
                 print(f"    [CRAWLER] Analyzing {len(normalized_urls)} normalized URLs for parameters...")
                 
                 # First pass - collect URLs with parameters
