@@ -20,6 +20,7 @@ def run_benchmark():
         def __init__(self):
             self.target = 'http://testphp.vulnweb.com/'
             self.targets = ['http://testphp.vulnweb.com/']
+            self.file = None
             self.modules = 'xss,sqli,lfi,ssrf,dirbrute,infoleak'
             self.threads = 5
             self.timeout = 10
