@@ -22,6 +22,7 @@ def run_benchmark():
             self.targets = ['http://testphp.vulnweb.com/']
             self.file = None
             self.modules = 'xss,sqli,lfi,ssrf,dirbrute,infoleak'
+            self.all = False
             self.threads = 5
             self.timeout = 10
             self.request_limit = 1000
