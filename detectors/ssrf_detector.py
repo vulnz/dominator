@@ -1,116 +1,173 @@
 """
-SSRF vulnerability detection logic with enhanced validation
+Server-Side Request Forgery (SSRF) vulnerability detector
 """
 
 import re
+from typing import List, Dict, Any, Tuple
 
 class SSRFDetector:
     """SSRF vulnerability detection logic"""
     
     @staticmethod
-    def detect_ssrf(response_text, response_code, payload):
-        """Detect SSRF vulnerability with enhanced validation"""
-        if response_code >= 500:
-            return False
-        
-        # Check for SSRF-specific markers in payload
-        if 'ssrf_marker' not in payload.lower():
-            return False
-        
-        # Look for internal service responses
-        internal_service_indicators = [
-            # AWS metadata service
-            r'ami-[a-f0-9]{8,}',
-            r'i-[a-f0-9]{8,}',
-            r'"instanceId"\s*:\s*"i-[a-f0-9]+"',
-            r'"imageId"\s*:\s*"ami-[a-f0-9]+"',
-            r'iam/security-credentials',
-            
-            # GCP metadata service
-            r'"machineType".*?zones/.*?/machineTypes/',
-            r'"name".*?"gce-"',
-            r'metadata.google.internal',
-            r'computeMetadata',
-            
-            # Azure metadata service
-            r'"vmId".*?"[a-f0-9-]{36}"',
-            r'"subscriptionId".*?"[a-f0-9-]{36}"',
-            r'metadata.azure.com',
-            
+    def get_ssrf_indicators() -> List[str]:
+        """Get SSRF detection indicators"""
+        return [
             # Internal network responses
-            r'Apache.*?Server at.*?Port \d+',
-            r'nginx/[\d.]+',
-            r'IIS/[\d.]+',
-            r'Server: Microsoft-',
+            '127.0.0.1',
+            'localhost',
+            '192.168.',
+            '10.',
+            '172.16.',
+            '172.17.',
+            '172.18.',
+            '172.19.',
+            '172.20.',
+            '172.21.',
+            '172.22.',
+            '172.23.',
+            '172.24.',
+            '172.25.',
+            '172.26.',
+            '172.27.',
+            '172.28.',
+            '172.29.',
+            '172.30.',
+            '172.31.',
             
-            # Database connection responses
-            r'MySQL.*?protocol version',
-            r'PostgreSQL.*?server',
-            r'Redis.*?server',
-            r'MongoDB.*?server',
+            # Service banners
+            'SSH-2.0',
+            'HTTP/1.1',
+            'HTTP/1.0',
+            'FTP',
+            'SMTP',
+            'POP3',
+            'IMAP',
             
-            # SSH service responses
-            r'SSH-[\d.]+-OpenSSH',
-            r'Protocol mismatch',
+            # Error messages
+            'Connection refused',
+            'Connection timed out',
+            'No route to host',
+            'Network is unreachable',
+            'Connection reset by peer',
             
-            # File system access
-            r'root:.*?:0:0:',
-            r'daemon:.*?:/usr/sbin/nologin',
+            # Cloud metadata
+            'ami-id',
+            'instance-id',
+            'local-hostname',
+            'public-hostname',
+            'security-groups'
+        ]
+    
+    @staticmethod
+    def detect_ssrf(payload: str, response_text: str, response_code: int) -> Tuple[bool, str, str, Dict[str, Any]]:
+        """Enhanced SSRF detection"""
+        if response_code not in [200, 201, 202, 500, 400, 403, 404]:
+            return False, "", "", {}
+        
+        indicators = SSRFDetector.get_ssrf_indicators()
+        found_indicators = []
+        
+        for indicator in indicators:
+            if indicator.lower() in response_text.lower():
+                found_indicators.append(indicator)
+        
+        if found_indicators:
+            # Determine severity based on indicators
+            severity = "High"
+            cvss = "8.6"
             
-            # Internal application responses
-            r'X-Powered-By:.*?PHP',
-            r'Set-Cookie:.*?PHPSESSID',
-            r'Server:.*?Apache',
+            # Check for critical indicators
+            critical_indicators = ['ami-id', 'instance-id', 'SSH-2.0', '127.0.0.1', 'localhost']
+            if any(critical in found_indicators for critical in critical_indicators):
+                severity = "Critical"
+                cvss = "9.1"
             
-            # Error messages indicating internal access
-            r'Connection refused',
-            r'No route to host',
-            r'Network is unreachable',
-            r'Connection timed out'
+            evidence = f"SSRF detected. Found indicators: {', '.join(found_indicators[:3])}"
+            return True, evidence, severity, {
+                'cwe': 'CWE-918',
+                'cvss': cvss,
+                'owasp': 'A10:2021 – Server-Side Request Forgery',
+                'recommendation': 'Implement URL validation and whitelist allowed destinations. Use network segmentation.'
+            }
+        
+        # Check for URL patterns in payload
+        url_patterns = [
+            r'https?://127\.0\.0\.1',
+            r'https?://localhost',
+            r'https?://192\.168\.',
+            r'https?://10\.',
+            r'https?://172\.(1[6-9]|2[0-9]|3[01])\.',
+            r'file://',
+            r'gopher://',
+            r'dict://'
         ]
         
-        # Check for multiple indicators to reduce false positives
-        matches = 0
-        matched_indicators = []
+        for pattern in url_patterns:
+            if re.search(pattern, payload, re.IGNORECASE):
+                if SSRFDetector._check_ssrf_response(response_text, response_code):
+                    return True, f"SSRF attempt detected with URL pattern: {pattern}", "High", {
+                        'cwe': 'CWE-918',
+                        'cvss': '8.6',
+                        'owasp': 'A10:2021 – Server-Side Request Forgery',
+                        'recommendation': 'Implement URL validation and whitelist allowed destinations.'
+                    }
         
-        for pattern in internal_service_indicators:
-            if re.search(pattern, response_text, re.IGNORECASE | re.MULTILINE):
-                matches += 1
-                matched_indicators.append(pattern)
-        
-        # Strong indicators that suggest SSRF
-        strong_indicators = [
-            r'ami-[a-f0-9]{8,}',
-            r'i-[a-f0-9]{8,}',
-            r'metadata.google.internal',
-            r'computeMetadata',
-            r'vmId.*?[a-f0-9-]{36}',
-            r'root:.*?:0:0:'
+        return False, "", "", {}
+    
+    @staticmethod
+    def _check_ssrf_response(response_text: str, response_code: int) -> bool:
+        """Check if response indicates successful SSRF"""
+        # Different response than normal indicates potential SSRF
+        ssrf_response_indicators = [
+            'Connection refused',
+            'Connection timed out',
+            'HTTP/1.1',
+            'SSH-2.0',
+            'FTP',
+            'SMTP',
+            'ami-id',
+            'instance-id'
         ]
         
-        # Check for strong indicators
-        for pattern in strong_indicators:
-            if re.search(pattern, response_text, re.IGNORECASE):
+        for indicator in ssrf_response_indicators:
+            if indicator in response_text:
                 return True
         
-        # Require multiple weak indicators
-        if matches >= 2:
+        # Response code changes might indicate SSRF
+        if response_code in [500, 502, 503, 504]:
             return True
         
-        # Check for specific SSRF response patterns
-        ssrf_response_patterns = [
-            r'ssrf_marker.*?internal',
-            r'ssrf_marker.*?localhost',
-            r'ssrf_marker.*?aws',
-            r'ssrf_marker.*?gcp',
-            r'ssrf_marker.*?metadata'
-        ]
-        
-        for pattern in ssrf_response_patterns:
-            if re.search(pattern, response_text, re.IGNORECASE):
-                return True
-        
         return False
+    
+    @staticmethod
+    def get_ssrf_payloads() -> List[str]:
+        """Get SSRF test payloads"""
+        return [
+            # Internal network
+            'http://127.0.0.1',
+            'http://localhost',
+            'http://192.168.1.1',
+            'http://10.0.0.1',
+            'http://172.16.0.1',
+            
+            # Port scanning
+            'http://127.0.0.1:22',
+            'http://127.0.0.1:80',
+            'http://127.0.0.1:443',
+            'http://127.0.0.1:3306',
+            'http://127.0.0.1:5432',
+            
+            # Cloud metadata
+            'http://169.254.169.254/latest/meta-data/',
+            'http://169.254.169.254/latest/meta-data/ami-id',
+            'http://169.254.169.254/latest/meta-data/instance-id',
+            
+            # Protocol smuggling
+            'gopher://127.0.0.1:22',
+            'dict://127.0.0.1:22',
+            'file:///etc/passwd',
+            'file:///c:/windows/win.ini'
+        ]
     
     @staticmethod
     def get_evidence(payload, response_text):
