@@ -91,41 +91,67 @@ class SQLiDetector:
     
     @staticmethod
     def detect_error_based_sqli(response_text: str, response_code: int) -> tuple:
-        """Detect error-based SQL injection"""
+        """Universal SQL injection detection for any website"""
         if response_code >= 500:
             return False, None
             
         error_patterns = SQLiDetector.get_error_patterns()
         response_lower = response_text.lower()
         
-        # Count how many different error patterns we find
-        found_patterns = []
-        for pattern in error_patterns:
-            if pattern.lower() in response_lower:
-                found_patterns.append(pattern)
+        # Enhanced pattern matching with regex for better detection
+        import re
         
-        # Require at least one strong SQL error pattern
-        strong_patterns = [
-            "mysql_fetch_array",
-            "ORA-01756", "ORA-00933", "ORA-00936",
-            "PostgreSQL query failed",
-            "SQLException",
-            "MySqlException",
-            "check the manual that corresponds to your MySQL server version",
-            "Unknown column.*in.*field list",
-            "Table.*doesn.*t exist",
-            "ERROR: parser: parse error at or near",
-            "Microsoft OLE DB Provider for SQL Server.*80040e14"
+        # Strong SQL error patterns with regex
+        strong_regex_patterns = [
+            r'you have an error in your sql syntax',
+            r'mysql_fetch_\w+\(\)',
+            r'ora-\d{5}',
+            r'postgresql.*error',
+            r'sqlexception',
+            r'mysql.*error',
+            r'unknown column.*in.*field list',
+            r'table.*doesn.*t exist',
+            r'syntax error.*near',
+            r'microsoft.*ole db.*provider',
+            r'odbc.*driver',
+            r'warning.*mysql_',
+            r'fatal error.*mysql',
+            r'pg_query\(\).*failed',
+            r'sqlite.*error',
+            r'database.*error',
+            r'sql.*syntax.*error'
         ]
         
-        # Check for strong patterns first
-        for pattern in strong_patterns:
-            if pattern.lower() in response_lower:
-                return True, pattern
+        # Check for strong regex patterns
+        for pattern in strong_regex_patterns:
+            if re.search(pattern, response_lower, re.IGNORECASE):
+                return True, f"SQL error pattern: {pattern}"
         
-        # If we have multiple weaker patterns, it might be SQLi
-        if len(found_patterns) >= 2:
-            return True, found_patterns[0]
+        # Check for multiple weaker indicators
+        weak_indicators = [
+            'error', 'warning', 'mysql', 'sql', 'database', 'query',
+            'syntax', 'column', 'table', 'select', 'insert', 'update'
+        ]
+        
+        indicator_count = sum(1 for indicator in weak_indicators if indicator in response_lower)
+        
+        # If we have many SQL-related terms, it might be SQLi
+        if indicator_count >= 4:
+            return True, f"Multiple SQL indicators found ({indicator_count})"
+        
+        # Check for specific error message patterns
+        specific_patterns = [
+            'supplied argument is not a valid',
+            'expects parameter',
+            'invalid query',
+            'query failed',
+            'database connection',
+            'access denied for user'
+        ]
+        
+        for pattern in specific_patterns:
+            if pattern in response_lower and any(sql_term in response_lower for sql_term in ['mysql', 'sql', 'database']):
+                return True, f"SQL error: {pattern}"
         
         return False, None
     

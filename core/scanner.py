@@ -549,28 +549,14 @@ class VulnScanner:
                     if self.debug:
                         print(f"  [DEBUG] Manually extracted parameters: {list(manual_params.keys())}")
             
-            # For testphp.vulnweb.com, add common vulnerable parameters if none found
-            if 'testphp.vulnweb.com' in parsed_data['host']:
-                if not parsed_data['query_params']:
+            # If no parameters found, try to discover them through common patterns
+            if not parsed_data['query_params'] and '?' not in parsed_data['url']:
+                # Add common parameter discovery for any website
+                common_params = self._discover_common_parameters(parsed_data['url'])
+                if common_params:
+                    parsed_data['query_params'] = common_params
                     if self.debug:
-                        print(f"  [DEBUG] Adding default testphp parameters...")
-                    parsed_data['query_params'] = {
-                        'cat': ['1'],
-                        'artist': ['1'], 
-                        'file': ['1.jpg'],
-                        'user': ['1'],
-                        'test': ['query']
-                    }
-                    if self.debug:
-                        print(f"  [DEBUG] Added default parameters: {list(parsed_data['query_params'].keys())}")
-                else:
-                    # Ensure we have the vulnerable parameters even if others exist
-                    testphp_params = {'cat': ['1'], 'artist': ['1'], 'file': ['1.jpg'], 'user': ['1']}
-                    for param, value in testphp_params.items():
-                        if param not in parsed_data['query_params']:
-                            parsed_data['query_params'][param] = value
-                    if self.debug:
-                        print(f"  [DEBUG] Enhanced parameters: {list(parsed_data['query_params'].keys())}")
+                        print(f"  [DEBUG] Discovered common parameters: {list(common_params.keys())}")
             
             # Update stats
             self.scan_stats['total_urls'] += 1
@@ -612,39 +598,11 @@ class VulnScanner:
                 # Test important pages that might have forms or vulnerabilities
                 important_pages = self._get_important_pages()
             
-                # Add testphp.vulnweb.com specific vulnerable pages
-                if 'testphp.vulnweb.com' in parsed_data['host']:
-                    testphp_pages = [
-                        '/listproducts.php?cat=1',
-                        '/listproducts.php?cat=2', 
-                        '/listproducts.php?cat=3',
-                        '/listproducts.php?cat=4',
-                        '/showimage.php?file=./pictures/1.jpg',
-                        '/showimage.php?file=1.jpg',
-                        '/showimage.php?file=2.jpg',
-                        '/artists.php?artist=1',
-                        '/artists.php?artist=2',
-                        '/artists.php?artist=3',
-                        '/search.php?test=query',
-                        '/search.php?searchFor=test',
-                        '/userinfo.php?user=1',
-                        '/userinfo.php?user=2',
-                        '/userinfo.php?user=3',
-                        '/categories.php?cat=1',
-                        '/categories.php?cat=2',
-                        '/guestbook.php',
-                        '/login.php',
-                        '/secured/newuser.php',
-                        '/secured/phpinfo.php',
-                        # Additional vulnerable endpoints
-                        '/listproducts.php?artist=1',
-                        '/listproducts.php?searchFor=test',
-                        '/comment.php?aid=1',
-                        '/comment.php?aid=2'
-                    ]
-                    important_pages.extend(testphp_pages)
-                    if self.debug:
-                        print(f"  [DEBUG] Added {len(testphp_pages)} testphp.vulnweb.com specific pages")
+                # Generate dynamic pages based on discovered patterns
+                dynamic_pages = self._generate_dynamic_pages(parsed_data['url'])
+                important_pages.extend(dynamic_pages)
+                if self.debug:
+                    print(f"  [DEBUG] Added {len(dynamic_pages)} dynamically generated pages")
             
                 if self.debug:
                     print(f"  [DEBUG] Testing {len(important_pages)} important pages")
@@ -1052,10 +1010,14 @@ class VulnScanner:
                             print(f"    [XSS] Stopping - reached request limit ({self.config.request_limit})")
                         break  # Break from payload loop, not return from function
                     
-                    # Don't skip 404s for testphp.vulnweb.com as they may contain vulnerabilities
-                    if response.status_code == 404 and 'testphp.vulnweb.com' not in base_url:
-                        print(f"    [XSS] Skipping - response appears to be 404")
-                        continue
+                    # Check if 404 response contains meaningful content
+                    if response.status_code == 404:
+                        if self._is_meaningful_404(response.text):
+                            if self.debug:
+                                print(f"    [XSS] 404 response contains meaningful content, continuing analysis")
+                        else:
+                            print(f"    [XSS] Skipping - empty 404 response")
+                            continue
                     
                     # Use XSS detector with enhanced logging
                     print(f"    [XSS] Checking if payload is reflected in response...")
@@ -4975,6 +4937,91 @@ class VulnScanner:
                 return group_name
         
         return normalized
+    
+    def _discover_common_parameters(self, url: str) -> Dict[str, List[str]]:
+        """Discover common parameters for any website"""
+        common_params = {}
+        
+        # Try to get the main page and analyze it for forms and links
+        try:
+            response = requests.get(url, timeout=10, verify=False)
+            if response.status_code == 200:
+                # Extract parameters from forms
+                forms = self.url_parser.extract_forms(response.text)
+                for form in forms:
+                    for input_field in form.get('inputs', []):
+                        param_name = input_field.get('name')
+                        if param_name and param_name not in common_params:
+                            common_params[param_name] = ['test']
+                
+                # Extract parameters from links
+                import re
+                param_patterns = re.findall(r'[?&]([^=]+)=([^&\s"\'<>]+)', response.text)
+                for param_name, param_value in param_patterns:
+                    if param_name not in common_params:
+                        common_params[param_name] = [param_value]
+        except:
+            pass
+        
+        # Add universal common parameters if none found
+        if not common_params:
+            common_params = {
+                'id': ['1'],
+                'page': ['1'], 
+                'cat': ['1'],
+                'user': ['1'],
+                'file': ['index'],
+                'search': ['test'],
+                'q': ['test']
+            }
+        
+        return common_params
+    
+    def _generate_dynamic_pages(self, base_url: str) -> List[str]:
+        """Generate dynamic pages based on common web patterns"""
+        from urllib.parse import urlparse
+        parsed = urlparse(base_url)
+        base_path = parsed.path.rstrip('/')
+        
+        # Common file patterns
+        common_files = [
+            'index.php', 'search.php', 'login.php', 'admin.php',
+            'user.php', 'profile.php', 'view.php', 'show.php',
+            'list.php', 'category.php', 'product.php', 'detail.php'
+        ]
+        
+        # Common parameter patterns
+        param_patterns = [
+            '?id=1', '?page=1', '?cat=1', '?user=1', '?file=index',
+            '?search=test', '?q=test', '?action=view', '?type=1'
+        ]
+        
+        dynamic_pages = []
+        
+        # Generate combinations
+        for file in common_files:
+            for param in param_patterns:
+                page_url = f"{base_path}/{file}{param}"
+                dynamic_pages.append(page_url)
+        
+        return dynamic_pages[:50]  # Limit to 50 dynamic pages
+    
+    def _is_meaningful_404(self, response_text: str) -> bool:
+        """Check if 404 response contains meaningful content that might indicate vulnerabilities"""
+        if len(response_text.strip()) < 100:
+            return False
+        
+        # Look for error messages that might leak information
+        meaningful_patterns = [
+            'error', 'exception', 'warning', 'notice', 'fatal',
+            'mysql', 'sql', 'database', 'query', 'syntax',
+            'include', 'require', 'file', 'path', 'directory'
+        ]
+        
+        response_lower = response_text.lower()
+        meaningful_count = sum(1 for pattern in meaningful_patterns if pattern in response_lower)
+        
+        return meaningful_count >= 2
     
     def _should_stop(self) -> bool:
         """Check scan stop conditions"""

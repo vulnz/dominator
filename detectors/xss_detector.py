@@ -9,112 +9,112 @@ class XSSDetector:
     
     @staticmethod
     def detect_reflected_xss(payload: str, response_text: str, response_code: int) -> bool:
-        """Detect reflected XSS vulnerability with improved detection logic"""
-        if response_code not in [200, 201, 202]:
+        """Universal XSS detection for any website"""
+        if response_code not in [200, 201, 202, 404, 500]:
             return False
         
-        # Convert response to lowercase for case-insensitive matching
-        response_lower = response_text.lower()
-        payload_lower = payload.lower()
-        
-        # Check for exact payload reflection first
-        if payload in response_text:
-            print(f"    [XSS] Payload found in response, checking context...")
-            return XSSDetector._is_dangerous_context(payload, response_text)
-        
-        # Check for URL-decoded payload reflection
-        import urllib.parse
-        try:
-            decoded_payload = urllib.parse.unquote(payload)
-            if decoded_payload != payload and decoded_payload in response_text:
-                return XSSDetector._is_dangerous_context(decoded_payload, response_text)
-        except:
-            pass
-        
-        # Check for HTML-encoded payload reflection
-        import html
-        try:
-            encoded_payload = html.escape(payload)
-            if encoded_payload != payload and encoded_payload in response_text:
-                # If payload is HTML-encoded, it's likely safe
-                return False
-        except:
-            pass
-        
-        # Check for partial payload reflection (key parts)
-        if '<script' in payload_lower:
-            if '<script' in response_lower and 'alert' in response_lower:
-                return True
-        
-        if 'javascript:' in payload_lower:
-            if 'javascript:' in response_lower:
-                return True
-        
-        if 'onerror' in payload_lower or 'onload' in payload_lower:
-            if ('onerror' in response_lower or 'onload' in response_lower) and payload_lower.split('=')[0] in response_lower:
-                return True
-        
-        # Check for XSS indicators in response
-        xss_indicators = [
-            'alert(',
-            'confirm(',
-            'prompt(',
-            'document.cookie',
-            'document.write',
-            'eval(',
-            'javascript:',
-            'vbscript:',
-            'onload=',
-            'onerror=',
-            'onclick=',
-            'onmouseover='
+        # Multiple encoding checks for better detection
+        variations = [
+            payload,
+            payload.lower(),
+            payload.upper()
         ]
         
-        # If payload contains XSS patterns and they appear unescaped in response
-        for indicator in xss_indicators:
-            if indicator in payload_lower and indicator in response_lower:
-                # Check if it's not just in comments or escaped
-                if not XSSDetector._is_safely_encoded(indicator, response_text):
+        # Add URL decoded variations
+        import urllib.parse
+        try:
+            decoded = urllib.parse.unquote(payload)
+            if decoded != payload:
+                variations.extend([decoded, decoded.lower(), decoded.upper()])
+        except:
+            pass
+        
+        # Add HTML decoded variations  
+        import html
+        try:
+            html_decoded = html.unescape(payload)
+            if html_decoded != payload:
+                variations.extend([html_decoded, html_decoded.lower(), html_decoded.upper()])
+        except:
+            pass
+        
+        response_lower = response_text.lower()
+        
+        # Check all variations for reflection
+        for variation in variations:
+            if variation in response_text or variation.lower() in response_lower:
+                # Enhanced context analysis
+                if XSSDetector._analyze_xss_context(variation, response_text):
                     return True
+        
+        # Check for XSS execution indicators regardless of exact payload match
+        xss_execution_patterns = [
+            r'<script[^>]*>.*alert\s*\(',
+            r'javascript:\s*alert\s*\(',
+            r'on\w+\s*=\s*["\']?[^"\']*alert\s*\(',
+            r'eval\s*\(\s*["\'].*alert',
+            r'setTimeout\s*\(\s*["\'].*alert',
+            r'document\.write\s*\([^)]*alert'
+        ]
+        
+        import re
+        for pattern in xss_execution_patterns:
+            if re.search(pattern, response_text, re.IGNORECASE | re.DOTALL):
+                return True
         
         return False
     
     @staticmethod
-    def _is_dangerous_context(payload: str, response_text: str) -> bool:
-        """Check if payload appears in dangerous HTML context"""
-        # Check if payload is in dangerous context (not just in comments or text)
-        dangerous_contexts = [
-            r'<script[^>]*>[^<]*' + re.escape(payload),
-            r'<[^>]*\s+on\w+\s*=\s*["\']?[^"\']*' + re.escape(payload),
-            r'<[^>]*\s+href\s*=\s*["\']?javascript:[^"\']*' + re.escape(payload),
-            r'<[^>]*\s+src\s*=\s*["\']?[^"\']*' + re.escape(payload),
-            r'<input[^>]*\s+value\s*=\s*["\']?' + re.escape(payload),
-            r'<textarea[^>]*>[^<]*' + re.escape(payload)
-        ]
+    def _analyze_xss_context(payload: str, response_text: str) -> bool:
+        """Enhanced universal XSS context analysis"""
+        import re
         
-        # Check if payload appears in dangerous context
-        for context_pattern in dangerous_contexts:
-            if re.search(context_pattern, response_text, re.IGNORECASE | re.DOTALL):
-                return True
+        # Find all occurrences of the payload in response
+        payload_positions = []
+        start = 0
+        while True:
+            pos = response_text.lower().find(payload.lower(), start)
+            if pos == -1:
+                break
+            payload_positions.append(pos)
+            start = pos + 1
         
-        # Check if payload contains HTML tags and they're not escaped
-        if '<' in payload and '>' in payload:
-            # Look for unescaped angle brackets
-            if payload in response_text:
-                # Check if the payload appears unescaped
-                escaped_payload = payload.replace('<', '&lt;').replace('>', '&gt;')
-                if escaped_payload not in response_text:
-                    print(f"    [XSS] Unescaped HTML tags found in dangerous context")
+        if not payload_positions:
+            return False
+        
+        # Analyze context around each occurrence
+        for pos in payload_positions:
+            context_start = max(0, pos - 200)
+            context_end = min(len(response_text), pos + len(payload) + 200)
+            context = response_text[context_start:context_end]
+            
+            # Check for dangerous contexts with flexible patterns
+            dangerous_patterns = [
+                # Script tag context
+                r'<script[^>]*>[^<]*' + re.escape(payload),
+                # Event handler context  
+                r'<[^>]*\s+on\w+\s*=\s*["\']?[^"\'<>]*' + re.escape(payload),
+                # JavaScript URL context
+                r'<[^>]*\s+href\s*=\s*["\']?javascript:[^"\'<>]*' + re.escape(payload),
+                # Unquoted attribute context
+                r'<[^>]*\s+\w+\s*=\s*[^"\'\s<>]*' + re.escape(payload),
+                # Style attribute context
+                r'<[^>]*\s+style\s*=\s*["\']?[^"\'<>]*' + re.escape(payload),
+                # Meta refresh context
+                r'<meta[^>]*content\s*=\s*["\']?[^"\'<>]*' + re.escape(payload)
+            ]
+            
+            for pattern in dangerous_patterns:
+                if re.search(pattern, context, re.IGNORECASE | re.DOTALL):
                     return True
-        
-        # Additional check for simple payloads that might be reflected
-        if payload in response_text:
-            # Check for basic XSS patterns that are commonly vulnerable
-            simple_patterns = ['<script', 'javascript:', 'onerror=', 'onload=', 'alert(']
-            for pattern in simple_patterns:
-                if pattern.lower() in payload.lower() and pattern.lower() in response_text.lower():
-                    print(f"    [XSS] XSS pattern '{pattern}' found reflected")
-                    return True
+            
+            # Check if payload contains executable content and is not encoded
+            if any(xss_char in payload.lower() for xss_char in ['<script', 'javascript:', 'onerror=', 'onload=', 'alert(']):
+                # Check if it's not HTML encoded
+                if '&lt;' not in context and '&gt;' not in context:
+                    # Check if it's not in comments
+                    if not (re.search(r'<!--.*?' + re.escape(payload) + r'.*?-->', context, re.IGNORECASE | re.DOTALL)):
+                        return True
         
         return False
     

@@ -172,9 +172,11 @@ class WebCrawler:
         return list(set(urls))  # Remove duplicates
     
     def _normalize_and_filter_urls(self, urls: List[str], base_url: str, max_urls: int) -> List[str]:
-        """Normalize and filter URLs with smart logic"""
+        """Enhanced URL normalization with parameter prioritization"""
         normalized_urls = []
-        seen_urls = set()
+        seen_patterns = set()
+        urls_with_params = []
+        urls_without_params = []
         
         for url in urls:
             try:
@@ -196,19 +198,35 @@ class WebCrawler:
                 if self._should_skip_url(full_url):
                     continue
                 
-                # Simple URL deduplication instead of pattern-based
-                if full_url in seen_urls:
-                    continue
-                
-                seen_urls.add(full_url)
-                normalized_urls.append(full_url)
-                
-                if len(normalized_urls) >= max_urls:
-                    break
+                # Prioritize URLs with parameters
+                from urllib.parse import urlparse
+                parsed = urlparse(full_url)
+                if parsed.query:
+                    urls_with_params.append(full_url)
+                else:
+                    urls_without_params.append(full_url)
                     
             except Exception as e:
                 print(f"    [CRAWLER] Error normalizing URL {url}: {e}")
                 continue
+        
+        # Add URLs with parameters first (higher priority)
+        for url in urls_with_params:
+            pattern = self._get_url_pattern(url)
+            if pattern not in seen_patterns:
+                seen_patterns.add(pattern)
+                normalized_urls.append(url)
+                if len(normalized_urls) >= max_urls:
+                    break
+        
+        # Add URLs without parameters if we have space
+        for url in urls_without_params:
+            if len(normalized_urls) >= max_urls:
+                break
+            pattern = self._get_url_pattern(url)
+            if pattern not in seen_patterns:
+                seen_patterns.add(pattern)
+                normalized_urls.append(url)
         
         return normalized_urls
     
