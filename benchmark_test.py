@@ -18,6 +18,7 @@ def run_benchmark():
     # Настройка конфигурации для бенчмарка
     class MockArgs:
         def __init__(self):
+            self.target = 'http://testphp.vulnweb.com/'
             self.targets = ['http://testphp.vulnweb.com/']
             self.modules = 'xss,sqli,lfi,ssrf,dirbrute,infoleak'
             self.threads = 5
