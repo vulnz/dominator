@@ -28,6 +28,7 @@ def run_benchmark():
             self.debug = True
             self.headers = None
             self.headers_file = None
+            self.cookies = None
             self.exclude = None
             self.use_all = False
             self.filetree_mode = False
