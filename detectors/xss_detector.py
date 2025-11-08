@@ -127,60 +127,6 @@ class XSSDetector:
         return False, "", "", {}
     
     @staticmethod
-    def _analyze_xss_context(payload: str, response_text: str) -> bool:
-        """Enhanced universal XSS context analysis"""
-        import re
-        
-        # Find all occurrences of the payload in response
-        payload_positions = []
-        start = 0
-        while True:
-            pos = response_text.lower().find(payload.lower(), start)
-            if pos == -1:
-                break
-            payload_positions.append(pos)
-            start = pos + 1
-        
-        if not payload_positions:
-            return False
-        
-        # Analyze context around each occurrence
-        for pos in payload_positions:
-            context_start = max(0, pos - 200)
-            context_end = min(len(response_text), pos + len(payload) + 200)
-            context = response_text[context_start:context_end]
-            
-            # Check for dangerous contexts with flexible patterns
-            dangerous_patterns = [
-                # Script tag context
-                r'<script[^>]*>[^<]*' + re.escape(payload),
-                # Event handler context  
-                r'<[^>]*\s+on\w+\s*=\s*["\']?[^"\'<>]*' + re.escape(payload),
-                # JavaScript URL context
-                r'<[^>]*\s+href\s*=\s*["\']?javascript:[^"\'<>]*' + re.escape(payload),
-                # Unquoted attribute context
-                r'<[^>]*\s+\w+\s*=\s*[^"\'\s<>]*' + re.escape(payload),
-                # Style attribute context
-                r'<[^>]*\s+style\s*=\s*["\']?[^"\'<>]*' + re.escape(payload),
-                # Meta refresh context
-                r'<meta[^>]*content\s*=\s*["\']?[^"\'<>]*' + re.escape(payload)
-            ]
-            
-            for pattern in dangerous_patterns:
-                if re.search(pattern, context, re.IGNORECASE | re.DOTALL):
-                    return True
-            
-            # Check if payload contains executable content and is not encoded
-            if any(xss_char in payload.lower() for xss_char in ['<script', 'javascript:', 'onerror=', 'onload=', 'alert(']):
-                # Check if it's not HTML encoded
-                if '&lt;' not in context and '&gt;' not in context:
-                    # Check if it's not in comments
-                    if not (re.search(r'<!--.*?' + re.escape(payload) + r'.*?-->', context, re.IGNORECASE | re.DOTALL)):
-                        return True
-        
-        return False
-    
-    @staticmethod
     def _is_safely_encoded(indicator: str, response_text: str) -> bool:
         """Check if XSS indicator is safely encoded in response"""
         # Check for HTML encoding

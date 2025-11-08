@@ -40,42 +40,6 @@ class CommandInjectionDetector:
             'boot.ini', 'win.ini', 'system.ini'
         ]
     
-    @staticmethod
-    def detect_command_injection(response_text: str, response_code: int, payload: str) -> bool:
-        """
-        Detect command injection vulnerability
-        Returns True if command injection is detected
-        """
-        if response_code >= 500:
-            return False
-        
-        response_lower = response_text.lower()
-        indicators = CommandInjectionDetector.get_command_indicators()
-        
-        # Check for command output indicators
-        found_indicators = 0
-        for indicator in indicators:
-            if indicator.lower() in response_lower:
-                found_indicators += 1
-        
-        # Need multiple indicators for confidence
-        if found_indicators >= 2:
-            return True
-        
-        # Check for specific command outputs
-        command_patterns = [
-            r'uid=\d+.*gid=\d+',  # id command
-            r'total \d+',         # ls -l command
-            r'PING .* \(\d+\.\d+\.\d+\.\d+\)',  # ping command
-            r'Directory of [A-Z]:\\',  # Windows dir
-            r'Linux.*\d+\.\d+\.\d+',   # uname -a
-        ]
-        
-        for pattern in command_patterns:
-            if re.search(pattern, response_text, re.IGNORECASE):
-                return True
-        
-        return False
     
     @staticmethod
     def get_evidence(payload: str, response_text: str) -> str:
