@@ -296,6 +296,15 @@ except ImportError:
         @staticmethod
         def detect_command_injection(response_text, response_code, payload):
             return 'uid=' in response_text or 'Volume in drive' in response_text
+        @staticmethod
+        def get_evidence(payload, response_text):
+            return f"Command injection detected with payload: {payload}"
+        @staticmethod
+        def get_response_snippet(payload, response_text):
+            return response_text[:200] + "..." if len(response_text) > 200 else response_text
+        @staticmethod
+        def get_remediation_advice():
+            return "Avoid executing system commands with user input. Use parameterized APIs."
 
 try:
     from detectors.path_traversal_detector import PathTraversalDetector
@@ -410,6 +419,30 @@ except ImportError:
         @staticmethod
         def get_remediation_advice():
             return "Implement proper HTML encoding and Content Security Policy (CSP)."
+
+try:
+    from detectors.host_header_detector import HostHeaderDetector
+except ImportError:
+    class HostHeaderDetector:
+        @staticmethod
+        def detect_host_header_injection(base_url, headers, timeout=10):
+            return False, "Host header detector not available", "Info", []
+
+try:
+    from detectors.prototype_pollution_detector import PrototypePollutionDetector
+except ImportError:
+    class PrototypePollutionDetector:
+        @staticmethod
+        def detect_prototype_pollution(url, headers, timeout=10):
+            return False, "Prototype pollution detector not available", "Info", []
+
+try:
+    from detectors.vhost_detector import VHostDetector
+except ImportError:
+    class VHostDetector:
+        @staticmethod
+        def detect_virtual_hosts(base_url, headers, timeout=10):
+            return False, "VHost detector not available", "Info", []
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -929,6 +962,12 @@ class VulnScanner:
                 results.extend(self._test_text_injection(parsed_data))
             elif module_name == "htmlinjection":
                 results.extend(self._test_html_injection(parsed_data))
+            elif module_name == "hostheader":
+                results.extend(self._test_host_header(parsed_data))
+            elif module_name == "prototypepollution":
+                results.extend(self._test_prototype_pollution(parsed_data))
+            elif module_name == "vhost":
+                results.extend(self._test_vhost(parsed_data))
             else:
                 print(f"    [WARNING] Unknown module: {module_name}")
                 
@@ -2100,15 +2139,24 @@ class VulnScanner:
         if '?' in base_url:
             base_url = base_url.split('?')[0]
         
-        # Get the directory part for proper baseline generation
-        if base_url.endswith('.php') or base_url.endswith('.html') or base_url.endswith('.asp'):
-            # For file URLs like listproducts.php, use the directory containing the file
+        # Determine if target is a file or directory
+        from urllib.parse import urlparse
+        parsed_url = urlparse(base_url)
+        path = parsed_url.path
+        
+        # Check if path ends with common file extensions
+        is_file = any(path.lower().endswith(ext) for ext in ['.php', '.html', '.htm', '.asp', '.aspx', '.jsp', '.py'])
+        
+        if is_file:
+            # For file URLs, use the directory containing the file
             base_dir = '/'.join(base_url.split('/')[:-1]) + '/'
+            print(f"    [DIRBRUTE] Target is a file, using directory: {base_dir}")
         else:
             # Ensure base URL ends with /
             if not base_url.endswith('/'):
                 base_url += '/'
             base_dir = base_url
+            print(f"    [DIRBRUTE] Target is a directory: {base_dir}")
         
         try:
             print(f"    [DIRBRUTE] Starting directory and file bruteforce...")
@@ -4842,7 +4890,118 @@ class VulnScanner:
                     continue
         
         return results
-
+    
+    def _test_host_header(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for Host Header vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        try:
+            print(f"    [HOSTHEADER] Testing Host Header vulnerabilities...")
+            
+            is_vulnerable, evidence, severity, vulnerabilities = HostHeaderDetector.detect_host_header_injection(
+                base_url, self.config.headers, self.config.timeout
+            )
+            
+            if is_vulnerable and vulnerabilities:
+                for vuln in vulnerabilities:
+                    results.append({
+                        'module': 'hostheader',
+                        'target': base_url,
+                        'vulnerability': f'Host Header {vuln["type"].replace("_", " ").title()}',
+                        'severity': vuln['severity'],
+                        'parameter': 'Host',
+                        'payload': vuln['payload'],
+                        'evidence': vuln['evidence'],
+                        'request_url': base_url,
+                        'detector': 'HostHeaderDetector.detect_host_header_injection',
+                        'response_snippet': f'Host: {vuln["payload"]}',
+                        'remediation': HostHeaderDetector.get_remediation_advice()
+                    })
+                
+                print(f"    [HOSTHEADER] Found {len(vulnerabilities)} Host Header vulnerabilities")
+            else:
+                print(f"    [HOSTHEADER] No Host Header vulnerabilities found")
+            
+        except Exception as e:
+            print(f"    [HOSTHEADER] Error during Host Header testing: {e}")
+        
+        return results
+    
+    def _test_prototype_pollution(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for Prototype Pollution vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        try:
+            print(f"    [PROTOTYPEPOLLUTION] Testing Prototype Pollution vulnerabilities...")
+            
+            is_vulnerable, evidence, severity, vulnerabilities = PrototypePollutionDetector.detect_prototype_pollution(
+                base_url, self.config.headers, self.config.timeout
+            )
+            
+            if is_vulnerable and vulnerabilities:
+                for vuln in vulnerabilities:
+                    results.append({
+                        'module': 'prototypepollution',
+                        'target': base_url,
+                        'vulnerability': 'Prototype Pollution',
+                        'severity': vuln['severity'],
+                        'parameter': 'JSON/Form data',
+                        'payload': vuln['payload'],
+                        'evidence': vuln['evidence'],
+                        'request_url': base_url,
+                        'detector': 'PrototypePollutionDetector.detect_prototype_pollution',
+                        'response_snippet': f'Payload: {vuln["payload"]}',
+                        'remediation': PrototypePollutionDetector.get_remediation_advice()
+                    })
+                
+                print(f"    [PROTOTYPEPOLLUTION] Found {len(vulnerabilities)} Prototype Pollution vulnerabilities")
+            else:
+                print(f"    [PROTOTYPEPOLLUTION] No Prototype Pollution vulnerabilities found")
+            
+        except Exception as e:
+            print(f"    [PROTOTYPEPOLLUTION] Error during Prototype Pollution testing: {e}")
+        
+        return results
+    
+    def _test_vhost(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for Virtual Host discovery"""
+        results = []
+        base_url = parsed_data['url']
+        
+        try:
+            print(f"    [VHOST] Testing Virtual Host discovery...")
+            
+            is_vulnerable, evidence, severity, vhosts = VHostDetector.detect_virtual_hosts(
+                base_url, self.config.headers, self.config.timeout
+            )
+            
+            if is_vulnerable and vhosts:
+                for vhost in vhosts:
+                    results.append({
+                        'module': 'vhost',
+                        'target': base_url,
+                        'vulnerability': 'Virtual Host Discovered',
+                        'severity': 'Medium',
+                        'parameter': 'Host',
+                        'payload': vhost['vhost'],
+                        'evidence': vhost['evidence'],
+                        'request_url': base_url,
+                        'detector': 'VHostDetector.detect_virtual_hosts',
+                        'response_snippet': f'Status: {vhost["status_code"]}, Length: {vhost["content_length"]}',
+                        'remediation': VHostDetector.get_remediation_advice()
+                    })
+                
+                print(f"    [VHOST] Discovered {len(vhosts)} Virtual Hosts")
+            else:
+                print(f"    [VHOST] No Virtual Hosts discovered")
+            
+        except Exception as e:
+            print(f"    [VHOST] Error during Virtual Host testing: {e}")
+        
+        return results
+    
     def _get_important_pages(self) -> List[str]:
         """Get list of important pages dynamically"""
         # Get common paths from path manager

@@ -70,7 +70,11 @@ Usage examples:
     parser.add_argument('--all-modules', action='store_true',
                        help='Use all available modules')
     parser.add_argument('--exclude',
-                       help='Exclude paths from scanning')
+                       help='Exclude paths from scanning (comma separated)')
+    parser.add_argument('--exclude-ips',
+                       help='Exclude IP addresses from scanning (comma separated)')
+    parser.add_argument('--exclude-subdomains',
+                       help='Exclude subdomains from scanning (comma separated)')
     parser.add_argument('--timeout', type=int, default=20,
                        help='Request timeout in seconds')
     parser.add_argument('--scan-timeout', type=int,
@@ -167,6 +171,9 @@ def show_modules():
     print("- crlf: CRLF Injection")
     print("- textinjection: Text Injection")
     print("- htmlinjection: HTML Injection")
+    print("- hostheader: Host Header Injection")
+    print("- prototypepollution: Prototype Pollution")
+    print("- vhost: Virtual Host Discovery")
 
 class ScanTimeout:
     """Handle scan timeout using threading"""

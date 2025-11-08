@@ -24,6 +24,9 @@ class WebCrawler:
         self.found_forms: List[Dict[str, Any]] = []
         self.ajax_endpoints: List[str] = []
         self.js_urls: List[str] = []
+        self.sitemap_urls: List[str] = []
+        self.robots_urls: List[str] = []
+        self.discovered_directories: Set[str] = set()
         
     def crawl_for_pages(self, base_url: str, max_pages: int = 50) -> List[str]:
         """Crawl website to find pages with parameters"""
@@ -31,6 +34,12 @@ class WebCrawler:
         
         try:
             print(f"    [CRAWLER] Starting enhanced crawl of {base_url} (max_pages: {max_pages})")
+            
+            # First, get data from sitemap and robots.txt
+            print(f"    [CRAWLER] Extracting URLs from sitemap and robots.txt...")
+            self._extract_sitemap_urls(base_url)
+            self._extract_robots_urls(base_url)
+            
             response = requests.get(
                 base_url,
                 timeout=self.config.timeout,
@@ -47,6 +56,10 @@ class WebCrawler:
                 # Extract URLs from response
                 urls = self._extract_all_urls(response.text, base_url)
                 print(f"    [CRAWLER] Found {len(urls)} URLs to analyze")
+                
+                # Add sitemap and robots URLs
+                urls.extend(self.sitemap_urls)
+                urls.extend(self.robots_urls)
                 
                 # Add AJAX endpoints to URLs
                 urls.extend(self.ajax_endpoints)
@@ -470,6 +483,107 @@ class WebCrawler:
         """Get forms found during crawling"""
         return self.found_forms
     
+    def _extract_sitemap_urls(self, base_url: str):
+        """Extract URLs from sitemap.xml"""
+        try:
+            from urllib.parse import urljoin
+            sitemap_urls = [
+                urljoin(base_url, '/sitemap.xml'),
+                urljoin(base_url, '/sitemap_index.xml'),
+                urljoin(base_url, '/sitemaps.xml'),
+                urljoin(base_url, '/sitemap/sitemap.xml')
+            ]
+            
+            for sitemap_url in sitemap_urls:
+                try:
+                    response = requests.get(
+                        sitemap_url,
+                        timeout=self.config.timeout,
+                        headers=self.config.headers,
+                        verify=False
+                    )
+                    
+                    if response.status_code == 200:
+                        print(f"    [CRAWLER] Found sitemap: {sitemap_url}")
+                        
+                        # Extract URLs from XML
+                        import re
+                        url_patterns = [
+                            r'<loc>(.*?)</loc>',
+                            r'<url>(.*?)</url>'
+                        ]
+                        
+                        for pattern in url_patterns:
+                            matches = re.findall(pattern, response.text, re.IGNORECASE)
+                            for match in matches:
+                                if match.startswith('http') and self._is_same_domain(match, base_url):
+                                    self.sitemap_urls.append(match)
+                        
+                        print(f"    [CRAWLER] Extracted {len(self.sitemap_urls)} URLs from sitemap")
+                        break
+                        
+                except Exception as e:
+                    continue
+                    
+        except Exception as e:
+            print(f"    [CRAWLER] Error extracting sitemap URLs: {e}")
+    
+    def _extract_robots_urls(self, base_url: str):
+        """Extract URLs from robots.txt"""
+        try:
+            from urllib.parse import urljoin
+            robots_url = urljoin(base_url, '/robots.txt')
+            
+            response = requests.get(
+                robots_url,
+                timeout=self.config.timeout,
+                headers=self.config.headers,
+                verify=False
+            )
+            
+            if response.status_code == 200:
+                print(f"    [CRAWLER] Found robots.txt: {robots_url}")
+                
+                # Extract paths from robots.txt
+                import re
+                lines = response.text.split('\n')
+                
+                for line in lines:
+                    line = line.strip()
+                    if line.startswith('Disallow:') or line.startswith('Allow:'):
+                        path = line.split(':', 1)[1].strip()
+                        if path and path != '/':
+                            full_url = urljoin(base_url, path)
+                            if self._is_same_domain(full_url, base_url):
+                                self.robots_urls.append(full_url)
+                    elif line.startswith('Sitemap:'):
+                        sitemap_url = line.split(':', 1)[1].strip()
+                        if sitemap_url and self._is_same_domain(sitemap_url, base_url):
+                            # Process additional sitemap
+                            try:
+                                sitemap_response = requests.get(
+                                    sitemap_url,
+                                    timeout=self.config.timeout,
+                                    headers=self.config.headers,
+                                    verify=False
+                                )
+                                if sitemap_response.status_code == 200:
+                                    url_matches = re.findall(r'<loc>(.*?)</loc>', sitemap_response.text, re.IGNORECASE)
+                                    for url_match in url_matches:
+                                        if self._is_same_domain(url_match, base_url):
+                                            self.sitemap_urls.append(url_match)
+                            except:
+                                pass
+                
+                print(f"    [CRAWLER] Extracted {len(self.robots_urls)} URLs from robots.txt")
+                
+        except Exception as e:
+            print(f"    [CRAWLER] Error extracting robots URLs: {e}")
+    
     def get_ajax_endpoints(self) -> List[str]:
         """Get AJAX endpoints found during crawling"""
         return self.ajax_endpoints
+    
+    def get_discovered_directories(self) -> Set[str]:
+        """Get directories discovered during crawling"""
+        return self.discovered_directories
