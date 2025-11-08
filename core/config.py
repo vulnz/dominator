@@ -15,7 +15,7 @@ class Config:
         self.headers = self._parse_headers(args.headers, args.headers_file)
         self.cookies = args.cookies
         self.auth_type = args.auth
-        self.modules = self._parse_modules(args.modules, args.all)
+        self.modules = self._parse_modules(args.modules, args.all, getattr(args, 'filetree', False))
         self.exclude_paths = self._parse_exclude(args.exclude)
         self.timeout = args.timeout
         self.threads = args.threads
@@ -24,6 +24,7 @@ class Config:
         self.output_file = args.output
         self.output_format = args.format
         self.single_url = getattr(args, 'single_url', False) or getattr(args, 'nocrawl', False)
+        self.filetree = getattr(args, 'filetree', False)
         
         # Crawler settings
         self.crawler_depth = getattr(args, 'crawler_depth', 3)
@@ -58,7 +59,7 @@ class Config:
         
         return result
     
-    def _parse_modules(self, modules_str: Optional[str], use_all: bool) -> List[str]:
+    def _parse_modules(self, modules_str: Optional[str], use_all: bool, filetree_mode: bool = False) -> List[str]:
         """Parse scanning modules"""
         all_modules = [
             'xss', 'sqli', 'lfi', 'rfi', 'xxe', 'csrf', 'idor', 'ssrf',
@@ -70,6 +71,18 @@ class Config:
             'deserialization', 'responsesplitting', 'ssti', 'crlf',
             'textinjection', 'htmlinjection'
         ]
+        
+        # If filetree mode is enabled, only use file/directory discovery modules
+        if filetree_mode:
+            filetree_modules = ['dirbrute', 'git', 'phpinfo']
+            if modules_str:
+                # Allow user to specify additional modules with filetree
+                user_modules = [m.strip() for m in modules_str.split(',')]
+                normalized_modules = [self._normalize_module_name(m) for m in user_modules]
+                # Combine filetree modules with user modules
+                return list(set(filetree_modules + normalized_modules))
+            else:
+                return filetree_modules
         
         if modules_str:
             # Handle special case where user specifies "all" as module name

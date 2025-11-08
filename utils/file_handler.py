@@ -1018,14 +1018,21 @@ class FileHandler:
             const scanStats = reportData.scan_stats || {};
             const filePaths = scanStats.file_tree_paths || [];
             
-            if (filePaths.length === 0) return;
+            console.log('Generating file tree section...');
+            console.log('File paths:', filePaths);
+            
+            if (filePaths.length === 0) {
+                console.log('No file paths found for tree generation');
+                return;
+            }
             
             // Build tree structure
             const tree = {};
             filePaths.forEach(path => {
+                console.log('Processing path:', path);
                 const parts = path.split('/').filter(part => part);
                 let current = tree;
-                parts.forEach(part => {
+                parts.forEach((part, index) => {
                     if (!current[part]) {
                         current[part] = {};
                     }
@@ -1033,40 +1040,100 @@ class FileHandler:
                 });
             });
             
+            console.log('Built tree structure:', tree);
+            
             if (Object.keys(tree).length > 0) {
                 let filetreeHtml = `
                     <div class="filetree-section">
                         <div class="filetree-header">
-                            <h2><i class="fas fa-folder-tree"></i> File Tree Structure</h2>
-                            <p>Discovered files and directories during scanning (${filePaths.length} paths)</p>
+                            <h2><i class="fas fa-folder-tree"></i> Discovered File Structure</h2>
+                            <p>Files and directories found during scanning (${filePaths.length} paths discovered)</p>
                         </div>
                         <div class="file-tree">
-                            ${generateTreeHtml(tree, 0)}
+                            <div class="tree-root">
+                                <div class="tree-item root-item">
+                                    <span class="folder-icon"><i class="fas fa-globe"></i></span>
+                                    <strong>Website Root</strong>
+                                </div>
+                                ${generateTreeHtml(tree, 1)}
+                            </div>
                         </div>
                     </div>
                 `;
                 
-                // Insert before vulnerabilities
-                const vulnSection = document.querySelector('.vulnerabilities');
-                if (vulnSection) {
-                    vulnSection.insertAdjacentHTML('beforebegin', filetreeHtml);
+                console.log('Generated file tree HTML');
+                
+                // Insert after dashboard but before vulnerabilities
+                const dashboard = document.querySelector('.dashboard');
+                if (dashboard) {
+                    dashboard.insertAdjacentHTML('afterend', filetreeHtml);
+                    console.log('Inserted file tree section after dashboard');
+                } else {
+                    // Fallback: insert before vulnerabilities
+                    const vulnSection = document.querySelector('.vulnerabilities');
+                    if (vulnSection) {
+                        vulnSection.insertAdjacentHTML('beforebegin', filetreeHtml);
+                        console.log('Inserted file tree section before vulnerabilities');
+                    }
                 }
             }
         }
         
         function generateTreeHtml(tree, level) {
             let html = '<ul class="tree-level">';
-            const entries = Object.entries(tree).sort();
+            const entries = Object.entries(tree).sort((a, b) => {
+                // Sort folders first, then files
+                const aIsFolder = Object.keys(a[1]).length > 0;
+                const bIsFolder = Object.keys(b[1]).length > 0;
+                if (aIsFolder && !bIsFolder) return -1;
+                if (!aIsFolder && bIsFolder) return 1;
+                return a[0].localeCompare(b[0]);
+            });
             
             entries.forEach(([name, subtree]) => {
                 const indent = level * 20;
+                const isFolder = Object.keys(subtree).length > 0;
+                
                 html += `<li class="tree-item" style="margin-left: ${indent}px;">`;
                 
-                if (Object.keys(subtree).length > 0) {
+                if (isFolder) {
                     html += `<span class="folder-icon"><i class="fas fa-folder"></i></span><strong>${name}/</strong>`;
                     html += generateTreeHtml(subtree, level + 1);
                 } else {
-                    html += `<span class="file-icon"><i class="fas fa-file"></i></span>${name}`;
+                    // Determine file type icon
+                    let fileIcon = 'fas fa-file';
+                    const extension = name.split('.').pop().toLowerCase();
+                    switch (extension) {
+                        case 'php':
+                            fileIcon = 'fab fa-php';
+                            break;
+                        case 'html':
+                        case 'htm':
+                            fileIcon = 'fab fa-html5';
+                            break;
+                        case 'js':
+                            fileIcon = 'fab fa-js-square';
+                            break;
+                        case 'css':
+                            fileIcon = 'fab fa-css3-alt';
+                            break;
+                        case 'jpg':
+                        case 'jpeg':
+                        case 'png':
+                        case 'gif':
+                            fileIcon = 'fas fa-image';
+                            break;
+                        case 'pdf':
+                            fileIcon = 'fas fa-file-pdf';
+                            break;
+                        case 'txt':
+                            fileIcon = 'fas fa-file-alt';
+                            break;
+                        case 'xml':
+                            fileIcon = 'fas fa-file-code';
+                            break;
+                    }
+                    html += `<span class="file-icon"><i class="${fileIcon}"></i></span>${name}`;
                 }
                 
                 html += '</li>';

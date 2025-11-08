@@ -320,8 +320,10 @@ def main():
         args.single_url = True
     
     # Check if modules are specified
-    if not args.modules and not args.all:
+    if not args.modules and not args.all and not args.filetree:
         print("Warning: No modules specified, using all modules by default")
+    elif args.filetree and not args.modules:
+        print("File tree mode enabled - using file discovery modules (dirbrute, git, phpinfo)")
     
     try:
         # Set up scan timeout if specified

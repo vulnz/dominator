@@ -557,12 +557,12 @@ class VulnScanner:
             all_found_pages.append(parsed_data)
             
             # Check if single URL mode is enabled OR if specific modules are being used
-            skip_crawling = (self.config.single_url or 
-                           len(self.config.modules) == 1 or 
-                           any(module in ['dirbrute', 'gitexposed', 'phpinfo', 'ssltls', 'secheaders'] 
-                               for module in self.config.modules))
+            # For filetree mode, always enable crawling to discover more files
+            skip_crawling = (self.config.single_url and not getattr(self.config, 'filetree', False)) or \
+                           (len(self.config.modules) == 1 and not getattr(self.config, 'filetree', False)) or \
+                           (any(module in ['ssltls', 'secheaders'] for module in self.config.modules) and not getattr(self.config, 'filetree', False))
             
-            if not skip_crawling:
+            if not skip_crawling or getattr(self.config, 'filetree', False):
                 # Always crawl for additional pages
                 if self.debug:
                     print(f"  [DEBUG] Starting enhanced crawler to find additional pages...")
@@ -632,7 +632,9 @@ class VulnScanner:
                         continue
             else:
                 if self.debug:
-                    if self.config.single_url:
+                    if getattr(self.config, 'filetree', False):
+                        print(f"  [DEBUG] Filetree mode enabled - enhanced crawling for file discovery")
+                    elif self.config.single_url:
                         print(f"  [DEBUG] Single URL mode enabled - skipping crawler and additional pages")
                     elif len(self.config.modules) == 1:
                         print(f"  [DEBUG] Single module specified ({self.config.modules[0]}) - skipping crawler to focus on target")
@@ -642,6 +644,8 @@ class VulnScanner:
             # Collect file tree data if filetree is enabled
             if getattr(self.config, 'filetree', False):
                 file_paths = set()
+            
+                # Collect paths from crawled pages
                 for page_data in all_found_pages:
                     if page_data.get('url'):
                         try:
@@ -651,18 +655,37 @@ class VulnScanner:
                                 file_paths.add(parsed_url.path)
                         except:
                             pass
-                
-                # Add some common paths for demonstration if no paths found
-                if not file_paths:
-                    file_paths.update(['/admin', '/login', '/config', '/uploads', '/images'])
-                    if self.debug:
-                        print(f"  [DEBUG] No file paths found, adding common paths for demonstration")
             
+                # Collect paths from crawler if available
+                if hasattr(self.crawler, 'found_urls') and self.crawler.found_urls:
+                    for url in self.crawler.found_urls:
+                        try:
+                            from urllib.parse import urlparse
+                            parsed_url = urlparse(url)
+                            if parsed_url.path and parsed_url.path != '/':
+                                file_paths.add(parsed_url.path)
+                        except:
+                            pass
+            
+                # Collect paths from dirbrute results if dirbrute was run
+                for result in target_results:
+                    if result.get('module') == 'dirbrute' and result.get('request_url'):
+                        try:
+                            from urllib.parse import urlparse
+                            parsed_url = urlparse(result['request_url'])
+                            if parsed_url.path and parsed_url.path != '/':
+                                file_paths.add(parsed_url.path)
+                        except:
+                            pass
+        
                 # Store file tree data in scan stats
                 if file_paths:
-                    self.scan_stats['file_tree_paths'] = list(file_paths)
+                    self.scan_stats['file_tree_paths'] = sorted(list(file_paths))
                     if self.debug:
                         print(f"  [DEBUG] Collected {len(file_paths)} file paths for tree structure")
+                else:
+                    if self.debug:
+                        print(f"  [DEBUG] No file paths found for tree structure")
         
             # Now test ALL found pages with ALL modules
             if self.debug:
