@@ -535,10 +535,10 @@ class VulnScanner:
             # Create empty result with stats for reporting
             self.results = [{'scan_stats': self.scan_stats}]
         
-        # Анализ эффективности для testphp.vulnweb.com
+        # Run benchmark analysis if available and target matches
         benchmark_analysis = self.analyze_benchmark_performance(self.results)
         if benchmark_analysis:
-            # Добавляем анализ бенчмарка в результаты
+            # Add benchmark analysis to results
             for result in self.results:
                 result['benchmark_analysis'] = benchmark_analysis
         
@@ -559,14 +559,23 @@ class VulnScanner:
             
             from testphp_benchmark import TestPHPBenchmark
             
-            # Проверяем, что сканируем testphp.vulnweb.com
-            is_testphp = False
+            # Check if we have a benchmark for this target
+            has_benchmark = False
+            target_domain = None
             for result in results:
-                if result.get('target') and 'testphp.vulnweb.com' in result['target']:
-                    is_testphp = True
-                    break
+                if result.get('target'):
+                    from urllib.parse import urlparse
+                    try:
+                        parsed = urlparse(result['target'])
+                        target_domain = parsed.netloc.lower()
+                        # Currently only testphp.vulnweb.com has benchmark data
+                        if 'testphp.vulnweb.com' in target_domain:
+                            has_benchmark = True
+                            break
+                    except:
+                        continue
             
-            if not is_testphp:
+            if not has_benchmark:
                 return None
             
             print("\n" + "="*60)
@@ -1413,7 +1422,7 @@ class VulnScanner:
                         # Расширенные проверки для всех сайтов
                         if not is_vulnerable:
                             print(f"    [SQLI] Running extended SQL error pattern checks...")
-                            # Проверяем расширенный список SQL ошибок
+                            # Comprehensive SQL error patterns for all database types
                             sql_errors = [
                                 'mysql', 'sql syntax', 'ora-', 'postgresql', 'sqlite', 'mssql', 
                                 'warning:', 'error:', 'exception', 'stack trace', 'fatal error',
@@ -1421,11 +1430,14 @@ class VulnScanner:
                                 'table', 'column', 'constraint', 'duplicate entry', 'access denied',
                                 'unknown column', 'unknown table', 'subquery', 'operand', 'operands',
                                 'you have an error in your sql syntax', 'check the manual that corresponds',
-                                # Добавляем специфичные для testphp.vulnweb.com ошибки
                                 'supplied argument is not a valid mysql', 'mysql_fetch_array()',
                                 'mysql_num_rows()', 'division by zero', 'invalid query',
                                 'mysql_fetch_assoc()', 'mysql_fetch_row()', 'mysql_result()',
-                                'call to undefined function', 'unexpected end of file'
+                                'call to undefined function', 'unexpected end of file',
+                                'ora-00', 'ora-01', 'ora-02', 'ora-03', 'ora-04', 'ora-05',
+                                'microsoft ole db', 'odbc sql server driver', 'odbc microsoft access',
+                                'sqlite_', 'sqlite3_', 'pdo_', 'pg_query', 'pg_exec',
+                                'column count doesn\'t match', 'operand should contain', 'incorrect syntax near'
                             ]
                             response_lower = response.text.lower()
                                 
@@ -1636,38 +1648,13 @@ class VulnScanner:
             self.scan_stats['payload_stats']['lfi'] = {'payloads_used': 0, 'requests_made': 0, 'successful_payloads': 0}
         self.scan_stats['payload_stats']['lfi']['payloads_used'] += len(lfi_payloads)
         
-        # First, test known LFI-prone endpoints for testphp.vulnweb.com
-        if 'testphp.vulnweb.com' in base_url:
-            print(f"    [LFI] Testing known LFI endpoints for testphp.vulnweb.com")
-            known_lfi_endpoints = [
-                'showimage.php?file=image.jpg',
-                'userinfo.php?file=user.txt', 
-                'showimage.php?file=../image.jpg',
-                'userinfo.php?file=../user.txt',
-                'showimage.php?file=php://filter/convert.base64-encode/resource=showimage.php',
-                'showimage.php?file=http://127.0.0.1:80',
-                'showimage.php?file=../../../../etc/passwd',
-                'showimage.php?file=../../../../windows/win.ini'
-            ]
-            
-            from urllib.parse import urlparse
-            parsed_url = urlparse(base_url)
-            base_domain = f"{parsed_url.scheme}://{parsed_url.netloc}"
-            
-            for endpoint in known_lfi_endpoints:
-                test_base_url = f"{base_domain}/{endpoint}"
-                print(f"    [LFI] Testing known endpoint: {test_base_url}")
-                
-                # Parse this endpoint to get parameters
-                try:
-                    endpoint_parsed = self.url_parser.parse(test_base_url)
-                    if endpoint_parsed['query_params']:
-                        # Test this endpoint with LFI payloads
-                        endpoint_results = self._test_lfi_endpoint(endpoint_parsed, lfi_payloads)
-                        results.extend(endpoint_results)
-                except Exception as e:
-                    print(f"    [LFI] Error testing known endpoint {endpoint}: {e}")
-                    continue
+        # Test common LFI-prone endpoints based on discovered parameters
+        file_params = [param for param in parsed_data['query_params'].keys() 
+                      if any(keyword in param.lower() for keyword in ['file', 'path', 'doc', 'page', 'include', 'load', 'read'])]
+        
+        if file_params:
+            print(f"    [LFI] Found file-related parameters: {file_params}")
+            # Enhanced payload testing for file-related parameters will be handled below
         
         # Test GET parameters from current URL
         for param, values in parsed_data['query_params'].items():
@@ -2402,8 +2389,14 @@ class VulnScanner:
                 baseline_404_text = None
                 baseline_404_size = 0
             
-            # Enhanced directories for testphp.vulnweb.com
-            testphp_dirs = [
+            # Get comprehensive directory list
+            try:
+                directories = DirBrutePayloads.get_all_directories()
+            except:
+                directories = []
+            
+            # Add common directories if not already included
+            common_dirs = [
                 'admin', 'administrator', 'secured', 'secure',
                 'pictures', 'images', 'img', 'pics',
                 'backup', 'backups', 'bak', 'old',
@@ -2412,17 +2405,12 @@ class VulnScanner:
                 'include', 'includes', 'inc', 'lib',
                 'upload', 'uploads', 'files', 'documents',
                 'temp', 'tmp', 'cache', 'log', 'logs',
-                'hpp', 'cgi-bin', 'scripts', 'js'
+                'cgi-bin', 'scripts', 'js', 'css',
+                'api', 'v1', 'v2', 'rest', 'ajax'
             ]
             
-            # Get original directories
-            try:
-                directories = DirBrutePayloads.get_all_directories()
-            except:
-                directories = []
-            
-            # Combine with testphp specific directories
-            all_directories = testphp_dirs + directories
+            # Combine directories, avoiding duplicates
+            all_directories = list(set(directories + common_dirs))
             found_directories = []
             
             # Update payload stats
@@ -2511,29 +2499,30 @@ class VulnScanner:
                     print(f"    [DIRBRUTE] Error testing directory {directory}: {e}")
                     continue
             
-            # Enhanced file list for testphp.vulnweb.com
-            testphp_files = [
-                'phpinfo.php', 'secured/phpinfo.php', 'info.php',
-                'index.zip', 'backup.zip', 'site.zip', 'www.zip',
-                'config.php', 'config.inc.php', 'configuration.php',
-                'database.php', 'db.php', 'connect.php',
-                'admin.php', 'administrator.php', 'manager.php',
-                'test.php', 'debug.php', 'error.php',
-                'backup.sql', 'dump.sql', 'database.sql',
-                '.htaccess', '.htpasswd', 'web.config',
-                'robots.txt', 'sitemap.xml', 'crossdomain.xml',
-                'readme.txt', 'changelog.txt', 'install.txt',
-                'guestbook.php', 'contact.php', 'feedback.php'
-            ]
-        
-            # Get original files
+            # Get comprehensive file list
             try:
                 files = DirBrutePayloads.get_all_files()
             except:
                 files = []
         
-            # Combine with testphp specific files
-            all_files = testphp_files + files
+            # Add common sensitive files if not already included
+            common_files = [
+                'phpinfo.php', 'info.php', 'test.php',
+                'index.zip', 'backup.zip', 'site.zip', 'www.zip',
+                'config.php', 'config.inc.php', 'configuration.php',
+                'database.php', 'db.php', 'connect.php',
+                'admin.php', 'administrator.php', 'manager.php',
+                'debug.php', 'error.php', 'status.php',
+                'backup.sql', 'dump.sql', 'database.sql',
+                '.htaccess', '.htpasswd', 'web.config',
+                'robots.txt', 'sitemap.xml', 'crossdomain.xml',
+                'readme.txt', 'changelog.txt', 'install.txt',
+                'wp-config.php', 'config.json', 'package.json',
+                '.env', '.env.local', '.env.production'
+            ]
+        
+            # Combine files, avoiding duplicates
+            all_files = list(set(files + common_files))
         
             # Update payload stats for files
             self.scan_stats['payload_stats']['dirbrute']['payloads_used'] += len(all_files)
@@ -2719,8 +2708,14 @@ class VulnScanner:
         results = []
         base_url = parsed_data['url']
         
-        # Enhanced directory traversal payloads for testphp.vulnweb.com
-        traversal_payloads = [
+        # Get comprehensive directory traversal payloads
+        try:
+            traversal_payloads = DirectoryTraversalPayloads.get_all_payloads()
+        except:
+            traversal_payloads = []
+        
+        # Add common traversal patterns if not already included
+        common_traversal = [
             '../../../etc/passwd',
             '..\\..\\..\\windows\\win.ini',
             '/etc/passwd',
@@ -2729,15 +2724,14 @@ class VulnScanner:
             '....\\\\....\\\\....\\\\windows\\\\win.ini',
             'php://filter/convert.base64-encode/resource=../../../etc/passwd',
             'file:///etc/passwd',
-            'file:///c:/windows/win.ini'
+            'file:///c:/windows/win.ini',
+            '..%2F..%2F..%2Fetc%2Fpasswd',
+            '..%5C..%5C..%5Cwindows%5Cwin.ini',
+            '%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd'
         ]
         
-        # Add original payloads
-        try:
-            original_payloads = DirectoryTraversalPayloads.get_all_payloads()
-            traversal_payloads.extend(original_payloads)
-        except:
-            pass
+        # Combine payloads, avoiding duplicates
+        traversal_payloads = list(set(traversal_payloads + common_traversal))
         
         # Test GET parameters
         for param, values in parsed_data['query_params'].items():
@@ -3568,7 +3562,7 @@ class VulnScanner:
                 print(f"    [DATABASEERRORS] Skipping parameter {param} - already tested")
                 continue
             
-            # Enhanced SQL injection payloads for testphp.vulnweb.com
+            # Comprehensive SQL injection payloads for error detection
             error_payloads = [
                 "'", '"', "' OR '1'='1", "'; DROP TABLE users; --", "%27",
                 "-1 UNION SELECT 1,version(),user()",
@@ -3577,7 +3571,13 @@ class VulnScanner:
                 "1' ORDER BY 10--",
                 "1' GROUP BY 1,2,3,4,5,6,7,8,9,10--",
                 "' HAVING 1=1--",
-                "' AND (SELECT COUNT(*) FROM information_schema.tables)>0--"
+                "' AND (SELECT COUNT(*) FROM information_schema.tables)>0--",
+                "1 AND 1=2",
+                "1' AND '1'='2",
+                "1\" AND \"1\"=\"2",
+                "1) AND (1=2",
+                "1')) AND (('1'='2",
+                "1\")) AND ((\"1\"=\"2"
             ]
             
             for payload in error_payloads:
@@ -5492,46 +5492,52 @@ class VulnScanner:
             'data:text/html,<script>alert(1)</script>'
         ]
         
-        # Enhanced redirect parameters and HPP testing
+        # Enhanced redirect parameters
         redirect_params = ['url', 'redirect', 'return', 'next', 'goto', 'target', 'link', 'site', 'file', 'page', 'path']
         
-        # Test for HTTP Parameter Pollution (HPP) first
-        if 'testphp.vulnweb.com' in base_url and 'hpp' in base_url:
-            print(f"    [OPENREDIRECT] Testing HPP on testphp.vulnweb.com")
-            hpp_payloads = [
-                'p=1&pp=2&pp=3',
-                'p=valid&pp=12&pp=13',
-                'p=test&pp=evil&pp=good'
-            ]
-            
-            for hpp_payload in hpp_payloads:
-                try:
-                    test_url = f"{base_url.split('?')[0]}?{hpp_payload}"
-                    response = requests.get(
-                        test_url,
-                        timeout=self.config.timeout,
-                        headers=self.config.headers,
-                        verify=False,
-                        allow_redirects=False
-                    )
-                    
-                    if response.status_code == 200:
-                        results.append({
-                            'module': 'openredirect',
-                            'target': base_url,
-                            'vulnerability': 'HTTP Parameter Pollution (HPP)',
-                            'severity': 'Medium',
-                            'parameter': 'pp',
-                            'payload': hpp_payload,
-                            'evidence': f'HPP detected - multiple pp parameters processed: {hpp_payload}',
-                            'request_url': test_url,
-                            'detector': 'hpp_parameter_analysis',
-                            'response_snippet': response.text[:200] + '...' if len(response.text) > 200 else response.text,
-                            'remediation': 'Properly handle duplicate parameters and validate input'
-                        })
-                        break
-                except Exception as e:
-                    continue
+        # Test for HTTP Parameter Pollution (HPP) on any site with duplicate parameters
+        duplicate_params = []
+        for param in parsed_data['query_params'].keys():
+            if len(parsed_data['query_params'][param]) > 1:
+                duplicate_params.append(param)
+        
+        if duplicate_params:
+            print(f"    [OPENREDIRECT] Testing HPP with duplicate parameters: {duplicate_params}")
+            for param in duplicate_params:
+                hpp_payloads = [
+                    f'{param}=1&{param}=2&{param}=3',
+                    f'{param}=valid&{param}=12&{param}=13',
+                    f'{param}=test&{param}=evil&{param}=good'
+                ]
+                
+                for hpp_payload in hpp_payloads:
+                    try:
+                        test_url = f"{base_url.split('?')[0]}?{hpp_payload}"
+                        response = requests.get(
+                            test_url,
+                            timeout=self.config.timeout,
+                            headers=self.config.headers,
+                            verify=False,
+                            allow_redirects=False
+                        )
+                        
+                        if response.status_code == 200:
+                            results.append({
+                                'module': 'openredirect',
+                                'target': base_url,
+                                'vulnerability': 'HTTP Parameter Pollution (HPP)',
+                                'severity': 'Medium',
+                                'parameter': param,
+                                'payload': hpp_payload,
+                                'evidence': f'HPP detected - multiple {param} parameters processed: {hpp_payload}',
+                                'request_url': test_url,
+                                'detector': 'hpp_parameter_analysis',
+                                'response_snippet': response.text[:200] + '...' if len(response.text) > 200 else response.text,
+                                'remediation': 'Properly handle duplicate parameters and validate input'
+                            })
+                            break
+                    except Exception as e:
+                        continue
         
         for param, values in parsed_data['query_params'].items():
             # Check if parameter name suggests it might be used for redirects or file access
@@ -5602,136 +5608,6 @@ class VulnScanner:
         
         return results
     
-    def print_vulnerability_analysis_table(self, results: List[Dict[str, Any]]):
-        """Print analysis table of what was found vs expected for testphp.vulnweb.com"""
-        print("\n" + "="*100)
-        print("АНАЛИЗ ЭФФЕКТИВНОСТИ СКАНИРОВАНИЯ TESTPHP.VULNWEB.COM")
-        print("="*100)
-        
-        # Check if this is testphp.vulnweb.com
-        is_testphp = False
-        for result in results:
-            if result.get('target') and 'testphp.vulnweb.com' in result['target']:
-                is_testphp = True
-                break
-        
-        if not is_testphp:
-            print("Анализ доступен только для testphp.vulnweb.com")
-            return
-        
-        # Known vulnerabilities in testphp.vulnweb.com
-        known_vulns = {
-            'XSS': {
-                'expected': ['search.php?test=', 'artists.php?artist=', 'listproducts.php?cat=', 'hpp/?pp='],
-                'description': 'Reflected XSS в параметрах поиска и навигации',
-                'severity': 'High'
-            },
-            'SQL Injection': {
-                'expected': ['search.php?test=', 'artists.php?artist=', 'listproducts.php?cat='],
-                'description': 'SQL инъекции в параметрах базы данных',
-                'severity': 'High'
-            },
-            'LFI': {
-                'expected': ['showimage.php?file=', 'userinfo.php?file='],
-                'description': 'Local File Inclusion через параметры файлов',
-                'severity': 'High'
-            },
-            'Directory Traversal': {
-                'expected': ['showimage.php?file='],
-                'description': 'Path traversal в параметре file',
-                'severity': 'High'
-            },
-            'Command Injection': {
-                'expected': ['rfi.php?file='],
-                'description': 'OS command injection',
-                'severity': 'High'
-            },
-            'CSRF': {
-                'expected': ['login.php', 'guestbook.php'],
-                'description': 'Отсутствие CSRF токенов в формах',
-                'severity': 'Medium'
-            }
-        }
-        
-        # Analyze found vulnerabilities
-        found_vulns = {}
-        for result in results:
-            vuln_type = result.get('vulnerability', '')
-            target = result.get('target', '')
-            
-            # Map vulnerability names
-            if 'XSS' in vuln_type:
-                vuln_key = 'XSS'
-            elif 'SQL' in vuln_type:
-                vuln_key = 'SQL Injection'
-            elif 'Local File Inclusion' in vuln_type or 'LFI' in vuln_type:
-                vuln_key = 'LFI'
-            elif 'Directory Traversal' in vuln_type or 'Path Traversal' in vuln_type:
-                vuln_key = 'Directory Traversal'
-            elif 'Command Injection' in vuln_type:
-                vuln_key = 'Command Injection'
-            elif 'CSRF' in vuln_type:
-                vuln_key = 'CSRF'
-            else:
-                continue
-            
-            if vuln_key not in found_vulns:
-                found_vulns[vuln_key] = []
-            found_vulns[vuln_key].append(target)
-        
-        # Print analysis table
-        print(f"{'Тип уязвимости':<20} {'Ожидается':<15} {'Найдено':<10} {'Статус':<15} {'Рекомендации'}")
-        print("-" * 100)
-        
-        for vuln_type, info in known_vulns.items():
-            expected_count = len(info['expected'])
-            found_count = len(found_vulns.get(vuln_type, []))
-            
-            if found_count >= expected_count:
-                status = "[+] ОТЛИЧНО"
-                recommendations = "Продолжайте мониторинг"
-            elif found_count > 0:
-                status = "[!] ЧАСТИЧНО"
-                recommendations = "Улучшить детекцию"
-            else:
-                status = "[-] НЕ НАЙДЕНО"
-                recommendations = "Требуется доработка"
-            
-            print(f"{vuln_type:<20} {expected_count:<15} {found_count:<10} {status:<15} {recommendations}")
-        
-        print("-" * 100)
-        
-        # Detailed recommendations
-        print("\nДЕТАЛЬНЫЕ РЕКОМЕНДАЦИИ:")
-        print("-" * 50)
-        
-        if 'LFI' not in found_vulns or len(found_vulns.get('LFI', [])) == 0:
-            print("- LFI: Проверьте детектор LFI - возможно, нужно улучшить паттерны обнаружения")
-            print("  Ожидаемые endpoints: showimage.php?file=, userinfo.php?file=")
-        
-        if 'Directory Traversal' not in found_vulns:
-            print("- Directory Traversal: Добавьте специфичные паттерны для path traversal")
-        
-        if 'Command Injection' not in found_vulns:
-            print("- Command Injection: Проверьте rfi.php endpoint")
-        
-        if 'CSRF' not in found_vulns:
-            print("- CSRF: Улучшите анализ форм на отсутствие CSRF токенов")
-        
-        # False positives analysis
-        false_positives = []
-        for result in results:
-            vuln_type = result.get('vulnerability', '')
-            if 'SSRF' in vuln_type and 'SQL' in result.get('evidence', ''):
-                false_positives.append(f"SSRF (вероятно SQL ошибка): {result.get('target', '')}")
-        
-        if false_positives:
-            print(f"\nВОЗМОЖНЫЕ ЛОЖНЫЕ СРАБАТЫВАНИЯ ({len(false_positives)}):")
-            print("-" * 50)
-            for fp in false_positives[:5]:
-                print(f"- {fp}")
-        
-        print("\n" + "="*100)
     
     def _get_success_indicators(self) -> List[str]:
         """Get indicators that suggest a request was successful"""
@@ -6212,8 +6088,10 @@ class VulnScanner:
             print(f"[DEBUG] Total vulnerabilities: {len(vulnerabilities)}")
             print(f"[DEBUG] Critical: {len(critical_vulns)}, High: {len(high_vulns)}, Medium: {len(medium_vulns)}, Low: {len(low_vulns)}, Info: {len(info_vulns)}")
         
-        # Print vulnerability analysis table for testphp.vulnweb.com
-        self.print_vulnerability_analysis_table(results)
+        # Print general vulnerability summary
+        if results and any(r.get('vulnerability') for r in results):
+            print(f"\nScan found {len([r for r in results if r.get('vulnerability')])} vulnerabilities")
+            print("Review the detailed findings above and take appropriate remediation actions.")
         
         print("="*80)
         print("RECOMMENDATION: Review and remediate all vulnerabilities above.")
