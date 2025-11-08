@@ -649,7 +649,7 @@ class VulnScanner:
                 if self.debug:
                     print(f"  [DEBUG] Testing {len(important_pages)} important pages")
             
-                for page in important_pages[:60]:  # Increase limit to 60 pages
+                for page in important_pages[:120]:  # Увеличиваем до 120 страниц для глубокого аудита
                     if page.startswith('http'):
                         test_url = page
                     else:
@@ -986,7 +986,7 @@ class VulnScanner:
                 print(f"    [XSS] Skipping parameter {param} - already tested")
                 continue
             
-            for payload in xss_payloads:
+            for payload in xss_payloads[:50]:  # Увеличиваем количество тестируемых payload
                 try:
                     print(f"    [XSS] Trying payload: {payload[:50]}...")
                     
@@ -1043,12 +1043,16 @@ class VulnScanner:
                     print(f"    [XSS] Checking if payload is reflected in response...")
                     print(f"    [XSS] Response length: {len(response.text)} chars")
                     
-                    # Check for payload reflection (case insensitive and handle encoding)
+                    # Расширенная проверка отражения payload (включая различные кодировки)
                     payload_lower = payload.lower()
                     response_lower = response.text.lower()
                     payload_in_response = (payload in response.text or 
                                          payload_lower in response_lower or
-                                         payload.replace('<', '&lt;').replace('>', '&gt;') in response.text)
+                                         payload.replace('<', '&lt;').replace('>', '&gt;') in response.text or
+                                         payload.replace('<', '%3C').replace('>', '%3E') in response.text or
+                                         payload.replace('"', '&quot;').replace("'", '&#x27;') in response.text or
+                                         payload.replace(' ', '+') in response.text or
+                                         payload.replace(' ', '%20') in response.text)
                     
                     print(f"    [XSS] Payload reflected: {payload_in_response}")
                     
@@ -1168,7 +1172,7 @@ class VulnScanner:
                         print(f"    [XSS] Skipping form input {input_name} - already tested")
                         continue
                     
-                    for payload in xss_payloads[:10]:  # Test first 10 payloads for forms
+                    for payload in xss_payloads[:25]:  # Увеличиваем до 25 payload для форм
                         try:
                             print(f"    [XSS] Trying form payload: {payload[:50]}...")
                             
@@ -1266,7 +1270,7 @@ class VulnScanner:
                 print(f"    [SQLI] Skipping parameter {param} - already tested")
                 continue
             
-            for payload in sqli_payloads:
+            for payload in sqli_payloads[:40]:  # Увеличиваем количество SQL payload
                 try:
                     print(f"    [SQLI] Trying GET payload: {payload[:50]}...")
                     
@@ -1408,7 +1412,7 @@ class VulnScanner:
                         print(f"    [SQLI] Skipping form input {input_name} - already tested")
                         continue
                     
-                    for payload in sqli_payloads[:10]:  # Test first 10 payloads for forms
+                    for payload in sqli_payloads[:20]:  # Увеличиваем до 20 payload для форм
                         try:
                             print(f"    [SQLI] Trying form payload: {payload[:50]}...")
                             
@@ -1519,7 +1523,7 @@ class VulnScanner:
                 print(f"    [LFI] Skipping parameter {param} - already tested")
                 continue
             
-            for payload in lfi_payloads:
+            for payload in lfi_payloads[:30]:  # Увеличиваем количество LFI payload
                 try:
                     print(f"    [LFI] Trying GET payload: {payload[:50]}...")
                     
@@ -1634,7 +1638,7 @@ class VulnScanner:
                         print(f"    [LFI] Skipping form input {input_name} - already tested")
                         continue
                     
-                    for payload in lfi_payloads[:10]:  # Test first 10 payloads for forms
+                    for payload in lfi_payloads[:20]:  # Увеличиваем до 20 payload для форм
                         try:
                             print(f"    [LFI] Trying form payload: {payload[:50]}...")
                             
@@ -2070,7 +2074,7 @@ class VulnScanner:
             
             print(f"    [DIRBRUTE] Testing {len(directories)} directories...")
             
-            for directory in directories[:50]:  # Limit to first 50 directories
+            for directory in directories[:100]:  # Увеличиваем до 100 директорий
                 try:
                     if base_url.endswith('.php') or base_url.endswith('.html') or base_url.endswith('.asp'):
                         # For file-based URLs, test as path info
@@ -2159,7 +2163,7 @@ class VulnScanner:
             
             print(f"    [DIRBRUTE] Testing {len(files)} files...")
             
-            for file in files[:50]:  # Limit to first 50 files
+            for file in files[:100]:  # Увеличиваем до 100 файлов
                 try:
                     if base_url.endswith('.php') or base_url.endswith('.html') or base_url.endswith('.asp'):
                         # For file-based URLs, test as path info
@@ -2246,7 +2250,7 @@ class VulnScanner:
         
         print(f"    [DIRBRUTE] Testing files in directory: {directory}/")
         
-        for file in files[:20]:  # Limit to first 20 files per directory
+        for file in files[:40]:  # Увеличиваем до 40 файлов на директорию
             try:
                 test_url = f"{base_url}{directory}/{file}"
                 
@@ -2351,7 +2355,7 @@ class VulnScanner:
                 print(f"    [DIRTRAVERSAL] Skipping parameter {param} - already tested")
                 continue
             
-            for payload in traversal_payloads[:20]:  # Test first 20 payloads
+            for payload in traversal_payloads[:40]:  # Увеличиваем до 40 payload
                 try:
                     print(f"    [DIRTRAVERSAL] Trying payload: {payload[:50]}...")
                     
@@ -2612,7 +2616,7 @@ class VulnScanner:
                 print(f"    [SSRF] Skipping parameter {param} - already tested")
                 continue
             
-            for payload in ssrf_payloads[:10]:  # Test first 10 payloads
+            for payload in ssrf_payloads[:25]:  # Увеличиваем до 25 payload
                 try:
                     print(f"    [SSRF] Trying payload: {payload[:50]}...")
                     
@@ -2685,7 +2689,7 @@ class VulnScanner:
                 print(f"    [RFI] Skipping parameter {param} - already tested")
                 continue
             
-            for payload in rfi_payloads[:15]:  # Test first 15 payloads
+            for payload in rfi_payloads[:30]:  # Увеличиваем до 30 payload
                 try:
                     print(f"    [RFI] Trying payload: {payload[:50]}...")
                     
@@ -3223,7 +3227,7 @@ class VulnScanner:
             
             print(f"    [PHPINFO] Testing {len(phpinfo_paths)} PHPInfo paths...")
             
-            for phpinfo_path in phpinfo_paths[:30]:  # Limit to first 30 paths
+            for phpinfo_path in phpinfo_paths[:60]:  # Увеличиваем до 60 путей
                 try:
                     test_url = f"{base_dir}{phpinfo_path}"
                     
@@ -3279,8 +3283,8 @@ class VulnScanner:
                 phpinfo_params = PHPInfoPayloads.get_phpinfo_parameters()
                 phpinfo_values = PHPInfoPayloads.get_phpinfo_parameter_values()
                 
-                for param in list(parsed_data['query_params'].keys())[:5]:  # Test first 5 parameters
-                    for value in phpinfo_values[:10]:  # Test first 10 values
+                for param in list(parsed_data['query_params'].keys())[:10]:  # Увеличиваем до 10 параметров
+                    for value in phpinfo_values[:20]:  # Увеличиваем до 20 значений
                         try:
                             # Create test URL
                             test_params = parsed_data['query_params'].copy()
@@ -3615,7 +3619,7 @@ class VulnScanner:
                 print(f"    [XXE] Skipping parameter {param} - already tested")
                 continue
             
-            for payload in xxe_payloads[:10]:  # Test first 10 payloads
+            for payload in xxe_payloads[:25]:  # Увеличиваем до 25 payload
                 try:
                     print(f"    [XXE] Trying payload: {payload[:50]}...")
                     
@@ -3789,7 +3793,7 @@ class VulnScanner:
                 print(f"    [CMDINJECTION] Skipping parameter {param} - already tested")
                 continue
             
-            for payload in cmd_payloads[:15]:  # Test first 15 payloads
+            for payload in cmd_payloads[:35]:  # Увеличиваем до 35 payload
                 try:
                     print(f"    [CMDINJECTION] Trying payload: {payload}")
                     
@@ -4024,7 +4028,7 @@ class VulnScanner:
                 print(f"    [NOSQLINJECTION] Skipping parameter {param} - already tested")
                 continue
             
-            for payload in nosql_payloads[:15]:  # Test first 15 payloads
+            for payload in nosql_payloads[:30]:  # Увеличиваем до 30 payload
                 try:
                     print(f"    [NOSQLINJECTION] Trying payload: {payload[:50]}...")
                     
@@ -4454,7 +4458,7 @@ class VulnScanner:
                 print(f"    [SSTI] Skipping parameter {param} - already tested")
                 continue
             
-            for payload in ssti_payloads[:20]:  # Test first 20 payloads
+            for payload in ssti_payloads[:40]:  # Увеличиваем до 40 payload
                 try:
                     print(f"    [SSTI] Trying payload: {payload[:50]}...")
                     
@@ -4529,7 +4533,7 @@ class VulnScanner:
                 print(f"    [CRLF] Skipping parameter {param} - already tested")
                 continue
             
-            for payload in crlf_payloads[:15]:  # Test first 15 payloads
+            for payload in crlf_payloads[:30]:  # Увеличиваем до 30 payload
                 try:
                     print(f"    [CRLF] Trying payload: {payload[:50]}...")
                     
@@ -4609,7 +4613,7 @@ class VulnScanner:
                 print(f"    [TEXTINJECTION] Skipping parameter {param} - already tested")
                 continue
             
-            for payload in text_payloads[:20]:  # Test first 20 payloads
+            for payload in text_payloads[:40]:  # Увеличиваем до 40 payload
                 try:
                     print(f"    [TEXTINJECTION] Trying payload: {payload[:50]}...")
                     
@@ -4696,7 +4700,7 @@ class VulnScanner:
                 print(f"    [HTMLINJECTION] Skipping parameter {param} - already tested")
                 continue
             
-            for payload in html_payloads[:25]:  # Test first 25 payloads
+            for payload in html_payloads[:50]:  # Увеличиваем до 50 payload
                 try:
                     print(f"    [HTMLINJECTION] Trying payload: {payload[:50]}...")
                     
@@ -4801,7 +4805,7 @@ class VulnScanner:
         ]
         important_pages.extend(vulnerable_endpoints)
         
-        return list(set(important_pages))[:80]  # Remove duplicates and limit to 80 pages
+        return list(set(important_pages))[:150]  # Увеличиваем до 150 страниц для глубокого аудита
     
     def _get_success_indicators(self) -> List[str]:
         """Get indicators that suggest a request was successful"""

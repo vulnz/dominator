@@ -71,13 +71,13 @@ Usage examples:
                        help='Use all available modules')
     parser.add_argument('--exclude',
                        help='Exclude paths from scanning')
-    parser.add_argument('--timeout', type=int, default=10,
+    parser.add_argument('--timeout', type=int, default=20,
                        help='Request timeout in seconds')
     parser.add_argument('--scan-timeout', type=int,
                        help='Maximum scan time in seconds')
     parser.add_argument('--max-time', type=int,
                        help='Maximum scan time in minutes (will stop scan and show report)')
-    parser.add_argument('--threads', type=int, default=10,
+    parser.add_argument('--threads', type=int, default=15,
                        help='Number of threads')
     parser.add_argument('-threats', type=int, dest='threads',
                        help='Number of threads (alias for --threads)')
