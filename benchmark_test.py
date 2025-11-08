@@ -66,6 +66,7 @@ def run_benchmark():
             # Параметры вывода
             self.output = None
             self.format = 'html'
+            self.page_limit = None
     
     scanner = None
     try:
