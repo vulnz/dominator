@@ -19,6 +19,7 @@ class FileHandler:
         # Prepare data for the template
         vulnerabilities = []
         scan_stats = {}
+        benchmark_analysis = None
         
         print(f"[DEBUG] save_html: Processing {len(data)} items")
         for i, item in enumerate(data):
@@ -29,6 +30,11 @@ class FileHandler:
                 scan_stats = item['scan_stats']
                 print(f"[DEBUG] Found scan_stats in item {i}")
                 # Don't continue here - check if this item also has vulnerability data
+            
+            # Extract benchmark analysis
+            if 'benchmark_analysis' in item:
+                benchmark_analysis = item['benchmark_analysis']
+                print(f"[DEBUG] Found benchmark_analysis in item {i}")
             
             # Check if this item has vulnerability data
             if 'vulnerability' in item and item.get('vulnerability'):
@@ -106,7 +112,8 @@ class FileHandler:
         report_data = {
             'vulnerabilities': vulnerabilities,
             'scan_stats': scan_stats,
-            'filetree_enabled': bool(scan_stats.get('file_tree_paths'))
+            'filetree_enabled': bool(scan_stats.get('file_tree_paths')),
+            'benchmark_analysis': benchmark_analysis
         }
         
         print(f"[DEBUG] Final report_data: {len(vulnerabilities)} vulnerabilities")
@@ -1014,6 +1021,146 @@ class FileHandler:
             }
         }
         
+        function generateBenchmarkSection() {
+            const benchmarkData = reportData.benchmark_analysis;
+            if (!benchmarkData) return;
+            
+            console.log('Generating benchmark section...');
+            
+            const summary = benchmarkData.summary;
+            const byCategory = benchmarkData.by_category;
+            
+            let benchmarkHtml = `
+                <div class="executive-summary" style="margin: 25px 0;">
+                    <div class="summary-header" style="background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);">
+                        <h2><i class="fas fa-chart-line"></i> TestPHP.VulnWeb.com Benchmark Analysis</h2>
+                        <p>Эффективность сканера по сравнению с известными уязвимостями</p>
+                    </div>
+                    <div class="summary-grid">
+                        <div class="summary-card">
+                            <div class="summary-content">
+                                <h3>Общая эффективность</h3>
+                                <div class="risk-meter">
+                                    <div class="risk-level">
+                                        <span style="font-size: 1.2rem; font-weight: bold;">${summary.detection_rate.toFixed(1)}%</span>
+                                    </div>
+                                </div>
+                                <p>Коэффициент обнаружения</p>
+                                <div style="margin-top: 15px; font-size: 0.9rem;">
+                                    <div>Найдено: ${summary.total_found_vulnerabilities}</div>
+                                    <div>Известно: ${summary.total_known_vulnerabilities}</div>
+                                    <div>Ложных: ${benchmarkData.false_positives.length}</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="summary-card">
+                            <div class="summary-content">
+                                <h3>Результаты по категориям</h3>
+                                <div style="text-align: left;">
+            `;
+            
+            // Добавляем результаты по категориям
+            for (const [category, data] of Object.entries(byCategory)) {
+                if (data.total_known > 0) {
+                    const rate = data.detection_rate || 0;
+                    const color = rate >= 80 ? '#2ecc71' : rate >= 60 ? '#f39c12' : rate >= 40 ? '#e67e22' : '#e74c3c';
+                    
+                    benchmarkHtml += `
+                        <div style="margin: 8px 0; display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-weight: 500;">${category.toUpperCase()}:</span>
+                            <span style="color: ${color}; font-weight: bold;">${rate.toFixed(1)}%</span>
+                        </div>
+                        <div style="background: #f0f0f0; height: 4px; border-radius: 2px; margin: 4px 0;">
+                            <div style="background: ${color}; height: 100%; width: ${rate}%; border-radius: 2px;"></div>
+                        </div>
+                    `;
+                }
+            }
+            
+            benchmarkHtml += `
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="summary-card">
+                            <div class="summary-content">
+                                <h3>Качество результатов</h3>
+                                <div class="chart-container">
+                                    <canvas id="benchmarkChart" width="200" height="200"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Вставляем после scope section
+            const scopeSection = document.querySelector('.scope-section');
+            if (scopeSection) {
+                scopeSection.insertAdjacentHTML('afterend', benchmarkHtml);
+            } else {
+                // Fallback: вставляем перед dashboard
+                const dashboard = document.querySelector('.dashboard');
+                if (dashboard) {
+                    dashboard.insertAdjacentHTML('beforebegin', benchmarkHtml);
+                }
+            }
+            
+            // Создаем график бенчмарка
+            setTimeout(() => createBenchmarkChart(benchmarkData), 100);
+        }
+        
+        function createBenchmarkChart(benchmarkData) {
+            const ctx = document.getElementById('benchmarkChart');
+            if (!ctx) return;
+            
+            const summary = benchmarkData.summary;
+            const correctlyIdentified = benchmarkData.correctly_identified.length;
+            const missed = benchmarkData.missed_vulnerabilities.length;
+            const falsePositives = benchmarkData.false_positives.length;
+            
+            new Chart(ctx.getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Правильно найдено', 'Пропущено', 'Ложные срабатывания'],
+                    datasets: [{
+                        data: [correctlyIdentified, missed, falsePositives],
+                        backgroundColor: ['#2ecc71', '#e74c3c', '#f39c12'],
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 10,
+                                usePointStyle: true,
+                                font: {
+                                    size: 10
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label;
+                                    const value = context.parsed;
+                                    const total = correctlyIdentified + missed + falsePositives;
+                                    const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
         function generateFileTreeSection() {
             const scanStats = reportData.scan_stats || {};
             const filePaths = scanStats.file_tree_paths || [];
@@ -1603,6 +1750,22 @@ class FileHandler:
 </body>
 </html>
         """
+    
+    def save_benchmark_report(self, benchmark_analysis: Dict[str, Any], filename: str):
+        """Сохранение отчета о бенчмарке в текстовом формате"""
+        try:
+            from analysis.testphp_benchmark import TestPHPBenchmark
+            
+            benchmark = TestPHPBenchmark()
+            report_text = benchmark.generate_benchmark_report(benchmark_analysis)
+            
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(report_text)
+                
+            print(f"Отчет о бенчмарке сохранен: {filename}")
+            
+        except Exception as e:
+            print(f"Ошибка при сохранении отчета о бенчмарке: {e}")
     
     def read_file_lines(self, filename: str) -> List[str]:
         """Read lines from file"""

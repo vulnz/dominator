@@ -535,6 +535,13 @@ class VulnScanner:
             # Create empty result with stats for reporting
             self.results = [{'scan_stats': self.scan_stats}]
         
+        # Анализ эффективности для testphp.vulnweb.com
+        benchmark_analysis = self.analyze_benchmark_performance(self.results)
+        if benchmark_analysis:
+            # Добавляем анализ бенчмарка в результаты
+            for result in self.results:
+                result['benchmark_analysis'] = benchmark_analysis
+        
         return self.results
     
     def cleanup(self):
@@ -5279,6 +5286,17 @@ class VulnScanner:
         else:
             # Force HTML format for all reports
             self.file_handler.save_html(enhanced_results, filename.replace('.txt', '.html').replace('.json', '.html').replace('.xml', '.html'))
+        
+        # Сохраняем отдельный отчет о бенчмарке если есть анализ
+        benchmark_analysis = None
+        for result in enhanced_results:
+            if 'benchmark_analysis' in result:
+                benchmark_analysis = result['benchmark_analysis']
+                break
+        
+        if benchmark_analysis:
+            benchmark_filename = filename.replace('.html', '_benchmark.txt').replace('.txt', '_benchmark.txt')
+            self.file_handler.save_benchmark_report(benchmark_analysis, benchmark_filename)
     
     def _ensure_vulnerability_metadata(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Ensure all vulnerabilities have CVSS, OWASP, and CWE metadata"""
