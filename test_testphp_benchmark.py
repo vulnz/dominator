@@ -5,6 +5,14 @@
 
 import sys
 import os
+import locale
+
+# Настройка кодировки для Windows
+if sys.platform.startswith('win'):
+    import codecs
+    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.detach())
+    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.detach())
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from analysis.testphp_benchmark import TestPHPBenchmark
