@@ -148,7 +148,10 @@ class FileHandler:
             }
             json_data = json.dumps(fallback_data, ensure_ascii=False, indent=2, default=self._json_serializer)
         
-        html_content = template.replace('{report_data}', json_data)
+        # Safely insert JSON data into JavaScript
+        # Escape any potential JavaScript breaking characters
+        json_data_escaped = json_data.replace('</script>', '<\\/script>').replace('<!--', '<\\!--')
+        html_content = template.replace('{report_data}', json_data_escaped)
         
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(html_content)
@@ -932,7 +935,18 @@ class FileHandler:
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         // Report data will be injected here
-        const reportData = {report_data};
+        let reportData;
+        try {
+            reportData = {report_data};
+        } catch (e) {
+            console.error('Error parsing report data:', e);
+            reportData = {
+                vulnerabilities: [],
+                scan_stats: {},
+                filetree_enabled: false,
+                benchmark_analysis: null
+            };
+        }
         
         // Initialize report
         document.addEventListener('DOMContentLoaded', function() {
@@ -944,30 +958,44 @@ class FileHandler:
             console.log('Report data:', reportData);
             console.log('Vulnerabilities count:', reportData.vulnerabilities ? reportData.vulnerabilities.length : 'undefined');
             
-            // Set favicon from target
-            setDynamicFavicon();
-            
-            // Generate scope section
-            generateScopeSection();
-            
-            // Generate benchmark analysis if available
-            if (reportData.benchmark_analysis) {
-                generateBenchmarkSection();
+            try {
+                // Set favicon from target
+                setDynamicFavicon();
+                
+                // Generate scope section
+                generateScopeSection();
+                
+                // Generate benchmark analysis if available
+                if (reportData.benchmark_analysis) {
+                    generateBenchmarkSection();
+                }
+                
+                // Generate file tree if enabled
+                if (reportData.filetree_enabled && reportData.scan_stats && reportData.scan_stats.file_tree_paths) {
+                    generateFileTreeSection();
+                }
+                
+                populateStats();
+                populateTechnologies();
+                populateVulnerabilities();
+                setupFilters();
+                setupEventListeners();
+                
+                // Set report date
+                document.getElementById('report-date').textContent = new Date().toLocaleString();
+                
+                console.log('Report initialization completed successfully');
+            } catch (error) {
+                console.error('Error during report initialization:', error);
+                // Show error message to user
+                document.body.innerHTML = `
+                    <div style="padding: 50px; text-align: center; font-family: Arial, sans-serif;">
+                        <h1 style="color: #e74c3c;">Report Loading Error</h1>
+                        <p>There was an error loading the security report. Please check the console for details.</p>
+                        <p style="color: #666; font-size: 0.9em;">Error: ${error.message}</p>
+                    </div>
+                `;
             }
-            
-            // Generate file tree if enabled
-            if (reportData.filetree_enabled && reportData.scan_stats && reportData.scan_stats.file_tree_paths) {
-                generateFileTreeSection();
-            }
-            
-            populateStats();
-            populateTechnologies();
-            populateVulnerabilities();
-            setupFilters();
-            setupEventListeners();
-            
-            // Set report date
-            document.getElementById('report-date').textContent = new Date().toLocaleString();
         }
         
         function setDynamicFavicon() {
@@ -1616,6 +1644,10 @@ class FileHandler:
             console.log('Vulnerabilities length:', vulnerabilities.length);
             
             const container = document.getElementById('vulnerabilities-list');
+            if (!container) {
+                console.error('Vulnerabilities container not found');
+                return;
+            }
             
             if (vulnerabilities.length === 0) {
                 console.log('No vulnerabilities found, showing empty state');
@@ -1644,30 +1676,34 @@ class FileHandler:
             });
             
             vulnerabilities.forEach((vuln, index) => {
-                const vulnElement = createVulnerabilityElement(vuln, index);
-                container.appendChild(vulnElement);
+                try {
+                    const vulnElement = createVulnerabilityElement(vuln, index);
+                    container.appendChild(vulnElement);
+                } catch (error) {
+                    console.error(`Error creating vulnerability element ${index}:`, error, vuln);
+                }
             });
         }
         
         function createVulnerabilityElement(vuln, index) {
             const vulnDiv = document.createElement('div');
             vulnDiv.className = 'vuln-item';
-            vulnDiv.dataset.severity = vuln.severity;
-            vulnDiv.dataset.module = vuln.module;
-            vulnDiv.dataset.searchText = `${vuln.vulnerability} ${vuln.target} ${vuln.parameter} ${vuln.evidence}`.toLowerCase();
+            vulnDiv.dataset.severity = vuln.severity || 'Unknown';
+            vulnDiv.dataset.module = vuln.module || 'unknown';
+            vulnDiv.dataset.searchText = `${vuln.vulnerability || ''} ${vuln.target || ''} ${vuln.parameter || ''} ${vuln.evidence || ''}`.toLowerCase();
             
             vulnDiv.innerHTML = `
                 <div class="vuln-summary" onclick="toggleDetails(${index})">
                     <div class="vuln-info">
-                        <div class="vuln-title">${vuln.vulnerability}</div>
+                        <div class="vuln-title">${vuln.vulnerability || 'Unknown Vulnerability'}</div>
                         <div class="vuln-meta">
-                            <span><i class="fas fa-globe"></i> ${vuln.target}</span>
-                            <span><i class="fas fa-tag"></i> ${vuln.parameter}</span>
-                            <span><i class="fas fa-cog"></i> ${vuln.module.toUpperCase()}</span>
+                            <span><i class="fas fa-globe"></i> ${vuln.target || 'Unknown Target'}</span>
+                            <span><i class="fas fa-tag"></i> ${vuln.parameter || 'N/A'}</span>
+                            <span><i class="fas fa-cog"></i> ${(vuln.module || 'unknown').toUpperCase()}</span>
                         </div>
                     </div>
                     <div style="display: flex; align-items: center; gap: 15px;">
-                        <span class="severity-badge severity-${vuln.severity.toLowerCase()}">${vuln.severity}</span>
+                        <span class="severity-badge severity-${(vuln.severity || 'unknown').toLowerCase()}">${vuln.severity || 'Unknown'}</span>
                         <i class="fas fa-chevron-down expand-icon" id="icon-${index}"></i>
                     </div>
                 </div>
