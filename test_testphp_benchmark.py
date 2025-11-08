@@ -117,14 +117,14 @@ def main():
         success2 = test_vulnerability_matching()
         
         if success1 and success2:
-            print("\n✅ Все тесты прошли успешно!")
+            print("\n[OK] Все тесты прошли успешно!")
             return 0
         else:
-            print("\n❌ Некоторые тесты не прошли!")
+            print("\n[FAIL] Некоторые тесты не прошли!")
             return 1
             
     except Exception as e:
-        print(f"\n❌ Ошибка при выполнении тестов: {e}")
+        print(f"\n[ERROR] Ошибка при выполнении тестов: {e}")
         import traceback
         traceback.print_exc()
         return 1
