@@ -582,14 +582,6 @@ class VulnScanner:
                     if self.debug:
                         print(f"  [DEBUG] Manually extracted parameters: {list(manual_params.keys())}")
             
-            # If no parameters found, try to discover them through common patterns
-            if not parsed_data['query_params'] and '?' not in parsed_data['url']:
-                # Add common parameter discovery for any website
-                common_params = self._discover_common_parameters(parsed_data['url'])
-                if common_params:
-                    parsed_data['query_params'] = common_params
-                    if self.debug:
-                        print(f"  [DEBUG] Discovered common parameters: {list(common_params.keys())}")
             
             # Update stats
             self.scan_stats['total_urls'] += 1
@@ -5060,35 +5052,6 @@ class VulnScanner:
         
         return normalized
     
-    def _discover_common_parameters(self, url: str) -> Dict[str, List[str]]:
-        """Discover parameters from actual page content only"""
-        common_params = {}
-        
-        # Try to get the main page and analyze it for forms and links
-        try:
-            response = requests.get(url, timeout=10, verify=False)
-            if response.status_code == 200:
-                # Extract parameters from forms
-                forms = self.url_parser.extract_forms(response.text)
-                for form in forms:
-                    for input_field in form.get('inputs', []):
-                        param_name = input_field.get('name')
-                        if param_name and param_name not in common_params:
-                            # Use actual input value or 'test' as fallback
-                            param_value = input_field.get('value', 'test')
-                            common_params[param_name] = [param_value]
-                
-                # Extract parameters from links in the page
-                import re
-                param_patterns = re.findall(r'[?&]([^=]+)=([^&\s"\'<>]+)', response.text)
-                for param_name, param_value in param_patterns:
-                    if param_name not in common_params:
-                        common_params[param_name] = [param_value]
-        except:
-            pass
-        
-        # Only return discovered parameters, don't add fake ones
-        return common_params
     
     def _generate_dynamic_pages(self, base_url: str) -> List[str]:
         """Generate dynamic pages based on discovered patterns only"""
