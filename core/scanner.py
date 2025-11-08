@@ -2749,12 +2749,17 @@ class VulnScanner:
         return results
     
     def _test_ssrf(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Test for SSRF vulnerabilities"""
+        """Test for SSRF vulnerabilities with improved detection"""
         results = []
         base_url = parsed_data['url']
         
         # Get SSRF payloads
         ssrf_payloads = SSRFPayloads.get_all_payloads()
+        
+        # Update payload stats
+        if 'ssrf' not in self.scan_stats['payload_stats']:
+            self.scan_stats['payload_stats']['ssrf'] = {'payloads_used': 0, 'requests_made': 0, 'successful_payloads': 0}
+        self.scan_stats['payload_stats']['ssrf']['payloads_used'] += len(ssrf_payloads)
         
         # Test GET parameters
         for param, values in parsed_data['query_params'].items():
@@ -2790,30 +2795,64 @@ class VulnScanner:
                         verify=False
                     )
                     
+                    # Update request count
+                    self.request_count += 1
+                    self.scan_stats['payload_stats']['ssrf']['requests_made'] += 1
+                    
                     print(f"    [SSRF] Response code: {response.status_code}")
                     
-                    # Use SSRF detector
-                    if SSRFDetector.detect_ssrf(response.text, response.status_code, payload):
-                        evidence = SSRFDetector.get_evidence(payload, response.text)
-                        response_snippet = SSRFDetector.get_response_snippet(payload, response.text)
+                    # Enhanced SSRF detection - avoid false positives from SQL errors
+                    response_lower = response.text.lower()
+                    
+                    # Skip if this looks like a SQL error (common false positive)
+                    sql_error_indicators = [
+                        'you have an error in your sql syntax',
+                        'mysql_fetch_array',
+                        'syntax error',
+                        'near \'',
+                        'at line 1'
+                    ]
+                    
+                    is_sql_error = any(indicator in response_lower for indicator in sql_error_indicators)
+                    
+                    if is_sql_error:
+                        print(f"    [SSRF] Skipping - response appears to be SQL error, not SSRF")
+                        continue
+                    
+                    # Use enhanced SSRF detector
+                    is_vulnerable, evidence, severity, detection_details = SSRFDetector.detect_ssrf(
+                        response.text, response.status_code, payload, test_url
+                    )
+                    
+                    if is_vulnerable:
                         print(f"    [SSRF] VULNERABILITY FOUND! Parameter: {param}")
+                        print(f"    [SSRF] Detection details: {detection_details}")
                         
                         # Mark as found to prevent duplicates
                         self.found_vulnerabilities.add(param_key)
+                        
+                        # Update successful payload count
+                        self.scan_stats['payload_stats']['ssrf']['successful_payloads'] += 1
+                        self.scan_stats['total_payloads_used'] += 1
+                        
+                        response_snippet = response.text[:200] + "..." if len(response.text) > 200 else response.text
                         
                         results.append({
                             'module': 'ssrf',
                             'target': base_url,
                             'vulnerability': 'Server-Side Request Forgery',
-                            'severity': 'High',
+                            'severity': severity,
                             'parameter': param,
                             'payload': payload,
                             'evidence': evidence,
                             'request_url': test_url,
                             'detector': 'SSRFDetector.detect_ssrf',
-                            'response_snippet': response_snippet
+                            'response_snippet': response_snippet,
+                            'detection_method': detection_details.get('method', 'unknown')
                         })
                         break  # Found SSRF, no need to test more payloads for this param
+                    else:
+                        print(f"    [SSRF] No SSRF detected for payload: {payload[:30]}...")
                         
                 except Exception as e:
                     print(f"    [SSRF] Error testing payload: {e}")
@@ -5069,12 +5108,26 @@ class VulnScanner:
         return results
     
     def _test_information_leakage(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Test for information leakage vulnerabilities"""
+        """Test for information leakage vulnerabilities with domain-level deduplication"""
         results = []
         base_url = parsed_data['url']
         
+        # Extract domain for deduplication
+        from urllib.parse import urlparse
+        parsed_url = urlparse(base_url)
+        domain = parsed_url.hostname
+        
+        # Create deduplication key for this domain
+        domain_key = f"infoleak_{domain}"
+        if domain_key in self.found_vulnerabilities:
+            print(f"    [INFOLEAK] Skipping information leakage test for {domain} - already tested")
+            return results
+        
         try:
-            print(f"    [INFOLEAK] Testing for information leakage...")
+            print(f"    [INFOLEAK] Testing for information leakage on domain: {domain}")
+            
+            # Mark domain as tested
+            self.found_vulnerabilities.add(domain_key)
             
             # Make request to get page content
             response = requests.get(
@@ -5093,7 +5146,7 @@ class VulnScanner:
             
             if emails:
                 unique_emails = list(set(emails))
-                print(f"    [INFOLEAK] Found {len(unique_emails)} email addresses")
+                print(f"    [INFOLEAK] Found {len(unique_emails)} unique email addresses")
                 
                 evidence = f"Email addresses found: {', '.join(unique_emails[:5])}"
                 if len(unique_emails) > 5:
@@ -5102,14 +5155,15 @@ class VulnScanner:
                 results.append({
                     'module': 'infoleak',
                     'target': base_url,
-                    'vulnerability': 'Email Address Disclosure',
+                    'vulnerability': f'Email Address Disclosure ({len(unique_emails)} addresses)',
                     'severity': 'Low',
                     'parameter': 'response_content',
                     'payload': 'N/A',
                     'evidence': evidence,
                     'request_url': base_url,
                     'detector': 'regex_email_detection',
-                    'response_snippet': f'Found {len(unique_emails)} email addresses'
+                    'response_snippet': f'Found {len(unique_emails)} unique email addresses',
+                    'email_addresses': unique_emails  # Store for detailed reporting
                 })
             
             # Check for internal IP addresses
@@ -5255,6 +5309,137 @@ class VulnScanner:
                         continue
         
         return results
+    
+    def print_vulnerability_analysis_table(self, results: List[Dict[str, Any]]):
+        """Print analysis table of what was found vs expected for testphp.vulnweb.com"""
+        print("\n" + "="*100)
+        print("АНАЛИЗ ЭФФЕКТИВНОСТИ СКАНИРОВАНИЯ TESTPHP.VULNWEB.COM")
+        print("="*100)
+        
+        # Check if this is testphp.vulnweb.com
+        is_testphp = False
+        for result in results:
+            if result.get('target') and 'testphp.vulnweb.com' in result['target']:
+                is_testphp = True
+                break
+        
+        if not is_testphp:
+            print("Анализ доступен только для testphp.vulnweb.com")
+            return
+        
+        # Known vulnerabilities in testphp.vulnweb.com
+        known_vulns = {
+            'XSS': {
+                'expected': ['search.php?test=', 'artists.php?artist=', 'listproducts.php?cat=', 'hpp/?pp='],
+                'description': 'Reflected XSS в параметрах поиска и навигации',
+                'severity': 'High'
+            },
+            'SQL Injection': {
+                'expected': ['search.php?test=', 'artists.php?artist=', 'listproducts.php?cat='],
+                'description': 'SQL инъекции в параметрах базы данных',
+                'severity': 'High'
+            },
+            'LFI': {
+                'expected': ['showimage.php?file=', 'userinfo.php?file='],
+                'description': 'Local File Inclusion через параметры файлов',
+                'severity': 'High'
+            },
+            'Directory Traversal': {
+                'expected': ['showimage.php?file='],
+                'description': 'Path traversal в параметре file',
+                'severity': 'High'
+            },
+            'Command Injection': {
+                'expected': ['rfi.php?file='],
+                'description': 'OS command injection',
+                'severity': 'High'
+            },
+            'CSRF': {
+                'expected': ['login.php', 'guestbook.php'],
+                'description': 'Отсутствие CSRF токенов в формах',
+                'severity': 'Medium'
+            }
+        }
+        
+        # Analyze found vulnerabilities
+        found_vulns = {}
+        for result in results:
+            vuln_type = result.get('vulnerability', '')
+            target = result.get('target', '')
+            
+            # Map vulnerability names
+            if 'XSS' in vuln_type:
+                vuln_key = 'XSS'
+            elif 'SQL' in vuln_type:
+                vuln_key = 'SQL Injection'
+            elif 'Local File Inclusion' in vuln_type or 'LFI' in vuln_type:
+                vuln_key = 'LFI'
+            elif 'Directory Traversal' in vuln_type or 'Path Traversal' in vuln_type:
+                vuln_key = 'Directory Traversal'
+            elif 'Command Injection' in vuln_type:
+                vuln_key = 'Command Injection'
+            elif 'CSRF' in vuln_type:
+                vuln_key = 'CSRF'
+            else:
+                continue
+            
+            if vuln_key not in found_vulns:
+                found_vulns[vuln_key] = []
+            found_vulns[vuln_key].append(target)
+        
+        # Print analysis table
+        print(f"{'Тип уязвимости':<20} {'Ожидается':<15} {'Найдено':<10} {'Статус':<15} {'Рекомендации'}")
+        print("-" * 100)
+        
+        for vuln_type, info in known_vulns.items():
+            expected_count = len(info['expected'])
+            found_count = len(found_vulns.get(vuln_type, []))
+            
+            if found_count >= expected_count:
+                status = "✓ ОТЛИЧНО"
+                recommendations = "Продолжайте мониторинг"
+            elif found_count > 0:
+                status = "⚠ ЧАСТИЧНО"
+                recommendations = "Улучшить детекцию"
+            else:
+                status = "✗ НЕ НАЙДЕНО"
+                recommendations = "Требуется доработка"
+            
+            print(f"{vuln_type:<20} {expected_count:<15} {found_count:<10} {status:<15} {recommendations}")
+        
+        print("-" * 100)
+        
+        # Detailed recommendations
+        print("\nДЕТАЛЬНЫЕ РЕКОМЕНДАЦИИ:")
+        print("-" * 50)
+        
+        if 'LFI' not in found_vulns or len(found_vulns.get('LFI', [])) == 0:
+            print("• LFI: Проверьте детектор LFI - возможно, нужно улучшить паттерны обнаружения")
+            print("  Ожидаемые endpoints: showimage.php?file=, userinfo.php?file=")
+        
+        if 'Directory Traversal' not in found_vulns:
+            print("• Directory Traversal: Добавьте специфичные паттерны для path traversal")
+        
+        if 'Command Injection' not in found_vulns:
+            print("• Command Injection: Проверьте rfi.php endpoint")
+        
+        if 'CSRF' not in found_vulns:
+            print("• CSRF: Улучшите анализ форм на отсутствие CSRF токенов")
+        
+        # False positives analysis
+        false_positives = []
+        for result in results:
+            vuln_type = result.get('vulnerability', '')
+            if 'SSRF' in vuln_type and 'SQL' in result.get('evidence', ''):
+                false_positives.append(f"SSRF (вероятно SQL ошибка): {result.get('target', '')}")
+        
+        if false_positives:
+            print(f"\nВОЗМОЖНЫЕ ЛОЖНЫЕ СРАБАТЫВАНИЯ ({len(false_positives)}):")
+            print("-" * 50)
+            for fp in false_positives[:5]:
+                print(f"• {fp}")
+        
+        print("\n" + "="*100)
     
     def _get_success_indicators(self) -> List[str]:
         """Get indicators that suggest a request was successful"""
@@ -5734,6 +5919,9 @@ class VulnScanner:
             print(f"\n[DEBUG] Preparing to display vulnerabilities...")
             print(f"[DEBUG] Total vulnerabilities: {len(vulnerabilities)}")
             print(f"[DEBUG] Critical: {len(critical_vulns)}, High: {len(high_vulns)}, Medium: {len(medium_vulns)}, Low: {len(low_vulns)}, Info: {len(info_vulns)}")
+        
+        # Print vulnerability analysis table for testphp.vulnweb.com
+        self.print_vulnerability_analysis_table(results)
         
         print("="*80)
         print("RECOMMENDATION: Review and remediate all vulnerabilities above.")
