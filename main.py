@@ -125,9 +125,30 @@ def main():
         show_modules()
         return
     
+    # Quick scan preset for testphp guestbook stored XSS
+    if hasattr(args, 'quick_testphp') and args.quick_testphp:
+        print("🎯 QUICK TESTPHP GUESTBOOK STORED XSS SCAN")
+        print("Target: http://testphp.vulnweb.com/guestbook.php")
+        print("Focus: Stored XSS vulnerabilities")
+        print("="*60)
+        
+        # Override args for optimal testphp scanning
+        args.url = "http://testphp.vulnweb.com/guestbook.php"
+        args.modules = "storedxss,xss,htmlinjection,textinjection"
+        args.threads = 5
+        args.crawl = True
+        args.payload_limit = 50
+        args.request_limit = 1000
+        args.max_time = 10  # 10 minutes
+        args.auto_report = True
+        args.debug = True
+        print("Configured for maximum Stored XSS detection effectiveness!")
+        print("="*60)
+    
     # Check required parameters
     if not args.target and not args.file and not args.url:
         print("Error: Must specify target (-t), URL (-u) or targets file (-f)")
+        print("Tip: Use --quick-testphp for instant testphp.vulnweb.com guestbook scan")
         parser.print_help()
         sys.exit(1)
     
