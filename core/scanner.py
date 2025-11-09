@@ -843,6 +843,11 @@ class VulnScanner:
         """Run passive analysis on discovered pages"""
         passive_results = []
         
+        # Check if passive analysis is disabled
+        if getattr(self.config, 'nopassive', False):
+            print(f"    [PASSIVE] Passive analysis disabled by --nopassive flag")
+            return passive_results
+        
         try:
             # Import passive detectors
             from passive_detectors.security_headers_detector import SecurityHeadersDetector as PassiveSecurityHeaders
