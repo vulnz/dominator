@@ -817,7 +817,7 @@ class FileHandler:
         }
         
         /* CVE and Exploit Link Styles */
-        .cve-link, .exploit-link {
+        .cve-link, .exploit-link, .method-badge {
             display: inline-block;
             padding: 4px 8px;
             margin: 2px 4px;
@@ -827,6 +827,36 @@ class FileHandler:
             font-size: 0.9em;
             transition: all 0.3s ease;
             border: 2px solid transparent;
+        }
+        
+        .method-get {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+        }
+        
+        .method-post {
+            background: linear-gradient(135deg, #007bff, #0056b3);
+            color: white;
+        }
+        
+        .method-put {
+            background: linear-gradient(135deg, #ffc107, #e0a800);
+            color: black;
+        }
+        
+        .method-delete {
+            background: linear-gradient(135deg, #dc3545, #c82333);
+            color: white;
+        }
+        
+        .method-patch {
+            background: linear-gradient(135deg, #6f42c1, #5a32a3);
+            color: white;
+        }
+        
+        .method-unknown {
+            background: linear-gradient(135deg, #6c757d, #545b62);
+            color: white;
         }
         
         .cve-link {
