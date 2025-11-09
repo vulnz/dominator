@@ -5965,7 +5965,7 @@ class VulnScanner:
             return
         
             
-        # Group vulnerabilities by severity with better debugging
+        # Group vulnerabilities by severity
         critical_vulns = []
         high_vulns = []
         medium_vulns = []
@@ -5974,7 +5974,6 @@ class VulnScanner:
         
         for v in vulnerabilities:
             severity = str(v.get('severity', '')).strip().lower()
-            vuln_name = v.get('vulnerability', 'Unknown')
             
             if severity == 'critical':
                 critical_vulns.append(v)
