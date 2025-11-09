@@ -545,80 +545,9 @@ class VulnScanner:
             # Create empty result with stats for reporting
             self.results = [{'scan_stats': self.scan_stats}]
         
-        # Run benchmark analysis if available and target matches
-        benchmark_analysis = self.analyze_benchmark_performance(self.results)
-        if benchmark_analysis:
-            # Add benchmark analysis to results
-            for result in self.results:
-                result['benchmark_analysis'] = benchmark_analysis
         
         return self.results
     
-    def analyze_benchmark_performance(self, results: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Анализ эффективности сканирования по сравнению с testphp.vulnweb.com"""
-        try:
-            import sys
-            import os
-            
-            # Добавляем путь к модулю анализа
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            parent_dir = os.path.dirname(current_dir)
-            analysis_path = os.path.join(parent_dir, 'analysis')
-            if analysis_path not in sys.path:
-                sys.path.insert(0, analysis_path)
-            
-            from testphp_benchmark import TestPHPBenchmark
-            
-            # Check if we have a benchmark for this target
-            has_benchmark = False
-            target_domain = None
-            for result in results:
-                if result.get('target'):
-                    from urllib.parse import urlparse
-                    try:
-                        parsed = urlparse(result['target'])
-                        target_domain = parsed.netloc.lower()
-                        # Currently only testphp.vulnweb.com has benchmark data
-                        if 'testphp.vulnweb.com' in target_domain:
-                            has_benchmark = True
-                            break
-                    except:
-                        continue
-            
-            if not has_benchmark:
-                return None
-            
-            print("\n" + "="*60)
-            print("АНАЛИЗ ЭФФЕКТИВНОСТИ ПО TESTPHP.VULNWEB.COM")
-            print("="*60)
-            
-            benchmark = TestPHPBenchmark()
-            analysis = benchmark.analyze_scan_results(results)
-            
-            # Выводим краткий анализ в консоль
-            summary = analysis['summary']
-            print(f"Известных уязвимостей: {summary['total_known_vulnerabilities']}")
-            print(f"Найдено сканером: {summary['total_found_vulnerabilities']}")
-            print(f"Правильно определено: {len(analysis['correctly_identified'])}")
-            print(f"Коэффициент обнаружения: {summary['detection_rate']:.1f}%")
-            print(f"Коэффициент ложных срабатываний: {summary['false_positive_rate']:.1f}%")
-            
-            # Показываем результаты по категориям
-            print("\nРезультаты по категориям:")
-            for category, data in analysis['by_category'].items():
-                if data['total_known'] > 0:
-                    print(f"  {category.upper()}: {data['detection_rate']:.1f}% ({len(data['correctly_identified'])}/{data['total_known']})")
-            
-            print("="*60)
-            
-            return analysis
-            
-        except ImportError:
-            print("Модуль анализа бенчмарка недоступен")
-            return None
-        except Exception as e:
-            print(f"Ошибка при анализе бенчмарка: {e}")
-            return None
     
     def cleanup(self):
         """Cleanup resources"""
@@ -5556,20 +5485,6 @@ class VulnScanner:
             # Force HTML format for all reports
             self.file_handler.save_html(enhanced_results, filename.replace('.txt', '.html').replace('.json', '.html').replace('.xml', '.html'))
         
-        # Сохраняем отдельный отчет о бенчмарке если есть анализ
-        benchmark_analysis = None
-        for result in enhanced_results:
-            if isinstance(result, dict) and 'benchmark_analysis' in result:
-                benchmark_analysis = result['benchmark_analysis']
-                break
-        
-        if benchmark_analysis:
-            try:
-                benchmark_filename = filename.replace('.html', '_benchmark.txt').replace('.txt', '_benchmark.txt')
-                self.file_handler.save_benchmark_report(benchmark_analysis, benchmark_filename)
-            except Exception as e:
-                if self.debug:
-                    print(f"Ошибка при сохранении отчета о бенчмарке: {e}")
     
     def _ensure_vulnerability_metadata(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Ensure all vulnerabilities have CVSS, OWASP, and CWE metadata"""
