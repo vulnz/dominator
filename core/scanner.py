@@ -1086,49 +1086,68 @@ class VulnScanner:
                         response_preview = response.text[:200].replace('\n', ' ').replace('\r', ' ')
                         print(f"    [XSS] Response preview: {response_preview}...")
                     
-                    # Простая и надежная проверка отражения XSS payload
-                    payload_in_response = payload in response.text
-                    print(f"    [XSS] Payload reflected in response: {payload_in_response}")
+                    # Улучшенная проверка отражения XSS payload с защитой от ложных срабатываний
+                    payload_in_response = False
                     
-                    # Дополнительная проверка различных кодировок payload
-                    if not payload_in_response:
-                        payload_variants = [
-                            payload.lower(),
-                            payload.replace('<', '&lt;').replace('>', '&gt;'),
-                            payload.replace('<', '%3C').replace('>', '%3E'),
-                            payload.replace('"', '&quot;').replace("'", '&#x27;'),
-                            payload.replace(' ', '+'),
-                            payload.replace(' ', '%20')
+                    # Проверяем точное отражение payload
+                    if payload in response.text:
+                        # Дополнительная проверка контекста - payload должен быть в опасном месте
+                        payload_pos = response.text.find(payload)
+                        context_start = max(0, payload_pos - 50)
+                        context_end = min(len(response.text), payload_pos + len(payload) + 50)
+                        context = response.text[context_start:context_end].lower()
+                        
+                        # Проверяем, что payload находится в HTML контексте, а не в комментариях или скриптах
+                        dangerous_contexts = [
+                            'value="' + payload.lower(),
+                            "value='" + payload.lower(),
+                            '>' + payload.lower() + '<',
+                            'href="' + payload.lower(),
+                            "href='" + payload.lower(),
+                            'src="' + payload.lower(),
+                            "src='" + payload.lower()
                         ]
                         
-                        for variant in payload_variants:
-                            if variant in response.text:
-                                payload_in_response = True
-                                print(f"    [XSS] Payload variant found: {variant}")
-                                break
+                        # Исключаем безопасные контексты
+                        safe_contexts = [
+                            '<!--' in context and '-->' in context,  # HTML комментарии
+                            '<script>' in context and '</script>' in context and 'console.log' in context,  # Логирование
+                            'error' in context and 'log' in context,  # Логи ошибок
+                            'debug' in context,  # Отладочная информация
+                        ]
+                        
+                        if any(safe_contexts):
+                            print(f"    [XSS] Payload found in safe context, skipping")
+                            payload_in_response = False
+                        elif any(dangerous in context for dangerous in dangerous_contexts):
+                            payload_in_response = True
+                            print(f"    [XSS] Payload found in dangerous context")
+                        elif '<' in payload and '>' in payload and payload.lower() in context:
+                            # HTML теги должны быть в HTML контексте
+                            payload_in_response = True
+                            print(f"    [XSS] HTML payload found in response")
+                        else:
+                            print(f"    [XSS] Payload found but context unclear, checking further")
+                            payload_in_response = True
                     
-                    # Используем XSS детектор для дополнительной проверки
+                    # Используем XSS детектор только как дополнительную проверку
+                    xss_detected_by_detector = False
+                    detection_method = "enhanced_reflection_check"
+                    xss_type = "Reflected XSS"
+                    confidence = 0.9 if payload_in_response else 0.0
+                    
                     try:
                         xss_result = XSSDetector.detect_reflected_xss(payload, response.text, response.status_code)
                         if isinstance(xss_result, dict):
                             xss_detected_by_detector = xss_result.get('vulnerable', False)
-                            detection_method = xss_result.get('detection_method', 'reflection_check')
-                            xss_type = xss_result.get('xss_type', 'Reflected XSS')
-                            confidence = xss_result.get('confidence', 0.8)
-                        else:
-                            xss_detected_by_detector = bool(xss_result)
-                            detection_method = "basic_detection"
-                            xss_type = "Reflected XSS"
-                            confidence = 0.8
+                            if xss_detected_by_detector:
+                                detection_method = xss_result.get('detection_method', 'detector_check')
+                                confidence = min(confidence + 0.1, 1.0)
                     except Exception as e:
                         print(f"    [XSS] Detector error: {e}")
-                        xss_detected_by_detector = False
-                        detection_method = "reflection_check"
-                        xss_type = "Reflected XSS"
-                        confidence = 0.7
                     
-                    # Окончательное решение: payload отражен ИЛИ детектор нашел XSS
-                    xss_detected = payload_in_response or xss_detected_by_detector
+                    # Окончательное решение: требуем высокую уверенность
+                    xss_detected = payload_in_response and confidence >= 0.8
                     
                     if xss_detected:
                         print(f"    [XSS] XSS DETECTED: {xss_type} (method: {detection_method}, confidence: {confidence:.2f})")
@@ -1359,11 +1378,32 @@ class VulnScanner:
                             form_payload_reflected = payload in response.text
                             print(f"    [XSS] Payload reflected in form response: {form_payload_reflected}")
                             
-                            # Простая проверка отражения payload в форме
-                            form_payload_reflected = payload in response.text
-                            print(f"    [XSS] Form payload reflected: {form_payload_reflected}")
+                            # Улучшенная проверка отражения payload в форме
+                            form_payload_reflected = False
+                            
+                            if payload in response.text:
+                                # Проверяем контекст отражения в форме
+                                payload_pos = response.text.find(payload)
+                                context_start = max(0, payload_pos - 100)
+                                context_end = min(len(response.text), payload_pos + len(payload) + 100)
+                                form_context = response.text[context_start:context_end].lower()
+                                
+                                # Для форм проверяем, что payload не в безопасном контексте
+                                safe_form_contexts = [
+                                    '<!--' in form_context and '-->' in form_context,
+                                    'error' in form_context and ('message' in form_context or 'log' in form_context),
+                                    'debug' in form_context,
+                                    'console.log' in form_context
+                                ]
+                                
+                                if not any(safe_form_contexts):
+                                    form_payload_reflected = True
+                                    print(f"    [XSS] Form payload reflected in valid context")
+                                else:
+                                    print(f"    [XSS] Form payload found in safe context, skipping")
                             
                             # Используем XSS детектор как дополнительную проверку
+                            form_xss_detected = False
                             try:
                                 form_xss_result = XSSDetector.detect_reflected_xss(payload, response.text, response.status_code)
                                 if isinstance(form_xss_result, dict):
@@ -1374,8 +1414,8 @@ class VulnScanner:
                                 print(f"    [XSS] Form detector error: {e}")
                                 form_xss_detected = False
                             
-                            # Окончательное решение для форм
-                            if form_payload_reflected or form_xss_detected:
+                            # Окончательное решение для форм - требуем отражение И подтверждение детектора
+                            if form_payload_reflected and (form_xss_detected or '<script>' in payload):
                                 evidence = f"XSS payload '{payload}' reflected in {form_method} form response"
                                 response_snippet = self._get_contextual_response_snippet(payload, response.text)
                                 print(f"    [XSS] FORM VULNERABILITY FOUND! Input: {input_name}")
@@ -1601,10 +1641,6 @@ class VulnScanner:
                     if not input_name or input_type in ['submit', 'button', 'hidden']:
                         continue
                     
-                    # Skip search fields - they don't store data permanently
-                    if any(search_word in input_name.lower() for search_word in ['search', 'find', 'query', 'q']):
-                        print(f"    [STOREDXSS] Skipping search field: {input_name}")
-                        continue
                     
                     print(f"    [SQLI] Testing form input: {input_name}")
                     

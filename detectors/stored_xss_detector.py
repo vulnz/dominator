@@ -43,7 +43,7 @@ class StoredXSSDetector:
     @staticmethod
     def detect_stored_xss(original_response: str, payload: str, follow_up_response: str = None) -> Tuple[bool, str, str]:
         """
-        Detect stored XSS vulnerability with enhanced detection
+        Detect stored XSS vulnerability with strict validation to prevent false positives
         Returns (is_vulnerable, evidence, severity)
         """
         if not payload or len(payload) < 3:
@@ -55,59 +55,62 @@ class StoredXSSDetector:
         if not response_to_check:
             return False, "No response to analyze", "None"
         
-        # Extract unique identifier from payload for precise detection
-        unique_id = StoredXSSDetector._extract_unique_identifier(payload)
+        # Строгая проверка: payload должен быть точно отражен
+        if payload not in response_to_check:
+            return False, "Payload not found in response", "None"
         
-        # Check if unique identifier is present in response
-        if unique_id and unique_id in response_to_check:
-            # Check if payload is reflected in dangerous context
-            dangerous_contexts = [
-                r'<script[^>]*>[^<]*' + re.escape(unique_id),
-                r'<[^>]*on\w+=["\']?[^"\']*' + re.escape(unique_id),
-                r'<[^>]*src=["\']?[^"\']*' + re.escape(unique_id),
-                r'<[^>]*href=["\']?[^"\']*' + re.escape(unique_id),
-                r'javascript:[^"\']*' + re.escape(unique_id)
-            ]
-            
-            for context in dangerous_contexts:
-                if re.search(context, response_to_check, re.IGNORECASE):
-                    return True, f"Stored XSS detected - unique identifier '{unique_id}' found in dangerous context", "High"
-            
-            # Check for unencoded payload reflection
-            if payload in response_to_check:
-                # Check if dangerous characters are unencoded
-                dangerous_chars = ['<', '>', '"', "'", '&']
-                if any(char in payload for char in dangerous_chars):
-                    # Find the reflection context
-                    payload_pos = response_to_check.find(payload)
-                    if payload_pos >= 0:
-                        start = max(0, payload_pos - 100)
-                        end = min(len(response_to_check), payload_pos + len(payload) + 100)
-                        context_snippet = response_to_check[start:end]
-                        
-                        # Check if it's in HTML context
-                        if re.search(r'<[^>]*' + re.escape(payload) + r'[^>]*>', context_snippet):
-                            return True, "Stored XSS detected - unencoded HTML injection", "High"
-                        elif 'javascript:' in context_snippet.lower():
-                            return True, "Stored XSS detected - JavaScript URL injection", "High"
-                        else:
-                            return True, "Stored XSS detected - payload reflected unencoded", "Medium"
-            
-            # If unique ID found but not in dangerous context, still potential issue
-            return True, f"Potential Stored XSS - unique identifier '{unique_id}' found in response", "Medium"
+        # Найти позицию payload в ответе
+        payload_pos = response_to_check.find(payload)
+        if payload_pos == -1:
+            return False, "Payload position not found", "None"
         
-        # Fallback: Check for XSS indicators only if payload is actually reflected
-        if payload in response_to_check:
-            indicators = StoredXSSDetector.get_stored_xss_indicators()
-            found_indicators = []
-            
-            response_lower = response_to_check.lower()
-            for indicator in indicators:
-                if indicator.lower() in response_lower:
-                    found_indicators.append(indicator)
-            
-            if found_indicators:
-                return True, f"Stored XSS indicators found: {', '.join(found_indicators[:3])}", "Low"
+        # Получить контекст вокруг payload
+        context_start = max(0, payload_pos - 200)
+        context_end = min(len(response_to_check), payload_pos + len(payload) + 200)
+        context = response_to_check[context_start:context_end].lower()
+        
+        # Исключить безопасные контексты (ложные срабатывания)
+        safe_contexts = [
+            '<!--' in context and '-->' in context,  # HTML комментарии
+            'console.log' in context,  # JavaScript логирование
+            'error' in context and 'message' in context,  # Сообщения об ошибках
+            'debug' in context,  # Отладочная информация
+            'log' in context and ('error' in context or 'info' in context),  # Логи
+            'exception' in context and 'trace' in context,  # Трассировка исключений
+        ]
+        
+        if any(safe_contexts):
+            return False, "Payload found in safe context (comments/logs)", "None"
+        
+        # Проверить опасные контексты для Stored XSS
+        dangerous_contexts = [
+            '<script' in context and '</script>' in context,  # Внутри script тегов
+            'on' in context and '=' in context,  # Event handlers (onclick, onload, etc.)
+            'href=' in context,  # В ссылках
+            'src=' in context,  # В источниках
+            'action=' in context,  # В действиях форм
+            'value=' in context and 'input' in context,  # В значениях input полей
+        ]
+        
+        dangerous_found = any(dangerous_contexts)
+        
+        # Проверить, содержит ли payload опасные символы
+        has_dangerous_chars = any(char in payload for char in ['<', '>', '"', "'", 'javascript:', 'on'])
+        
+        # Для Stored XSS требуем И опасный контекст И опасные символы
+        if dangerous_found and has_dangerous_chars:
+            # Дополнительная проверка: убедиться что это не отраженный XSS
+            if follow_up_response and follow_up_response != original_response:
+                return True, f"Stored XSS confirmed - payload persisted across requests in dangerous context", "High"
+            else:
+                return True, f"Potential Stored XSS - payload found in dangerous context", "Medium"
+        
+        # Если payload содержит script теги, это потенциально опасно
+        if '<script>' in payload.lower() and '<script>' in context:
+            if follow_up_response and follow_up_response != original_response:
+                return True, f"Stored XSS with script injection confirmed", "High"
+            else:
+                return True, f"Potential script injection detected", "Medium"
         
         return False, "No stored XSS detected", "None"
     
