@@ -863,6 +863,8 @@ class VulnScanner:
                 results.extend(self._test_clickjacking(parsed_data))
             elif module_name == "blindxss":
                 results.extend(self._test_blind_xss(parsed_data))
+            elif module_name == "storedxss":
+                results.extend(self._test_stored_xss(parsed_data))
             elif module_name == "passwordoverhttp":
                 results.extend(self._test_password_over_http(parsed_data))
             elif module_name == "outdatedsoftware":
@@ -3366,6 +3368,131 @@ class VulnScanner:
                 except Exception as e:
                     print(f"    [BLINDXSS] Error testing payload: {e}")
                     continue
+        
+        return results
+    
+    def _test_stored_xss(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for Stored XSS vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # Get Stored XSS payloads from existing payload class
+        stored_xss_payloads = StoredXSSDetector.get_stored_xss_indicators()
+        
+        # Test POST forms for stored XSS
+        forms_data = parsed_data.get('forms', [])
+        print(f"    [STOREDXSS] Found {len(forms_data)} forms to test for stored XSS")
+        
+        for i, form_data in enumerate(forms_data):
+            form_method = form_data.get('method', 'GET').upper()
+            form_action = form_data.get('action', '')
+            form_inputs = form_data.get('inputs', [])
+            
+            if form_method in ['POST', 'PUT'] and form_inputs:
+                print(f"    [STOREDXSS] Testing {form_method} form {i+1}: {form_action}")
+                
+                # Build form URL
+                if form_action.startswith('/'):
+                    form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
+                elif form_action.startswith('http'):
+                    form_url = form_action
+                else:
+                    form_url = f"{base_url.rstrip('/')}/{form_action}" if form_action else base_url
+                
+                # Test each form input
+                for input_data in form_inputs:
+                    input_name = input_data.get('name')
+                    input_type = input_data.get('type', 'text')
+                    
+                    if not input_name or input_type in ['submit', 'button', 'hidden']:
+                        continue
+                    
+                    print(f"    [STOREDXSS] Testing form input: {input_name}")
+                    
+                    # Create deduplication key for this form input
+                    form_key = f"storedxss_form_{form_url.split('?')[0]}_{input_name}"
+                    if form_key in self.found_vulnerabilities:
+                        print(f"    [STOREDXSS] Skipping form input {input_name} - already tested")
+                        continue
+                    
+                    payload_count = self.payload_limit if self.payload_limit > 0 else 5
+                    for payload in stored_xss_payloads[:payload_count]:
+                        try:
+                            print(f"    [STOREDXSS] Trying stored payload: {payload[:50]}...")
+                            
+                            # Step 1: Submit payload via POST form
+                            post_data = {}
+                            for inp in form_inputs:
+                                inp_name = inp.get('name')
+                                inp_value = inp.get('value', 'test')
+                                inp_type = inp.get('type', 'text')
+                                
+                                if inp_name and inp_type not in ['submit', 'button']:
+                                    if inp_name == input_name:
+                                        post_data[inp_name] = payload
+                                    else:
+                                        post_data[inp_name] = inp_value
+                            
+                            print(f"    [STOREDXSS] Submitting payload to form...")
+                            
+                            if form_method == 'POST':
+                                submit_response = requests.post(
+                                    form_url,
+                                    data=post_data,
+                                    timeout=self.config.timeout,
+                                    headers=self.config.headers,
+                                    verify=False
+                                )
+                            else:  # PUT
+                                submit_response = requests.put(
+                                    form_url,
+                                    data=post_data,
+                                    timeout=self.config.timeout,
+                                    headers=self.config.headers,
+                                    verify=False
+                                )
+                            
+                            print(f"    [STOREDXSS] Submit response code: {submit_response.status_code}")
+                            
+                            # Step 2: Check if payload is stored by visiting the same page again
+                            print(f"    [STOREDXSS] Checking if payload is stored...")
+                            
+                            check_response = requests.get(
+                                form_url,
+                                timeout=self.config.timeout,
+                                headers=self.config.headers,
+                                verify=False
+                            )
+                            
+                            print(f"    [STOREDXSS] Check response code: {check_response.status_code}")
+                            
+                            # Use Stored XSS detector
+                            if StoredXSSDetector.detect_stored_xss(payload, check_response.text, check_response.status_code):
+                                evidence = f"Stored XSS detected - payload '{payload}' found in subsequent page load"
+                                response_snippet = self._get_contextual_response_snippet(payload, check_response.text)
+                                print(f"    [STOREDXSS] STORED XSS FOUND! Input: {input_name}")
+                                
+                                # Mark as found to prevent duplicates
+                                self.found_vulnerabilities.add(form_key)
+                                
+                                results.append({
+                                    'module': 'storedxss',
+                                    'target': form_url,
+                                    'vulnerability': f'Stored XSS in {form_method} Form',
+                                    'severity': 'High',
+                                    'parameter': input_name,
+                                    'payload': payload,
+                                    'evidence': evidence,
+                                    'request_url': form_url,
+                                    'detector': 'StoredXSSDetector.detect_stored_xss',
+                                    'response_snippet': response_snippet,
+                                    'remediation': 'Implement proper input validation, output encoding, and Content Security Policy (CSP)'
+                                })
+                                break  # Found stored XSS, no need to test more payloads for this input
+                                
+                        except Exception as e:
+                            print(f"    [STOREDXSS] Error testing stored payload: {e}")
+                            continue
         
         return results
     
