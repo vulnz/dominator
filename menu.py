@@ -172,6 +172,10 @@ def process_args(args):
     elif hasattr(args, 'file') and args.file:
         args.target = args.file
     
+    # When a single target is provided via -t or -u, it's a list of one. Convert to string.
+    if hasattr(args, 'target') and isinstance(args.target, list) and len(args.target) == 1:
+        args.target = args.target[0]
+
     # Add missing attributes that Config expects
     if not hasattr(args, 'cookies'):
         args.cookies = None
