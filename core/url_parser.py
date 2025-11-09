@@ -211,40 +211,61 @@ class URLParser:
         else:
             print(f"    [URL_PARSER] HTML does NOT contain '<form' tag")
         
-        # Улучшенный парсинг форм с несколькими паттернами
-        form_patterns = [
-            r'<form[^>]*>(.*?)</form>',  # Стандартный паттерн
-            r'<form[^>]*>[\s\S]*?</form>',  # Альтернативный с [\s\S]
-            r'<FORM[^>]*>[\s\S]*?</FORM>',  # Верхний регистр
-        ]
+        # Улучшенный парсинг форм - ищем все теги <form> и извлекаем содержимое
+        print(f"    [URL_PARSER] Searching for form tags in HTML...")
+        
+        # Найдем все открывающие теги <form>
+        form_start_pattern = r'<form[^>]*>'
+        form_starts = []
+        
+        for match in re.finditer(form_start_pattern, response_text, re.IGNORECASE):
+            form_starts.append({
+                'start_pos': match.start(),
+                'end_pos': match.end(),
+                'tag': match.group(0)
+            })
+        
+        print(f"    [URL_PARSER] Found {len(form_starts)} <form> opening tags")
         
         forms_html = []
-        for pattern in form_patterns:
-            matches = re.findall(pattern, response_text, re.DOTALL | re.IGNORECASE)
-            if matches:
-                forms_html.extend(matches)
-                print(f"    [URL_PARSER] Pattern '{pattern[:20]}...' found {len(matches)} forms")
-                break
         
-        # Если не нашли формы, попробуем найти хотя бы теги <form>
-        if not forms_html:
-            form_tags = re.findall(r'<form[^>]*>', response_text, re.IGNORECASE)
-            print(f"    [URL_PARSER] Found {len(form_tags)} <form> opening tags")
-            if form_tags:
-                # Показываем найденные теги форм
-                for i, tag in enumerate(form_tags[:3]):
-                    print(f"    [URL_PARSER] Form tag {i+1}: {tag[:100]}...")
+        # Для каждого открывающего тега найдем соответствующий закрывающий
+        for i, form_start in enumerate(form_starts):
+            print(f"    [URL_PARSER] Processing form {i+1}: {form_start['tag'][:100]}...")
+            
+            # Ищем закрывающий тег </form> после текущего открывающего тега
+            search_start = form_start['end_pos']
+            
+            # Найдем позицию закрывающего тега
+            close_pattern = r'</form>'
+            close_match = re.search(close_pattern, response_text[search_start:], re.IGNORECASE)
+            
+            if close_match:
+                # Вычисляем абсолютную позицию закрывающего тега
+                close_start = search_start + close_match.start()
+                close_end = search_start + close_match.end()
                 
-                # Попробуем извлечь содержимое между тегами вручную
-                for tag in form_tags:
-                    # Найдем позицию этого тега
-                    tag_pos = response_text.lower().find(tag.lower())
-                    if tag_pos >= 0:
-                        # Найдем закрывающий тег
-                        end_pos = response_text.lower().find('</form>', tag_pos)
-                        if end_pos >= 0:
-                            form_content = response_text[tag_pos:end_pos + 7]
-                            forms_html.append(form_content)
+                # Извлекаем полное содержимое формы
+                full_form = response_text[form_start['start_pos']:close_end]
+                forms_html.append(full_form)
+                
+                print(f"    [URL_PARSER] Form {i+1} extracted: {len(full_form)} chars")
+                print(f"    [URL_PARSER] Form {i+1} preview: {full_form[:150].replace(chr(10), ' ').replace(chr(13), ' ')}...")
+            else:
+                print(f"    [URL_PARSER] Form {i+1}: No closing </form> tag found")
+                # Попробуем взять содержимое до конца документа или до следующей формы
+                if i + 1 < len(form_starts):
+                    # До следующей формы
+                    next_form_pos = form_starts[i + 1]['start_pos']
+                    partial_form = response_text[form_start['start_pos']:next_form_pos]
+                else:
+                    # До конца документа
+                    partial_form = response_text[form_start['start_pos']:]
+                
+                # Добавляем закрывающий тег
+                partial_form += '</form>'
+                forms_html.append(partial_form)
+                print(f"    [URL_PARSER] Form {i+1} partial extraction: {len(partial_form)} chars")
         
         print(f"    [URL_PARSER] Found {len(forms_html)} forms in HTML")
         
@@ -287,8 +308,10 @@ class URLParser:
             
             # Extract input fields с улучшенными паттернами
             input_patterns = [
-                r'<input[^>]*>',
-                r'<INPUT[^>]*>',
+                r'<input[^>]*/?>', # Самозакрывающиеся input теги
+                r'<input[^>]*>',   # Обычные input теги
+                r'<INPUT[^>]*/?>', # Верхний регистр самозакрывающиеся
+                r'<INPUT[^>]*>',   # Верхний регистр обычные
                 r'<textarea[^>]*>.*?</textarea>',
                 r'<TEXTAREA[^>]*>.*?</TEXTAREA>',
                 r'<select[^>]*>.*?</select>',
@@ -296,9 +319,13 @@ class URLParser:
             ]
             
             inputs = []
-            for pattern in input_patterns:
+            for pattern_idx, pattern in enumerate(input_patterns):
                 matches = re.findall(pattern, form_html, re.IGNORECASE | re.DOTALL)
-                inputs.extend(matches)
+                if matches:
+                    print(f"    [URL_PARSER] Form {i+1} pattern {pattern_idx+1} found {len(matches)} inputs")
+                    for match in matches:
+                        if match not in inputs:  # Избегаем дубликатов
+                            inputs.append(match)
             
             print(f"    [URL_PARSER] Form {i+1}: Method={form_data['method']}, Action='{form_data['action']}', Found {len(inputs)} input elements")
             
