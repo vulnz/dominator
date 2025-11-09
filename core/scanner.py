@@ -806,13 +806,6 @@ class VulnScanner:
                 
                     target_results.extend(module_results)
             
-            # Legacy code for backward compatibility - remove this section
-            if False:  # Disabled legacy code
-                if not crawled_urls:
-                    print(f"  [DEBUG] No pages with parameters found by crawler")
-                else:
-                    # Legacy code removed - now handled above
-                    pass
             
         except Exception as e:
             print(f"Error scanning {target}: {e}")
@@ -2182,151 +2175,6 @@ class VulnScanner:
             else:
                 print(f"    [CSRF] All forms have CSRF protection or no POST forms found")
             
-            # Legacy form testing code - simplified
-            if response_text and vulnerable_forms:
-                # Test CSRF bypass techniques on vulnerable forms
-                csrf_payloads = CSRFPayloads.get_all_payloads()
-                self.scan_stats['payload_stats']['csrf']['payloads_used'] += len(csrf_payloads)
-                
-                for form_info in vulnerable_forms[:2]:  # Test max 2 forms
-                    form_action = form_info['action']
-                    
-                    # Resolve relative URLs
-                    if form_action.startswith('/'):
-                        form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
-                    elif form_action.startswith('http'):
-                        form_url = form_action
-                    else:
-                        form_url = f"{base_url.rstrip('/')}/{form_action}" if form_action else base_url
-                    
-                    print(f"    [CSRF] Testing bypass techniques on: {form_url}")
-                    
-                    # Test a few bypass payloads
-                    for payload in csrf_payloads[:3]:  # Test first 3 payloads
-                        try:
-                            print(f"    [CSRF] Trying payload: {payload['name']}")
-                            
-                            # Prepare request data from form inputs
-                            request_data = {}
-                            for input_data in form_info['inputs']:
-                                input_name = input_data.get('name')
-                                input_value = input_data.get('value', 'test')
-                                if input_name and input_data.get('type', 'text') not in ['submit', 'button']:
-                                    request_data[input_name] = input_value
-                            
-                            # Add payload-specific data
-                            if payload.get('data'):
-                                request_data.update(payload['data'])
-                            
-                            request_headers = self.config.headers.copy()
-                            if 'headers' in payload:
-                                request_headers.update(payload['headers'])
-                            
-                            # Make the request
-                            method = payload.get('method', 'POST').upper()
-                            
-                            if method == 'POST':
-                                test_response = requests.post(
-                                    form_url,
-                                    data=request_data,
-                                    headers=request_headers,
-                                    timeout=self.config.timeout,
-                                    verify=False,
-                                    allow_redirects=False
-                                )
-                            
-                                # Update request count
-                                self.request_count += 1
-                                self.scan_stats['payload_stats']['csrf']['requests_made'] += 1
-                            else:
-                                continue  # Skip non-POST for now
-                        
-                            print(f"    [CSRF] Response code: {test_response.status_code}")
-                            
-                            # Check if request was successful (potential CSRF bypass)
-                            success_codes = [200, 201, 202, 302, 303]
-                            if test_response.status_code in success_codes:
-                                success_indicators = self._get_success_indicators()
-                                response_lower = test_response.text.lower()
-                                
-                                if any(indicator in response_lower for indicator in success_indicators):
-                                    bypass_dedup_key = f"csrf_bypass_{form_url}_{payload['name']}"
-                                    
-                                    if bypass_dedup_key not in self.found_vulnerabilities:
-                                        self.found_vulnerabilities.add(bypass_dedup_key)
-                                        print(f"    [CSRF] POTENTIAL BYPASS FOUND! Payload: {payload['name']}")
-                                        
-                                        # Update successful payload count
-                                        self.scan_stats['payload_stats']['csrf']['successful_payloads'] += 1
-                                        self.scan_stats['total_payloads_used'] += 1
-                                        
-                                        results.append({
-                                            'module': 'csrf',
-                                            'target': form_url,
-                                            'vulnerability': 'CSRF Protection Bypass',
-                                            'severity': 'High',
-                                            'parameter': 'form_action',
-                                            'payload': str(request_data),
-                                            'evidence': f"Request succeeded with {payload['description']}. Response code: {test_response.status_code}",
-                                            'request_url': form_url,
-                                            'detector': 'CSRFDetector.bypass_test',
-                                            'response_snippet': test_response.text[:500]
-                                        })
-                                        break  # Found bypass, no need to test more payloads for this form
-                            
-                        except Exception as e:
-                            print(f"    [CSRF] Error testing payload {payload['name']}: {e}")
-                            continue
-            
-            # Legacy regex-based form detection for backward compatibility
-            if not forms_data and response_text:
-                import re
-                form_pattern = r'<form[^>]*>(.*?)</form>'
-                forms = re.findall(form_pattern, response_text, re.IGNORECASE | re.DOTALL)
-                
-                if forms:
-                    print(f"    [CSRF] Found {len(forms)} additional forms via regex")
-            
-                    # Process regex-found forms similar to above
-                    form_action_pattern = r'<form[^>]*action=["\']?([^"\'>\s]+)["\']?[^>]*>'
-                    form_method_pattern = r'<form[^>]*method=["\']?([^"\'>\s]+)["\']?[^>]*>'
-                    
-                    form_actions = re.findall(form_action_pattern, response_text, re.IGNORECASE)
-                    form_methods = re.findall(form_method_pattern, response_text, re.IGNORECASE)
-                    
-                    for i, form_content in enumerate(forms):
-                        form_action = form_actions[i] if i < len(form_actions) else ''
-                        form_method = form_methods[i].upper() if i < len(form_methods) else 'GET'
-                        
-                        if form_method != 'GET':
-                            # Check for CSRF protection in form content
-                            has_csrf_protection = False
-                            csrf_indicators = CSRFDetector.get_csrf_indicators()
-                            
-                            for indicator in csrf_indicators:
-                                if indicator.lower() in form_content.lower():
-                                    has_csrf_protection = True
-                                    break
-                            
-                            if not has_csrf_protection:
-                                normalized_action = self._normalize_form_action(form_action)
-                                form_id = f"csrf_form_regex_{normalized_action}_{form_method}"
-                                
-                                if form_id not in self.found_vulnerabilities:
-                                    self.found_vulnerabilities.add(form_id)
-                                    
-                                    results.append({
-                                        'module': 'csrf',
-                                        'target': base_url,
-                                        'vulnerability': 'Missing CSRF Protection (Regex Detection)',
-                                        'severity': 'Medium',
-                                        'parameter': f"form_action: {form_action}",
-                                        'payload': 'N/A',
-                                        'evidence': f"Form with action '{form_action}' and method '{form_method}' lacks CSRF protection",
-                                        'request_url': base_url,
-                                        'detector': 'CSRFDetector.regex_analysis',
-                                        'response_snippet': form_content[:200] + '...' if len(form_content) > 200 else form_content
-                                    })
                 
         except Exception as e:
             print(f"    [CSRF] Error during CSRF testing: {e}")
@@ -2626,7 +2474,7 @@ class VulnScanner:
         
         print(f"    [DIRBRUTE] Testing files in directory: {directory}/")
         
-        for file in files[:40]:  # Увеличиваем до 40 файлов на директорию
+        for file in files[:30]:  # Оптимизируем количество файлов
             try:
                 test_url = f"{base_url}{directory}/{file}"
                 
@@ -2642,33 +2490,19 @@ class VulnScanner:
                     dict(response.headers), requests.Session(), test_url
                 )
                 
-                # Additional checks for false positives
-                if is_valid:
-                    # Check if response size is too similar to baseline
-                    if baseline_404_size > 0:
-                        size_diff = abs(len(response.text) - baseline_404_size)
-                        size_ratio = size_diff / baseline_404_size if baseline_404_size > 0 else 1
-                        
-                        # Skip if size difference is less than 5% or less than 50 bytes
-                        if size_ratio < 0.05 or size_diff < 50:
-                            print(f"    [DIRBRUTE] Skipping file {directory}/{file} - size too similar to 404 baseline ({len(response.text)} vs {baseline_404_size} bytes)")
-                            is_valid = False
-                    
-                    # Check if response content is identical to original page
-                    if is_valid and original_fingerprint:
-                        response_fingerprint = Real404Detector.get_response_fingerprint(response.text)
-                        if response_fingerprint == original_fingerprint:
-                            print(f"    [DIRBRUTE] Skipping file {directory}/{file} - identical content to original page")
-                            is_valid = False
+                # Оптимизированная проверка ложных срабатываний
+                if is_valid and baseline_404_size > 0:
+                    size_diff = abs(len(response.text) - baseline_404_size)
+                    if size_diff < 50 or (size_diff / baseline_404_size < 0.05):
+                        continue
+                
+                if is_valid and original_fingerprint:
+                    response_fingerprint = Real404Detector.get_response_fingerprint(response.text)
+                    if response_fingerprint == original_fingerprint:
+                        continue
                 
                 if is_valid:
-                    print(f"    [DIRBRUTE] FILE FOUND: {directory}/{file} - {evidence}")
-                    
-                    # Check for sensitive content
-                    is_sensitive, sensitive_evidence = DirBruteDetector.detect_sensitive_file(
-                        response.text, file
-                    )
-                    
+                    is_sensitive, sensitive_evidence = DirBruteDetector.detect_sensitive_file(response.text, file)
                     severity = 'High' if is_sensitive else 'Low'
                     vuln_type = 'Sensitive File Found' if is_sensitive else 'File Found'
                     
@@ -5725,8 +5559,6 @@ class VulnScanner:
         if response_code == 404:
             return True
         
-        # For testphp.vulnweb.com, don't filter out responses based on content
-        # as it may contain legitimate vulnerabilities
         return False
     
     def _normalize_form_action(self, form_action: str) -> str:
