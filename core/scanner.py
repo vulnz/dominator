@@ -1629,8 +1629,12 @@ class VulnScanner:
                     form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
                 elif form_action.startswith('http'):
                     form_url = form_action
+                elif form_action:
+                    # For relative URLs, use the base directory of the current page
+                    base_dir = '/'.join(base_url.split('/')[:-1])
+                    form_url = f"{base_dir}/{form_action}"
                 else:
-                    form_url = f"{base_url.rstrip('/')}/{form_action}" if form_action else base_url
+                    form_url = base_url
                 
                 # Test each form input
                 for input_data in form_inputs:
@@ -3683,7 +3687,27 @@ class VulnScanner:
                             print(f"    [STOREDXSS] *** STEP 2: CHECKING IF PAYLOAD IS STORED ***")
                             
                             # Проверяем URL для обнаружения сохраненного payload
-                            check_urls = [base_url, form_url]
+                            check_urls = [base_url]
+                            
+                            # Добавляем form_url только если он отличается от base_url
+                            if form_url != base_url:
+                                check_urls.append(form_url)
+                            
+                            # Для форм поиска также проверяем целевую страницу поиска
+                            if 'search' in form_action.lower():
+                                # Построим правильный URL для страницы поиска
+                                if form_action.startswith('/'):
+                                    search_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
+                                elif form_action.startswith('http'):
+                                    search_url = form_action
+                                else:
+                                    # Относительный путь - используем базовый домен
+                                    base_parts = base_url.split('/')
+                                    base_domain = '/'.join(base_parts[:3])  # http://domain.com
+                                    search_url = f"{base_domain}/{form_action}"
+                                
+                                if search_url not in check_urls:
+                                    check_urls.append(search_url)
                             
                             # Убираем дубликаты
                             check_urls = list(set(check_urls))
@@ -3691,6 +3715,9 @@ class VulnScanner:
                             print(f"    [STOREDXSS] Will check {len(check_urls)} URLs for stored payload:")
                             for url in check_urls:
                                 print(f"    [STOREDXSS]   - {url}")
+                            
+                            print(f"    [STOREDXSS] Form details: action='{form_action}', method='{form_method}', base_url='{base_url}'")
+                            print(f"    [STOREDXSS] Constructed form_url: '{form_url}'")
                             
                             stored_found = False
                             check_response = None
