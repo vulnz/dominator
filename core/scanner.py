@@ -607,6 +607,56 @@ class VulnScanner:
             'payload_stats': {}
         }
         self.stop_requested = False  # Flag for graceful stopping
+        self._module_map = {
+            "xss": self._test_xss,
+            "sqli": self._test_sqli,
+            "lfi": self._test_lfi,
+            "csrf": self._test_csrf,
+            "dirbrute": self._test_dirbrute,
+            "git": self._test_git_exposed,
+            "gitexposed": self._test_git_exposed,
+            "dirtraversal": self._test_directory_traversal,
+            "secheaders": self._test_security_headers,
+            "ssrf": self._test_ssrf,
+            "rfi": self._test_rfi,
+            "versiondisclosure": self._test_version_disclosure,
+            "clickjacking": self._test_clickjacking,
+            "blindxss": self._test_blind_xss,
+            "storedxss": self._test_stored_xss,
+            "passwordoverhttp": self._test_password_over_http,
+            "outdatedsoftware": self._test_outdated_software,
+            "databaseerrors": self._test_database_errors,
+            "phpinfo": self._test_phpinfo,
+            "ssltls": self._test_ssl_tls,
+            "httponlycookies": self._test_httponly_cookies,
+            "technology": self._test_technology_detection,
+            "xxe": self._test_xxe,
+            "idor": self._test_idor,
+            "commandinjection": self._test_command_injection,
+            "pathtraversal": self._test_path_traversal,
+            "ldapinjection": self._test_ldap_injection,
+            "nosqlinjection": self._test_nosql_injection,
+            "fileupload": self._test_file_upload,
+            "cors": self._test_cors,
+            "jwt": self._test_jwt,
+            "deserialization": self._test_insecure_deserialization,
+            "responsesplitting": self._test_http_response_splitting,
+            "ssti": self._test_ssti,
+            "crlf": self._test_crlf,
+            "textinjection": self._test_text_injection,
+            "htmlinjection": self._test_html_injection,
+            "hostheader": self._test_host_header,
+            "prototypepollution": self._test_prototype_pollution,
+            "vhost": self._test_vhost,
+            "infoleak": self._test_information_leakage,
+            "openredirect": self._test_open_redirect,
+            "hpp": self._test_hpp,
+            "reversetabnabbing": self._test_reverse_tabnabbing,
+            "insecurereflection": self._test_insecure_reflection,
+            "phpconfig": self._test_php_config,
+            "csp": self._test_csp,
+            "mixedcontent": self._test_mixed_content,
+        }
         
     def scan(self) -> List[Dict[str, Any]]:
         """Main scanning method"""
@@ -1256,100 +1306,9 @@ class VulnScanner:
                 print(f"    [MODULE] {module_name.upper()}: Cached forms - Methods: {methods}, Total inputs: {total_inputs}")
         
         try:
-            if module_name == "xss":
-                results.extend(self._test_xss(parsed_data))
-            elif module_name == "sqli":
-                results.extend(self._test_sqli(parsed_data))
-            elif module_name == "lfi":
-                results.extend(self._test_lfi(parsed_data))
-            elif module_name == "csrf":
-                results.extend(self._test_csrf(parsed_data))
-            elif module_name == "dirbrute":
-                results.extend(self._test_dirbrute(parsed_data))
-            elif module_name == "git" or module_name == "gitexposed":
-                results.extend(self._test_git_exposed(parsed_data))
-            elif module_name == "dirtraversal":
-                results.extend(self._test_directory_traversal(parsed_data))
-            elif module_name == "secheaders":
-                results.extend(self._test_security_headers(parsed_data))
-            elif module_name == "ssrf":
-                results.extend(self._test_ssrf(parsed_data))
-            elif module_name == "rfi":
-                results.extend(self._test_rfi(parsed_data))
-            elif module_name == "versiondisclosure":
-                results.extend(self._test_version_disclosure(parsed_data))
-            elif module_name == "clickjacking":
-                results.extend(self._test_clickjacking(parsed_data))
-            elif module_name == "blindxss":
-                results.extend(self._test_blind_xss(parsed_data))
-            elif module_name == "storedxss":
-                results.extend(self._test_stored_xss(parsed_data))
-            elif module_name == "passwordoverhttp":
-                results.extend(self._test_password_over_http(parsed_data))
-            elif module_name == "outdatedsoftware":
-                results.extend(self._test_outdated_software(parsed_data))
-            elif module_name == "databaseerrors":
-                results.extend(self._test_database_errors(parsed_data))
-            elif module_name == "phpinfo":
-                results.extend(self._test_phpinfo(parsed_data))
-            elif module_name == "ssltls":
-                results.extend(self._test_ssl_tls(parsed_data))
-            elif module_name == "httponlycookies":
-                results.extend(self._test_httponly_cookies(parsed_data))
-            elif module_name == "technology":
-                results.extend(self._test_technology_detection(parsed_data))
-            elif module_name == "xxe":
-                results.extend(self._test_xxe(parsed_data))
-            elif module_name == "idor":
-                results.extend(self._test_idor(parsed_data))
-            elif module_name == "commandinjection":
-                results.extend(self._test_command_injection(parsed_data))
-            elif module_name == "pathtraversal":
-                results.extend(self._test_path_traversal(parsed_data))
-            elif module_name == "ldapinjection":
-                results.extend(self._test_ldap_injection(parsed_data))
-            elif module_name == "nosqlinjection":
-                results.extend(self._test_nosql_injection(parsed_data))
-            elif module_name == "fileupload":
-                results.extend(self._test_file_upload(parsed_data))
-            elif module_name == "cors":
-                results.extend(self._test_cors(parsed_data))
-            elif module_name == "jwt":
-                results.extend(self._test_jwt(parsed_data))
-            elif module_name == "deserialization":
-                results.extend(self._test_insecure_deserialization(parsed_data))
-            elif module_name == "responsesplitting":
-                results.extend(self._test_http_response_splitting(parsed_data))
-            elif module_name == "ssti":
-                results.extend(self._test_ssti(parsed_data))
-            elif module_name == "crlf":
-                results.extend(self._test_crlf(parsed_data))
-            elif module_name == "textinjection":
-                results.extend(self._test_text_injection(parsed_data))
-            elif module_name == "htmlinjection":
-                results.extend(self._test_html_injection(parsed_data))
-            elif module_name == "hostheader":
-                results.extend(self._test_host_header(parsed_data))
-            elif module_name == "prototypepollution":
-                results.extend(self._test_prototype_pollution(parsed_data))
-            elif module_name == "vhost":
-                results.extend(self._test_vhost(parsed_data))
-            elif module_name == "infoleak":
-                results.extend(self._test_information_leakage(parsed_data))
-            elif module_name == "openredirect":
-                results.extend(self._test_open_redirect(parsed_data))
-            elif module_name == "hpp":
-                results.extend(self._test_hpp(parsed_data))
-            elif module_name == "reversetabnabbing":
-                results.extend(self._test_reverse_tabnabbing(parsed_data))
-            elif module_name == "insecurereflection":
-                results.extend(self._test_insecure_reflection(parsed_data))
-            elif module_name == "phpconfig":
-                results.extend(self._test_php_config(parsed_data))
-            elif module_name == "csp":
-                results.extend(self._test_csp(parsed_data))
-            elif module_name == "mixedcontent":
-                results.extend(self._test_mixed_content(parsed_data))
+            test_func = self._module_map.get(module_name)
+            if test_func:
+                results.extend(test_func(parsed_data))
             else:
                 print(f"    [WARNING] Unknown module: {module_name}")
                 
