@@ -75,8 +75,10 @@ class FileHandler:
                 'exploit_links': item.get('exploit_links', []),
                 'technologies': item.get('technologies', []),
                 'form_details': item.get('form_details', []),
-                'method': item.get('method', self._extract_method_from_url(item.get('request_url', ''))),
-                'url_parameters': self._extract_url_parameters(item.get('request_url', ''))
+                'method': item.get('method', item.get('http_method', self._extract_method_from_url(item.get('request_url', '')))),
+                'http_method': item.get('http_method', item.get('method', self._extract_method_from_url(item.get('request_url', '')))),
+                'url_parameters': self._extract_url_parameters(item.get('request_url', '')),
+                'form_details': item.get('form_details', [])
             }
             vulnerabilities.append(vuln_data)
         
@@ -1926,7 +1928,7 @@ class FileHandler:
                             <span><i class="fas fa-globe"></i> ${vuln.target || 'Unknown Target'}</span>
                             <span><i class="fas fa-tag"></i> ${vuln.parameter || 'N/A'}</span>
                             <span><i class="fas fa-cog"></i> ${(vuln.module || 'unknown').toUpperCase()}</span>
-                            ${vuln.method ? `<span class="method-badge method-${vuln.method.toLowerCase()}">${vuln.method}</span>` : '<span class="method-badge method-unknown">Unknown</span>'}
+                            ${vuln.http_method ? `<span class="method-badge method-${vuln.http_method.toLowerCase()}">${vuln.http_method}</span>` : (vuln.method ? `<span class="method-badge method-${vuln.method.toLowerCase()}">${vuln.method}</span>` : '<span class="method-badge method-unknown">Unknown</span>')}
                         </div>
                     </div>
                     <div style="display: flex; align-items: center; gap: 15px;">
@@ -1947,9 +1949,13 @@ class FileHandler:
                         <h4><i class="fas fa-link"></i> Request Details</h4>
                         <div class="detail-content">
                             <strong>URL:</strong> ${vuln.request_url}<br>
-                            <strong>Method:</strong> ${vuln.method || 'Unknown'}<br>
+                            <strong>HTTP Method:</strong> ${vuln.http_method || vuln.method || 'Unknown'}<br>
                             ${vuln.url_parameters && vuln.url_parameters.length > 0 ? 
                                 `<strong>Parameters:</strong> ${vuln.url_parameters.map(p => `${p.name}=${p.values.join(',')}`).join(', ')}<br>` : ''}
+                            ${vuln.form_details && vuln.form_details.action ? 
+                                `<strong>Form Action:</strong> ${vuln.form_details.action}<br>
+                                 <strong>Form Method:</strong> ${vuln.form_details.method}<br>
+                                 <strong>Form Inputs:</strong> ${vuln.form_details.input_count || 0}<br>` : ''}
                         </div>
                     </div>
                     ${vuln.form_details && vuln.form_details.length > 0 ? `

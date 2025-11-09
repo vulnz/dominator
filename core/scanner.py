@@ -1236,7 +1236,8 @@ class VulnScanner:
                             'xss_type': xss_type,
                             'confidence': confidence,
                             'detection_method': detection_method,
-                            'method': 'GET'
+                            'method': 'GET',
+                            'http_method': 'GET'
                         }
                         
                         # Filter false positives
@@ -1484,7 +1485,13 @@ class VulnScanner:
                                     'request_url': form_url,
                                     'detector': 'XSSDetector.detect_reflected_xss',
                                     'response_snippet': response_snippet,
-                                    'method': form_method
+                                    'method': form_method,
+                                    'http_method': form_method,
+                                    'form_details': {
+                                        'action': form_action,
+                                        'method': form_method,
+                                        'input_count': len(form_inputs)
+                                    }
                                 }
                                 
                                 # Filter false positives
@@ -1642,7 +1649,8 @@ class VulnScanner:
                             'request_url': test_url,
                             'detector': 'SQLiDetector.detect_error_based_sqli',
                             'response_snippet': response_snippet,
-                            'method': 'GET'
+                            'method': 'GET',
+                            'http_method': 'GET'
                         }
                         
                         # Filter false positives
@@ -1775,7 +1783,13 @@ class VulnScanner:
                                     'request_url': form_url,
                                     'detector': 'SQLiDetector.detect_error_based_sqli',
                                     'response_snippet': response_snippet,
-                                    'method': form_method
+                                    'method': form_method,
+                                    'http_method': form_method,
+                                    'form_details': {
+                                        'action': form_action,
+                                        'method': form_method,
+                                        'input_count': len(form_inputs)
+                                    }
                                 }
                                 
                                 # Filter false positives
@@ -1890,7 +1904,8 @@ class VulnScanner:
                             'request_url': test_url,
                             'detector': 'Enhanced LFI Detection',
                             'response_snippet': response_snippet,
-                            'method': 'GET'
+                            'method': 'GET',
+                            'http_method': 'GET'
                         }
                         
                         # Filter false positives
@@ -7691,7 +7706,7 @@ class VulnScanner:
         safe_print(f"     Target: {result.get('target', '')}")
         safe_print(f"     Parameter: {result.get('parameter', '')}")
         safe_print(f"     Module: {result.get('module', '')}")
-        safe_print(f"     Method: {result.get('method', 'Unknown')}")
+        safe_print(f"     HTTP Method: {result.get('http_method', result.get('method', 'Unknown'))}")
         safe_print(f"     Detector: {result.get('detector', 'Unknown')}")
         
         payload = str(result.get('payload', ''))
