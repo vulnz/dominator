@@ -27,6 +27,7 @@ try:
     from payloads.lfi_payloads import LFIPayloads
     from payloads.csrf_payloads import CSRFPayloads
     from payloads.dirbrute_payloads import DirBrutePayloads
+    from utils.payload_loader import PayloadLoader
 except ImportError as e:
     print(f"Warning: Could not import payload classes: {e}")
     # Create dummy classes to prevent crashes
@@ -37,6 +38,14 @@ except ImportError as e:
     
     XSSPayloads = SQLiPayloads = LFIPayloads = CSRFPayloads = DummyPayloads
     DirBrutePayloads = DummyPayloads
+    
+    class PayloadLoader:
+        @staticmethod
+        def load_payloads(payload_type):
+            return ["'", '"', "<script>alert(1)</script>"]
+        @staticmethod
+        def get_vulnerability_metadata(module_name, severity='Medium'):
+            return {'cwe': 'CWE-200', 'owasp': 'A06:2021', 'cvss': '6.5', 'recommendation': 'Fix vulnerability'}
 
 try:
     from payloads.git_payloads import GitPayloads
@@ -5830,15 +5839,20 @@ class VulnScanner:
                 # Sanitize dangerous fields to prevent XSS in reports
                 clean_result = self._sanitize_vulnerability_data(clean_result)
                 
+                # Use PayloadLoader to get metadata from JSON file
+                module_name = clean_result.get('module', 'unknown')
+                severity = clean_result.get('severity', 'Medium')
+                metadata = PayloadLoader.get_vulnerability_metadata(module_name, severity)
+                
                 # Ensure required metadata exists
                 if 'cvss' not in clean_result:
-                    clean_result['cvss'] = self._get_default_cvss(clean_result.get('severity', 'Medium'))
+                    clean_result['cvss'] = metadata.get('cvss', self._get_default_cvss(severity))
                 if 'owasp' not in clean_result:
-                    clean_result['owasp'] = self._get_default_owasp(clean_result.get('module', 'unknown'))
+                    clean_result['owasp'] = metadata.get('owasp', self._get_default_owasp(module_name))
                 if 'cwe' not in clean_result:
-                    clean_result['cwe'] = self._get_default_cwe(clean_result.get('module', 'unknown'))
+                    clean_result['cwe'] = metadata.get('cwe', self._get_default_cwe(module_name))
                 if 'recommendation' not in clean_result:
-                    clean_result['recommendation'] = self._get_default_recommendation(clean_result.get('module', 'unknown'))
+                    clean_result['recommendation'] = metadata.get('recommendation', self._get_default_recommendation(module_name))
             
             enhanced_results.append(clean_result)
         
