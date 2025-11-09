@@ -219,6 +219,17 @@ except ImportError:
             return callback_received
 
 try:
+    from detectors.stored_xss_detector import StoredXSSDetector
+except ImportError:
+    class StoredXSSDetector:
+        @staticmethod
+        def get_stored_xss_indicators():
+            return ['<script>alert("StoredXSS")</script>', '<img src=x onerror=alert("StoredXSS")>', 'javascript:alert("StoredXSS")']
+        @staticmethod
+        def detect_stored_xss(payload, response_text, response_code):
+            return payload.lower() in response_text.lower()
+
+try:
     from detectors.password_over_http_detector import PasswordOverHTTPDetector
 except ImportError:
     class PasswordOverHTTPDetector:
