@@ -1,0 +1,17 @@
+# Microsoft SQL Server error patterns
+microsoft ole db
+odbc sql server driver
+odbc microsoft access
+mssql
+Microsoft SQL Server
+SQL Server
+Incorrect syntax near
+Invalid column name
+Invalid object name
+Cannot insert duplicate key
+String or binary data would be truncated
+Arithmetic overflow error
+Divide by zero error encountered
+The conversion of
+Login failed for user
+Cannot open database

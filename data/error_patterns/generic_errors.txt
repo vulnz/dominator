@@ -1,0 +1,27 @@
+# Generic SQL error patterns
+sql syntax
+database error
+query failed
+connection failed
+syntax error
+warning:
+error:
+exception
+stack trace
+fatal error
+table
+column
+constraint
+duplicate entry
+access denied
+unknown column
+unknown table
+subquery
+operand
+operands
+invalid query
+call to undefined function
+unexpected end of file
+column count doesn't match
+operand should contain
+incorrect syntax near

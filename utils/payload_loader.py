@@ -162,6 +162,140 @@ class PayloadLoader:
             return []
     
     @classmethod
+    def load_patterns(cls, pattern_type: str) -> List[str]:
+        """Load patterns from text file with caching"""
+        cache_key = f"patterns_{pattern_type}"
+        
+        if cache_key in cls._cache:
+            return cls._cache[cache_key]
+        
+        if cls._base_path is None:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            base_dir = os.path.dirname(current_dir)
+        else:
+            base_dir = os.path.dirname(cls._base_path)
+        
+        patterns_file = os.path.join(base_dir, 'data', 'patterns', f"{pattern_type}_patterns.txt")
+        
+        if not os.path.exists(patterns_file):
+            print(f"Warning: Patterns file not found: {patterns_file}")
+            return []
+        
+        try:
+            with open(patterns_file, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            
+            patterns = []
+            for line in lines:
+                line = line.strip()
+                # Skip empty lines and comments
+                if line and not line.startswith('#'):
+                    patterns.append(line)
+            
+            cls._cache[cache_key] = patterns
+            return patterns
+            
+        except Exception as e:
+            print(f"Error loading patterns from {patterns_file}: {e}")
+            return []
+    
+    @classmethod
+    def load_indicators(cls, indicator_type: str) -> List[str]:
+        """Load indicators from text file with caching"""
+        cache_key = f"indicators_{indicator_type}"
+        
+        if cache_key in cls._cache:
+            return cls._cache[cache_key]
+        
+        if cls._base_path is None:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            base_dir = os.path.dirname(current_dir)
+        else:
+            base_dir = os.path.dirname(cls._base_path)
+        
+        indicators_file = os.path.join(base_dir, 'data', 'indicators', f"{indicator_type}_indicators.txt")
+        
+        if not os.path.exists(indicators_file):
+            print(f"Warning: Indicators file not found: {indicators_file}")
+            return []
+        
+        try:
+            with open(indicators_file, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            
+            indicators = []
+            for line in lines:
+                line = line.strip()
+                # Skip empty lines and comments
+                if line and not line.startswith('#'):
+                    indicators.append(line)
+            
+            cls._cache[cache_key] = indicators
+            return indicators
+            
+        except Exception as e:
+            print(f"Error loading indicators from {indicators_file}: {e}")
+            return []
+    
+    @classmethod
+    def load_error_patterns(cls, db_type: str = None) -> Dict[str, List[str]]:
+        """Load database error patterns from text files"""
+        cache_key = f"error_patterns_{db_type or 'all'}"
+        
+        if cache_key in cls._cache:
+            return cls._cache[cache_key]
+        
+        if cls._base_path is None:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            base_dir = os.path.dirname(current_dir)
+        else:
+            base_dir = os.path.dirname(cls._base_path)
+        
+        patterns_dir = os.path.join(base_dir, 'data', 'error_patterns')
+        
+        if not os.path.exists(patterns_dir):
+            print(f"Warning: Error patterns directory not found: {patterns_dir}")
+            return {}
+        
+        error_patterns = {}
+        
+        if db_type:
+            # Load specific database type
+            pattern_file = os.path.join(patterns_dir, f"{db_type}_errors.txt")
+            if os.path.exists(pattern_file):
+                error_patterns[db_type] = cls._load_file_lines(pattern_file)
+        else:
+            # Load all database types
+            db_types = ['mysql', 'postgresql', 'oracle', 'mssql', 'sqlite', 'generic']
+            for db in db_types:
+                pattern_file = os.path.join(patterns_dir, f"{db}_errors.txt")
+                if os.path.exists(pattern_file):
+                    error_patterns[db] = cls._load_file_lines(pattern_file)
+        
+        cls._cache[cache_key] = error_patterns
+        return error_patterns
+    
+    @classmethod
+    def _load_file_lines(cls, file_path: str) -> List[str]:
+        """Helper method to load lines from a file"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            
+            result = []
+            for line in lines:
+                line = line.strip()
+                # Skip empty lines and comments
+                if line and not line.startswith('#'):
+                    result.append(line)
+            
+            return result
+            
+        except Exception as e:
+            print(f"Error loading file {file_path}: {e}")
+            return []
+
+    @classmethod
     def clear_cache(cls):
         """Clear payload cache"""
         cls._cache.clear()

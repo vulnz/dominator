@@ -1,0 +1,18 @@
+# PostgreSQL error patterns
+postgresql
+pg_query
+pg_exec
+pg_connect
+pg_fetch_array
+pg_fetch_row
+pg_result
+ERROR: syntax error at or near
+ERROR: relation does not exist
+ERROR: column does not exist
+ERROR: operator does not exist
+ERROR: function does not exist
+ERROR: invalid input syntax
+ERROR: division by zero
+ERROR: value too long for type
+ERROR: duplicate key value
+ERROR: permission denied

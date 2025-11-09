@@ -1418,23 +1418,15 @@ class VulnScanner:
                         # Расширенные проверки для всех сайтов
                         if not is_vulnerable:
                             print(f"    [SQLI] Running extended SQL error pattern checks...")
-                            # Comprehensive SQL error patterns for all database types
-                            sql_errors = [
-                                'mysql', 'sql syntax', 'ora-', 'postgresql', 'sqlite', 'mssql', 
-                                'warning:', 'error:', 'exception', 'stack trace', 'fatal error',
-                                'syntax error', 'database error', 'query failed', 'connection failed',
-                                'table', 'column', 'constraint', 'duplicate entry', 'access denied',
-                                'unknown column', 'unknown table', 'subquery', 'operand', 'operands',
-                                'you have an error in your sql syntax', 'check the manual that corresponds',
-                                'supplied argument is not a valid mysql', 'mysql_fetch_array()',
-                                'mysql_num_rows()', 'division by zero', 'invalid query',
-                                'mysql_fetch_assoc()', 'mysql_fetch_row()', 'mysql_result()',
-                                'call to undefined function', 'unexpected end of file',
-                                'ora-00', 'ora-01', 'ora-02', 'ora-03', 'ora-04', 'ora-05',
-                                'microsoft ole db', 'odbc sql server driver', 'odbc microsoft access',
-                                'sqlite_', 'sqlite3_', 'pdo_', 'pg_query', 'pg_exec',
-                                'column count doesn\'t match', 'operand should contain', 'incorrect syntax near'
-                            ]
+                            # Load SQL error patterns from file
+                            sql_error_patterns = PayloadLoader.load_error_patterns()
+                            sql_errors = []
+                            for db_type, patterns in sql_error_patterns.items():
+                                sql_errors.extend(patterns)
+                    
+                            if not sql_errors:
+                                # Fallback to basic patterns if file not found
+                                sql_errors = ['mysql', 'sql syntax', 'error:', 'exception']
                             response_lower = response.text.lower()
                                 
                             for error in sql_errors:
@@ -1949,51 +1941,11 @@ class VulnScanner:
                 print(f"    [LFI] Primary detector found LFI: {pattern}")
                 return True, pattern
             
-            # Enhanced detection for common LFI indicators
-            lfi_indicators = [
-                # Linux/Unix files
-                'root:x:0:0:root:/root:/bin/bash',
-                'root:x:0:0:root:/root:/bin/sh',
-                'daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin',
-                'bin:x:2:2:bin:/bin:/usr/sbin/nologin',
-                'sys:x:3:3:sys:/dev:/usr/sbin/nologin',
-                'nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin',
-                
-                # Windows files
-                '[extensions]',
-                '; for 16-bit app support',
-                '[fonts]',
-                '[Mail]',
-                'MAPI=1',
-                
-                # PHP files
-                '<?php',
-                '<?=',
-                'php_value',
-                'extension=',
-                
-                # Apache/Nginx config
-                'ServerRoot',
-                'DocumentRoot',
-                'LoadModule',
-                'server_name',
-                'location /',
-                
-                # Common file patterns
-                'root:',
-                '/etc/passwd',
-                '/etc/shadow',
-                'C:\\Windows\\',
-                'C:\\WINDOWS\\',
-                
-                # Error patterns that might indicate file access
-                'failed to open stream',
-                'No such file or directory',
-                'Permission denied',
-                'include_path',
-                'fopen(',
-                'file_get_contents(',
-            ]
+            # Load LFI indicators from file
+            lfi_indicators = PayloadLoader.load_indicators('lfi')
+            if not lfi_indicators:
+                # Fallback to basic indicators if file not found
+                lfi_indicators = ['root:', '[extensions]', '<?php', 'failed to open stream']
             
             response_lower = response_text.lower()
             for indicator in lfi_indicators:
@@ -2246,19 +2198,11 @@ class VulnScanner:
             except:
                 directories = []
             
-            # Add common directories if not already included
-            common_dirs = [
-                'admin', 'administrator', 'secured', 'secure',
-                'pictures', 'images', 'img', 'pics',
-                'backup', 'backups', 'bak', 'old',
-                'test', 'testing', 'demo', 'dev',
-                'config', 'conf', 'cfg', 'settings',
-                'include', 'includes', 'inc', 'lib',
-                'upload', 'uploads', 'files', 'documents',
-                'temp', 'tmp', 'cache', 'log', 'logs',
-                'cgi-bin', 'scripts', 'js', 'css',
-                'api', 'v1', 'v2', 'rest', 'ajax'
-            ]
+            # Load common directories from file
+            common_dirs = PayloadLoader.load_wordlist('common_directories')
+            if not common_dirs:
+                # Fallback to basic directories if file not found
+                common_dirs = ['admin', 'backup', 'test', 'config', 'upload']
             
             # Combine directories, avoiding duplicates
             all_directories = list(set(directories + common_dirs))
@@ -2356,21 +2300,11 @@ class VulnScanner:
             except:
                 files = []
         
-            # Add common sensitive files if not already included
-            common_files = [
-                'phpinfo.php', 'info.php', 'test.php',
-                'index.zip', 'backup.zip', 'site.zip', 'www.zip',
-                'config.php', 'config.inc.php', 'configuration.php',
-                'database.php', 'db.php', 'connect.php',
-                'admin.php', 'administrator.php', 'manager.php',
-                'debug.php', 'error.php', 'status.php',
-                'backup.sql', 'dump.sql', 'database.sql',
-                '.htaccess', '.htpasswd', 'web.config',
-                'robots.txt', 'sitemap.xml', 'crossdomain.xml',
-                'readme.txt', 'changelog.txt', 'install.txt',
-                'wp-config.php', 'config.json', 'package.json',
-                '.env', '.env.local', '.env.production'
-            ]
+            # Load common sensitive files from file
+            common_files = PayloadLoader.load_wordlist('common_files')
+            if not common_files:
+                # Fallback to basic files if file not found
+                common_files = ['phpinfo.php', 'config.php', '.htaccess', 'robots.txt', '.env']
         
             # Combine files, avoiding duplicates
             all_files = list(set(files + common_files))
@@ -2551,21 +2485,11 @@ class VulnScanner:
         except:
             traversal_payloads = []
         
-        # Add common traversal patterns if not already included
-        common_traversal = [
-            '../../../etc/passwd',
-            '..\\..\\..\\windows\\win.ini',
-            '/etc/passwd',
-            'C:\\windows\\win.ini',
-            '....//....//....//etc/passwd',
-            '....\\\\....\\\\....\\\\windows\\\\win.ini',
-            'php://filter/convert.base64-encode/resource=../../../etc/passwd',
-            'file:///etc/passwd',
-            'file:///c:/windows/win.ini',
-            '..%2F..%2F..%2Fetc%2Fpasswd',
-            '..%5C..%5C..%5Cwindows%5Cwin.ini',
-            '%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd'
-        ]
+        # Load directory traversal patterns from file
+        common_traversal = PayloadLoader.load_payloads('directory_traversal')
+        if not common_traversal:
+            # Fallback to basic patterns if file not found
+            common_traversal = ['../../../etc/passwd', '..\\..\\..\\windows\\win.ini']
         
         # Combine payloads, avoiding duplicates
         traversal_payloads = list(set(traversal_payloads + common_traversal))
@@ -3436,23 +3360,11 @@ class VulnScanner:
                 print(f"    [DATABASEERRORS] Skipping parameter {param} - already tested")
                 continue
             
-            # Comprehensive SQL injection payloads for error detection
-            error_payloads = [
-                "'", '"', "' OR '1'='1", "'; DROP TABLE users; --", "%27",
-                "-1 UNION SELECT 1,version(),user()",
-                "' UNION SELECT 1,2,3,4,5,6,7,8,9,10--",
-                "' AND 1=2 UNION SELECT 1,version(),database()--",
-                "1' ORDER BY 10--",
-                "1' GROUP BY 1,2,3,4,5,6,7,8,9,10--",
-                "' HAVING 1=1--",
-                "' AND (SELECT COUNT(*) FROM information_schema.tables)>0--",
-                "1 AND 1=2",
-                "1' AND '1'='2",
-                "1\" AND \"1\"=\"2",
-                "1) AND (1=2",
-                "1')) AND (('1'='2",
-                "1\")) AND ((\"1\"=\"2"
-            ]
+            # Load SQL injection payloads for error detection from file
+            error_payloads = PayloadLoader.load_payloads('sqli_error_detection')
+            if not error_payloads:
+                # Fallback to basic payloads if file not found
+                error_payloads = ["'", '"', "' OR '1'='1", "%27"]
             
             for payload in error_payloads:
                 try:
@@ -5379,11 +5291,11 @@ class VulnScanner:
                     'response_snippet': f'Found {len(unique_ips)} internal IPs'
                 })
             
-            # Check for debug information
-            debug_patterns = [
-                'debug', 'trace', 'stack trace', 'error_reporting',
-                'display_errors', 'var_dump', 'print_r'
-            ]
+            # Load debug patterns from file
+            debug_patterns = PayloadLoader.load_patterns('debug')
+            if not debug_patterns:
+                # Fallback to basic patterns if file not found
+                debug_patterns = ['debug', 'trace', 'error_reporting', 'var_dump']
             
             response_lower = response.text.lower()
             found_debug = [pattern for pattern in debug_patterns if pattern in response_lower]
