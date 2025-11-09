@@ -33,6 +33,18 @@ root:
 /etc/shadow
 C:\Windows\
 C:\WINDOWS\
+/proc/version
+/etc/issue
+/etc/hosts
+/etc/group
+/var/log/
+/windows/win.ini
+/winnt/win.ini
+c:\windows\system32\
+c:\winnt\system32\
+boot.ini
+[boot loader]
+config.sys
 
 # Error patterns that might indicate file access
 failed to open stream
@@ -45,3 +57,7 @@ require(
 include(
 require_once(
 include_once(
+Warning: include(
+Warning: require(
+allow_url_include
+allow_url_fopen

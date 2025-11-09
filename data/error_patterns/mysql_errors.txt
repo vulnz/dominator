@@ -20,3 +20,8 @@ Out of range value
 Division by zero in
 Incorrect integer value
 Incorrect datetime value
+Warning: mysql_
+Fatal error: Call to undefined function mysql_
+Access denied for user
+Can't connect to MySQL server
+MySQL server has gone away
