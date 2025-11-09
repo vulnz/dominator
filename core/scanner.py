@@ -1686,13 +1686,21 @@ class VulnScanner:
                 
                 # Build form URL - ИСПРАВЛЕНО для правильной обработки относительных путей
                 if form_action.startswith('/'):
-                    form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
+                    # Для абсолютных путей сохраняем порт из исходного URL
+                    if parsed_data.get('port'):
+                        form_url = f"{parsed_data['scheme']}://{parsed_data['host']}:{parsed_data['port']}{form_action}"
+                    else:
+                        form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
                 elif form_action.startswith('http'):
                     form_url = form_action
                 elif form_action:
-                    # Для относительных URL используем базовый домен
-                    base_parts = base_url.split('/')
-                    base_domain = '/'.join(base_parts[:3])  # http://domain.com
+                    # Для относительных URL используем базовый URL с портом
+                    from urllib.parse import urlparse
+                    parsed_base = urlparse(base_url)
+                    if parsed_base.port:
+                        base_domain = f"{parsed_base.scheme}://{parsed_base.hostname}:{parsed_base.port}"
+                    else:
+                        base_domain = f"{parsed_base.scheme}://{parsed_base.hostname}"
                     form_url = f"{base_domain}/{form_action}"
                     print(f"    [STOREDXSS] Relative form action '{form_action}' resolved to: {form_url}")
                 else:
@@ -1938,7 +1946,11 @@ class VulnScanner:
                 
                 # Build form URL
                 if form_action.startswith('/'):
-                    form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
+                    # Для абсолютных путей сохраняем порт из исходного URL
+                    if parsed_data.get('port'):
+                        form_url = f"{parsed_data['scheme']}://{parsed_data['host']}:{parsed_data['port']}{form_action}"
+                    else:
+                        form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
                 elif form_action.startswith('http'):
                     form_url = form_action
                 else:
@@ -3074,7 +3086,11 @@ class VulnScanner:
                 
                 # Build form URL
                 if form_action.startswith('/'):
-                    form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
+                    # Для абсолютных путей сохраняем порт из исходного URL
+                    if parsed_data.get('port'):
+                        form_url = f"{parsed_data['scheme']}://{parsed_data['host']}:{parsed_data['port']}{form_action}"
+                    else:
+                        form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
                 elif form_action.startswith('http'):
                     form_url = form_action
                 else:
