@@ -20,28 +20,12 @@ class StoredXSSDetector:
         
         # Combine and return first 20 most effective payloads
         all_payloads = basic_payloads + context_payloads
-        return all_payloads[:20] if all_payloads else [
-            '<script>alert("XSS")</script>',
-            '<img src=x onerror=alert("XSS")>'
-        ]
+        return all_payloads[:20] if all_payloads else []
     
     @staticmethod
     def get_stored_xss_indicators() -> List[str]:
         """Get stored XSS vulnerability indicators for detection"""
-        indicators = PayloadLoader.load_indicators('xss_detection')
-        if not indicators:
-            # Fallback indicators if file not found
-            indicators = [
-                'alert(',
-                'confirm(',
-                'prompt(',
-                'javascript:',
-                '<script>',
-                'onerror=',
-                'onload=',
-                'onclick='
-            ]
-        return indicators
+        return PayloadLoader.load_indicators('xss_detection')
     
     @staticmethod
     def detect_stored_xss(original_response: str, payload: str, follow_up_response: str = None) -> Tuple[bool, str, str]:
@@ -183,7 +167,7 @@ class StoredXSSDetector:
     def get_test_payloads() -> List[str]:
         """Get test payloads for stored XSS detection"""
         from payloads.xss_payloads import XSSPayloads
-        return XSSPayloads.get_basic_payloads()[:12]
+        return XSSPayloads.get_basic_payloads()
     
     @staticmethod
     def get_remediation_advice() -> str:
