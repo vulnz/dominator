@@ -62,7 +62,7 @@ class PayloadLoader:
             current_dir = os.path.dirname(os.path.abspath(__file__))
             base_dir = os.path.dirname(current_dir)
         else:
-            base_dir = os.path.dirname(cls._base_path)
+            base_dir = os.path.dirname(os.path.dirname(cls._base_path))
         
         mapping_file = os.path.join(base_dir, 'data', 'cwe_owasp_mapping.json')
         

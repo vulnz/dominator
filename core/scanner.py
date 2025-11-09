@@ -5565,7 +5565,8 @@ class VulnScanner:
                 benchmark_filename = filename.replace('.html', '_benchmark.txt').replace('.txt', '_benchmark.txt')
                 self.file_handler.save_benchmark_report(benchmark_analysis, benchmark_filename)
             except Exception as e:
-                print(f"Ошибка при сохранении отчета о бенчмарке: {e}")
+                if self.debug:
+                    print(f"Ошибка при сохранении отчета о бенчмарке: {e}")
     
     def _ensure_vulnerability_metadata(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Ensure all vulnerabilities have CVSS, OWASP, and CWE metadata"""
@@ -5900,7 +5901,7 @@ class VulnScanner:
             print("SCAN RESULTS SUMMARY".center(80))
             print("="*80)
         
-        # Debug: Print total results count
+        # Debug: Print total results count (only in debug mode)
         if self.debug:
             print(f"[DEBUG] Total results received: {len(results)}")
         
@@ -5947,7 +5948,7 @@ class VulnScanner:
                       f"Rate: {success_rate:5.1f}%")
             print("-" * 80)
         
-        # Debug: Show structure of first few results
+        # Debug: Show structure of first few results (only in debug mode)
         if self.debug and results:
             print(f"[DEBUG] First result keys: {list(results[0].keys())}")
             for i, result in enumerate(results[:3]):
@@ -5956,27 +5957,17 @@ class VulnScanner:
                 else:
                     print(f"[DEBUG] Result {i+1}: No 'vulnerability' key - keys: {list(result.keys())}")
         
-        # Filter out scan stats and group by severity - IMPROVED filtering logic
+        # Filter out scan stats and group by severity
         vulnerabilities = []
         for v in results:
-            # Skip entries that are ONLY scan_stats (no vulnerability data)
-            if 'scan_stats' in v and 'vulnerability' not in v:
-                if self.debug:
-                    print(f"[DEBUG] Skipping scan_stats only entry")
+            # Skip entries that are ONLY scan_stats or benchmark_analysis (no vulnerability data)
+            if ('scan_stats' in v or 'benchmark_analysis' in v) and 'vulnerability' not in v:
                 continue
             # Include ALL entries that have vulnerability field
             if 'vulnerability' in v and v.get('vulnerability'):
-                if self.debug:
-                    print(f"[DEBUG] Including vulnerability: {v.get('vulnerability', 'UNKNOWN')}")
-                # Create clean vulnerability object without scan_stats for display
-                clean_vuln = {k: v for k, v in v.items() if k != 'scan_stats'}
+                # Create clean vulnerability object without scan_stats and benchmark_analysis for display
+                clean_vuln = {k: v for k, v in v.items() if k not in ['scan_stats', 'benchmark_analysis']}
                 vulnerabilities.append(clean_vuln)
-            else:
-                if self.debug:
-                    print(f"[DEBUG] Skipping entry without vulnerability: {list(v.keys())}")
-        
-        if self.debug:
-            print(f"[DEBUG] Vulnerabilities after filtering: {len(vulnerabilities)}")
         
         if not vulnerabilities:
             print("VULNERABILITY STATUS: CLEAN")
@@ -5984,7 +5975,7 @@ class VulnScanner:
             print("="*80)
             return
         
-        # Debug: Show what we're about to categorize
+        # Debug: Show what we're about to categorize (only in debug mode)
         if self.debug:
             print(f"[DEBUG] About to categorize {len(vulnerabilities)} vulnerabilities")
             for i, v in enumerate(vulnerabilities[:5]):
@@ -6005,39 +5996,16 @@ class VulnScanner:
             
             if severity == 'critical':
                 critical_vulns.append(v)
-                if self.debug:
-                    print(f"[DEBUG] Added to CRITICAL: {vuln_name}")
             elif severity == 'high':
                 high_vulns.append(v)
-                if self.debug:
-                    print(f"[DEBUG] Added to HIGH: {vuln_name}")
             elif severity == 'medium':
                 medium_vulns.append(v)
-                if self.debug:
-                    print(f"[DEBUG] Added to MEDIUM: {vuln_name}")
             elif severity == 'low':
                 low_vulns.append(v)
-                if self.debug:
-                    print(f"[DEBUG] Added to LOW: {vuln_name}")
             elif severity == 'info':
                 info_vulns.append(v)
-                if self.debug:
-                    print(f"[DEBUG] Added to INFO: {vuln_name}")
             else:
-                if self.debug:
-                    print(f"[DEBUG] UNCATEGORIZED severity '{severity}' for {vuln_name} - adding to HIGH")
                 high_vulns.append(v)  # Add uncategorized to high for visibility
-        
-        # Debug: Show categorization results
-        if self.debug:
-            print(f"[DEBUG] Final categorization results:")
-            print(f"[DEBUG] Critical: {len(critical_vulns)}, High: {len(high_vulns)}, Medium: {len(medium_vulns)}, Low: {len(low_vulns)}, Info: {len(info_vulns)}")
-            if critical_vulns:
-                print(f"[DEBUG] First critical vuln: {critical_vulns[0].get('vulnerability', 'UNKNOWN')}")
-            if high_vulns:
-                print(f"[DEBUG] First high vuln: {high_vulns[0].get('vulnerability', 'UNKNOWN')}")
-            if medium_vulns:
-                print(f"[DEBUG] First medium vuln: {medium_vulns[0].get('vulnerability', 'UNKNOWN')}")
         
         print(f"VULNERABILITY STATUS: {len(vulnerabilities)} ISSUES FOUND")
         print(f"Critical Severity:    {len(critical_vulns)}")
@@ -6047,56 +6015,36 @@ class VulnScanner:
         print(f"Info:                 {len(info_vulns)}")
         print("="*80)
         
-        # Print vulnerability details - ALWAYS show details for found vulnerabilities
-        if self.debug:
-            print(f"\n[DEBUG] About to print vulnerability details...")
-            print(f"[DEBUG] Critical: {len(critical_vulns)}, High vulns: {len(high_vulns)}, Medium: {len(medium_vulns)}, Low: {len(low_vulns)}, Info: {len(info_vulns)}")
-        
+        # Print vulnerability details
         if critical_vulns:
             print(f"\nCRITICAL SEVERITY VULNERABILITIES ({len(critical_vulns)} found):")
             print("-" * 50)
             for i, result in enumerate(critical_vulns, 1):
-                if self.debug:
-                    print(f"[DEBUG] Printing critical vuln {i}")
                 self._print_vulnerability(i, result)
         
         if high_vulns:
             print(f"\nHIGH SEVERITY VULNERABILITIES ({len(high_vulns)} found):")
             print("-" * 50)
             for i, result in enumerate(high_vulns, 1):
-                if self.debug:
-                    print(f"[DEBUG] Printing high vuln {i}")
                 self._print_vulnerability(i, result)
         
         if medium_vulns:
             print(f"\nMEDIUM SEVERITY VULNERABILITIES ({len(medium_vulns)} found):")
             print("-" * 50)
             for i, result in enumerate(medium_vulns, 1):
-                if self.debug:
-                    print(f"[DEBUG] Printing medium vuln {i}")
                 self._print_vulnerability(i, result)
         
         if low_vulns:
             print(f"\nLOW SEVERITY VULNERABILITIES ({len(low_vulns)} found):")
             print("-" * 50)
             for i, result in enumerate(low_vulns, 1):
-                if self.debug:
-                    print(f"[DEBUG] Printing low vuln {i}")
                 self._print_vulnerability(i, result)
         
         if info_vulns:
             print(f"\nINFO VULNERABILITIES ({len(info_vulns)} found):")
             print("-" * 50)
             for i, result in enumerate(info_vulns, 1):
-                if self.debug:
-                    print(f"[DEBUG] Printing info vuln {i}")
                 self._print_vulnerability(i, result)
-        
-        # Always show vulnerabilities if we have any - REMOVED this condition that was preventing display
-        if self.debug:
-            print(f"\n[DEBUG] Preparing to display vulnerabilities...")
-            print(f"[DEBUG] Total vulnerabilities: {len(vulnerabilities)}")
-            print(f"[DEBUG] Critical: {len(critical_vulns)}, High: {len(high_vulns)}, Medium: {len(medium_vulns)}, Low: {len(low_vulns)}, Info: {len(info_vulns)}")
         
         # Print general vulnerability summary
         if results and any(r.get('vulnerability') for r in results):
