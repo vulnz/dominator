@@ -137,10 +137,13 @@ class PayloadLoader:
         else:
             base_dir = os.path.dirname(cls._base_path)
         
-        wordlist_file = os.path.join(base_dir, 'wordlists', f"{wordlist_name}.txt")
+        wordlist_file = os.path.join(base_dir, 'data', 'wordlists', f"{wordlist_name}.txt")
         
         if not os.path.exists(wordlist_file):
             print(f"Warning: Wordlist file not found: {wordlist_file}")
+            # Return fallback wordlist for common directories
+            if wordlist_name == 'common_directories':
+                return cls._get_fallback_directories()
             return []
         
         try:
@@ -217,7 +220,8 @@ class PayloadLoader:
         
         if not os.path.exists(indicators_file):
             print(f"Warning: Indicators file not found: {indicators_file}")
-            return []
+            # Return fallback indicators
+            return cls._get_fallback_indicators(indicator_type)
         
         try:
             with open(indicators_file, 'r', encoding='utf-8') as f:
@@ -255,7 +259,8 @@ class PayloadLoader:
         
         if not os.path.exists(patterns_dir):
             print(f"Warning: Error patterns directory not found: {patterns_dir}")
-            return {}
+            # Return fallback error patterns
+            return cls._get_fallback_error_patterns(db_type)
         
         error_patterns = {}
         
@@ -375,3 +380,80 @@ class PayloadLoader:
     def clear_cache(cls):
         """Clear payload cache"""
         cls._cache.clear()
+    
+    @classmethod
+    def _get_fallback_directories(cls) -> List[str]:
+        """Get fallback directory list when file is missing"""
+        return [
+            'admin', 'administrator', 'login', 'panel', 'control',
+            'dashboard', 'manage', 'manager', 'user', 'users',
+            'config', 'configuration', 'settings', 'setup',
+            'backup', 'backups', 'data', 'database', 'db',
+            'files', 'uploads', 'upload', 'images', 'img',
+            'css', 'js', 'javascript', 'scripts', 'assets',
+            'api', 'rest', 'service', 'services', 'web',
+            'test', 'tests', 'testing', 'dev', 'development',
+            'tmp', 'temp', 'cache', 'logs', 'log',
+            'docs', 'documentation', 'help', 'support',
+            'public', 'private', 'secure', 'protected',
+            'old', 'new', 'beta', 'alpha', 'staging'
+        ]
+    
+    @classmethod
+    def _get_fallback_error_patterns(cls, db_type: str = None) -> Dict[str, List[str]]:
+        """Get fallback error patterns when files are missing"""
+        patterns = {
+            'mysql': [
+                'mysql_fetch_array', 'mysql_num_rows', 'mysql_error',
+                'You have an error in your SQL syntax', 'MySQL server version',
+                'supplied argument is not a valid MySQL'
+            ],
+            'postgresql': [
+                'PostgreSQL query failed', 'pg_query()', 'pg_exec()',
+                'ERROR: syntax error at or near'
+            ],
+            'mssql': [
+                'Microsoft OLE DB Provider', 'ODBC SQL Server Driver',
+                'SQLServer JDBC Driver', 'Incorrect syntax near'
+            ],
+            'oracle': [
+                'ORA-00933', 'ORA-12541', 'Oracle ODBC',
+                'Oracle Driver', 'Oracle Error'
+            ],
+            'sqlite': [
+                'SQLite/JDBCDriver', 'SQLite.Exception',
+                'sqlite_query', 'sqlite_exec'
+            ],
+            'generic': [
+                'SQL syntax', 'database error', 'query failed',
+                'invalid query', 'syntax error'
+            ]
+        }
+        
+        if db_type:
+            return {db_type: patterns.get(db_type, [])}
+        return patterns
+    
+    @classmethod
+    def _get_fallback_indicators(cls, indicator_type: str) -> List[str]:
+        """Get fallback indicators when files are missing"""
+        indicators_map = {
+            'lfi': [
+                'root:x:', '/etc/passwd', '/etc/shadow', 'boot.ini',
+                'windows/system32', '[boot loader]', 'config.sys'
+            ],
+            'rfi': [
+                'allow_url_include', 'allow_url_fopen', 'include_path',
+                'Warning: include(', 'Warning: require('
+            ],
+            'xss': [
+                '<script', 'javascript:', 'onerror=', 'onload=',
+                'alert(', 'document.cookie', 'eval('
+            ],
+            'sqli': [
+                'mysql_fetch_array', 'ORA-01756', 'Microsoft OLE DB',
+                'You have an error in your SQL syntax'
+            ]
+        }
+        
+        return indicators_map.get(indicator_type, [])

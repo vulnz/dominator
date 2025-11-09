@@ -71,4 +71,41 @@ class DirBrutePayloads:
     @staticmethod
     def get_all_payloads():
         """Get all directory bruteforce payloads from text file"""
-        return PayloadLoader.load_payloads('dirbrute')
+        payloads = PayloadLoader.load_payloads('dirbrute')
+        
+        # If no payloads loaded from file, return fallback list
+        if not payloads:
+            print("    [DIRBRUTE] Using fallback payload list")
+            return DirBrutePayloads._get_fallback_payloads()
+        
+        return payloads
+    
+    @staticmethod
+    def _get_fallback_payloads():
+        """Get fallback payloads when file is missing"""
+        return [
+            # Common directories
+            'admin', 'administrator', 'login', 'panel', 'control',
+            'dashboard', 'manage', 'manager', 'user', 'users',
+            'config', 'configuration', 'settings', 'setup',
+            'backup', 'backups', 'data', 'database', 'db',
+            'files', 'uploads', 'upload', 'images', 'img',
+            'css', 'js', 'javascript', 'scripts', 'assets',
+            'api', 'rest', 'service', 'services', 'web',
+            'test', 'tests', 'testing', 'dev', 'development',
+            'tmp', 'temp', 'cache', 'logs', 'log',
+            'docs', 'documentation', 'help', 'support',
+            'public', 'private', 'secure', 'protected',
+            'old', 'new', 'beta', 'alpha', 'staging',
+            
+            # Common files
+            'index.php', 'index.html', 'index.htm', 'default.php',
+            'admin.php', 'login.php', 'config.php', 'database.php',
+            'phpinfo.php', 'info.php', 'test.php', 'backup.php',
+            'robots.txt', 'sitemap.xml', '.htaccess', 'web.config',
+            'readme.txt', 'changelog.txt', 'license.txt',
+            
+            # Hidden files
+            '.env', '.git', '.svn', '.htpasswd', '.htaccess',
+            '.DS_Store', '.gitignore', '.bashrc', '.profile'
+        ]

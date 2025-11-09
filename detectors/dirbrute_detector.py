@@ -197,20 +197,44 @@ class DirBruteDetector:
     
     @staticmethod
     def detect_directory_listing(response_text: str) -> bool:
-        """Detect if response contains directory listing"""
+        """Detect if response contains directory listing with improved accuracy"""
+        response_lower = response_text.lower()
+        
+        # Enhanced directory listing indicators
         directory_indicators = [
-            'Index of /',
-            'Directory Listing',
-            'Parent Directory',
-            '<title>Index of',
-            'Directory listing for',
-            '[To Parent Directory]',
+            'index of /',
+            'directory listing',
+            'parent directory',
+            '<title>index of',
+            'directory listing for',
+            '[to parent directory]',
             'folder.gif',
-            'dir.gif'
+            'dir.gif',
+            '[dir]',
+            '[   ]',  # Apache directory listing spacing
+            'last modified',
+            'size</th>',
+            'name</th>',
+            '<pre><a href="../">../</a>',  # Common Apache format
         ]
         
-        response_lower = response_text.lower()
-        return any(indicator.lower() in response_lower for indicator in directory_indicators)
+        # Count indicators found
+        indicators_found = sum(1 for indicator in directory_indicators 
+                             if indicator in response_lower)
+        
+        # Check for typical directory listing structure
+        has_parent_dir = '../' in response_text or '[to parent directory]' in response_lower
+        has_file_links = len([m for m in re.finditer(r'<a href="[^"?]*">[^<]+</a>', response_text)]) > 2
+        has_size_column = 'size' in response_lower and ('kb' in response_lower or 'mb' in response_lower or 'bytes' in response_lower)
+        
+        # Filter out false positives from sorting parameters
+        has_sorting_params = bool(re.search(r'\?[Cc]=[NnMmSsDd];[Oo]=[AaDd]', response_text))
+        if has_sorting_params:
+            # If we detect sorting parameters, we need stronger evidence
+            return indicators_found >= 3 or (has_parent_dir and has_file_links and has_size_column)
+        
+        # Directory listing detected if we have multiple indicators or strong structural evidence
+        return indicators_found >= 2 or (has_parent_dir and has_file_links) or (has_file_links and has_size_column)
     
     @staticmethod
     def detect_sensitive_file(response_text: str, file_path: str) -> Tuple[bool, str]:

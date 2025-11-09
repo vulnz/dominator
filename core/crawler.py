@@ -388,6 +388,13 @@ class WebCrawler:
                     # Run passive analysis on each crawled page
                     self._run_passive_analysis(response.headers, response.text, url)
                     
+                    # Check for directory listing on this page
+                    if self._detect_directory_listing(response.text):
+                        print(f"    [CRAWLER] Directory listing detected on: {url}")
+                        # Extract directory listing URLs
+                        dir_urls = self._extract_directory_listing_urls(response.text, url)
+                        found_urls.extend(dir_urls)
+                    
                     # Extract all URLs from this page
                     page_urls = self._extract_all_urls(response.text, url)
                     
@@ -445,6 +452,13 @@ class WebCrawler:
                 if response.status_code == 200:
                     # Run passive analysis on deep crawled pages
                     self._run_passive_analysis(response.headers, response.text, current_url)
+                    
+                    # Check for directory listing
+                    if self._detect_directory_listing(response.text):
+                        print(f"    [CRAWLER] Directory listing detected during deep crawl: {current_url}")
+                        # Extract directory listing URLs
+                        dir_urls = self._extract_directory_listing_urls(response.text, current_url)
+                        found_urls.extend(dir_urls)
                     
                     # Extract JavaScript endpoints
                     self._extract_js_endpoints(response.text, current_url)
@@ -710,3 +724,78 @@ class WebCrawler:
         if self.detected_technologies:
             tech_names = set(tech.get('name', 'Unknown') for tech in self.detected_technologies)
             print(f"    Detected Technologies: {', '.join(list(tech_names)[:10])}")
+    
+    def _detect_directory_listing(self, response_text: str) -> bool:
+        """Detect if response contains directory listing"""
+        response_lower = response_text.lower()
+        
+        # Enhanced directory listing indicators
+        directory_indicators = [
+            'index of /',
+            'directory listing',
+            'parent directory',
+            '<title>index of',
+            'directory listing for',
+            '[to parent directory]',
+            'folder.gif',
+            'dir.gif',
+            '[dir]',
+            '[   ]',  # Apache directory listing spacing
+            'last modified',
+            'size</th>',
+            'name</th>',
+            '<pre><a href="../">../</a>',  # Common Apache format
+            '<a href="?c=n;o=d">name</a>',  # Sorting links
+            '<a href="?c=m;o=a">last modified</a>',
+            '<a href="?c=s;o=a">size</a>',
+            '<a href="?c=d;o=a">description</a>'
+        ]
+        
+        # Check for multiple indicators to reduce false positives
+        indicators_found = sum(1 for indicator in directory_indicators 
+                             if indicator in response_lower)
+        
+        # Also check for typical directory listing structure
+        has_parent_dir = '../' in response_text or '[to parent directory]' in response_lower
+        has_file_links = len([m for m in re.finditer(r'<a href="[^"]*">[^<]+</a>', response_text)]) > 3
+        has_size_column = 'size' in response_lower and ('kb' in response_lower or 'mb' in response_lower or 'bytes' in response_lower)
+        
+        # Directory listing detected if we have multiple indicators or strong structural evidence
+        return indicators_found >= 2 or (has_parent_dir and has_file_links) or (has_file_links and has_size_column)
+    
+    def _extract_directory_listing_urls(self, response_text: str, base_url: str) -> List[str]:
+        """Extract URLs from directory listing, filtering out sorting parameters"""
+        urls = []
+        
+        try:
+            # Extract all href links
+            href_pattern = r'<a href="([^"]+)"[^>]*>([^<]+)</a>'
+            matches = re.findall(href_pattern, response_text, re.IGNORECASE)
+            
+            for href, link_text in matches:
+                # Skip parent directory links
+                if href in ['../', '../', '..']:
+                    continue
+                
+                # Skip sorting parameters that look like attack payloads
+                if href.startswith('?C=') or href.startswith('?c='):
+                    continue
+                
+                # Skip other query parameters that are for directory listing control
+                if href.startswith('?') and any(param in href.lower() for param in ['sort', 'order', 'c=', 'o=']):
+                    continue
+                
+                # Skip empty or invalid links
+                if not href or href == '#':
+                    continue
+                
+                # Resolve to full URL
+                full_url = self._resolve_url(href, base_url)
+                if full_url and self._is_same_domain(full_url, base_url):
+                    urls.append(full_url)
+                    print(f"    [CRAWLER] Directory listing URL found: {full_url}")
+        
+        except Exception as e:
+            print(f"    [CRAWLER] Error extracting directory listing URLs: {e}")
+        
+        return urls
