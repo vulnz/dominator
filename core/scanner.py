@@ -833,15 +833,22 @@ class VulnScanner:
                 allow_redirects=True,
                 verify=False
             )
+            print(f"  [CONNECTIVITY] Successfully connected to {url} (HTTP {response.status_code})")
             return response.status_code < 500
-        except requests.exceptions.ConnectionError:
+        except requests.exceptions.ConnectionError as e:
             print(f"  [CONNECTIVITY] Connection failed to {url}")
+            print(f"  [CONNECTIVITY] Possible causes: server down, wrong port (try 8082?), firewall blocking")
+            print(f"  [CONNECTIVITY] Error details: Connection refused")
             return False
-        except requests.exceptions.Timeout:
+        except requests.exceptions.Timeout as e:
             print(f"  [CONNECTIVITY] Timeout connecting to {url}")
+            print(f"  [CONNECTIVITY] Server not responding within {self.config.timeout} seconds")
+            return False
+        except requests.exceptions.RequestException as e:
+            print(f"  [CONNECTIVITY] Request error to {url}: {str(e)[:100]}")
             return False
         except Exception as e:
-            print(f"  [CONNECTIVITY] Error connecting to {url}: {e}")
+            print(f"  [CONNECTIVITY] Unexpected error connecting to {url}: {str(e)[:100]}")
             return False
     
     def _test_module(self, module_name: str, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -1563,18 +1570,32 @@ class VulnScanner:
                     test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
                     print(f"    [SQLI] Request URL: {test_url}")
                     
-                    response = requests.get(
-                        test_url,
-                        timeout=self.config.timeout,
-                        headers=self.config.headers,
-                        verify=False
-                    )
-                    
-                    # Update request count
-                    self.request_count += 1
-                    self.scan_stats['payload_stats']['sqli']['requests_made'] += 1
-                    
-                    print(f"    [SQLI] Response code: {response.status_code}")
+                    try:
+                        response = requests.get(
+                            test_url,
+                            timeout=self.config.timeout,
+                            headers=self.config.headers,
+                            verify=False
+                        )
+                        
+                        # Update request count
+                        self.request_count += 1
+                        self.scan_stats['payload_stats']['sqli']['requests_made'] += 1
+                        
+                        print(f"    [SQLI] Response code: {response.status_code}")
+                    except requests.exceptions.ConnectionError as e:
+                        print(f"    [SQLI] Connection failed to {test_url}")
+                        print(f"    [SQLI] Server may be down or using different port (check if port 8082 needed)")
+                        print(f"    [SQLI] Skipping parameter {param} - connection refused")
+                        break  # Exit payload loop for this parameter
+                    except requests.exceptions.Timeout as e:
+                        print(f"    [SQLI] Timeout connecting to {test_url}")
+                        print(f"    [SQLI] Skipping payload - server not responding")
+                        continue  # Try next payload
+                    except requests.exceptions.RequestException as e:
+                        print(f"    [SQLI] Request error to {test_url}: {str(e)[:100]}")
+                        print(f"    [SQLI] Skipping payload - network error")
+                        continue
                     
                     # Check if we should stop due to request limit or max time
                     if self._should_stop():
@@ -1746,28 +1767,42 @@ class VulnScanner:
                                     else:
                                         post_data[inp_name] = inp_value or 'test'
                             
-                            if form_method == 'POST':
-                                response = requests.post(
-                                    form_url,
-                                    data=post_data,
-                                    timeout=self.config.timeout,
-                                    headers=self.config.headers,
-                                    verify=False
-                                )
-                            else:  # PUT
-                                response = requests.put(
-                                    form_url,
-                                    data=post_data,
-                                    timeout=self.config.timeout,
-                                    headers=self.config.headers,
-                                    verify=False
-                                )
-                            
-                            # Update request count
-                            self.request_count += 1
-                            self.scan_stats['payload_stats']['sqli']['requests_made'] += 1
-                            
-                            print(f"    [SQLI] Form response code: {response.status_code}")
+                            try:
+                                if form_method == 'POST':
+                                    response = requests.post(
+                                        form_url,
+                                        data=post_data,
+                                        timeout=self.config.timeout,
+                                        headers=self.config.headers,
+                                        verify=False
+                                    )
+                                else:  # PUT
+                                    response = requests.put(
+                                        form_url,
+                                        data=post_data,
+                                        timeout=self.config.timeout,
+                                        headers=self.config.headers,
+                                        verify=False
+                                    )
+                                
+                                # Update request count
+                                self.request_count += 1
+                                self.scan_stats['payload_stats']['sqli']['requests_made'] += 1
+                                
+                                print(f"    [SQLI] Form response code: {response.status_code}")
+                            except requests.exceptions.ConnectionError as e:
+                                print(f"    [SQLI] Connection failed to form {form_url}")
+                                print(f"    [SQLI] Check if server is running on correct port (maybe 8082?)")
+                                print(f"    [SQLI] Skipping form input {input_name} - connection refused")
+                                break  # Exit payload loop for this input
+                            except requests.exceptions.Timeout as e:
+                                print(f"    [SQLI] Timeout connecting to form {form_url}")
+                                print(f"    [SQLI] Skipping payload - server timeout")
+                                continue  # Try next payload
+                            except requests.exceptions.RequestException as e:
+                                print(f"    [SQLI] Form request error: {str(e)[:100]}")
+                                print(f"    [SQLI] Skipping payload - network error")
+                                continue
                             
                             # Use SQLi detector
                             try:
