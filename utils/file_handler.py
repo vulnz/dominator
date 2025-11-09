@@ -926,6 +926,29 @@ class FileHandler:
             font-style: italic;
         }
         
+        .passive-indicator {
+            background: linear-gradient(135deg, #17a2b8, #138496);
+            color: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+        
+        /* Passive vulnerability styling */
+        #passive-vulnerabilities .vuln-header {
+            background: linear-gradient(135deg, #17a2b8, #138496);
+        }
+        
+        #passive-vulnerabilities .vuln-item {
+            border-left: 4px solid #17a2b8;
+        }
+        
+        #passive-vulnerabilities .vuln-item:hover {
+            background-color: #f0f9ff;
+        }
+        
         @media (max-width: 768px) {
             .dashboard {
                 grid-template-columns: 1fr;
