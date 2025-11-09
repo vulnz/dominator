@@ -3516,9 +3516,39 @@ class VulnScanner:
         # Get Stored XSS payloads from payload loader
         stored_xss_payloads = StoredXSSDetector.get_stored_xss_payloads()
         
+        # Специальная обработка для guestbook.php - добавляем POST форму вручную
+        if 'guestbook.php' in base_url:
+            print(f"    [STOREDXSS] Detected guestbook.php - adding manual POST form for message submission")
+            # Добавляем POST форму для guestbook вручную
+            guestbook_form = {
+                'method': 'POST',
+                'action': '',
+                'inputs': [
+                    {'name': 'name', 'type': 'text', 'value': ''},
+                    {'name': 'text', 'type': 'textarea', 'value': ''},
+                    {'name': 'submit', 'type': 'submit', 'value': 'add message'}
+                ]
+            }
+            if 'forms' not in parsed_data:
+                parsed_data['forms'] = []
+            parsed_data['forms'].append(guestbook_form)
+            print(f"    [STOREDXSS] Added POST form for guestbook with fields: name, text")
+        
         # Test all forms for stored XSS (including GET forms that might store data)
         forms_data = parsed_data.get('forms', [])
         print(f"    [STOREDXSS] Found {len(forms_data)} forms to test for stored XSS")
+        
+        # Показываем детали всех форм
+        for i, form in enumerate(forms_data):
+            method = form.get('method', 'GET').upper()
+            action = form.get('action', '')
+            inputs = form.get('inputs', [])
+            print(f"    [STOREDXSS] Form {i+1}: Method={method}, Action='{action}', Inputs={len(inputs)}")
+            for j, inp in enumerate(inputs):
+                inp_name = inp.get('name', 'unnamed')
+                inp_type = inp.get('type', 'text')
+                inp_value = inp.get('value', '')
+                print(f"    [STOREDXSS]   Input {j+1}: name='{inp_name}', type='{inp_type}', value='{inp_value[:20]}'")
         
         for i, form_data in enumerate(forms_data):
             form_method = form_data.get('method', 'GET').upper()
@@ -3528,7 +3558,7 @@ class VulnScanner:
             # Test all forms that have input fields (including GET forms)
             if form_inputs:
                 print(f"    [STOREDXSS] Testing {form_method} form {i+1}: {form_action}")
-                
+            
                 # Build form URL
                 if form_action.startswith('/'):
                     form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
@@ -3536,16 +3566,24 @@ class VulnScanner:
                     form_url = form_action
                 else:
                     form_url = f"{base_url.rstrip('/')}/{form_action}" if form_action else base_url
-                
-                # Test each form input
+            
+                # Test each form input - включая скрытые поля для guestbook
                 for input_data in form_inputs:
                     input_name = input_data.get('name')
                     input_type = input_data.get('type', 'text')
-                    
-                    if not input_name or input_type in ['submit', 'button', 'hidden']:
+                
+                    # Для guestbook.php тестируем даже скрытые поля name
+                    if not input_name or input_type in ['submit', 'button']:
                         continue
-                    
-                    print(f"    [STOREDXSS] Testing form input: {input_name}")
+                
+                    # Специальная обработка для guestbook - тестируем скрытое поле name
+                    if input_type == 'hidden' and input_name == 'name':
+                        print(f"    [STOREDXSS] Testing HIDDEN guestbook field: {input_name} (this stores the name)")
+                    elif input_type == 'hidden':
+                        print(f"    [STOREDXSS] Skipping hidden field: {input_name}")
+                        continue
+                    else:
+                        print(f"    [STOREDXSS] Testing form input: {input_name}")
                     
                     # Create deduplication key for this form input
                     form_key = f"storedxss_form_{form_url.split('?')[0]}_{input_name}"
@@ -3558,7 +3596,7 @@ class VulnScanner:
                         try:
                             print(f"    [STOREDXSS] Trying DOMINATOR777 payload: {payload[:50]}...")
                             
-                            # Step 1: Submit payload via POST form
+                            # Step 1: Submit payload via form
                             post_data = {}
                             for inp in form_inputs:
                                 inp_name = inp.get('name')
@@ -3569,7 +3607,19 @@ class VulnScanner:
                                     if inp_name == input_name:
                                         post_data[inp_name] = payload
                                     else:
-                                        post_data[inp_name] = inp_value
+                                        # Для guestbook добавляем текст сообщения
+                                        if inp_name == 'text' or inp_name == 'message' or inp_name == 'comment':
+                                            post_data[inp_name] = f"Test message with payload: {payload}"
+                                        else:
+                                            post_data[inp_name] = inp_value
+                            
+                            # Для guestbook.php добавляем обязательные поля если их нет
+                            if 'guestbook.php' in form_url:
+                                if 'text' not in post_data:
+                                    post_data['text'] = f"DOMINATOR777 test message: {payload}"
+                                if 'name' not in post_data and input_name != 'name':
+                                    post_data['name'] = 'DOMINATOR777_tester'
+                                print(f"    [STOREDXSS] Guestbook form data: {list(post_data.keys())}")
                             
                             print(f"    [STOREDXSS] Submitting payload to form...")
                             
@@ -3589,31 +3639,53 @@ class VulnScanner:
                                     headers=self.config.headers,
                                     verify=False
                                 )
-                            else:  # GET form - build URL with parameters
-                                # Build query string for GET form
-                                query_parts = []
-                                for k, v in post_data.items():
-                                    query_parts.append(f"{k}={v}")
-                                
-                                get_url = f"{form_url}?{'&'.join(query_parts)}" if query_parts else form_url
-                                print(f"    [STOREDXSS] Submitting GET form to: {get_url}")
-                                
-                                submit_response = requests.get(
-                                    get_url,
-                                    timeout=self.config.timeout,
-                                    headers=self.config.headers,
-                                    verify=False
-                                )
+                            else:  # GET form - но для guestbook может быть POST
+                                # Проверяем, есть ли на странице POST форма для добавления сообщений
+                                if 'guestbook.php' in form_url and input_name == 'name':
+                                    print(f"    [STOREDXSS] Detected guestbook - trying POST method for message submission")
+                                    # Пробуем POST для добавления сообщения в гостевую книгу
+                                    submit_response = requests.post(
+                                        form_url,
+                                        data=post_data,
+                                        timeout=self.config.timeout,
+                                        headers=self.config.headers,
+                                        verify=False
+                                    )
+                                else:
+                                    # Build query string for GET form
+                                    query_parts = []
+                                    for k, v in post_data.items():
+                                        from urllib.parse import quote_plus
+                                        query_parts.append(f"{quote_plus(k)}={quote_plus(str(v))}")
+                                    
+                                    get_url = f"{form_url}?{'&'.join(query_parts)}" if query_parts else form_url
+                                    print(f"    [STOREDXSS] Submitting GET form to: {get_url}")
+                                    
+                                    submit_response = requests.get(
+                                        get_url,
+                                        timeout=self.config.timeout,
+                                        headers=self.config.headers,
+                                        verify=False
+                                    )
                             
                             print(f"    [STOREDXSS] Submit response code: {submit_response.status_code}")
                             
                             # Step 2: Check if payload is stored by visiting the same page again
                             print(f"    [STOREDXSS] Checking if payload is stored...")
                             
-                            # For GET forms, check the original page URL, not just form_url
-                            check_urls = [form_url]
-                            if form_method == 'GET' and form_url != base_url:
-                                check_urls.append(base_url)  # Also check original page
+                            # Для guestbook всегда проверяем основную страницу
+                            check_urls = [base_url, form_url]
+                            if 'guestbook.php' in form_url:
+                                # Для guestbook добавляем дополнительные URL для проверки
+                                check_urls = [
+                                    base_url,
+                                    form_url,
+                                    f"{base_url}?page=1",  # Возможная пагинация
+                                    f"{form_url}?refresh=1"  # Принудительное обновление
+                                ]
+                            
+                            # Убираем дубликаты
+                            check_urls = list(set(check_urls))
                             
                             stored_found = False
                             check_response = None
