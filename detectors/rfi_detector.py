@@ -10,12 +10,14 @@ class RFIDetector:
     
     @staticmethod
     def get_rfi_test_urls() -> List[str]:
-        """Get list of RFI test URLs to check for successful inclusion"""
+        """Get list of RFI test URLs to check for successful inclusion (with timeout considerations)"""
         return [
-            'https://raw.githubusercontent.com/flozz/p0wny-shell/refs/heads/master/shell.php',
-            'http://www.google.com/humans.txt',
-            'https://httpbin.org/robots.txt',
-            'http://example.com/robots.txt'
+            # Fast responding URLs for testing
+            'http://httpbin.org/robots.txt',
+            'http://example.com/robots.txt',
+            'https://www.google.com/humans.txt',
+            # Shell URLs (may be slower)
+            'https://raw.githubusercontent.com/flozz/p0wny-shell/refs/heads/master/shell.php'
         ]
     
     @staticmethod
@@ -137,9 +139,13 @@ class RFIDetector:
             if payload is None:
                 payload = ""
                 
-            # Skip error responses
+            # Skip error responses quickly
             if response_code >= 400:
                 return False, "Error response", "None"
+            
+            # Skip empty responses to avoid processing delays
+            if not response_text.strip():
+                return False, "Empty response", "None"
             
             # Check for significant content change
             if baseline_length > 0:
@@ -196,7 +202,8 @@ class RFIDetector:
                         if not baseline_lower or domain not in baseline_lower:
                             evidence = f"Remote URL reflected in response: {domain}"
                             return True, evidence, "Medium"
-                except:
+                except Exception:
+                    # Ignore URL parsing errors to avoid hanging
                     pass
             
             # Priority 4: Check for specific error messages that indicate RFI attempt
@@ -225,7 +232,8 @@ class RFIDetector:
             return False, "No RFI indicators found", "None"
             
         except Exception as e:
-            return False, f"Detection error: {e}", "None"
+            # Log error but don't hang on exceptions
+            return False, f"Detection error: {str(e)[:100]}", "None"
     
     @staticmethod
     def get_evidence(payload: str, response_text: str, shell_url: str = "") -> str:
