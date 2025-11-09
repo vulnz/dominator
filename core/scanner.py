@@ -5635,13 +5635,16 @@ class VulnScanner:
         # Сохраняем отдельный отчет о бенчмарке если есть анализ
         benchmark_analysis = None
         for result in enhanced_results:
-            if 'benchmark_analysis' in result:
+            if isinstance(result, dict) and 'benchmark_analysis' in result:
                 benchmark_analysis = result['benchmark_analysis']
                 break
         
         if benchmark_analysis:
-            benchmark_filename = filename.replace('.html', '_benchmark.txt').replace('.txt', '_benchmark.txt')
-            self.file_handler.save_benchmark_report(benchmark_analysis, benchmark_filename)
+            try:
+                benchmark_filename = filename.replace('.html', '_benchmark.txt').replace('.txt', '_benchmark.txt')
+                self.file_handler.save_benchmark_report(benchmark_analysis, benchmark_filename)
+            except Exception as e:
+                print(f"Ошибка при сохранении отчета о бенчмарке: {e}")
     
     def _ensure_vulnerability_metadata(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Ensure all vulnerabilities have CVSS, OWASP, and CWE metadata"""
@@ -6179,10 +6182,7 @@ class VulnScanner:
         # Print general vulnerability summary
         if results and any(r.get('vulnerability') for r in results):
             print(f"\nScan found {len([r for r in results if r.get('vulnerability')])} vulnerabilities")
-            print("Review the detailed findings above and take appropriate remediation actions.")
         
-        print("="*80)
-        print("RECOMMENDATION: Review and remediate all vulnerabilities above.")
         print("="*80)
     
     def _print_vulnerability(self, index: int, result: Dict[str, Any]):
