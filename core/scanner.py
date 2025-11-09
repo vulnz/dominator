@@ -1999,17 +1999,23 @@ class VulnScanner:
             if form_method in ['POST', 'PUT'] and form_inputs:
                 print(f"    [LFI] Testing {form_method} form {i+1}: {form_action}")
                 
-                # Build form URL
+                # Build form URL with proper port handling
                 if form_action.startswith('/'):
                     # Для абсолютных путей сохраняем порт из исходного URL
-                    if parsed_data.get('port'):
-                        form_url = f"{parsed_data['scheme']}://{parsed_data['host']}:{parsed_data['port']}{form_action}"
+                    from urllib.parse import urlparse
+                    parsed_base = urlparse(base_url)
+                    if parsed_base.port:
+                        form_url = f"{parsed_base.scheme}://{parsed_base.hostname}:{parsed_base.port}{form_action}"
                     else:
-                        form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
+                        form_url = f"{parsed_base.scheme}://{parsed_base.hostname}{form_action}"
                 elif form_action.startswith('http'):
                     form_url = form_action
+                elif form_action:
+                    # Handle relative URLs
+                    base_path = '/'.join(base_url.split('/')[:-1]) if base_url.count('/') > 3 else base_url.rstrip('/')
+                    form_url = f"{base_path}/{form_action}"
                 else:
-                    form_url = f"{base_url.rstrip('/')}/{form_action}" if form_action else base_url
+                    form_url = base_url
                 
                 # Test each form input
                 for input_data in form_inputs:
@@ -3089,9 +3095,22 @@ class VulnScanner:
                         continue
                     
                     # Use enhanced SSRF detector
-                    is_vulnerable, evidence, severity = SSRFDetector.detect_ssrf(
-                        response.text, response.status_code, payload
-                    )
+                    try:
+                        ssrf_result = SSRFDetector.detect_ssrf(response.text, response.status_code, payload)
+                        if isinstance(ssrf_result, tuple) and len(ssrf_result) >= 3:
+                            is_vulnerable, evidence, severity = ssrf_result[:3]
+                        elif isinstance(ssrf_result, tuple) and len(ssrf_result) == 2:
+                            is_vulnerable, evidence = ssrf_result
+                            severity = 'Medium'
+                        else:
+                            is_vulnerable = bool(ssrf_result)
+                            evidence = f"SSRF detected with payload: {payload}"
+                            severity = 'Medium'
+                    except Exception as e:
+                        print(f"    [SSRF] Detector error: {e}")
+                        is_vulnerable = False
+                        evidence = "Detection failed"
+                        severity = 'Medium'
                     detection_details = {'method': 'ssrf_detection'}
                     
                     if is_vulnerable:
@@ -3209,9 +3228,22 @@ class VulnScanner:
                             print(f"    [SSRF] Form response code: {response.status_code}")
                             
                             # Use SSRF detector
-                            is_vulnerable, evidence, severity = SSRFDetector.detect_ssrf(
-                                response.text, response.status_code, payload
-                            )
+                            try:
+                                ssrf_result = SSRFDetector.detect_ssrf(response.text, response.status_code, payload)
+                                if isinstance(ssrf_result, tuple) and len(ssrf_result) >= 3:
+                                    is_vulnerable, evidence, severity = ssrf_result[:3]
+                                elif isinstance(ssrf_result, tuple) and len(ssrf_result) == 2:
+                                    is_vulnerable, evidence = ssrf_result
+                                    severity = 'Medium'
+                                else:
+                                    is_vulnerable = bool(ssrf_result)
+                                    evidence = f"SSRF detected with payload: {payload}"
+                                    severity = 'Medium'
+                            except Exception as e:
+                                print(f"    [SSRF] Form detector error: {e}")
+                                is_vulnerable = False
+                                evidence = "Detection failed"
+                                severity = 'Medium'
                             
                             if is_vulnerable:
                                 print(f"    [SSRF] FORM VULNERABILITY FOUND! Input: {input_name}")
@@ -3347,13 +3379,22 @@ class VulnScanner:
             if form_method in ['POST', 'PUT'] and form_inputs:
                 print(f"    [RFI] Testing {form_method} form {i+1}: {form_action}")
                 
-                # Build form URL
+                # Build form URL with proper port handling
                 if form_action.startswith('/'):
-                    form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
+                    from urllib.parse import urlparse
+                    parsed_base = urlparse(base_url)
+                    if parsed_base.port:
+                        form_url = f"{parsed_base.scheme}://{parsed_base.hostname}:{parsed_base.port}{form_action}"
+                    else:
+                        form_url = f"{parsed_base.scheme}://{parsed_base.hostname}{form_action}"
                 elif form_action.startswith('http'):
                     form_url = form_action
+                elif form_action:
+                    # Handle relative URLs
+                    base_path = '/'.join(base_url.split('/')[:-1]) if base_url.count('/') > 3 else base_url.rstrip('/')
+                    form_url = f"{base_path}/{form_action}"
                 else:
-                    form_url = f"{base_url.rstrip('/')}/{form_action}" if form_action else base_url
+                    form_url = base_url
                 
                 # Test each form input
                 for input_data in form_inputs:
@@ -3745,13 +3786,22 @@ class VulnScanner:
             if form_inputs:
                 print(f"    [STOREDXSS] Testing {form_method} form {i+1}: {form_action}")
             
-                # Build form URL
+                # Build form URL with proper port handling
                 if form_action.startswith('/'):
-                    form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
+                    from urllib.parse import urlparse
+                    parsed_base = urlparse(base_url)
+                    if parsed_base.port:
+                        form_url = f"{parsed_base.scheme}://{parsed_base.hostname}:{parsed_base.port}{form_action}"
+                    else:
+                        form_url = f"{parsed_base.scheme}://{parsed_base.hostname}{form_action}"
                 elif form_action.startswith('http'):
                     form_url = form_action
+                elif form_action:
+                    # Handle relative URLs
+                    base_path = '/'.join(base_url.split('/')[:-1]) if base_url.count('/') > 3 else base_url.rstrip('/')
+                    form_url = f"{base_path}/{form_action}"
                 else:
-                    form_url = f"{base_url.rstrip('/')}/{form_action}" if form_action else base_url
+                    form_url = base_url
             
                 # Test each form input - включая скрытые поля для guestbook
                 for input_data in form_inputs:
@@ -5082,9 +5132,22 @@ class VulnScanner:
                     print(f"    [CMDINJECTION] Response code: {response.status_code}")
                     
                     # Enhanced Command Injection detection with false positive filtering
-                    is_vulnerable, confidence, evidence = CommandInjectionDetector.detect_command_injection(
-                        response.text, response.status_code, payload
-                    )
+                    try:
+                        cmd_result = CommandInjectionDetector.detect_command_injection(response.text, response.status_code, payload)
+                        if isinstance(cmd_result, tuple) and len(cmd_result) >= 3:
+                            is_vulnerable, confidence, evidence = cmd_result[:3]
+                        elif isinstance(cmd_result, tuple) and len(cmd_result) == 2:
+                            is_vulnerable, evidence = cmd_result
+                            confidence = 0.8
+                        else:
+                            is_vulnerable = bool(cmd_result)
+                            evidence = f"Command injection detected with payload: {payload}"
+                            confidence = 0.7
+                    except Exception as e:
+                        print(f"    [CMDINJECTION] Detector error: {e}")
+                        is_vulnerable = False
+                        evidence = "Detection failed"
+                        confidence = 0.0
                     
                     if is_vulnerable and confidence >= 0.7:  # High confidence threshold
                         response_snippet = CommandInjectionDetector.get_response_snippet(payload, response.text)
@@ -5125,13 +5188,22 @@ class VulnScanner:
             if form_method in ['POST', 'PUT'] and form_inputs:
                 print(f"    [CMDINJECTION] Testing {form_method} form {i+1}: {form_action}")
                 
-                # Build form URL
+                # Build form URL with proper port handling
                 if form_action.startswith('/'):
-                    form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
+                    from urllib.parse import urlparse
+                    parsed_base = urlparse(base_url)
+                    if parsed_base.port:
+                        form_url = f"{parsed_base.scheme}://{parsed_base.hostname}:{parsed_base.port}{form_action}"
+                    else:
+                        form_url = f"{parsed_base.scheme}://{parsed_base.hostname}{form_action}"
                 elif form_action.startswith('http'):
                     form_url = form_action
+                elif form_action:
+                    # Handle relative URLs
+                    base_path = '/'.join(base_url.split('/')[:-1]) if base_url.count('/') > 3 else base_url.rstrip('/')
+                    form_url = f"{base_path}/{form_action}"
                 else:
-                    form_url = f"{base_url.rstrip('/')}/{form_action}" if form_action else base_url
+                    form_url = base_url
                 
                 # Test each form input
                 for input_data in form_inputs:
@@ -5187,9 +5259,22 @@ class VulnScanner:
                             print(f"    [CMDINJECTION] Form response code: {response.status_code}")
                             
                             # Enhanced Command Injection detection
-                            is_vulnerable, confidence, evidence = CommandInjectionDetector.detect_command_injection(
-                                response.text, response.status_code, payload
-                            )
+                            try:
+                                cmd_result = CommandInjectionDetector.detect_command_injection(response.text, response.status_code, payload)
+                                if isinstance(cmd_result, tuple) and len(cmd_result) >= 3:
+                                    is_vulnerable, confidence, evidence = cmd_result[:3]
+                                elif isinstance(cmd_result, tuple) and len(cmd_result) == 2:
+                                    is_vulnerable, evidence = cmd_result
+                                    confidence = 0.8
+                                else:
+                                    is_vulnerable = bool(cmd_result)
+                                    evidence = f"Command injection detected with payload: {payload}"
+                                    confidence = 0.7
+                            except Exception as e:
+                                print(f"    [CMDINJECTION] Form detector error: {e}")
+                                is_vulnerable = False
+                                evidence = "Detection failed"
+                                confidence = 0.0
                             
                             if is_vulnerable and confidence >= 0.7:
                                 response_snippet = CommandInjectionDetector.get_response_snippet(payload, response.text)
@@ -5924,13 +6009,22 @@ class VulnScanner:
             if form_method in ['POST', 'PUT'] and form_inputs:
                 print(f"    [SSTI] Testing {form_method} form {i+1}: {form_action}")
                 
-                # Build form URL
+                # Build form URL with proper port handling
                 if form_action.startswith('/'):
-                    form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
+                    from urllib.parse import urlparse
+                    parsed_base = urlparse(base_url)
+                    if parsed_base.port:
+                        form_url = f"{parsed_base.scheme}://{parsed_base.hostname}:{parsed_base.port}{form_action}"
+                    else:
+                        form_url = f"{parsed_base.scheme}://{parsed_base.hostname}{form_action}"
                 elif form_action.startswith('http'):
                     form_url = form_action
+                elif form_action:
+                    # Handle relative URLs
+                    base_path = '/'.join(base_url.split('/')[:-1]) if base_url.count('/') > 3 else base_url.rstrip('/')
+                    form_url = f"{base_path}/{form_action}"
                 else:
-                    form_url = f"{base_url.rstrip('/')}/{form_action}" if form_action else base_url
+                    form_url = base_url
                 
                 # Test each form input
                 for input_data in form_inputs:
