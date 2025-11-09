@@ -1036,17 +1036,23 @@ class VulnScanner:
                     xss_result = XSSDetector.detect_reflected_xss(payload, response.text, response.status_code)
                     print(f"    [XSS] XSS detection result: {xss_result}")
                     
-                    if xss_result['vulnerable']:
-                        xss_detected = True
-                        detection_method = xss_result['detection_method']
-                        xss_type = xss_result['xss_type']
-                        confidence = xss_result['confidence']
+                    # Handle both dict and boolean return types
+                    if isinstance(xss_result, dict):
+                        xss_detected = xss_result.get('vulnerable', False)
+                        detection_method = xss_result.get('detection_method', 'none')
+                        xss_type = xss_result.get('xss_type', 'None')
+                        confidence = xss_result.get('confidence', 0.0)
+                    else:
+                        # Fallback for boolean return
+                        xss_detected = bool(xss_result)
+                        detection_method = "basic_detection"
+                        xss_type = "Reflected XSS" if xss_detected else "None"
+                        confidence = 1.0 if xss_detected else 0.0
+                    
+                    if xss_detected:
                         print(f"    [XSS] XSS detected: {xss_type} (method: {detection_method}, confidence: {confidence:.2f})")
                     else:
-                        xss_detected = False
-                        detection_method = "none"
-                        xss_type = "None"
-                        confidence = 0.0
+                        print(f"    [XSS] No XSS detected (method: {detection_method})")
                     
                     print(f"    [XSS] Final XSS detection result: {xss_detected} (type: {xss_type})")
                     
@@ -1229,8 +1235,14 @@ class VulnScanner:
                             print(f"    [XSS] Payload reflected in form response: {form_payload_reflected}")
                             
                             # Use XSS detector
-                            form_xss_detected = XSSDetector.detect_reflected_xss(payload, response.text, response.status_code)
-                            print(f"    [XSS] Form XSS detector result: {form_xss_detected}")
+                            form_xss_result = XSSDetector.detect_reflected_xss(payload, response.text, response.status_code)
+                            print(f"    [XSS] Form XSS detector result: {form_xss_result}")
+                            
+                            # Handle both dict and boolean return types
+                            if isinstance(form_xss_result, dict):
+                                form_xss_detected = form_xss_result.get('vulnerable', False)
+                            else:
+                                form_xss_detected = bool(form_xss_result)
                             
                             if form_xss_detected or form_payload_reflected:
                                 evidence = f"XSS payload '{payload}' reflected in {form_method} form response"
