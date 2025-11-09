@@ -195,7 +195,10 @@ def main():
         if args.auto_report:
             import datetime
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            target_name = args.target.replace(':', '_').replace('/', '_').replace('\\', '_')
+            target_name = args.target.replace(':', '_').replace('/', '_').replace('\\', '_').replace('?', '_').replace('=', '_').replace('&', '_')
+            # Limit filename length to avoid errors
+            if len(target_name) > 150:
+                target_name = target_name[:150]
             auto_filename = f"scan_report_{target_name}_{timestamp}.html"
             try:
                 scanner.save_report(results, auto_filename, 'html')
