@@ -468,6 +468,7 @@ class VulnScanner:
         """Initialize scanner"""
         self.config = config
         self.debug = getattr(config, 'debug', False)
+        self.payload_limit = getattr(config, 'payload_limit', 0)
         self.url_parser = URLParser()
         self.crawler = WebCrawler(config)
         self.file_handler = FileHandler()
@@ -949,7 +950,8 @@ class VulnScanner:
                 print(f"    [XSS] Skipping parameter {param} - already tested")
                 continue
             
-            for payload in xss_payloads[:50]:  # Увеличиваем количество тестируемых payload
+            payload_count = self.payload_limit if self.payload_limit > 0 else 50
+            for payload in xss_payloads[:payload_count]:
                 try:
                     print(f"    [XSS] Trying payload: {payload[:50]}...")
                     
@@ -1215,7 +1217,8 @@ class VulnScanner:
                         print(f"    [XSS] Skipping form input {input_name} - already tested")
                         continue
                     
-                    for payload in xss_payloads[:25]:  # Увеличиваем до 25 payload для форм
+                    payload_count = self.payload_limit if self.payload_limit > 0 else 25
+                    for payload in xss_payloads[:payload_count]:
                         try:
                             print(f"    [XSS] Trying form payload: {payload[:50]}...")
                             
@@ -1338,7 +1341,8 @@ class VulnScanner:
                 print(f"    [SQLI] Skipping parameter {param} - already tested")
                 continue
             
-            for payload in sqli_payloads[:40]:  # Увеличиваем количество SQL payload
+            payload_count = self.payload_limit if self.payload_limit > 0 else 40
+            for payload in sqli_payloads[:payload_count]:
                 try:
                     print(f"    [SQLI] Trying GET payload: {payload[:50]}...")
                     
@@ -1507,7 +1511,8 @@ class VulnScanner:
                         print(f"    [SQLI] Skipping form input {input_name} - already tested")
                         continue
                     
-                    for payload in sqli_payloads[:20]:  # Увеличиваем до 20 payload для форм
+                    payload_count = self.payload_limit if self.payload_limit > 0 else 20
+                    for payload in sqli_payloads[:payload_count]:
                         try:
                             print(f"    [SQLI] Trying form payload: {payload[:50]}...")
                             
@@ -1629,7 +1634,8 @@ class VulnScanner:
             # Enhanced payload testing for file-related parameters
             payload_limit = 50 if any(file_keyword in param.lower() for file_keyword in ['file', 'path', 'doc', 'page', 'include']) else 30
             
-            for payload in lfi_payloads[:payload_limit]:
+            final_payload_limit = self.payload_limit if self.payload_limit > 0 else payload_limit
+            for payload in lfi_payloads[:final_payload_limit]:
                 try:
                     print(f"    [LFI] Trying GET payload: {payload[:50]}...")
                     
@@ -1740,7 +1746,8 @@ class VulnScanner:
                         print(f"    [LFI] Skipping form input {input_name} - already tested")
                         continue
                     
-                    for payload in lfi_payloads[:20]:  # Увеличиваем до 20 payload для форм
+                    payload_count = self.payload_limit if self.payload_limit > 0 else 20
+                    for payload in lfi_payloads[:payload_count]:
                         try:
                             print(f"    [LFI] Trying form payload: {payload[:50]}...")
                             
@@ -2742,7 +2749,8 @@ class VulnScanner:
                 print(f"    [SSRF] Skipping parameter {param} - already tested")
                 continue
             
-            for payload in ssrf_payloads[:25]:  # Увеличиваем до 25 payload
+            payload_count = self.payload_limit if self.payload_limit > 0 else 25
+            for payload in ssrf_payloads[:payload_count]:
                 try:
                     print(f"    [SSRF] Trying payload: {payload[:50]}...")
                     
@@ -2864,7 +2872,8 @@ class VulnScanner:
                         print(f"    [SSRF] Skipping form input {input_name} - already tested")
                         continue
                     
-                    for payload in ssrf_payloads[:15]:  # Test fewer payloads for forms
+                    payload_count = self.payload_limit if self.payload_limit > 0 else 15
+                    for payload in ssrf_payloads[:payload_count]:
                         try:
                             print(f"    [SSRF] Trying form payload: {payload[:50]}...")
                             
@@ -4392,7 +4401,8 @@ class VulnScanner:
                 print(f"    [CMDINJECTION] Skipping parameter {param} - already tested")
                 continue
             
-            for payload in cmd_payloads[:35]:  # Увеличиваем до 35 payload
+            payload_count = self.payload_limit if self.payload_limit > 0 else 35
+            for payload in cmd_payloads[:payload_count]:
                 try:
                     print(f"    [CMDINJECTION] Trying payload: {payload}")
                     
@@ -4485,7 +4495,8 @@ class VulnScanner:
                         print(f"    [CMDINJECTION] Skipping form input {input_name} - already tested")
                         continue
                     
-                    for payload in cmd_payloads[:20]:  # Test fewer payloads for forms
+                    payload_count = self.payload_limit if self.payload_limit > 0 else 20
+                    for payload in cmd_payloads[:payload_count]:
                         try:
                             print(f"    [CMDINJECTION] Trying form payload: {payload}")
                             
@@ -5182,7 +5193,8 @@ class VulnScanner:
                 print(f"    [SSTI] Skipping parameter {param} - already tested")
                 continue
             
-            for payload in ssti_payloads[:40]:  # Увеличиваем до 40 payload
+            payload_count = self.payload_limit if self.payload_limit > 0 else 40
+            for payload in ssti_payloads[:payload_count]:
                 try:
                     print(f"    [SSTI] Trying payload: {payload[:50]}...")
                     
@@ -5271,7 +5283,8 @@ class VulnScanner:
                         print(f"    [SSTI] Skipping form input {input_name} - already tested")
                         continue
                     
-                    for payload in ssti_payloads[:20]:  # Test fewer payloads for forms
+                    payload_count = self.payload_limit if self.payload_limit > 0 else 20
+                    for payload in ssti_payloads[:payload_count]:
                         try:
                             print(f"    [SSTI] Trying form payload: {payload[:50]}...")
                             
@@ -5452,7 +5465,8 @@ class VulnScanner:
                 print(f"    [TEXTINJECTION] Skipping parameter {param} - already tested")
                 continue
             
-            for payload in text_payloads[:40]:  # Увеличиваем до 40 payload
+            payload_count = self.payload_limit if self.payload_limit > 0 else 40
+            for payload in text_payloads[:payload_count]:
                 try:
                     print(f"    [TEXTINJECTION] Trying payload: {payload[:50]}...")
                     
@@ -5539,7 +5553,8 @@ class VulnScanner:
                 print(f"    [HTMLINJECTION] Skipping parameter {param} - already tested")
                 continue
             
-            for payload in html_payloads[:50]:  # Увеличиваем до 50 payload
+            payload_count = self.payload_limit if self.payload_limit > 0 else 50
+            for payload in html_payloads[:payload_count]:
                 try:
                     print(f"    [HTMLINJECTION] Trying payload: {payload[:50]}...")
                     

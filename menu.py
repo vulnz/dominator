@@ -72,6 +72,8 @@ Usage examples:
                        help='Delay between requests in seconds (default: 0)')
     parser.add_argument('--request-limit', type=int, default=10000,
                        help='Maximum number of requests to make (default: 10000)')
+    parser.add_argument('--payload-limit', type=int, default=0,
+                       help='Limit number of payloads per module (0 = no limit, default: 0)')
     parser.add_argument('--user-agent', default='Dominator/1.0',
                        help='User-Agent string to use')
     parser.add_argument('--single-url', action='store_true',
@@ -205,6 +207,8 @@ def process_args(args):
         args.debug = False
     if not hasattr(args, 'filetree'):
         args.filetree = False
+    if not hasattr(args, 'payload_limit'):
+        args.payload_limit = 0
     
     # Apply nocrawl logic
     if args.nocrawl:
