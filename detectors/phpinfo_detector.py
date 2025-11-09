@@ -28,7 +28,23 @@ class PHPInfoDetector:
             'Zend Extension',
             'PHP Credits',
             'PHP License',
-            'This program makes use of the Zend Scripting Language Engine'
+            'This program makes use of the Zend Scripting Language Engine',
+            'Zend Engine',
+            'PHP Core',
+            'apache2handler',
+            'mod_php',
+            'register_globals',
+            'allow_url_include',
+            'display_errors',
+            'expose_php',
+            'safe_mode',
+            'magic_quotes_gpc',
+            'open_basedir',
+            'disable_functions',
+            'memory_limit',
+            'max_execution_time',
+            'upload_max_filesize',
+            'post_max_size'
         ]
     
     @staticmethod

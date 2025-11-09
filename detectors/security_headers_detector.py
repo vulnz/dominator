@@ -55,7 +55,7 @@ class SecurityHeadersDetector:
             {
                 'name': 'X-Frame-Options',
                 'description': 'Prevents clickjacking attacks',
-                'severity': 'Low',
+                'severity': 'Medium',
                 'recommendation': 'Set to DENY or SAMEORIGIN',
                 'insecure_values': ['ALLOWALL']
             },
@@ -75,13 +75,13 @@ class SecurityHeadersDetector:
             {
                 'name': 'Strict-Transport-Security',
                 'description': 'Enforces HTTPS connections',
-                'severity': 'Low',
+                'severity': 'Medium',
                 'recommendation': 'Set to max-age=31536000; includeSubDomains'
             },
             {
                 'name': 'Content-Security-Policy',
                 'description': 'Prevents XSS and data injection attacks',
-                'severity': 'Low',
+                'severity': 'Medium',
                 'recommendation': 'Configure appropriate CSP policy',
                 'insecure_values': ['unsafe-inline', 'unsafe-eval', '*']
             },
@@ -102,6 +102,36 @@ class SecurityHeadersDetector:
                 'description': 'Controls cross-domain policies',
                 'severity': 'Low',
                 'recommendation': 'Set to none or master-only'
+            },
+            {
+                'name': 'Cross-Origin-Embedder-Policy',
+                'description': 'Controls cross-origin embedding',
+                'severity': 'Low',
+                'recommendation': 'Set to require-corp for enhanced security'
+            },
+            {
+                'name': 'Cross-Origin-Opener-Policy',
+                'description': 'Controls cross-origin window references',
+                'severity': 'Low',
+                'recommendation': 'Set to same-origin for enhanced security'
+            },
+            {
+                'name': 'Cross-Origin-Resource-Policy',
+                'description': 'Controls cross-origin resource sharing',
+                'severity': 'Low',
+                'recommendation': 'Set to same-origin or cross-origin as needed'
+            },
+            {
+                'name': 'X-DNS-Prefetch-Control',
+                'description': 'Controls DNS prefetching',
+                'severity': 'Low',
+                'recommendation': 'Set to off for privacy'
+            },
+            {
+                'name': 'Expect-CT',
+                'description': 'Certificate Transparency monitoring',
+                'severity': 'Low',
+                'recommendation': 'Configure CT monitoring'
             }
         ]
     

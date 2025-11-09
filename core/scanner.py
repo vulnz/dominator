@@ -114,11 +114,47 @@ except ImportError:
 
 try:
     from detectors.csrf_detector import CSRFDetector
+    from detectors.hpp_detector import HPPDetector
+    from detectors.reverse_tabnabbing_detector import ReverseTabnabbingDetector
+    from detectors.insecure_reflected_content_detector import InsecureReflectedContentDetector
+    from detectors.php_config_detector import PHPConfigDetector
+    from detectors.csp_detector import CSPDetector
+    from detectors.mixed_content_detector import MixedContentDetector
 except ImportError:
     class CSRFDetector:
         @staticmethod
         def get_csrf_indicators():
             return ['csrf_token', '_token', 'authenticity_token']
+    
+    class HPPDetector:
+        @staticmethod
+        def detect_hpp_vulnerability(url, response_text, response_code, original_response):
+            return False, "", "", {}
+    
+    class ReverseTabnabbingDetector:
+        @staticmethod
+        def detect_reverse_tabnabbing(response_text, response_code, url):
+            return False, "", "", {}
+    
+    class InsecureReflectedContentDetector:
+        @staticmethod
+        def detect_insecure_reflection(response_text, response_code, payload, parameter):
+            return False, "", "", {}
+    
+    class PHPConfigDetector:
+        @staticmethod
+        def detect_php_config_issues(response_text, response_code, headers):
+            return False, "", "", []
+    
+    class CSPDetector:
+        @staticmethod
+        def detect_csp_issues(response_headers, response_text):
+            return False, "", "", []
+    
+    class MixedContentDetector:
+        @staticmethod
+        def detect_mixed_content(response_text, response_code, current_url):
+            return False, "", "", []
 
 try:
     from detectors.dirbrute_detector import DirBruteDetector
@@ -979,6 +1015,18 @@ class VulnScanner:
                 results.extend(self._test_information_leakage(parsed_data))
             elif module_name == "openredirect":
                 results.extend(self._test_open_redirect(parsed_data))
+            elif module_name == "hpp":
+                results.extend(self._test_hpp(parsed_data))
+            elif module_name == "reversetabnabbing":
+                results.extend(self._test_reverse_tabnabbing(parsed_data))
+            elif module_name == "insecurereflection":
+                results.extend(self._test_insecure_reflection(parsed_data))
+            elif module_name == "phpconfig":
+                results.extend(self._test_php_config(parsed_data))
+            elif module_name == "csp":
+                results.extend(self._test_csp(parsed_data))
+            elif module_name == "mixedcontent":
+                results.extend(self._test_mixed_content(parsed_data))
             else:
                 print(f"    [WARNING] Unknown module: {module_name}")
                 
@@ -6466,6 +6514,501 @@ class VulnScanner:
                     except Exception as e:
                         print(f"    [OPENREDIRECT] Error testing payload: {e}")
                         continue
+        
+        return results
+    
+    def _test_hpp(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for HTTP Parameter Pollution vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # Get HPP payloads
+        hpp_payloads = HPPPayloads.get_all_payloads()
+        
+        # Test GET parameters for HPP
+        for param, values in parsed_data['query_params'].items():
+            print(f"    [HPP] Testing parameter: {param}")
+            
+            # Create deduplication key for this parameter
+            param_key = f"hpp_{base_url.split('?')[0]}_{param}"
+            if param_key in self.found_vulnerabilities:
+                print(f"    [HPP] Skipping parameter {param} - already tested")
+                continue
+            
+            try:
+                # Get original response
+                original_response = requests.get(
+                    parsed_data['url'],
+                    timeout=self.config.timeout,
+                    headers=self.config.headers,
+                    verify=False
+                )
+                
+                # Test context-specific payloads
+                context_payloads = HPPPayloads.get_context_specific_payloads(param)
+                
+                for payload_info in context_payloads:
+                    try:
+                        print(f"    [HPP] Trying payload: {payload_info['name']}")
+                        
+                        # Create HPP URL with duplicate parameters
+                        test_params = []
+                        for value in payload_info['values']:
+                            test_params.append(f"{param}={value}")
+                        
+                        # Add original parameters
+                        for k, v_list in parsed_data['query_params'].items():
+                            if k != param:
+                                for v in v_list:
+                                    test_params.append(f"{k}={v}")
+                        
+                        test_url = f"{base_url.split('?')[0]}?{'&'.join(test_params)}"
+                        
+                        response = requests.get(
+                            test_url,
+                            timeout=self.config.timeout,
+                            headers=self.config.headers,
+                            verify=False
+                        )
+                        
+                        print(f"    [HPP] Response code: {response.status_code}")
+                        
+                        # Use HPP detector
+                        is_vulnerable, evidence, severity, metadata = HPPDetector.detect_hpp_vulnerability(
+                            test_url, response.text, response.status_code, original_response.text
+                        )
+                        
+                        if is_vulnerable:
+                            print(f"    [HPP] VULNERABILITY FOUND! Parameter: {param}")
+                            
+                            # Mark as found to prevent duplicates
+                            self.found_vulnerabilities.add(param_key)
+                            
+                            results.append({
+                                'module': 'hpp',
+                                'target': base_url,
+                                'vulnerability': 'HTTP Parameter Pollution',
+                                'severity': severity,
+                                'parameter': param,
+                                'payload': str(payload_info['values']),
+                                'evidence': evidence,
+                                'request_url': test_url,
+                                'detector': 'HPPDetector.detect_hpp_vulnerability',
+                                'response_snippet': HPPDetector.get_response_snippet(response.text),
+                                'remediation': HPPDetector.get_remediation_advice(),
+                                **metadata
+                            })
+                            break  # Found HPP, no need to test more payloads for this param
+                            
+                    except Exception as e:
+                        print(f"    [HPP] Error testing payload: {e}")
+                        continue
+                        
+            except Exception as e:
+                print(f"    [HPP] Error getting original response: {e}")
+                continue
+        
+        return results
+    
+    def _test_reverse_tabnabbing(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for Reverse Tabnabbing vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # Extract domain for deduplication
+        from urllib.parse import urlparse
+        parsed_url = urlparse(base_url)
+        domain = parsed_url.hostname
+        
+        # Create deduplication key for this domain
+        domain_key = f"reversetabnabbing_{domain}"
+        if domain_key in self.found_vulnerabilities:
+            print(f"    [REVERSETABNABBING] Skipping reverse tabnabbing test for {domain} - already tested")
+            return results
+        
+        try:
+            print(f"    [REVERSETABNABBING] Testing reverse tabnabbing for domain: {domain}")
+            
+            # Mark domain as tested
+            self.found_vulnerabilities.add(domain_key)
+            
+            # Make request to get page content
+            response = requests.get(
+                base_url,
+                timeout=self.config.timeout,
+                headers=self.config.headers,
+                verify=False
+            )
+            
+            print(f"    [REVERSETABNABBING] Response code: {response.status_code}")
+            
+            # Use Reverse Tabnabbing detector
+            is_vulnerable, evidence, severity, metadata = ReverseTabnabbingDetector.detect_reverse_tabnabbing(
+                response.text, response.status_code, base_url
+            )
+            
+            if is_vulnerable:
+                print(f"    [REVERSETABNABBING] VULNERABILITY FOUND! {evidence}")
+                
+                vulnerable_links = metadata.get('vulnerable_links', [])
+                detailed_evidence = ReverseTabnabbingDetector.get_evidence(vulnerable_links)
+                response_snippet = ReverseTabnabbingDetector.get_response_snippet(vulnerable_links)
+                remediation = ReverseTabnabbingDetector.get_remediation_advice()
+                
+                results.append({
+                    'module': 'reversetabnabbing',
+                    'target': base_url,
+                    'vulnerability': 'Reverse Tabnabbing',
+                    'severity': severity,
+                    'parameter': 'external_links',
+                    'payload': 'N/A',
+                    'evidence': detailed_evidence,
+                    'request_url': base_url,
+                    'detector': 'ReverseTabnabbingDetector.detect_reverse_tabnabbing',
+                    'response_snippet': response_snippet,
+                    'remediation': remediation,
+                    'vulnerable_links_count': len(vulnerable_links),
+                    **{k: v for k, v in metadata.items() if k != 'vulnerable_links'}
+                })
+            else:
+                print(f"    [REVERSETABNABBING] No reverse tabnabbing vulnerabilities found")
+            
+        except Exception as e:
+            print(f"    [REVERSETABNABBING] Error during reverse tabnabbing testing: {e}")
+        
+        return results
+    
+    def _test_insecure_reflection(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for Insecure Reflected Content vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # Get reflection test payloads
+        reflection_payloads = InsecureReflectedContentDetector.get_reflection_test_payloads()
+        
+        # Test GET parameters
+        for param, values in parsed_data['query_params'].items():
+            print(f"    [INSECUREREFLECTION] Testing parameter: {param}")
+            
+            # Create deduplication key for this parameter
+            param_key = f"insecurereflection_{base_url.split('?')[0]}_{param}"
+            if param_key in self.found_vulnerabilities:
+                print(f"    [INSECUREREFLECTION] Skipping parameter {param} - already tested")
+                continue
+            
+            for payload in reflection_payloads:
+                try:
+                    print(f"    [INSECUREREFLECTION] Trying payload: {payload[:30]}...")
+                    
+                    # Create test URL
+                    test_params = parsed_data['query_params'].copy()
+                    test_params[param] = [payload]
+                    
+                    # Build query string
+                    query_parts = []
+                    for k, v_list in test_params.items():
+                        for v in v_list:
+                            query_parts.append(f"{k}={v}")
+                    
+                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    
+                    response = requests.get(
+                        test_url,
+                        timeout=self.config.timeout,
+                        headers=self.config.headers,
+                        verify=False
+                    )
+                    
+                    print(f"    [INSECUREREFLECTION] Response code: {response.status_code}")
+                    
+                    # Use Insecure Reflection detector
+                    is_vulnerable, evidence, severity, metadata = InsecureReflectedContentDetector.detect_insecure_reflection(
+                        response.text, response.status_code, payload, param
+                    )
+                    
+                    if is_vulnerable:
+                        print(f"    [INSECUREREFLECTION] VULNERABILITY FOUND! Parameter: {param}")
+                        
+                        # Mark as found to prevent duplicates
+                        self.found_vulnerabilities.add(param_key)
+                        
+                        reflection_details = metadata.get('reflection_details', {})
+                        response_snippet = InsecureReflectedContentDetector.get_response_snippet(
+                            reflection_details.get('surrounding_content', response.text[:200])
+                        )
+                        remediation = InsecureReflectedContentDetector.get_remediation_advice()
+                        
+                        results.append({
+                            'module': 'insecurereflection',
+                            'target': base_url,
+                            'vulnerability': 'Insecure Reflected Content',
+                            'severity': severity,
+                            'parameter': param,
+                            'payload': payload,
+                            'evidence': evidence,
+                            'request_url': test_url,
+                            'detector': 'InsecureReflectedContentDetector.detect_insecure_reflection',
+                            'response_snippet': response_snippet,
+                            'remediation': remediation,
+                            'reflection_context': reflection_details.get('context', 'unknown'),
+                            'reflection_encoding': reflection_details.get('encoding', 'none'),
+                            **{k: v for k, v in metadata.items() if k != 'reflection_details'}
+                        })
+                        break  # Found insecure reflection, no need to test more payloads for this param
+                        
+                except Exception as e:
+                    print(f"    [INSECUREREFLECTION] Error testing payload: {e}")
+                    continue
+        
+        return results
+    
+    def _test_php_config(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for PHP Configuration Issues"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # Extract domain for deduplication
+        from urllib.parse import urlparse
+        parsed_url = urlparse(base_url)
+        domain = parsed_url.hostname
+        
+        # Create deduplication key for this domain
+        domain_key = f"phpconfig_{domain}"
+        if domain_key in self.found_vulnerabilities:
+            print(f"    [PHPCONFIG] Skipping PHP config test for {domain} - already tested")
+            return results
+        
+        try:
+            print(f"    [PHPCONFIG] Testing PHP configuration for domain: {domain}")
+            
+            # Mark domain as tested
+            self.found_vulnerabilities.add(domain_key)
+            
+            # Make request to get headers and content
+            response = requests.get(
+                base_url,
+                timeout=self.config.timeout,
+                headers=self.config.headers,
+                verify=False
+            )
+            
+            print(f"    [PHPCONFIG] Response code: {response.status_code}")
+            
+            # Use PHP Config detector
+            is_vulnerable, evidence, severity, issues = PHPConfigDetector.detect_php_config_issues(
+                response.text, response.status_code, dict(response.headers)
+            )
+            
+            if is_vulnerable and issues:
+                print(f"    [PHPCONFIG] Found {len(issues)} PHP configuration issues")
+                
+                detailed_evidence = PHPConfigDetector.get_evidence(issues)
+                response_snippet = PHPConfigDetector.get_response_snippet(issues, response.text)
+                remediation = PHPConfigDetector.get_remediation_advice()
+                
+                # Group issues or create individual findings based on count
+                if len(issues) <= 5:
+                    # Group into single finding
+                    results.append({
+                        'module': 'phpconfig',
+                        'target': base_url,
+                        'vulnerability': f'PHP Configuration Issues ({len(issues)} issues)',
+                        'severity': severity,
+                        'parameter': f'php_config: {len(issues)} issues',
+                        'payload': 'N/A',
+                        'evidence': detailed_evidence,
+                        'request_url': base_url,
+                        'detector': 'PHPConfigDetector.detect_php_config_issues',
+                        'response_snippet': response_snippet,
+                        'remediation': remediation,
+                        'php_issues': issues
+                    })
+                else:
+                    # Create individual findings for each issue
+                    for issue in issues:
+                        results.append({
+                            'module': 'phpconfig',
+                            'target': base_url,
+                            'vulnerability': f'PHP Configuration Issue: {issue["setting"]}',
+                            'severity': issue['severity'],
+                            'parameter': f'php_setting: {issue["setting"]}',
+                            'payload': 'N/A',
+                            'evidence': issue['description'],
+                            'request_url': base_url,
+                            'detector': 'PHPConfigDetector.detect_php_config_issues',
+                            'response_snippet': f'{issue["setting"]}: {issue["value"]}',
+                            'remediation': remediation
+                        })
+            else:
+                print(f"    [PHPCONFIG] No PHP configuration issues found")
+            
+        except Exception as e:
+            print(f"    [PHPCONFIG] Error during PHP config testing: {e}")
+        
+        return results
+    
+    def _test_csp(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for Content Security Policy issues"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # Extract domain for deduplication
+        from urllib.parse import urlparse
+        parsed_url = urlparse(base_url)
+        domain = parsed_url.hostname
+        
+        # Create deduplication key for this domain
+        domain_key = f"csp_{domain}"
+        if domain_key in self.found_vulnerabilities:
+            print(f"    [CSP] Skipping CSP test for {domain} - already tested")
+            return results
+        
+        try:
+            print(f"    [CSP] Testing Content Security Policy for domain: {domain}")
+            
+            # Mark domain as tested
+            self.found_vulnerabilities.add(domain_key)
+            
+            # Make request to get headers and content
+            response = requests.get(
+                base_url,
+                timeout=self.config.timeout,
+                headers=self.config.headers,
+                verify=False
+            )
+            
+            print(f"    [CSP] Response code: {response.status_code}")
+            
+            # Use CSP detector
+            is_vulnerable, evidence, severity, issues = CSPDetector.detect_csp_issues(
+                dict(response.headers), response.text
+            )
+            
+            if is_vulnerable and issues:
+                print(f"    [CSP] Found {len(issues)} CSP issues")
+                
+                csp_header = response.headers.get('Content-Security-Policy', 
+                           response.headers.get('content-security-policy', ''))
+                detailed_evidence = CSPDetector.get_evidence(issues, csp_header)
+                response_snippet = CSPDetector.get_response_snippet(csp_header, issues)
+                remediation = CSPDetector.get_remediation_advice()
+                
+                # Group issues or create individual findings based on count
+                if len(issues) <= 8:
+                    # Group into single finding
+                    results.append({
+                        'module': 'csp',
+                        'target': base_url,
+                        'vulnerability': f'Content Security Policy Issues ({len(issues)} issues)',
+                        'severity': severity,
+                        'parameter': f'csp_config: {len(issues)} issues',
+                        'payload': 'N/A',
+                        'evidence': detailed_evidence,
+                        'request_url': base_url,
+                        'detector': 'CSPDetector.detect_csp_issues',
+                        'response_snippet': response_snippet,
+                        'remediation': remediation,
+                        'csp_issues': issues
+                    })
+                else:
+                    # Create individual findings for critical issues
+                    for issue in issues:
+                        if issue['severity'] in ['High', 'Medium']:
+                            results.append({
+                                'module': 'csp',
+                                'target': base_url,
+                                'vulnerability': f'CSP Issue: {issue["directive"]}',
+                                'severity': issue['severity'],
+                                'parameter': f'csp_directive: {issue["directive"]}',
+                                'payload': 'N/A',
+                                'evidence': issue['description'],
+                                'request_url': base_url,
+                                'detector': 'CSPDetector.detect_csp_issues',
+                                'response_snippet': f'{issue["directive"]}: {issue["issue"]}',
+                                'remediation': remediation
+                            })
+            else:
+                print(f"    [CSP] No CSP issues found")
+            
+        except Exception as e:
+            print(f"    [CSP] Error during CSP testing: {e}")
+        
+        return results
+    
+    def _test_mixed_content(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Test for Mixed Content vulnerabilities"""
+        results = []
+        base_url = parsed_data['url']
+        
+        # Only test HTTPS pages
+        if not base_url.startswith('https://'):
+            print(f"    [MIXEDCONTENT] Skipping - not an HTTPS page")
+            return results
+        
+        # Extract domain for deduplication
+        from urllib.parse import urlparse
+        parsed_url = urlparse(base_url)
+        domain = parsed_url.hostname
+        
+        # Create deduplication key for this domain
+        domain_key = f"mixedcontent_{domain}"
+        if domain_key in self.found_vulnerabilities:
+            print(f"    [MIXEDCONTENT] Skipping mixed content test for {domain} - already tested")
+            return results
+        
+        try:
+            print(f"    [MIXEDCONTENT] Testing mixed content for HTTPS domain: {domain}")
+            
+            # Mark domain as tested
+            self.found_vulnerabilities.add(domain_key)
+            
+            # Make request to get page content
+            response = requests.get(
+                base_url,
+                timeout=self.config.timeout,
+                headers=self.config.headers,
+                verify=False
+            )
+            
+            print(f"    [MIXEDCONTENT] Response code: {response.status_code}")
+            
+            # Use Mixed Content detector
+            is_vulnerable, evidence, severity, mixed_content_issues = MixedContentDetector.detect_mixed_content(
+                response.text, response.status_code, base_url
+            )
+            
+            if is_vulnerable and mixed_content_issues:
+                print(f"    [MIXEDCONTENT] Found {len(mixed_content_issues)} mixed content issues")
+                
+                detailed_evidence = MixedContentDetector.get_evidence(mixed_content_issues)
+                response_snippet = MixedContentDetector.get_response_snippet(mixed_content_issues)
+                remediation = MixedContentDetector.get_remediation_advice()
+                
+                # Count active vs passive issues
+                active_issues = [issue for issue in mixed_content_issues if issue['type'] == 'active']
+                passive_issues = [issue for issue in mixed_content_issues if issue['type'] == 'passive']
+                
+                results.append({
+                    'module': 'mixedcontent',
+                    'target': base_url,
+                    'vulnerability': f'Mixed Content ({len(mixed_content_issues)} issues)',
+                    'severity': severity,
+                    'parameter': f'mixed_content: {len(active_issues)} active, {len(passive_issues)} passive',
+                    'payload': 'N/A',
+                    'evidence': detailed_evidence,
+                    'request_url': base_url,
+                    'detector': 'MixedContentDetector.detect_mixed_content',
+                    'response_snippet': response_snippet,
+                    'remediation': remediation,
+                    'active_issues_count': len(active_issues),
+                    'passive_issues_count': len(passive_issues),
+                    'mixed_content_details': mixed_content_issues
+                })
+            else:
+                print(f"    [MIXEDCONTENT] No mixed content issues found")
+            
+        except Exception as e:
+            print(f"    [MIXEDCONTENT] Error during mixed content testing: {e}")
         
         return results
     
