@@ -5901,9 +5901,6 @@ class VulnScanner:
             print("SCAN RESULTS SUMMARY".center(80))
             print("="*80)
         
-        # Debug: Print total results count (only in debug mode)
-        if self.debug:
-            print(f"[DEBUG] Total results received: {len(results)}")
         
         # Print scan statistics
         stats = self.scan_stats
@@ -5948,14 +5945,6 @@ class VulnScanner:
                       f"Rate: {success_rate:5.1f}%")
             print("-" * 80)
         
-        # Debug: Show structure of first few results (only in debug mode)
-        if self.debug and results:
-            print(f"[DEBUG] First result keys: {list(results[0].keys())}")
-            for i, result in enumerate(results[:3]):
-                if 'vulnerability' in result:
-                    print(f"[DEBUG] Result {i+1}: {result['vulnerability']} - {result.get('severity', 'Unknown')}")
-                else:
-                    print(f"[DEBUG] Result {i+1}: No 'vulnerability' key - keys: {list(result.keys())}")
         
         # Filter out scan stats and group by severity
         vulnerabilities = []
@@ -5975,13 +5964,6 @@ class VulnScanner:
             print("="*80)
             return
         
-        # Debug: Show what we're about to categorize (only in debug mode)
-        if self.debug:
-            print(f"[DEBUG] About to categorize {len(vulnerabilities)} vulnerabilities")
-            for i, v in enumerate(vulnerabilities[:5]):
-                severity = v.get('severity', 'NO_SEV')
-                vuln_name = v.get('vulnerability', 'NO_VULN')
-                print(f"[DEBUG] Vuln {i+1}: '{vuln_name}' severity='{severity}' (raw: '{severity}', lower: '{severity.lower()}')")
             
         # Group vulnerabilities by severity with better debugging
         critical_vulns = []
