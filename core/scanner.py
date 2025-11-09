@@ -49,7 +49,8 @@ except ImportError as e:
 
 try:
     from payloads.git_payloads import GitPayloads
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import GitPayloads: {e}")
     class GitPayloads:
         @staticmethod
         def get_all_git_payloads():
@@ -93,7 +94,8 @@ except ImportError as e:
 # Import detector classes with error handling
 try:
     from detectors.xss_detector import XSSDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import XSSDetector: {e}")
     class XSSDetector:
         @staticmethod
         def detect_reflected_xss(payload, response_text, response_code):
@@ -101,7 +103,8 @@ except ImportError:
 
 try:
     from detectors.sqli_detector import SQLiDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import SQLiDetector: {e}")
     class SQLiDetector:
         @staticmethod
         def detect_error_based_sqli(response_text, response_code):
@@ -110,7 +113,8 @@ except ImportError:
 
 try:
     from detectors.lfi_detector import LFIDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import LFIDetector: {e}")
     class LFIDetector:
         @staticmethod
         def detect_lfi(response_text, response_code):
@@ -125,7 +129,8 @@ try:
     from detectors.php_config_detector import PHPConfigDetector
     from detectors.csp_detector import CSPDetector
     from detectors.mixed_content_detector import MixedContentDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import detector classes: {e}")
     class CSRFDetector:
         @staticmethod
         def get_csrf_indicators():
@@ -163,7 +168,8 @@ except ImportError:
 
 try:
     from detectors.dirbrute_detector import DirBruteDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import DirBruteDetector: {e}")
     class DirBruteDetector:
         @staticmethod
         def is_valid_response(response_text, response_code, content_length, baseline_404=None, baseline_size=0):
@@ -171,7 +177,8 @@ except ImportError:
 
 try:
     from detectors.real404_detector import Real404Detector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import Real404Detector: {e}")
     class Real404Detector:
         @staticmethod
         def generate_baseline_404(base_url, session=None):
@@ -182,7 +189,8 @@ except ImportError:
 
 try:
     from detectors.git_detector import GitDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import GitDetector: {e}")
     class GitDetector:
         @staticmethod
         def detect_git_exposure(response_text, response_code, url):
@@ -199,7 +207,8 @@ except ImportError:
 
 try:
     from detectors.directory_traversal_detector import DirectoryTraversalDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import DirectoryTraversalDetector: {e}")
     class DirectoryTraversalDetector:
         @staticmethod
         def detect_directory_traversal(response_text, response_code, payload):
@@ -207,7 +216,8 @@ except ImportError:
 
 try:
     from detectors.security_headers_detector import SecurityHeadersDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import SecurityHeadersDetector: {e}")
     class SecurityHeadersDetector:
         @staticmethod
         def detect_missing_security_headers(headers):
@@ -218,7 +228,8 @@ except ImportError:
 
 try:
     from detectors.ssrf_detector import SSRFDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import SSRFDetector: {e}")
     class SSRFDetector:
         @staticmethod
         def detect_ssrf(response_text, response_code, payload):
@@ -226,7 +237,8 @@ except ImportError:
 
 try:
     from detectors.rfi_detector import RFIDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import RFIDetector: {e}")
     class RFIDetector:
         @staticmethod
         def detect_rfi(response_text, response_code, payload):
@@ -234,7 +246,8 @@ except ImportError:
 
 try:
     from detectors.version_disclosure_detector import VersionDisclosureDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import VersionDisclosureDetector: {e}")
     class VersionDisclosureDetector:
         @staticmethod
         def detect_version_disclosure(response_text, headers):
@@ -245,7 +258,8 @@ except ImportError:
 
 try:
     from detectors.clickjacking_detector import ClickjackingDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import ClickjackingDetector: {e}")
     class ClickjackingDetector:
         @staticmethod
         def detect_clickjacking(headers):
@@ -253,7 +267,8 @@ except ImportError:
 
 try:
     from detectors.blind_xss_detector import BlindXSSDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import BlindXSSDetector: {e}")
     class BlindXSSDetector:
         @staticmethod
         def detect_blind_xss(payload, response_text, response_code, callback_received=False):
@@ -261,7 +276,8 @@ except ImportError:
 
 try:
     from detectors.stored_xss_detector import StoredXSSDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import StoredXSSDetector: {e}")
     class StoredXSSDetector:
         @staticmethod
         def get_stored_xss_indicators():
@@ -272,7 +288,8 @@ except ImportError:
 
 try:
     from detectors.password_over_http_detector import PasswordOverHTTPDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import PasswordOverHTTPDetector: {e}")
     class PasswordOverHTTPDetector:
         @staticmethod
         def detect_password_over_http(url, response_text, response_code):
@@ -280,7 +297,8 @@ except ImportError:
 
 try:
     from detectors.outdated_software_detector import OutdatedSoftwareDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import OutdatedSoftwareDetector: {e}")
     class OutdatedSoftwareDetector:
         @staticmethod
         def detect_outdated_software(headers, response_text):
@@ -288,7 +306,8 @@ except ImportError:
 
 try:
     from detectors.database_error_detector import DatabaseErrorDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import DatabaseErrorDetector: {e}")
     class DatabaseErrorDetector:
         @staticmethod
         def detect_database_errors(response_text, response_code):
@@ -296,7 +315,8 @@ except ImportError:
 
 try:
     from detectors.phpinfo_detector import PHPInfoDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import PHPInfoDetector: {e}")
     class PHPInfoDetector:
         @staticmethod
         def detect_phpinfo_exposure(response_text, response_code, url):
@@ -304,7 +324,8 @@ except ImportError:
 
 try:
     from detectors.ssl_tls_detector import SSLTLSDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import SSLTLSDetector: {e}")
     class SSLTLSDetector:
         @staticmethod
         def detect_ssl_tls_implementation(url):
@@ -312,7 +333,8 @@ except ImportError:
 
 try:
     from detectors.httponly_cookie_detector import HttpOnlyCookieDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import HttpOnlyCookieDetector: {e}")
     class HttpOnlyCookieDetector:
         @staticmethod
         def detect_httponly_cookies(headers):
@@ -324,7 +346,8 @@ try:
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=UserWarning, module="Wappalyzer")
         from Wappalyzer import Wappalyzer, WebPage
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import Wappalyzer: {e}")
     class Wappalyzer:
         @staticmethod
         def latest():
@@ -338,7 +361,8 @@ except ImportError:
 
 try:
     from detectors.xxe_detector import XXEDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import XXEDetector: {e}")
     class XXEDetector:
         @staticmethod
         def detect_xxe(response_text, response_code, payload):
@@ -346,7 +370,8 @@ except ImportError:
 
 try:
     from detectors.idor_detector import IDORDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import IDORDetector: {e}")
     class IDORDetector:
         @staticmethod
         def get_idor_parameters():
@@ -357,7 +382,8 @@ except ImportError:
 
 try:
     from detectors.command_injection_detector import CommandInjectionDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import CommandInjectionDetector: {e}")
     class CommandInjectionDetector:
         @staticmethod
         def detect_command_injection(response_text, response_code, payload):
@@ -374,7 +400,8 @@ except ImportError:
 
 try:
     from detectors.path_traversal_detector import PathTraversalDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import PathTraversalDetector: {e}")
     class PathTraversalDetector:
         @staticmethod
         def detect_path_traversal(response_text, response_code, payload):
@@ -382,7 +409,8 @@ except ImportError:
 
 try:
     from detectors.ldap_injection_detector import LDAPInjectionDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import LDAPInjectionDetector: {e}")
     class LDAPInjectionDetector:
         @staticmethod
         def detect_ldap_injection(response_text, response_code, payload):
@@ -390,7 +418,8 @@ except ImportError:
 
 try:
     from detectors.nosql_injection_detector import NoSQLInjectionDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import NoSQLInjectionDetector: {e}")
     class NoSQLInjectionDetector:
         @staticmethod
         def detect_nosql_injection(response_text, response_code, payload):
@@ -398,7 +427,8 @@ except ImportError:
 
 try:
     from detectors.file_upload_detector import FileUploadDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import FileUploadDetector: {e}")
     class FileUploadDetector:
         @staticmethod
         def detect_file_upload_vulnerability(response_text, response_code, url):
@@ -406,7 +436,8 @@ except ImportError:
 
 try:
     from detectors.cors_detector import CORSDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import CORSDetector: {e}")
     class CORSDetector:
         @staticmethod
         def detect_cors_misconfiguration(headers, origin=None):
@@ -414,7 +445,8 @@ except ImportError:
 
 try:
     from detectors.jwt_detector import JWTDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import JWTDetector: {e}")
     class JWTDetector:
         @staticmethod
         def detect_jwt_vulnerabilities(response_text, headers, url):
@@ -422,7 +454,8 @@ except ImportError:
 
 try:
     from detectors.insecure_deserialization_detector import InsecureDeserializationDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import InsecureDeserializationDetector: {e}")
     class InsecureDeserializationDetector:
         @staticmethod
         def detect_insecure_deserialization(response_text, response_code, payload):
@@ -430,7 +463,8 @@ except ImportError:
 
 try:
     from detectors.http_response_splitting_detector import HTTPResponseSplittingDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import HTTPResponseSplittingDetector: {e}")
     class HTTPResponseSplittingDetector:
         @staticmethod
         def detect_response_splitting(response_text, response_code, payload, headers):
@@ -438,7 +472,8 @@ except ImportError:
 
 try:
     from detectors.ssti_detector import SSTIDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import SSTIDetector: {e}")
     class SSTIDetector:
         @staticmethod
         def detect_ssti(response_text, response_code, payload):
@@ -446,7 +481,8 @@ except ImportError:
 
 try:
     from detectors.crlf_detector import CRLFDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import CRLFDetector: {e}")
     class CRLFDetector:
         @staticmethod
         def detect_crlf_injection(response_text, response_code, payload, headers):
@@ -454,7 +490,8 @@ except ImportError:
 
 try:
     from detectors.textinjection_detector import TextInjectionDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import TextInjectionDetector: {e}")
     class TextInjectionDetector:
         @staticmethod
         def detect_text_injection(response_text, response_code, payload):
@@ -471,7 +508,8 @@ except ImportError:
 
 try:
     from detectors.htmlinjection_detector import HTMLInjectionDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import HTMLInjectionDetector: {e}")
     class HTMLInjectionDetector:
         @staticmethod
         def detect_html_injection(response_text, response_code, payload):
@@ -488,7 +526,8 @@ except ImportError:
 
 try:
     from detectors.host_header_detector import HostHeaderDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import HostHeaderDetector: {e}")
     class HostHeaderDetector:
         @staticmethod
         def detect_host_header_injection(base_url, headers, timeout=10):
@@ -496,7 +535,8 @@ except ImportError:
 
 try:
     from detectors.prototype_pollution_detector import PrototypePollutionDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import PrototypePollutionDetector: {e}")
     class PrototypePollutionDetector:
         @staticmethod
         def detect_prototype_pollution(url, headers, timeout=10):
@@ -504,7 +544,8 @@ except ImportError:
 
 try:
     from detectors.vhost_detector import VHostDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import VHostDetector: {e}")
     class VHostDetector:
         @staticmethod
         def detect_virtual_hosts(base_url, headers, timeout=10):
@@ -512,7 +553,8 @@ except ImportError:
 
 try:
     from detectors.openredirect_detector import OpenRedirectDetector
-except ImportError:
+except ImportError as e:
+    print(f"Warning: Could not import OpenRedirectDetector: {e}")
     class OpenRedirectDetector:
         @staticmethod
         def get_redirect_parameters():
