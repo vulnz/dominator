@@ -1,0 +1,19 @@
+# Sensitive file content indicators
+<?php
+#!/bin/bash
+#!/usr/bin/env
+password
+secret
+api_key
+private_key
+database
+connection
+config
+settings
+admin
+root
+mysql
+postgresql
+mongodb
+redis
+memcached

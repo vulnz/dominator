@@ -276,6 +276,82 @@ class PayloadLoader:
         return error_patterns
     
     @classmethod
+    def load_extensions(cls, extension_type: str) -> List[str]:
+        """Load file extensions from text file with caching"""
+        cache_key = f"extensions_{extension_type}"
+        
+        if cache_key in cls._cache:
+            return cls._cache[cache_key]
+        
+        if cls._base_path is None:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            base_dir = os.path.dirname(current_dir)
+        else:
+            base_dir = os.path.dirname(cls._base_path)
+        
+        extensions_file = os.path.join(base_dir, 'data', 'payloads', f"{extension_type}_payloads.txt")
+        
+        if not os.path.exists(extensions_file):
+            print(f"Warning: Extensions file not found: {extensions_file}")
+            return []
+        
+        try:
+            with open(extensions_file, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            
+            extensions = []
+            for line in lines:
+                line = line.strip()
+                # Skip empty lines and comments
+                if line and not line.startswith('#'):
+                    extensions.append(line)
+            
+            cls._cache[cache_key] = extensions
+            return extensions
+            
+        except Exception as e:
+            print(f"Error loading extensions from {extensions_file}: {e}")
+            return []
+    
+    @classmethod
+    def load_headers_list(cls, header_type: str) -> List[str]:
+        """Load headers list from text file with caching"""
+        cache_key = f"headers_{header_type}"
+        
+        if cache_key in cls._cache:
+            return cls._cache[cache_key]
+        
+        if cls._base_path is None:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            base_dir = os.path.dirname(current_dir)
+        else:
+            base_dir = os.path.dirname(cls._base_path)
+        
+        headers_file = os.path.join(base_dir, 'data', 'patterns', f"{header_type}_patterns.txt")
+        
+        if not os.path.exists(headers_file):
+            print(f"Warning: Headers file not found: {headers_file}")
+            return []
+        
+        try:
+            with open(headers_file, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            
+            headers = []
+            for line in lines:
+                line = line.strip()
+                # Skip empty lines and comments
+                if line and not line.startswith('#'):
+                    headers.append(line)
+            
+            cls._cache[cache_key] = headers
+            return headers
+            
+        except Exception as e:
+            print(f"Error loading headers from {headers_file}: {e}")
+            return []
+
+    @classmethod
     def _load_file_lines(cls, file_path: str) -> List[str]:
         """Helper method to load lines from a file"""
         try:

@@ -15,3 +15,20 @@ error_log
 ini_get
 ini_set
 assert
+# Debug information patterns
+debug
+trace
+stack trace
+error_reporting
+display_errors
+var_dump
+print_r
+var_export
+debug_backtrace
+debug_print_backtrace
+xdebug
+phpinfo
+error_log
+ini_get
+ini_set
+assert

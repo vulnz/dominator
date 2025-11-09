@@ -1,0 +1,20 @@
+# Backup file extensions
+.bak
+.backup
+.old
+.orig
+.tmp
+.temp
+.save
+.copy
+.zip
+.tar
+.tar.gz
+.rar
+.7z
+.sql
+.dump
+.db
+.sqlite
+.mdb
+.accdb

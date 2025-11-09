@@ -1,0 +1,10 @@
+# Security headers that should be present
+X-Frame-Options
+X-Content-Type-Options
+X-XSS-Protection
+Strict-Transport-Security
+Content-Security-Policy
+Referrer-Policy
+Feature-Policy
+Permissions-Policy
+X-Permitted-Cross-Domain-Policies

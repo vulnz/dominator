@@ -1,0 +1,17 @@
+# SQL error detection patterns
+mysql_fetch_array
+mysql_num_rows
+you have an error in your sql syntax
+check the manual that corresponds
+supplied argument is not a valid mysql
+ora-00
+ora-01
+microsoft ole db
+odbc sql server driver
+postgresql
+pg_query
+sqlite_query
+syntax error
+database error
+query failed
+invalid query
