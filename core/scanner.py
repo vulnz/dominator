@@ -3319,7 +3319,7 @@ class VulnScanner:
                         'module': 'outdatedsoftware',
                         'target': base_url,
                         'vulnerability': f'Outdated {software.title()} Version',
-                        'severity': severity,
+                        'severity': 'Low',  # Set all outdated software to Low severity
                         'parameter': f'software: {software}',
                         'payload': 'N/A',
                         'evidence': evidence,
@@ -3611,6 +3611,9 @@ class VulnScanner:
                         vulnerability_name = "Weak SSL/TLS Configuration"
                     elif 'not enforced' in evidence.lower():
                         vulnerability_name = "SSL/TLS Not Enforced"
+                
+                # Set severity to Low for all SSL/TLS issues
+                severity = 'Low'
                 
                 # Take screenshot for SSL/TLS issues
                 screenshot_filename = None
