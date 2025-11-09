@@ -1032,29 +1032,54 @@ class VulnScanner:
                         response_preview = response.text[:200].replace('\n', ' ').replace('\r', ' ')
                         print(f"    [XSS] Response preview: {response_preview}...")
                     
-                    # Enhanced XSS detection with context analysis and DOM XSS support
-                    xss_result = XSSDetector.detect_reflected_xss(payload, response.text, response.status_code)
-                    print(f"    [XSS] XSS detection result: {xss_result}")
+                    # Простая и надежная проверка отражения XSS payload
+                    payload_in_response = payload in response.text
+                    print(f"    [XSS] Payload reflected in response: {payload_in_response}")
                     
-                    # Handle both dict and boolean return types
-                    if isinstance(xss_result, dict):
-                        xss_detected = xss_result.get('vulnerable', False)
-                        detection_method = xss_result.get('detection_method', 'none')
-                        xss_type = xss_result.get('xss_type', 'None')
-                        confidence = xss_result.get('confidence', 0.0)
-                    else:
-                        # Fallback for boolean return
-                        xss_detected = bool(xss_result)
-                        detection_method = "basic_detection"
-                        xss_type = "Reflected XSS" if xss_detected else "None"
-                        confidence = 1.0 if xss_detected else 0.0
+                    # Дополнительная проверка различных кодировок payload
+                    if not payload_in_response:
+                        payload_variants = [
+                            payload.lower(),
+                            payload.replace('<', '&lt;').replace('>', '&gt;'),
+                            payload.replace('<', '%3C').replace('>', '%3E'),
+                            payload.replace('"', '&quot;').replace("'", '&#x27;'),
+                            payload.replace(' ', '+'),
+                            payload.replace(' ', '%20')
+                        ]
+                        
+                        for variant in payload_variants:
+                            if variant in response.text:
+                                payload_in_response = True
+                                print(f"    [XSS] Payload variant found: {variant}")
+                                break
+                    
+                    # Используем XSS детектор для дополнительной проверки
+                    try:
+                        xss_result = XSSDetector.detect_reflected_xss(payload, response.text, response.status_code)
+                        if isinstance(xss_result, dict):
+                            xss_detected_by_detector = xss_result.get('vulnerable', False)
+                            detection_method = xss_result.get('detection_method', 'reflection_check')
+                            xss_type = xss_result.get('xss_type', 'Reflected XSS')
+                            confidence = xss_result.get('confidence', 0.8)
+                        else:
+                            xss_detected_by_detector = bool(xss_result)
+                            detection_method = "basic_detection"
+                            xss_type = "Reflected XSS"
+                            confidence = 0.8
+                    except Exception as e:
+                        print(f"    [XSS] Detector error: {e}")
+                        xss_detected_by_detector = False
+                        detection_method = "reflection_check"
+                        xss_type = "Reflected XSS"
+                        confidence = 0.7
+                    
+                    # Окончательное решение: payload отражен ИЛИ детектор нашел XSS
+                    xss_detected = payload_in_response or xss_detected_by_detector
                     
                     if xss_detected:
-                        print(f"    [XSS] XSS detected: {xss_type} (method: {detection_method}, confidence: {confidence:.2f})")
+                        print(f"    [XSS] XSS DETECTED: {xss_type} (method: {detection_method}, confidence: {confidence:.2f})")
                     else:
-                        print(f"    [XSS] No XSS detected (method: {detection_method})")
-                    
-                    print(f"    [XSS] Final XSS detection result: {xss_detected} (type: {xss_type})")
+                        print(f"    [XSS] No XSS detected")
                     
                     if xss_detected:
                         try:
@@ -1234,17 +1259,23 @@ class VulnScanner:
                             form_payload_reflected = payload in response.text
                             print(f"    [XSS] Payload reflected in form response: {form_payload_reflected}")
                             
-                            # Use XSS detector
-                            form_xss_result = XSSDetector.detect_reflected_xss(payload, response.text, response.status_code)
-                            print(f"    [XSS] Form XSS detector result: {form_xss_result}")
+                            # Простая проверка отражения payload в форме
+                            form_payload_reflected = payload in response.text
+                            print(f"    [XSS] Form payload reflected: {form_payload_reflected}")
                             
-                            # Handle both dict and boolean return types
-                            if isinstance(form_xss_result, dict):
-                                form_xss_detected = form_xss_result.get('vulnerable', False)
-                            else:
-                                form_xss_detected = bool(form_xss_result)
+                            # Используем XSS детектор как дополнительную проверку
+                            try:
+                                form_xss_result = XSSDetector.detect_reflected_xss(payload, response.text, response.status_code)
+                                if isinstance(form_xss_result, dict):
+                                    form_xss_detected = form_xss_result.get('vulnerable', False)
+                                else:
+                                    form_xss_detected = bool(form_xss_result)
+                            except Exception as e:
+                                print(f"    [XSS] Form detector error: {e}")
+                                form_xss_detected = False
                             
-                            if form_xss_detected or form_payload_reflected:
+                            # Окончательное решение для форм
+                            if form_payload_reflected or form_xss_detected:
                                 evidence = f"XSS payload '{payload}' reflected in {form_method} form response"
                                 response_snippet = self._get_contextual_response_snippet(payload, response.text)
                                 print(f"    [XSS] FORM VULNERABILITY FOUND! Input: {input_name}")
