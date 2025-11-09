@@ -3556,7 +3556,7 @@ class VulnScanner:
                     payload_count = self.payload_limit if self.payload_limit > 0 else 5
                     for payload in stored_xss_payloads[:payload_count]:
                         try:
-                            print(f"    [STOREDXSS] Trying stored payload: {payload[:50]}...")
+                            print(f"    [STOREDXSS] Trying DOMINATOR777 payload: {payload[:50]}...")
                             
                             # Step 1: Submit payload via POST form
                             post_data = {}
@@ -3634,7 +3634,7 @@ class VulnScanner:
                                     submit_response.text, payload, check_response.text
                                 )
                                 
-                                print(f"    [STOREDXSS] Detection result: vulnerable={is_vulnerable}, evidence='{evidence}', severity='{severity}'")
+                                print(f"    [STOREDXSS] DOMINATOR777 Detection result: vulnerable={is_vulnerable}, evidence='{evidence}', severity='{severity}'")
                             
                                 if is_vulnerable:
                                     stored_found = True
