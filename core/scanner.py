@@ -3101,7 +3101,7 @@ class VulnScanner:
         return results
     
     def _test_rfi(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Test for RFI vulnerabilities"""
+        """Test for RFI vulnerabilities with enhanced detection"""
         results = []
         base_url = parsed_data['url']
         
@@ -3118,9 +3118,27 @@ class VulnScanner:
                 print(f"    [RFI] Skipping parameter {param} - already tested")
                 continue
             
-            for payload in rfi_payloads[:30]:  # Увеличиваем до 30 payload
+            # Get baseline response first
+            try:
+                baseline_response = requests.get(
+                    parsed_data['url'],
+                    timeout=self.config.timeout,
+                    headers=self.config.headers,
+                    verify=False
+                )
+                baseline_content = baseline_response.text
+                baseline_length = len(baseline_content)
+            except:
+                baseline_content = ""
+                baseline_length = 0
+            
+            for payload in rfi_payloads[:20]:  # Уменьшаем количество payload для более точного тестирования
                 try:
                     print(f"    [RFI] Trying payload: {payload[:50]}...")
+                    
+                    # Skip non-HTTP payloads for RFI testing
+                    if not payload.startswith(('http://', 'https://', 'ftp://')):
+                        continue
                     
                     # Create test URL
                     test_params = parsed_data['query_params'].copy()
@@ -3144,10 +3162,15 @@ class VulnScanner:
                     
                     print(f"    [RFI] Response code: {response.status_code}")
                     
-                    # Use RFI detector
-                    if RFIDetector.detect_rfi(response.text, response.status_code, payload):
-                        evidence = RFIDetector.get_evidence(payload, response.text)
-                        response_snippet = RFIDetector.get_response_snippet(payload, response.text)
+                    # Enhanced RFI detection with false positive filtering
+                    is_rfi = self._enhanced_rfi_detection(
+                        response.text, response.status_code, payload, 
+                        baseline_content, baseline_length
+                    )
+                    
+                    if is_rfi:
+                        evidence = f"Remote file inclusion detected - payload: {payload}"
+                        response_snippet = response.text[:200] + "..." if len(response.text) > 200 else response.text
                         print(f"    [RFI] VULNERABILITY FOUND! Parameter: {param}")
                         
                         # Mark as found to prevent duplicates
@@ -3162,7 +3185,7 @@ class VulnScanner:
                             'payload': payload,
                             'evidence': evidence,
                             'request_url': test_url,
-                            'detector': 'RFIDetector.detect_rfi',
+                            'detector': 'Enhanced RFI Detection',
                             'response_snippet': response_snippet
                         })
                         break  # Found RFI, no need to test more payloads for this param
@@ -3255,12 +3278,26 @@ class VulnScanner:
         return results
     
     def _test_clickjacking(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Test for clickjacking vulnerabilities"""
+        """Test for clickjacking vulnerabilities with domain-level deduplication"""
         results = []
         base_url = parsed_data['url']
         
+        # Extract domain for deduplication
+        from urllib.parse import urlparse
+        parsed_url = urlparse(base_url)
+        domain = parsed_url.hostname
+        
+        # Create deduplication key for this domain
+        domain_key = f"clickjacking_{domain}"
+        if domain_key in self.found_vulnerabilities:
+            print(f"    [CLICKJACKING] Skipping clickjacking test for {domain} - already tested")
+            return results
+        
         try:
-            print(f"    [CLICKJACKING] Testing clickjacking protection...")
+            print(f"    [CLICKJACKING] Testing clickjacking protection for domain: {domain}")
+            
+            # Mark domain as tested
+            self.found_vulnerabilities.add(domain_key)
             
             # Make request to get headers
             response = requests.get(
@@ -3283,7 +3320,7 @@ class VulnScanner:
             if clickjacking_result['vulnerable']:
                 print(f"    [CLICKJACKING] VULNERABILITY FOUND! Missing clickjacking protection")
                 
-                severity = 'Medium' if clickjacking_result['missing_headers'] else 'Low'
+                severity = 'Medium' if clickjacking_result.get('missing_headers') else 'Low'
                 
                 results.append({
                     'module': 'clickjacking',
@@ -4089,16 +4126,39 @@ class VulnScanner:
         return results
 
     def _test_xxe(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Test for XXE vulnerabilities"""
+        """Test for XXE vulnerabilities with enhanced detection"""
         results = []
         base_url = parsed_data['url']
         
         # Get XXE payloads
         xxe_payloads = XXEPayloads.get_all_payloads()
         
-        # Test GET parameters
-        for param, values in parsed_data['query_params'].items():
-            print(f"    [XXE] Testing parameter: {param}")
+        # Test only forms that accept XML data or parameters that might process XML
+        forms_data = parsed_data.get('forms', [])
+        xml_forms = []
+        
+        # Look for forms that might accept XML
+        for form in forms_data:
+            form_method = form.get('method', 'GET').upper()
+            if form_method in ['POST', 'PUT']:
+                # Check if form has file upload or text areas that might accept XML
+                for input_field in form.get('inputs', []):
+                    input_type = input_field.get('type', 'text')
+                    if input_type in ['file', 'textarea'] or 'xml' in input_field.get('name', '').lower():
+                        xml_forms.append(form)
+                        break
+        
+        # Test XML-related parameters
+        xml_params = [param for param in parsed_data['query_params'].keys() 
+                     if any(xml_word in param.lower() for xml_word in ['xml', 'data', 'content', 'file'])]
+        
+        if not xml_forms and not xml_params:
+            print(f"    [XXE] No XML-related forms or parameters found, skipping XXE test")
+            return results
+        
+        # Test GET parameters that might process XML
+        for param in xml_params:
+            print(f"    [XXE] Testing XML parameter: {param}")
             
             # Create deduplication key for this parameter
             param_key = f"xxe_{base_url.split('?')[0]}_{param}"
@@ -4106,7 +4166,7 @@ class VulnScanner:
                 print(f"    [XXE] Skipping parameter {param} - already tested")
                 continue
             
-            for payload in xxe_payloads[:25]:  # Увеличиваем до 25 payload
+            for payload in xxe_payloads[:15]:  # Уменьшаем количество payload
                 try:
                     print(f"    [XXE] Trying payload: {payload[:50]}...")
                     
@@ -4132,11 +4192,12 @@ class VulnScanner:
                     
                     print(f"    [XXE] Response code: {response.status_code}")
                     
-                    # Use XXE detector
-                    if XXEDetector.detect_xxe(response.text, response.status_code, payload):
-                        evidence = XXEDetector.get_evidence(payload, response.text)
-                        response_snippet = XXEDetector.get_response_snippet(payload, response.text)
-                        remediation = XXEDetector.get_remediation_advice()
+                    # Enhanced XXE detection
+                    is_xxe = self._enhanced_xxe_detection(response.text, response.status_code, payload)
+                    
+                    if is_xxe:
+                        evidence = f"XXE vulnerability detected - XML entity processed: {payload[:100]}"
+                        response_snippet = response.text[:200] + "..." if len(response.text) > 200 else response.text
                         print(f"    [XXE] VULNERABILITY FOUND! Parameter: {param}")
                         
                         # Mark as found to prevent duplicates
@@ -4151,9 +4212,9 @@ class VulnScanner:
                             'payload': payload,
                             'evidence': evidence,
                             'request_url': test_url,
-                            'detector': 'XXEDetector.detect_xxe',
+                            'detector': 'Enhanced XXE Detection',
                             'response_snippet': response_snippet,
-                            'remediation': remediation
+                            'remediation': 'Disable external entity processing in XML parsers'
                         })
                         break  # Found XXE, no need to test more payloads for this param
                         
@@ -4844,19 +4905,16 @@ class VulnScanner:
         return results
 
     def _test_http_response_splitting(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Test for HTTP Response Splitting vulnerabilities"""
+        """Test for HTTP Response Splitting vulnerabilities with enhanced detection"""
         results = []
         base_url = parsed_data['url']
         
-        # HTTP Response Splitting payloads
+        # More targeted HTTP Response Splitting payloads
         splitting_payloads = [
             '%0d%0aSet-Cookie: test=injected',
             '%0d%0aLocation: http://evil.com',
-            '%0aSet-Cookie: test=injected',
-            '\r\nSet-Cookie: test=injected',
-            '\nSet-Cookie: test=injected',
-            '%0d%0a%0d%0a<script>alert("XSS")</script>',
-            '%0a%0a<script>alert("XSS")</script>'
+            '%0d%0aContent-Type: text/html',
+            '%0d%0aX-Injected-Header: test'
         ]
         
         # Test GET parameters
@@ -4868,6 +4926,18 @@ class VulnScanner:
             if param_key in self.found_vulnerabilities:
                 print(f"    [RESPONSESPLITTING] Skipping parameter {param} - already tested")
                 continue
+            
+            # Get baseline response first
+            try:
+                baseline_response = requests.get(
+                    parsed_data['url'],
+                    timeout=self.config.timeout,
+                    headers=self.config.headers,
+                    verify=False
+                )
+                baseline_headers = dict(baseline_response.headers)
+            except:
+                baseline_headers = {}
             
             for payload in splitting_payloads:
                 try:
@@ -4894,13 +4964,15 @@ class VulnScanner:
                     
                     print(f"    [RESPONSESPLITTING] Response code: {response.status_code}")
                     
-                    # Use HTTP Response Splitting detector
-                    if HTTPResponseSplittingDetector.detect_response_splitting(
-                        response.text, response.status_code, payload, dict(response.headers)
-                    ):
-                        evidence = HTTPResponseSplittingDetector.get_evidence(payload, response.text, dict(response.headers))
-                        response_snippet = HTTPResponseSplittingDetector.get_response_snippet(payload, response.text)
-                        remediation = HTTPResponseSplittingDetector.get_remediation_advice()
+                    # Enhanced response splitting detection
+                    is_splitting = self._enhanced_response_splitting_detection(
+                        response.text, response.status_code, payload, 
+                        dict(response.headers), baseline_headers
+                    )
+                    
+                    if is_splitting:
+                        evidence = f"HTTP Response Splitting detected - injected header found in response"
+                        response_snippet = f"Headers: {dict(response.headers)}"
                         print(f"    [RESPONSESPLITTING] VULNERABILITY FOUND! Parameter: {param}")
                         
                         # Mark as found to prevent duplicates
@@ -4915,9 +4987,9 @@ class VulnScanner:
                             'payload': payload,
                             'evidence': evidence,
                             'request_url': test_url,
-                            'detector': 'HTTPResponseSplittingDetector.detect_response_splitting',
+                            'detector': 'Enhanced Response Splitting Detection',
                             'response_snippet': response_snippet,
-                            'remediation': remediation
+                            'remediation': 'Validate and sanitize all user inputs used in HTTP responses'
                         })
                         break  # Found response splitting, no need to test more payloads for this param
                         
@@ -5003,12 +5075,17 @@ class VulnScanner:
         return results
 
     def _test_crlf(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Test for CRLF injection vulnerabilities"""
+        """Test for CRLF injection vulnerabilities with enhanced detection"""
         results = []
         base_url = parsed_data['url']
         
-        # Get CRLF payloads
-        crlf_payloads = CRLFPayloads.get_all_payloads()
+        # More targeted CRLF payloads
+        crlf_payloads = [
+            '%0d%0aSet-Cookie: crlf=injected',
+            '%0d%0aLocation: http://evil.com',
+            '%0aSet-Cookie: crlf=test',
+            '%0d%0aX-CRLF-Test: injected'
+        ]
         
         # Test GET parameters
         for param, values in parsed_data['query_params'].items():
@@ -5020,7 +5097,19 @@ class VulnScanner:
                 print(f"    [CRLF] Skipping parameter {param} - already tested")
                 continue
             
-            for payload in crlf_payloads[:30]:  # Увеличиваем до 30 payload
+            # Get baseline response first
+            try:
+                baseline_response = requests.get(
+                    parsed_data['url'],
+                    timeout=self.config.timeout,
+                    headers=self.config.headers,
+                    verify=False
+                )
+                baseline_headers = dict(baseline_response.headers)
+            except:
+                baseline_headers = {}
+            
+            for payload in crlf_payloads:
                 try:
                     print(f"    [CRLF] Trying payload: {payload[:50]}...")
                     
@@ -5046,11 +5135,15 @@ class VulnScanner:
                     
                     print(f"    [CRLF] Response code: {response.status_code}")
                     
-                    # Use CRLF detector
-                    if CRLFDetector.detect_crlf_injection(response.text, response.status_code, payload, dict(response.headers)):
-                        evidence = CRLFDetector.get_evidence(payload, response.text, dict(response.headers))
-                        response_snippet = CRLFDetector.get_response_snippet(payload, response.text)
-                        remediation = CRLFDetector.get_remediation_advice()
+                    # Enhanced CRLF detection
+                    is_crlf = self._enhanced_crlf_detection(
+                        response.text, response.status_code, payload, 
+                        dict(response.headers), baseline_headers
+                    )
+                    
+                    if is_crlf:
+                        evidence = f"CRLF injection detected - header injection successful"
+                        response_snippet = f"Injected headers found in response"
                         print(f"    [CRLF] VULNERABILITY FOUND! Parameter: {param}")
                         
                         # Mark as found to prevent duplicates
@@ -5065,9 +5158,9 @@ class VulnScanner:
                             'payload': payload,
                             'evidence': evidence,
                             'request_url': test_url,
-                            'detector': 'CRLFDetector.detect_crlf_injection',
+                            'detector': 'Enhanced CRLF Detection',
                             'response_snippet': response_snippet,
-                            'remediation': remediation
+                            'remediation': 'Validate and sanitize all user inputs used in HTTP responses'
                         })
                         break  # Found CRLF, no need to test more payloads for this param
                         
@@ -5872,6 +5965,130 @@ class VulnScanner:
                 sanitized[f'{field}_raw'] = original_value
         
         return sanitized
+    
+    def _enhanced_rfi_detection(self, response_text: str, response_code: int, payload: str, 
+                               baseline_content: str, baseline_length: int) -> bool:
+        """Enhanced RFI detection with false positive filtering"""
+        try:
+            # Skip if response is error or too similar to baseline
+            if response_code >= 400:
+                return False
+            
+            # Check for significant content change
+            content_diff = abs(len(response_text) - baseline_length)
+            if content_diff < 100:  # Minimal content change
+                return False
+            
+            # Look for remote content indicators
+            remote_indicators = [
+                '<?php', '<html', '<script', 'http://', 'https://',
+                'remote file', 'include', 'require'
+            ]
+            
+            response_lower = response_text.lower()
+            baseline_lower = baseline_content.lower()
+            
+            # Check if new content appeared that wasn't in baseline
+            new_indicators = []
+            for indicator in remote_indicators:
+                if indicator in response_lower and indicator not in baseline_lower:
+                    new_indicators.append(indicator)
+            
+            # Require at least 2 new indicators for RFI
+            return len(new_indicators) >= 2
+            
+        except Exception as e:
+            print(f"    [RFI] Enhanced detection error: {e}")
+            return False
+    
+    def _enhanced_xxe_detection(self, response_text: str, response_code: int, payload: str) -> bool:
+        """Enhanced XXE detection with false positive filtering"""
+        try:
+            # Skip if response is error
+            if response_code >= 400:
+                return False
+            
+            # Look for specific XXE indicators
+            xxe_indicators = [
+                'root:x:0:0:root',  # /etc/passwd content
+                'ENTITY', 'DOCTYPE',  # XML entity processing
+                'file://', 'http://',  # External entity URLs
+                'xml parsing error', 'entity'
+            ]
+            
+            response_lower = response_text.lower()
+            
+            # Check for XXE-specific content
+            xxe_matches = 0
+            for indicator in xxe_indicators:
+                if indicator.lower() in response_lower:
+                    xxe_matches += 1
+            
+            # Also check if XML payload structure is reflected
+            if '<!ENTITY' in payload and 'ENTITY' in response_text:
+                xxe_matches += 1
+            
+            # Require multiple indicators for XXE
+            return xxe_matches >= 2
+            
+        except Exception as e:
+            print(f"    [XXE] Enhanced detection error: {e}")
+            return False
+    
+    def _enhanced_response_splitting_detection(self, response_text: str, response_code: int, 
+                                             payload: str, response_headers: dict, 
+                                             baseline_headers: dict) -> bool:
+        """Enhanced HTTP Response Splitting detection"""
+        try:
+            # Check for new headers that weren't in baseline
+            new_headers = []
+            for header, value in response_headers.items():
+                if header.lower() not in [h.lower() for h in baseline_headers.keys()]:
+                    new_headers.append(header)
+            
+            # Check for specific injected headers
+            injected_headers = ['set-cookie', 'location', 'x-injected-header', 'content-type']
+            
+            for header in new_headers:
+                if any(inj_header in header.lower() for inj_header in injected_headers):
+                    # Verify the header value contains our payload markers
+                    header_value = response_headers.get(header, '').lower()
+                    if any(marker in header_value for marker in ['injected', 'test', 'evil']):
+                        return True
+            
+            return False
+            
+        except Exception as e:
+            print(f"    [RESPONSESPLITTING] Enhanced detection error: {e}")
+            return False
+    
+    def _enhanced_crlf_detection(self, response_text: str, response_code: int, 
+                                payload: str, response_headers: dict, 
+                                baseline_headers: dict) -> bool:
+        """Enhanced CRLF injection detection"""
+        try:
+            # Similar to response splitting but more focused on CRLF
+            if '%0d%0a' not in payload and '%0a' not in payload:
+                return False
+            
+            # Check for new headers
+            new_headers = []
+            for header, value in response_headers.items():
+                if header.lower() not in [h.lower() for h in baseline_headers.keys()]:
+                    new_headers.append((header, value))
+            
+            # Look for CRLF-specific injected headers
+            crlf_markers = ['crlf', 'injected', 'test']
+            
+            for header, value in new_headers:
+                if any(marker in header.lower() or marker in value.lower() for marker in crlf_markers):
+                    return True
+            
+            return False
+            
+        except Exception as e:
+            print(f"    [CRLF] Enhanced detection error: {e}")
+            return False
     
     def _clean_data_structure(self, data):
         """Recursively clean data structures to make them JSON serializable"""
