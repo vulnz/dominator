@@ -3387,8 +3387,8 @@ class VulnScanner:
         results = []
         base_url = parsed_data['url']
         
-        # Get Stored XSS payloads from existing payload class
-        stored_xss_payloads = StoredXSSDetector.get_stored_xss_indicators()
+        # Get Stored XSS payloads from payload loader
+        stored_xss_payloads = StoredXSSDetector.get_stored_xss_payloads()
         
         # Test all forms for stored XSS (including GET forms that might store data)
         forms_data = parsed_data.get('forms', [])
@@ -3503,16 +3503,17 @@ class VulnScanner:
                                 
                                 print(f"    [STOREDXSS] Check response code: {check_response.status_code}")
                                 
-                                # Use Stored XSS detector
-                                if StoredXSSDetector.detect_stored_xss(payload, check_response.text, check_response.status_code):
+                                # Use Stored XSS detector with proper parameters
+                                is_vulnerable, evidence, severity = StoredXSSDetector.detect_stored_xss(
+                                    submit_response.text, payload, check_response.text
+                                )
+                            
+                                if is_vulnerable:
                                     stored_found = True
                                     break
                             
-                            if stored_found:
-                            
-                                evidence = f"Stored XSS detected - payload '{payload}' found in subsequent page load"
                                 response_snippet = self._get_contextual_response_snippet(payload, check_response.text)
-                                print(f"    [STOREDXSS] STORED XSS FOUND! Input: {input_name}")
+                                print(f"    [STOREDXSS] STORED XSS FOUND! Input: {input_name} - {evidence}")
                                 
                                 # Mark as found to prevent duplicates
                                 self.found_vulnerabilities.add(form_key)
@@ -3521,14 +3522,14 @@ class VulnScanner:
                                     'module': 'storedxss',
                                     'target': form_url,
                                     'vulnerability': f'Stored XSS in {form_method} Form',
-                                    'severity': 'High',
+                                    'severity': severity,
                                     'parameter': input_name,
                                     'payload': payload,
                                     'evidence': evidence,
                                     'request_url': form_url if form_method != 'GET' else get_url,
                                     'detector': 'StoredXSSDetector.detect_stored_xss',
                                     'response_snippet': response_snippet,
-                                    'remediation': 'Implement proper input validation, output encoding, and Content Security Policy (CSP)'
+                                    'remediation': StoredXSSDetector.get_remediation_advice()
                                 })
                                 break  # Found stored XSS, no need to test more payloads for this input
                                 

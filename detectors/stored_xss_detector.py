@@ -4,54 +4,54 @@ Stored XSS vulnerability detection logic
 
 import re
 from typing import List, Dict, Any, Tuple
+from utils.payload_loader import PayloadLoader
 
 class StoredXSSDetector:
     """Stored XSS vulnerability detection logic"""
     
     @staticmethod
+    def get_stored_xss_payloads() -> List[str]:
+        """Get stored XSS payloads from file"""
+        payloads = PayloadLoader.load_payloads('stored_xss')
+        if not payloads:
+            # Fallback payloads if file not found
+            payloads = [
+                '<script>alert("STORED_XSS_TEST")</script>',
+                '<img src=x onerror=alert("STORED_XSS")>',
+                '<svg onload=alert("STORED_XSS")>',
+                'javascript:alert("STORED_XSS")',
+                '<iframe src="javascript:alert(\'STORED_XSS\')"></iframe>',
+                '<body onload=alert("STORED_XSS")>',
+                '<div onclick=alert("STORED_XSS")>Click</div>',
+                '"><script>alert("STORED_XSS")</script>',
+                "'><script>alert('STORED_XSS')</script>",
+                '</script><script>alert("STORED_XSS")</script>'
+            ]
+        return payloads
+    
+    @staticmethod
     def get_stored_xss_indicators() -> List[str]:
-        """Get stored XSS vulnerability indicators"""
-        return [
-            # Script execution indicators
-            '<script>alert(',
-            '<script>confirm(',
-            '<script>prompt(',
-            'javascript:alert(',
-            'javascript:confirm(',
-            'javascript:prompt(',
-            
-            # Event handler indicators
-            'onload=alert(',
-            'onerror=alert(',
-            'onclick=alert(',
-            'onmouseover=alert(',
-            'onfocus=alert(',
-            
-            # HTML injection indicators
-            '<img src=x onerror=',
-            '<svg onload=',
-            '<iframe src=javascript:',
-            '<body onload=',
-            '<div onclick=',
-            
-            # Encoded payloads
-            '&lt;script&gt;',
-            '%3Cscript%3E',
-            '&#60;script&#62;',
-            
-            # Common XSS test strings
-            'XSS_TEST_PAYLOAD',
-            'STORED_XSS_FOUND',
-            'alert("xss")',
-            'alert(\'xss\')',
-            'alert(1)',
-            'alert(document.cookie)'
-        ]
+        """Get stored XSS vulnerability indicators for detection"""
+        indicators = PayloadLoader.load_payloads('stored_xss_indicators')
+        if not indicators:
+            # Fallback indicators if file not found
+            indicators = [
+                'STORED_XSS_TEST',
+                'STORED_XSS',
+                'alert("xss")',
+                'alert(\'xss\')',
+                'alert(1)',
+                'javascript:alert',
+                '<script>alert',
+                'onerror=alert',
+                'onload=alert'
+            ]
+        return indicators
     
     @staticmethod
     def detect_stored_xss(original_response: str, payload: str, follow_up_response: str = None) -> Tuple[bool, str, str]:
         """
-        Detect stored XSS vulnerability
+        Detect stored XSS vulnerability with enhanced detection
         Returns (is_vulnerable, evidence, severity)
         """
         if not payload or len(payload) < 3:
@@ -63,40 +63,48 @@ class StoredXSSDetector:
         if not response_to_check:
             return False, "No response to analyze", "None"
         
-        # Check if payload is reflected in dangerous context
-        dangerous_contexts = [
-            r'<script[^>]*>' + re.escape(payload),
-            r'<[^>]*on\w+=["\']?[^"\']*' + re.escape(payload),
-            r'<[^>]*src=["\']?[^"\']*' + re.escape(payload),
-            r'<[^>]*href=["\']?[^"\']*' + re.escape(payload),
-            r'javascript:[^"\']*' + re.escape(payload)
-        ]
+        # Extract unique identifier from payload for precise detection
+        unique_id = StoredXSSDetector._extract_unique_identifier(payload)
         
-        for context in dangerous_contexts:
-            if re.search(context, response_to_check, re.IGNORECASE):
-                return True, f"Stored XSS detected in dangerous context: {context}", "High"
+        # Check if unique identifier is present in response
+        if unique_id and unique_id in response_to_check:
+            # Check if payload is reflected in dangerous context
+            dangerous_contexts = [
+                r'<script[^>]*>[^<]*' + re.escape(unique_id),
+                r'<[^>]*on\w+=["\']?[^"\']*' + re.escape(unique_id),
+                r'<[^>]*src=["\']?[^"\']*' + re.escape(unique_id),
+                r'<[^>]*href=["\']?[^"\']*' + re.escape(unique_id),
+                r'javascript:[^"\']*' + re.escape(unique_id)
+            ]
+            
+            for context in dangerous_contexts:
+                if re.search(context, response_to_check, re.IGNORECASE):
+                    return True, f"Stored XSS detected - unique identifier '{unique_id}' found in dangerous context", "High"
+            
+            # Check for unencoded payload reflection
+            if payload in response_to_check:
+                # Check if dangerous characters are unencoded
+                dangerous_chars = ['<', '>', '"', "'", '&']
+                if any(char in payload for char in dangerous_chars):
+                    # Find the reflection context
+                    payload_pos = response_to_check.find(payload)
+                    if payload_pos >= 0:
+                        start = max(0, payload_pos - 100)
+                        end = min(len(response_to_check), payload_pos + len(payload) + 100)
+                        context_snippet = response_to_check[start:end]
+                        
+                        # Check if it's in HTML context
+                        if re.search(r'<[^>]*' + re.escape(payload) + r'[^>]*>', context_snippet):
+                            return True, "Stored XSS detected - unencoded HTML injection", "High"
+                        elif 'javascript:' in context_snippet.lower():
+                            return True, "Stored XSS detected - JavaScript URL injection", "High"
+                        else:
+                            return True, "Stored XSS detected - payload reflected unencoded", "Medium"
+            
+            # If unique ID found but not in dangerous context, still potential issue
+            return True, f"Potential Stored XSS - unique identifier '{unique_id}' found in response", "Medium"
         
-        # Check for unencoded payload reflection
-        if payload in response_to_check:
-            # Check if dangerous characters are unencoded
-            dangerous_chars = ['<', '>', '"', "'", '&']
-            if any(char in payload for char in dangerous_chars):
-                # Find the reflection context
-                payload_pos = response_to_check.find(payload)
-                if payload_pos >= 0:
-                    start = max(0, payload_pos - 100)
-                    end = min(len(response_to_check), payload_pos + len(payload) + 100)
-                    context_snippet = response_to_check[start:end]
-                    
-                    # Check if it's in HTML context
-                    if re.search(r'<[^>]*' + re.escape(payload) + r'[^>]*>', context_snippet):
-                        return True, "Stored XSS detected - unencoded HTML injection", "High"
-                    elif 'javascript:' in context_snippet.lower():
-                        return True, "Stored XSS detected - JavaScript URL injection", "High"
-                    else:
-                        return True, "Stored XSS detected - payload reflected unencoded", "Medium"
-        
-        # Check for XSS indicators
+        # Fallback: Check for XSS indicators
         indicators = StoredXSSDetector.get_stored_xss_indicators()
         found_indicators = []
         
@@ -106,9 +114,37 @@ class StoredXSSDetector:
                 found_indicators.append(indicator)
         
         if found_indicators:
-            return True, f"Stored XSS indicators found: {', '.join(found_indicators[:3])}", "Medium"
+            return True, f"Stored XSS indicators found: {', '.join(found_indicators[:3])}", "Low"
         
         return False, "No stored XSS detected", "None"
+    
+    @staticmethod
+    def _extract_unique_identifier(payload: str) -> str:
+        """Extract unique identifier from payload for precise detection"""
+        # Look for common unique patterns in payloads
+        patterns = [
+            r'STORED_XSS_TEST[_\d]*',
+            r'STORED_XSS[_\d]*',
+            r'XSS_TEST_\d+',
+            r'alert\(["\']([^"\']+)["\']\)',
+            r'confirm\(["\']([^"\']+)["\']\)',
+            r'prompt\(["\']([^"\']+)["\']\)'
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, payload, re.IGNORECASE)
+            if match:
+                if match.groups():
+                    return match.group(1)  # Return captured group
+                else:
+                    return match.group(0)  # Return full match
+        
+        # If no pattern found, try to extract any quoted string
+        quoted_match = re.search(r'["\']([^"\']{5,})["\']', payload)
+        if quoted_match:
+            return quoted_match.group(1)
+        
+        return ""
     
     @staticmethod
     def get_evidence(payload: str, response: str, context: str) -> str:
