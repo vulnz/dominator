@@ -1124,7 +1124,7 @@ class VulnScanner:
                     if xss_detected:
                         try:
                             evidence = XSSDetector.get_evidence(payload, response.text, xss_result)
-                            response_snippet = XSSDetector.get_response_snippet(payload, response.text)
+                            response_snippet = self._get_contextual_response_snippet(payload, response.text)
                         except Exception as e:
                             print(f"    [XSS] Error getting evidence: {e}")
                             evidence = f"{xss_type} detected with payload: {payload}"
@@ -1305,7 +1305,7 @@ class VulnScanner:
                             
                             if form_xss_detected or form_payload_reflected:
                                 evidence = f"XSS payload '{payload}' reflected in {form_method} form response"
-                                response_snippet = response.text[:200] + "..." if len(response.text) > 200 else response.text
+                                response_snippet = self._get_contextual_response_snippet(payload, response.text)
                                 print(f"    [XSS] FORM VULNERABILITY FOUND! Input: {input_name}")
                                 
                                 # Mark as found to prevent duplicates
@@ -1461,7 +1461,7 @@ class VulnScanner:
                     if is_vulnerable:
                         try:
                             evidence = f"SQL injection detected - error pattern: {pattern}"
-                            response_snippet = response.text[:200] + "..." if len(response.text) > 200 else response.text
+                            response_snippet = self._get_contextual_response_snippet(payload, response.text)
                         except Exception as e:
                             evidence = f"SQL injection detected with payload: {payload}"
                             response_snippet = "Response analysis failed"
@@ -1584,7 +1584,7 @@ class VulnScanner:
                             
                             if is_vulnerable:
                                 evidence = f"SQL injection in {form_method} form - error pattern: {pattern}"
-                                response_snippet = response.text[:200] + "..." if len(response.text) > 200 else response.text
+                                response_snippet = self._get_contextual_response_snippet(payload, response.text)
                                 print(f"    [SQLI] FORM VULNERABILITY FOUND! Input: {input_name}")
                                 
                                 # Mark as found to prevent duplicates
@@ -1694,7 +1694,7 @@ class VulnScanner:
                     if is_vulnerable:
                         try:
                             evidence = f"Local file inclusion detected - pattern: {pattern}"
-                            response_snippet = response.text[:200] + "..." if len(response.text) > 200 else response.text
+                            response_snippet = self._get_contextual_response_snippet(payload, response.text)
                         except Exception as e:
                             evidence = f"LFI detected with payload: {payload}"
                             response_snippet = "Response analysis failed"
@@ -1817,7 +1817,7 @@ class VulnScanner:
                             
                             if is_vulnerable:
                                 evidence = f"Local file inclusion in {form_method} form - pattern: {pattern}"
-                                response_snippet = response.text[:200] + "..." if len(response.text) > 200 else response.text
+                                response_snippet = self._get_contextual_response_snippet(payload, response.text)
                                 print(f"    [LFI] FORM VULNERABILITY FOUND! Input: {input_name}")
                                 
                                 # Mark as found to prevent duplicates
@@ -2835,7 +2835,7 @@ class VulnScanner:
                         self.scan_stats['payload_stats']['ssrf']['successful_payloads'] += 1
                         self.scan_stats['total_payloads_used'] += 1
                         
-                        response_snippet = response.text[:200] + "..." if len(response.text) > 200 else response.text
+                        response_snippet = self._get_contextual_response_snippet(payload, response.text)
                         
                         results.append({
                             'module': 'ssrf',
@@ -2930,7 +2930,7 @@ class VulnScanner:
                     
                     if is_rfi:
                         evidence = f"Remote file inclusion detected - payload: {payload}"
-                        response_snippet = response.text[:200] + "..." if len(response.text) > 200 else response.text
+                        response_snippet = self._get_contextual_response_snippet(payload, response.text)
                         print(f"    [RFI] VULNERABILITY FOUND! Parameter: {param}")
                         
                         # Mark as found to prevent duplicates
@@ -3948,7 +3948,7 @@ class VulnScanner:
                     
                     if is_xxe:
                         evidence = f"XXE vulnerability detected - XML entity processed: {payload[:100]}"
-                        response_snippet = response.text[:200] + "..." if len(response.text) > 200 else response.text
+                        response_snippet = self._get_contextual_response_snippet(payload, response.text)
                         print(f"    [XXE] VULNERABILITY FOUND! Parameter: {param}")
                         
                         # Mark as found to prevent duplicates
@@ -5718,6 +5718,45 @@ class VulnScanner:
             'responsesplitting': 'Validate and sanitize all user inputs used in HTTP responses.'
         }
         return recommendations.get(module, 'Review and implement appropriate security controls.')
+    
+    def _get_contextual_response_snippet(self, payload: str, response_text: str, context_size: int = 30) -> str:
+        """Get response snippet with context around where payload was found"""
+        if not payload or not response_text:
+            return response_text[:100] + "..." if len(response_text) > 100 else response_text
+        
+        # Find payload in response (case insensitive)
+        payload_lower = payload.lower()
+        response_lower = response_text.lower()
+        
+        # Try to find exact payload first
+        pos = response_lower.find(payload_lower)
+        
+        if pos == -1:
+            # Try to find parts of payload
+            payload_parts = [part for part in payload_lower.split() if len(part) > 3]
+            for part in payload_parts:
+                pos = response_lower.find(part)
+                if pos != -1:
+                    break
+        
+        if pos == -1:
+            # Payload not found, return beginning of response
+            return response_text[:100] + "..." if len(response_text) > 100 else response_text
+        
+        # Calculate context boundaries
+        start = max(0, pos - context_size)
+        end = min(len(response_text), pos + len(payload) + context_size)
+        
+        # Extract context
+        context = response_text[start:end]
+        
+        # Add ellipsis if truncated
+        if start > 0:
+            context = "..." + context
+        if end < len(response_text):
+            context = context + "..."
+        
+        return context
     
     def _sanitize_vulnerability_data(self, vuln_data: Dict[str, Any]) -> Dict[str, Any]:
         """Sanitize vulnerability data to prevent XSS in reports"""
