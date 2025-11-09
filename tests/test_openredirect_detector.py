@@ -31,6 +31,13 @@ class TestOpenRedirectDetector(unittest.TestCase):
                 original_url=base_url
             )
 
+            print(f"\n--- Результаты теста Open Redirect ---")
+            print(f"URL для теста: {test_url}")
+            print(f"Уязвимость найдена: {is_vulnerable}")
+            print(f"Детали: {details}")
+            print(f"Тип редиректа: {redirect_type}")
+            print(f"------------------------------------")
+
             self.assertTrue(is_vulnerable, "Уязвимость open redirect не была обнаружена.")
             self.assertEqual("redirect_header", redirect_type, "Обнаружен неверный тип редиректа.")
             self.assertIn(payload_url, details.lower(), "URL полезной нагрузки не найден в деталях обнаружения.")
