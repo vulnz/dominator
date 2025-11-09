@@ -7720,6 +7720,43 @@ class VulnScanner:
         print(f"Low Severity:         {len(low_vulns)}")
         print(f"Info:                 {len(info_vulns)}")
         print("="*80)
+        
+        # Print vulnerability details
+        if critical_vulns:
+            print(f"\nCRITICAL SEVERITY VULNERABILITIES ({len(critical_vulns)} found):")
+            print("-" * 50)
+            for i, result in enumerate(critical_vulns, 1):
+                self._print_vulnerability(i, result)
+        
+        if high_vulns:
+            print(f"\nHIGH SEVERITY VULNERABILITIES ({len(high_vulns)} found):")
+            print("-" * 50)
+            for i, result in enumerate(high_vulns, 1):
+                self._print_vulnerability(i, result)
+        
+        if medium_vulns:
+            print(f"\nMEDIUM SEVERITY VULNERABILITIES ({len(medium_vulns)} found):")
+            print("-" * 50)
+            for i, result in enumerate(medium_vulns, 1):
+                self._print_vulnerability(i, result)
+        
+        if low_vulns:
+            print(f"\nLOW SEVERITY VULNERABILITIES ({len(low_vulns)} found):")
+            print("-" * 50)
+            for i, result in enumerate(low_vulns, 1):
+                self._print_vulnerability(i, result)
+        
+        if info_vulns:
+            print(f"\nINFO VULNERABILITIES ({len(info_vulns)} found):")
+            print("-" * 50)
+            for i, result in enumerate(info_vulns, 1):
+                self._print_vulnerability(i, result)
+        
+        # Print general vulnerability summary
+        if vulnerabilities:
+            print(f"\nScan found {len(vulnerabilities)} vulnerabilities")
+        
+        print("="*80)
     
     def _is_directory_listing_page(self, url: str) -> bool:
         """Check if URL appears to be a directory listing page"""
@@ -7768,43 +7805,6 @@ class VulnScanner:
         
         # Directory listing detected if we have multiple indicators
         return indicators_found >= 2
-        
-        # Print vulnerability details
-        if critical_vulns:
-            print(f"\nCRITICAL SEVERITY VULNERABILITIES ({len(critical_vulns)} found):")
-            print("-" * 50)
-            for i, result in enumerate(critical_vulns, 1):
-                self._print_vulnerability(i, result)
-        
-        if high_vulns:
-            print(f"\nHIGH SEVERITY VULNERABILITIES ({len(high_vulns)} found):")
-            print("-" * 50)
-            for i, result in enumerate(high_vulns, 1):
-                self._print_vulnerability(i, result)
-        
-        if medium_vulns:
-            print(f"\nMEDIUM SEVERITY VULNERABILITIES ({len(medium_vulns)} found):")
-            print("-" * 50)
-            for i, result in enumerate(medium_vulns, 1):
-                self._print_vulnerability(i, result)
-        
-        if low_vulns:
-            print(f"\nLOW SEVERITY VULNERABILITIES ({len(low_vulns)} found):")
-            print("-" * 50)
-            for i, result in enumerate(low_vulns, 1):
-                self._print_vulnerability(i, result)
-        
-        if info_vulns:
-            print(f"\nINFO VULNERABILITIES ({len(info_vulns)} found):")
-            print("-" * 50)
-            for i, result in enumerate(info_vulns, 1):
-                self._print_vulnerability(i, result)
-        
-        # Print general vulnerability summary
-        if results and any(r.get('vulnerability') for r in results):
-            print(f"\nScan found {len([r for r in results if r.get('vulnerability')])} vulnerabilities")
-        
-        print("="*80)
     
     def _print_vulnerability(self, index: int, result: Dict[str, Any]):
         """Print single vulnerability details with safe encoding and enhanced metadata"""
