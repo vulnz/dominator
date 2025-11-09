@@ -1319,7 +1319,11 @@ class VulnScanner:
                 
                 # Build form URL with better URL construction
                 if form_action.startswith('/'):
-                    form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
+                    # Для абсолютных путей сохраняем порт из исходного URL
+                    if parsed_data.get('port'):
+                        form_url = f"{parsed_data['scheme']}://{parsed_data['host']}:{parsed_data['port']}{form_action}"
+                    else:
+                        form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
                 elif form_action.startswith('http'):
                     form_url = form_action
                 elif form_action:
