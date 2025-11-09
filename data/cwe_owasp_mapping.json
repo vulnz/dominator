@@ -13,32 +13,6 @@
       "recommendation": "Implement proper input validation and output encoding. Use Content Security Policy (CSP) headers.",
       "description": "Cross-Site Scripting allows attackers to inject malicious scripts into web pages viewed by other users."
     },
-    "storedxss": {
-      "cwe": "CWE-79",
-      "owasp": "A03:2021 – Injection",
-      "cvss_base": "8.8",
-      "severity_mapping": {
-        "Critical": "9.6",
-        "High": "8.8",
-        "Medium": "6.1",
-        "Low": "3.1"
-      },
-      "recommendation": "Implement proper input validation and output encoding. Use Content Security Policy (CSP) headers. Sanitize stored data.",
-      "description": "Stored Cross-Site Scripting allows attackers to inject malicious scripts that are permanently stored on the target server."
-    },
-    "blindxss": {
-      "cwe": "CWE-79",
-      "owasp": "A03:2021 – Injection",
-      "cvss_base": "8.8",
-      "severity_mapping": {
-        "Critical": "9.6",
-        "High": "8.8",
-        "Medium": "6.1",
-        "Low": "3.1"
-      },
-      "recommendation": "Implement proper input validation and output encoding. Monitor for XSS callbacks.",
-      "description": "Blind Cross-Site Scripting occurs when XSS payload is stored and executed in a different context than where it was submitted."
-    },
     "sqli": {
       "cwe": "CWE-89",
       "owasp": "A03:2021 – Injection",
