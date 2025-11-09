@@ -64,8 +64,8 @@ class XSSPayloads:
             '*/alert(1);/*',
             '\';alert(1);//',
             '\";alert(1);//',
-            '\\";alert(1);//',
-            '\\';alert(1);//',
+            '\\\";alert(1);//',
+            '\\\';alert(1);//',
             
             # CSS context payloads
             '</style><script>alert(1)</script>',
