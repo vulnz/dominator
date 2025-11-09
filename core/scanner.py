@@ -69,6 +69,7 @@ try:
     from payloads.crlf_payloads import CRLFPayloads
     from payloads.textinjection_payloads import TextInjectionPayloads
     from payloads.htmlinjection_payloads import HTMLInjectionPayloads
+    from payloads.hpp_payloads import HPPPayloads
 except ImportError as e:
     print(f"Warning: Could not import payload classes: {e}")
     # Create dummy classes to prevent crashes
@@ -76,6 +77,9 @@ except ImportError as e:
         @staticmethod
         def get_all_payloads():
             return ["'", '"', "<script>alert(1)</script>"]
+        @staticmethod
+        def get_context_specific_payloads(param):
+            return [{'name': 'basic', 'values': ['test1', 'test2']}]
     
     XSSPayloads = SQLiPayloads = LFIPayloads = CSRFPayloads = DummyPayloads
     DirBrutePayloads = DirectoryTraversalPayloads = DummyPayloads
@@ -84,6 +88,7 @@ except ImportError as e:
     SSRFPayloads = RFIPayloads = BlindXSSPayloads = PHPInfoPayloads = DummyPayloads
     XXEPayloads = CommandInjectionPayloads = IDORPayloads = NoSQLInjectionPayloads = DummyPayloads
     SSTIPayloads = CRLFPayloads = TextInjectionPayloads = HTMLInjectionPayloads = DummyPayloads
+    HPPPayloads = DummyPayloads
 
 # Import detector classes with error handling
 try:
