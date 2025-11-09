@@ -3390,7 +3390,7 @@ class VulnScanner:
         # Get Stored XSS payloads from existing payload class
         stored_xss_payloads = StoredXSSDetector.get_stored_xss_indicators()
         
-        # Test POST forms for stored XSS
+        # Test all forms for stored XSS (including GET forms that might store data)
         forms_data = parsed_data.get('forms', [])
         print(f"    [STOREDXSS] Found {len(forms_data)} forms to test for stored XSS")
         
@@ -3399,7 +3399,8 @@ class VulnScanner:
             form_action = form_data.get('action', '')
             form_inputs = form_data.get('inputs', [])
             
-            if form_method in ['POST', 'PUT'] and form_inputs:
+            # Test all forms that have input fields (including GET forms)
+            if form_inputs:
                 print(f"    [STOREDXSS] Testing {form_method} form {i+1}: {form_action}")
                 
                 # Build form URL
@@ -3454,10 +3455,25 @@ class VulnScanner:
                                     headers=self.config.headers,
                                     verify=False
                                 )
-                            else:  # PUT
+                            elif form_method == 'PUT':
                                 submit_response = requests.put(
                                     form_url,
                                     data=post_data,
+                                    timeout=self.config.timeout,
+                                    headers=self.config.headers,
+                                    verify=False
+                                )
+                            else:  # GET form - build URL with parameters
+                                # Build query string for GET form
+                                query_parts = []
+                                for k, v in post_data.items():
+                                    query_parts.append(f"{k}={v}")
+                                
+                                get_url = f"{form_url}?{'&'.join(query_parts)}" if query_parts else form_url
+                                print(f"    [STOREDXSS] Submitting GET form to: {get_url}")
+                                
+                                submit_response = requests.get(
+                                    get_url,
                                     timeout=self.config.timeout,
                                     headers=self.config.headers,
                                     verify=False
@@ -3468,17 +3484,32 @@ class VulnScanner:
                             # Step 2: Check if payload is stored by visiting the same page again
                             print(f"    [STOREDXSS] Checking if payload is stored...")
                             
-                            check_response = requests.get(
-                                form_url,
-                                timeout=self.config.timeout,
-                                headers=self.config.headers,
-                                verify=False
-                            )
+                            # For GET forms, check the original page URL, not just form_url
+                            check_urls = [form_url]
+                            if form_method == 'GET' and form_url != base_url:
+                                check_urls.append(base_url)  # Also check original page
                             
-                            print(f"    [STOREDXSS] Check response code: {check_response.status_code}")
+                            stored_found = False
+                            check_response = None
                             
-                            # Use Stored XSS detector
-                            if StoredXSSDetector.detect_stored_xss(payload, check_response.text, check_response.status_code):
+                            for check_url in check_urls:
+                                print(f"    [STOREDXSS] Checking URL: {check_url}")
+                                check_response = requests.get(
+                                    check_url,
+                                    timeout=self.config.timeout,
+                                    headers=self.config.headers,
+                                    verify=False
+                                )
+                                
+                                print(f"    [STOREDXSS] Check response code: {check_response.status_code}")
+                                
+                                # Use Stored XSS detector
+                                if StoredXSSDetector.detect_stored_xss(payload, check_response.text, check_response.status_code):
+                                    stored_found = True
+                                    break
+                            
+                            if stored_found:
+                            
                                 evidence = f"Stored XSS detected - payload '{payload}' found in subsequent page load"
                                 response_snippet = self._get_contextual_response_snippet(payload, check_response.text)
                                 print(f"    [STOREDXSS] STORED XSS FOUND! Input: {input_name}")
@@ -3494,7 +3525,7 @@ class VulnScanner:
                                     'parameter': input_name,
                                     'payload': payload,
                                     'evidence': evidence,
-                                    'request_url': form_url,
+                                    'request_url': form_url if form_method != 'GET' else get_url,
                                     'detector': 'StoredXSSDetector.detect_stored_xss',
                                     'response_snippet': response_snippet,
                                     'remediation': 'Implement proper input validation, output encoding, and Content Security Policy (CSP)'
