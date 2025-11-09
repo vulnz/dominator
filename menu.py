@@ -88,6 +88,8 @@ Usage examples:
                        help='Verbose output')
     parser.add_argument('--debug', action='store_true',
                        help='Enable debug output')
+    parser.add_argument('--nopassive', action='store_true',
+                       help='Disable passive detection modules')
     
     # Deduplication options
     parser.add_argument('--max-duplicates', type=int, default=3,
@@ -209,6 +211,8 @@ def process_args(args):
         args.filetree = False
     if not hasattr(args, 'payload_limit'):
         args.payload_limit = 0
+    if not hasattr(args, 'nopassive'):
+        args.nopassive = False
     
     # Apply nocrawl logic
     if args.nocrawl:

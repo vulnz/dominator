@@ -153,6 +153,10 @@ def main():
         # Create configuration
         config = Config(args)
         
+        # Apply nopassive flag if set
+        if hasattr(args, 'nopassive') and args.nopassive:
+            config.nopassive = True
+        
         # Create scanner
         scanner = VulnScanner(config)
         
