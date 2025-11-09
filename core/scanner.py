@@ -3694,108 +3694,177 @@ class VulnScanner:
                                 )
                             
                             print(f"    [STOREDXSS] Submit response code: {submit_response.status_code}")
+                            print(f"    [STOREDXSS] Submit response length: {len(submit_response.text)} chars")
                             
-                            # Step 2: Check if payload is stored by visiting the same page again
-                            print(f"    [STOREDXSS] *** STEP 2: CHECKING IF PAYLOAD IS STORED ***")
+                            # *** STEP 1.5: ПРОВЕРЯЕМ SELF-STORED XSS В ОТВЕТЕ ФОРМЫ ***
+                            print(f"    [STOREDXSS] *** STEP 1.5: CHECKING FOR SELF-STORED XSS IN FORM RESPONSE ***")
                             
-                            # Проверяем URL для обнаружения сохраненного payload
-                            check_urls = [base_url]
+                            # Проверяем payload в ответе сразу после отправки формы
+                            payload_in_submit_response = payload in submit_response.text
+                            payload_lower_in_submit_response = payload.lower() in submit_response.text.lower()
                             
-                            # Добавляем form_url только если он отличается от base_url
-                            if form_url != base_url:
-                                check_urls.append(form_url)
+                            print(f"    [STOREDXSS] Payload '{payload[:50]}...' found in submit response: {payload_in_submit_response}")
+                            print(f"    [STOREDXSS] Payload (case-insensitive) found in submit response: {payload_lower_in_submit_response}")
                             
-                            # Убираем дубликаты
-                            check_urls = list(set(check_urls))
-                            
-                            print(f"    [STOREDXSS] Will check {len(check_urls)} URLs for stored payload:")
-                            for url in check_urls:
-                                print(f"    [STOREDXSS]   - {url}")
-                            
-                            print(f"    [STOREDXSS] Form details: action='{form_action}', method='{form_method}', base_url='{base_url}'")
-                            print(f"    [STOREDXSS] Constructed form_url: '{form_url}'")
-                            
-                            stored_found = False
-                            check_response = None
-                            
-                            for check_url in check_urls:
-                                print(f"    [STOREDXSS] *** CHECKING URL: {check_url} ***")
-                                try:
-                                    check_response = requests.get(
-                                        check_url,
-                                        timeout=self.config.timeout,
-                                        headers=self.config.headers,
-                                        verify=False
-                                    )
-                                    
-                                    print(f"    [STOREDXSS] Check response code: {check_response.status_code}")
-                                    print(f"    [STOREDXSS] Check response length: {len(check_response.text)} chars")
-                                    
-                                    # ЯВНАЯ ПРОВЕРКА НАЛИЧИЯ PAYLOAD В ОТВЕТЕ
-                                    payload_in_response = payload in check_response.text
-                                    payload_lower_in_response = payload.lower() in check_response.text.lower()
-                                    
-                                    print(f"    [STOREDXSS] Payload '{payload[:50]}...' found in response: {payload_in_response}")
-                                    print(f"    [STOREDXSS] Payload (case-insensitive) found in response: {payload_lower_in_response}")
-                                    
-                                    if payload_in_response or payload_lower_in_response:
-                                        # Показываем контекст где найден payload
-                                        if payload_in_response:
-                                            pos = check_response.text.find(payload)
-                                        else:
-                                            pos = check_response.text.lower().find(payload.lower())
-                                        
-                                        if pos >= 0:
-                                            context_start = max(0, pos - 50)
-                                            context_end = min(len(check_response.text), pos + len(payload) + 50)
-                                            context = check_response.text[context_start:context_end]
-                                            print(f"    [STOREDXSS] Payload context: ...{context}...")
-                                    
-                                    # Use Stored XSS detector with proper parameters
-                                    try:
-                                        is_vulnerable, evidence, severity = StoredXSSDetector.detect_stored_xss(
-                                            submit_response.text, payload, check_response.text
-                                        )
-                                        print(f"    [STOREDXSS] *** DETECTOR RESULT: vulnerable={is_vulnerable}, evidence='{evidence}', severity='{severity}' ***")
-                                    except Exception as detector_error:
-                                        print(f"    [STOREDXSS] Detector error: {detector_error}")
-                                        # Fallback detection
-                                        is_vulnerable = payload_in_response or payload_lower_in_response
-                                        evidence = f"Stored XSS payload found in response: {payload}"
-                                        severity = "High"
-                                        print(f"    [STOREDXSS] *** FALLBACK DETECTION: vulnerable={is_vulnerable} ***")
+                            if payload_in_submit_response or payload_lower_in_submit_response:
+                                # Показываем контекст где найден payload в submit response
+                                if payload_in_submit_response:
+                                    pos = submit_response.text.find(payload)
+                                else:
+                                    pos = submit_response.text.lower().find(payload.lower())
                                 
-                                    if is_vulnerable:
-                                        stored_found = True
-                                        response_snippet = self._get_contextual_response_snippet(payload, check_response.text)
-                                        print(f"    [STOREDXSS] *** STORED XSS VULNERABILITY CONFIRMED! ***")
-                                        print(f"    [STOREDXSS] Input: {input_name}")
-                                        print(f"    [STOREDXSS] Evidence: {evidence}")
-                                        print(f"    [STOREDXSS] Severity: {severity}")
+                                if pos >= 0:
+                                    context_start = max(0, pos - 50)
+                                    context_end = min(len(submit_response.text), pos + len(payload) + 50)
+                                    context = submit_response.text[context_start:context_end]
+                                    print(f"    [STOREDXSS] Self-stored payload context: ...{context}...")
+                                
+                                # Используем детектор для подтверждения
+                                try:
+                                    is_self_stored, evidence, severity = StoredXSSDetector.detect_stored_xss(
+                                        "", payload, submit_response.text  # Пустой submit_response.text для self-stored
+                                    )
+                                    print(f"    [STOREDXSS] *** SELF-STORED XSS DETECTOR RESULT: vulnerable={is_self_stored}, evidence='{evidence}', severity='{severity}' ***")
+                                except Exception as detector_error:
+                                    print(f"    [STOREDXSS] Self-stored detector error: {detector_error}")
+                                    # Fallback detection для self-stored
+                                    is_self_stored = payload_in_submit_response or payload_lower_in_submit_response
+                                    evidence = f"Self-Stored XSS payload found in form response: {payload}"
+                                    severity = "High"
+                                    print(f"    [STOREDXSS] *** SELF-STORED FALLBACK DETECTION: vulnerable={is_self_stored} ***")
+                                
+                                if is_self_stored:
+                                    response_snippet = self._get_contextual_response_snippet(payload, submit_response.text)
+                                    print(f"    [STOREDXSS] *** SELF-STORED XSS VULNERABILITY CONFIRMED! ***")
+                                    print(f"    [STOREDXSS] Input: {input_name}")
+                                    print(f"    [STOREDXSS] Evidence: {evidence}")
+                                    print(f"    [STOREDXSS] Severity: {severity}")
+                                    
+                                    # Mark as found to prevent duplicates
+                                    self.found_vulnerabilities.add(form_key)
+                                    
+                                    results.append({
+                                        'module': 'storedxss',
+                                        'target': form_url,
+                                        'vulnerability': f'Self-Stored XSS in {form_method} Form',
+                                        'severity': severity,
+                                        'parameter': input_name,
+                                        'payload': payload,
+                                        'evidence': evidence,
+                                        'request_url': form_url,
+                                        'detector': 'StoredXSSDetector.detect_stored_xss (self-stored)',
+                                        'response_snippet': response_snippet,
+                                        'remediation': StoredXSSDetector.get_remediation_advice(),
+                                        'xss_type': 'self_stored'
+                                    })
+                                    break  # Found self-stored XSS, no need to test more payloads for this input
+                            
+                            # Step 2: Check if payload is persistently stored by visiting the same page again
+                            # (Только если не найден self-stored XSS)
+                            if form_key not in self.found_vulnerabilities:
+                                print(f"    [STOREDXSS] *** STEP 2: CHECKING IF PAYLOAD IS PERSISTENTLY STORED ***")
+                                
+                                # Проверяем URL для обнаружения сохраненного payload
+                                check_urls = [base_url]
+                                
+                                # Добавляем form_url только если он отличается от base_url
+                                if form_url != base_url:
+                                    check_urls.append(form_url)
+                                
+                                # Убираем дубликаты
+                                check_urls = list(set(check_urls))
+                                
+                                print(f"    [STOREDXSS] Will check {len(check_urls)} URLs for persistently stored payload:")
+                                for url in check_urls:
+                                    print(f"    [STOREDXSS]   - {url}")
+                                
+                                print(f"    [STOREDXSS] Form details: action='{form_action}', method='{form_method}', base_url='{base_url}'")
+                                print(f"    [STOREDXSS] Constructed form_url: '{form_url}'")
+                                
+                                stored_found = False
+                                check_response = None
+                                
+                                for check_url in check_urls:
+                                    print(f"    [STOREDXSS] *** CHECKING URL: {check_url} ***")
+                                    try:
+                                        check_response = requests.get(
+                                            check_url,
+                                            timeout=self.config.timeout,
+                                            headers=self.config.headers,
+                                            verify=False
+                                        )
                                         
-                                        # Mark as found to prevent duplicates
-                                        self.found_vulnerabilities.add(form_key)
+                                        print(f"    [STOREDXSS] Check response code: {check_response.status_code}")
+                                        print(f"    [STOREDXSS] Check response length: {len(check_response.text)} chars")
                                         
-                                        results.append({
-                                            'module': 'storedxss',
-                                            'target': form_url,
-                                            'vulnerability': f'Stored XSS in {form_method} Form',
-                                            'severity': severity,
-                                            'parameter': input_name,
-                                            'payload': payload,
-                                            'evidence': evidence,
-                                            'request_url': form_url,
-                                            'detector': 'StoredXSSDetector.detect_stored_xss',
-                                            'response_snippet': response_snippet,
-                                            'remediation': StoredXSSDetector.get_remediation_advice()
-                                        })
-                                        break  # Found stored XSS, no need to test more payloads for this input
-                                    else:
-                                        print(f"    [STOREDXSS] No stored XSS detected for payload: {payload[:30]}...")
+                                        # ЯВНАЯ ПРОВЕРКА НАЛИЧИЯ PAYLOAD В ОТВЕТЕ
+                                        payload_in_response = payload in check_response.text
+                                        payload_lower_in_response = payload.lower() in check_response.text.lower()
                                         
-                                except Exception as e:
-                                    print(f"    [STOREDXSS] Error checking URL {check_url}: {e}")
-                                    continue
+                                        print(f"    [STOREDXSS] Payload '{payload[:50]}...' found in response: {payload_in_response}")
+                                        print(f"    [STOREDXSS] Payload (case-insensitive) found in response: {payload_lower_in_response}")
+                                        
+                                        if payload_in_response or payload_lower_in_response:
+                                            # Показываем контекст где найден payload
+                                            if payload_in_response:
+                                                pos = check_response.text.find(payload)
+                                            else:
+                                                pos = check_response.text.lower().find(payload.lower())
+                                            
+                                            if pos >= 0:
+                                                context_start = max(0, pos - 50)
+                                                context_end = min(len(check_response.text), pos + len(payload) + 50)
+                                                context = check_response.text[context_start:context_end]
+                                                print(f"    [STOREDXSS] Persistent payload context: ...{context}...")
+                                        
+                                        # Use Stored XSS detector with proper parameters
+                                        try:
+                                            is_vulnerable, evidence, severity = StoredXSSDetector.detect_stored_xss(
+                                                submit_response.text, payload, check_response.text
+                                            )
+                                            print(f"    [STOREDXSS] *** PERSISTENT DETECTOR RESULT: vulnerable={is_vulnerable}, evidence='{evidence}', severity='{severity}' ***")
+                                        except Exception as detector_error:
+                                            print(f"    [STOREDXSS] Persistent detector error: {detector_error}")
+                                            # Fallback detection
+                                            is_vulnerable = payload_in_response or payload_lower_in_response
+                                            evidence = f"Persistent Stored XSS payload found in response: {payload}"
+                                            severity = "High"
+                                            print(f"    [STOREDXSS] *** PERSISTENT FALLBACK DETECTION: vulnerable={is_vulnerable} ***")
+                                    
+                                        if is_vulnerable:
+                                            stored_found = True
+                                            response_snippet = self._get_contextual_response_snippet(payload, check_response.text)
+                                            print(f"    [STOREDXSS] *** PERSISTENT STORED XSS VULNERABILITY CONFIRMED! ***")
+                                            print(f"    [STOREDXSS] Input: {input_name}")
+                                            print(f"    [STOREDXSS] Evidence: {evidence}")
+                                            print(f"    [STOREDXSS] Severity: {severity}")
+                                            
+                                            # Mark as found to prevent duplicates
+                                            self.found_vulnerabilities.add(form_key)
+                                            
+                                            results.append({
+                                                'module': 'storedxss',
+                                                'target': form_url,
+                                                'vulnerability': f'Persistent Stored XSS in {form_method} Form',
+                                                'severity': severity,
+                                                'parameter': input_name,
+                                                'payload': payload,
+                                                'evidence': evidence,
+                                                'request_url': form_url,
+                                                'detector': 'StoredXSSDetector.detect_stored_xss (persistent)',
+                                                'response_snippet': response_snippet,
+                                                'remediation': StoredXSSDetector.get_remediation_advice(),
+                                                'xss_type': 'persistent_stored'
+                                            })
+                                            break  # Found persistent stored XSS, no need to test more payloads for this input
+                                        else:
+                                            print(f"    [STOREDXSS] No persistent stored XSS detected for payload: {payload[:30]}...")
+                                            
+                                    except Exception as e:
+                                        print(f"    [STOREDXSS] Error checking URL {check_url}: {e}")
+                                        continue
+                            else:
+                                print(f"    [STOREDXSS] *** SKIPPING STEP 2: SELF-STORED XSS ALREADY FOUND ***")
                                 
                         except Exception as e:
                             print(f"    [STOREDXSS] Error testing stored payload: {e}")
