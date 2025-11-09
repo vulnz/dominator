@@ -849,6 +849,9 @@ class VulnScanner:
             from passive_detectors.sensitive_data_detector import SensitiveDataDetector as PassiveSensitiveData
             from passive_detectors.technology_detector import TechnologyDetector as PassiveTechnology
             from passive_detectors.version_disclosure_detector import VersionDisclosureDetector as PassiveVersionDisclosure
+            from passive_detectors.api_endpoints_detector import APIEndpointsDetector as PassiveAPIEndpoints
+            from passive_detectors.backup_files_detector import BackupFilesDetector as PassiveBackupFiles
+            from passive_detectors.debug_information_detector import DebugInformationDetector as PassiveDebugInfo
             
             print(f"    [PASSIVE] Analyzing {len(pages_data)} pages for passive vulnerabilities...")
             
@@ -980,6 +983,75 @@ class VulnScanner:
                     except Exception as e:
                         if self.debug:
                             print(f"    [PASSIVE] Version disclosure analysis error: {e}")
+                    
+                    # Run passive API endpoints detection
+                    try:
+                        has_api_findings, api_findings = PassiveAPIEndpoints.analyze(response.text, url, dict(response.headers))
+                        
+                        for finding in api_findings:
+                            passive_results.append({
+                                'module': 'passive_api',
+                                'target': url,
+                                'vulnerability': f'API Discovery: {finding["type"].replace("_", " ").title()}',
+                                'severity': finding['severity'],
+                                'parameter': finding.get('endpoint', finding.get('header', 'api_analysis')),
+                                'payload': 'N/A',
+                                'evidence': finding['description'],
+                                'request_url': url,
+                                'detector': 'PassiveAPIEndpoints.analyze',
+                                'response_snippet': finding.get('endpoint', finding.get('value', '')),
+                                'method': 'GET',
+                                'passive_analysis': True
+                            })
+                    except Exception as e:
+                        if self.debug:
+                            print(f"    [PASSIVE] API endpoints analysis error: {e}")
+                    
+                    # Run passive backup files detection
+                    try:
+                        has_backup_findings, backup_findings = PassiveBackupFiles.analyze(response.text, url, dict(response.headers))
+                        
+                        for finding in backup_findings:
+                            passive_results.append({
+                                'module': 'passive_backup',
+                                'target': url,
+                                'vulnerability': f'Backup Files: {finding["type"].replace("_", " ").title()}',
+                                'severity': finding['severity'],
+                                'parameter': finding.get('filename', finding.get('directory', 'backup_analysis')),
+                                'payload': 'N/A',
+                                'evidence': finding['description'],
+                                'request_url': url,
+                                'detector': 'PassiveBackupFiles.analyze',
+                                'response_snippet': finding.get('filename', finding.get('directory', '')),
+                                'method': 'GET',
+                                'passive_analysis': True
+                            })
+                    except Exception as e:
+                        if self.debug:
+                            print(f"    [PASSIVE] Backup files analysis error: {e}")
+                    
+                    # Run passive debug information detection
+                    try:
+                        has_debug_findings, debug_findings = PassiveDebugInfo.analyze(response.text, url, dict(response.headers))
+                        
+                        for finding in debug_findings:
+                            passive_results.append({
+                                'module': 'passive_debug',
+                                'target': url,
+                                'vulnerability': f'Debug Information: {finding["type"].replace("_", " ").title()}',
+                                'severity': finding['severity'],
+                                'parameter': finding.get('debug_type', finding.get('header', 'debug_analysis')),
+                                'payload': 'N/A',
+                                'evidence': finding['description'],
+                                'request_url': url,
+                                'detector': 'PassiveDebugInfo.analyze',
+                                'response_snippet': str(finding.get('file_paths', finding.get('paths', finding.get('value', ''))))[:100],
+                                'method': 'GET',
+                                'passive_analysis': True
+                            })
+                    except Exception as e:
+                        if self.debug:
+                            print(f"    [PASSIVE] Debug information analysis error: {e}")
                     
                 except Exception as e:
                     if self.debug:
