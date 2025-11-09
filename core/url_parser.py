@@ -204,9 +204,47 @@ class URLParser:
         """Extract forms from HTML"""
         forms = []
         
-        # Simple form parsing (can be improved with BeautifulSoup)
-        form_pattern = r'<form[^>]*>(.*?)</form>'
-        forms_html = re.findall(form_pattern, response_text, re.DOTALL | re.IGNORECASE)
+        # Debug: показываем часть HTML для анализа
+        print(f"    [URL_PARSER] Analyzing HTML content ({len(response_text)} chars)")
+        if '<form' in response_text.lower():
+            print(f"    [URL_PARSER] HTML contains '<form' tag")
+        else:
+            print(f"    [URL_PARSER] HTML does NOT contain '<form' tag")
+        
+        # Улучшенный парсинг форм с несколькими паттернами
+        form_patterns = [
+            r'<form[^>]*>(.*?)</form>',  # Стандартный паттерн
+            r'<form[^>]*>[\s\S]*?</form>',  # Альтернативный с [\s\S]
+            r'<FORM[^>]*>[\s\S]*?</FORM>',  # Верхний регистр
+        ]
+        
+        forms_html = []
+        for pattern in form_patterns:
+            matches = re.findall(pattern, response_text, re.DOTALL | re.IGNORECASE)
+            if matches:
+                forms_html.extend(matches)
+                print(f"    [URL_PARSER] Pattern '{pattern[:20]}...' found {len(matches)} forms")
+                break
+        
+        # Если не нашли формы, попробуем найти хотя бы теги <form>
+        if not forms_html:
+            form_tags = re.findall(r'<form[^>]*>', response_text, re.IGNORECASE)
+            print(f"    [URL_PARSER] Found {len(form_tags)} <form> opening tags")
+            if form_tags:
+                # Показываем найденные теги форм
+                for i, tag in enumerate(form_tags[:3]):
+                    print(f"    [URL_PARSER] Form tag {i+1}: {tag[:100]}...")
+                
+                # Попробуем извлечь содержимое между тегами вручную
+                for tag in form_tags:
+                    # Найдем позицию этого тега
+                    tag_pos = response_text.lower().find(tag.lower())
+                    if tag_pos >= 0:
+                        # Найдем закрывающий тег
+                        end_pos = response_text.lower().find('</form>', tag_pos)
+                        if end_pos >= 0:
+                            form_content = response_text[tag_pos:end_pos + 7]
+                            forms_html.append(form_content)
         
         print(f"    [URL_PARSER] Found {len(forms_html)} forms in HTML")
         
@@ -217,45 +255,116 @@ class URLParser:
                 'inputs': []
             }
             
-            # Extract method and action
-            method_match = re.search(r'method=["\']([^"\']+)["\']', form_html, re.IGNORECASE)
-            if method_match:
-                form_data['method'] = method_match.group(1).upper()
+            # Показываем содержимое формы для отладки
+            print(f"    [URL_PARSER] Processing form {i+1} content: {form_html[:200]}...")
             
-            action_match = re.search(r'action=["\']([^"\']+)["\']', form_html, re.IGNORECASE)
-            if action_match:
-                form_data['action'] = action_match.group(1)
+            # Extract method and action с улучшенными паттернами
+            method_patterns = [
+                r'method=["\']([^"\']+)["\']',
+                r'method=([^\s>]+)',
+                r'METHOD=["\']([^"\']+)["\']',
+                r'METHOD=([^\s>]+)'
+            ]
             
-            # Extract input fields
-            input_pattern = r'<input[^>]*>'
-            inputs = re.findall(input_pattern, form_html, re.IGNORECASE)
+            for pattern in method_patterns:
+                method_match = re.search(pattern, form_html, re.IGNORECASE)
+                if method_match:
+                    form_data['method'] = method_match.group(1).upper()
+                    break
+            
+            action_patterns = [
+                r'action=["\']([^"\']+)["\']',
+                r'action=([^\s>]+)',
+                r'ACTION=["\']([^"\']+)["\']',
+                r'ACTION=([^\s>]+)'
+            ]
+            
+            for pattern in action_patterns:
+                action_match = re.search(pattern, form_html, re.IGNORECASE)
+                if action_match:
+                    form_data['action'] = action_match.group(1).strip('\'"')
+                    break
+            
+            # Extract input fields с улучшенными паттернами
+            input_patterns = [
+                r'<input[^>]*>',
+                r'<INPUT[^>]*>',
+                r'<textarea[^>]*>.*?</textarea>',
+                r'<TEXTAREA[^>]*>.*?</TEXTAREA>',
+                r'<select[^>]*>.*?</select>',
+                r'<SELECT[^>]*>.*?</SELECT>'
+            ]
+            
+            inputs = []
+            for pattern in input_patterns:
+                matches = re.findall(pattern, form_html, re.IGNORECASE | re.DOTALL)
+                inputs.extend(matches)
             
             print(f"    [URL_PARSER] Form {i+1}: Method={form_data['method']}, Action='{form_data['action']}', Found {len(inputs)} input elements")
             
             for j, input_html in enumerate(inputs):
                 input_data = {}
                 
-                # Extract input attributes
-                name_match = re.search(r'name=["\']([^"\']+)["\']', input_html, re.IGNORECASE)
-                if name_match:
-                    input_data['name'] = name_match.group(1)
+                print(f"    [URL_PARSER] Processing input {j+1}: {input_html[:100]}...")
                 
-                type_match = re.search(r'type=["\']([^"\']+)["\']', input_html, re.IGNORECASE)
-                input_data['type'] = type_match.group(1) if type_match else 'text'
+                # Extract input attributes с улучшенными паттернами
+                name_patterns = [
+                    r'name=["\']([^"\']+)["\']',
+                    r'name=([^\s>]+)',
+                    r'NAME=["\']([^"\']+)["\']',
+                    r'NAME=([^\s>]+)'
+                ]
                 
-                value_match = re.search(r'value=["\']([^"\']*)["\']', input_html, re.IGNORECASE)
-                input_data['value'] = value_match.group(1) if value_match else ''
+                for pattern in name_patterns:
+                    name_match = re.search(pattern, input_html, re.IGNORECASE)
+                    if name_match:
+                        input_data['name'] = name_match.group(1).strip('\'"')
+                        break
+                
+                type_patterns = [
+                    r'type=["\']([^"\']+)["\']',
+                    r'type=([^\s>]+)',
+                    r'TYPE=["\']([^"\']+)["\']',
+                    r'TYPE=([^\s>]+)'
+                ]
+                
+                input_data['type'] = 'text'  # default
+                for pattern in type_patterns:
+                    type_match = re.search(pattern, input_html, re.IGNORECASE)
+                    if type_match:
+                        input_data['type'] = type_match.group(1).strip('\'"')
+                        break
+                
+                # Определяем тип элемента по тегу
+                if input_html.lower().startswith('<textarea'):
+                    input_data['type'] = 'textarea'
+                elif input_html.lower().startswith('<select'):
+                    input_data['type'] = 'select'
+                
+                value_patterns = [
+                    r'value=["\']([^"\']*)["\']',
+                    r'value=([^\s>]*)',
+                    r'VALUE=["\']([^"\']*)["\']',
+                    r'VALUE=([^\s>]*)'
+                ]
+                
+                input_data['value'] = ''
+                for pattern in value_patterns:
+                    value_match = re.search(pattern, input_html, re.IGNORECASE)
+                    if value_match:
+                        input_data['value'] = value_match.group(1).strip('\'"')
+                        break
                 
                 # Extract additional attributes
                 placeholder_match = re.search(r'placeholder=["\']([^"\']*)["\']', input_html, re.IGNORECASE)
                 if placeholder_match:
                     input_data['placeholder'] = placeholder_match.group(1)
                 
-                if 'name' in input_data:
+                if 'name' in input_data and input_data['name']:
                     form_data['inputs'].append(input_data)
                     print(f"    [URL_PARSER] Form {i+1} Input {j+1}: name='{input_data['name']}', type='{input_data['type']}', value='{input_data['value'][:20]}{'...' if len(str(input_data['value'])) > 20 else ''}'")
                 else:
-                    print(f"    [URL_PARSER] Form {i+1} Input {j+1}: SKIPPED (no name attribute), type='{input_data['type']}'")
+                    print(f"    [URL_PARSER] Form {i+1} Input {j+1}: SKIPPED (no name attribute), type='{input_data['type']}', html='{input_html[:50]}...'")
             
             forms.append(form_data)
             
