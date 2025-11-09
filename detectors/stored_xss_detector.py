@@ -25,7 +25,20 @@ class StoredXSSDetector:
     @staticmethod
     def get_stored_xss_indicators() -> List[str]:
         """Get stored XSS vulnerability indicators for detection"""
-        return PayloadLoader.load_indicators('xss_detection')
+        indicators = PayloadLoader.load_indicators('xss_detection')
+        if not indicators:
+            # Fallback indicators if file not found
+            indicators = [
+                'alert(',
+                'confirm(',
+                'prompt(',
+                'javascript:',
+                '<script>',
+                'onerror=',
+                'onload=',
+                'onclick='
+            ]
+        return indicators
     
     @staticmethod
     def detect_stored_xss(original_response: str, payload: str, follow_up_response: str = None) -> Tuple[bool, str, str]:
@@ -83,17 +96,18 @@ class StoredXSSDetector:
             # If unique ID found but not in dangerous context, still potential issue
             return True, f"Potential Stored XSS - unique identifier '{unique_id}' found in response", "Medium"
         
-        # Fallback: Check for XSS indicators
-        indicators = StoredXSSDetector.get_stored_xss_indicators()
-        found_indicators = []
-        
-        response_lower = response_to_check.lower()
-        for indicator in indicators:
-            if indicator.lower() in response_lower:
-                found_indicators.append(indicator)
-        
-        if found_indicators:
-            return True, f"Stored XSS indicators found: {', '.join(found_indicators[:3])}", "Low"
+        # Fallback: Check for XSS indicators only if payload is actually reflected
+        if payload in response_to_check:
+            indicators = StoredXSSDetector.get_stored_xss_indicators()
+            found_indicators = []
+            
+            response_lower = response_to_check.lower()
+            for indicator in indicators:
+                if indicator.lower() in response_lower:
+                    found_indicators.append(indicator)
+            
+            if found_indicators:
+                return True, f"Stored XSS indicators found: {', '.join(found_indicators[:3])}", "Low"
         
         return False, "No stored XSS detected", "None"
     

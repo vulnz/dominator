@@ -1597,7 +1597,13 @@ class VulnScanner:
                     input_name = input_data.get('name')
                     input_type = input_data.get('type', 'text')
                     
+                    # Skip non-testable inputs and search fields for stored XSS
                     if not input_name or input_type in ['submit', 'button', 'hidden']:
+                        continue
+                    
+                    # Skip search fields - they don't store data permanently
+                    if any(search_word in input_name.lower() for search_word in ['search', 'find', 'query', 'q']):
+                        print(f"    [STOREDXSS] Skipping search field: {input_name}")
                         continue
                     
                     print(f"    [SQLI] Testing form input: {input_name}")
@@ -3591,31 +3597,33 @@ class VulnScanner:
                                 is_vulnerable, evidence, severity = StoredXSSDetector.detect_stored_xss(
                                     submit_response.text, payload, check_response.text
                                 )
+                                
+                                print(f"    [STOREDXSS] Detection result: vulnerable={is_vulnerable}, evidence='{evidence}', severity='{severity}'")
                             
                                 if is_vulnerable:
                                     stored_found = True
-                                    break
-                            
-                                response_snippet = self._get_contextual_response_snippet(payload, check_response.text)
-                                print(f"    [STOREDXSS] STORED XSS FOUND! Input: {input_name} - {evidence}")
-                                
-                                # Mark as found to prevent duplicates
-                                self.found_vulnerabilities.add(form_key)
-                                
-                                results.append({
-                                    'module': 'storedxss',
-                                    'target': form_url,
-                                    'vulnerability': f'Stored XSS in {form_method} Form',
-                                    'severity': severity,
-                                    'parameter': input_name,
-                                    'payload': payload,
-                                    'evidence': evidence,
-                                    'request_url': form_url if form_method != 'GET' else get_url,
-                                    'detector': 'StoredXSSDetector.detect_stored_xss',
-                                    'response_snippet': response_snippet,
-                                    'remediation': StoredXSSDetector.get_remediation_advice()
-                                })
-                                break  # Found stored XSS, no need to test more payloads for this input
+                                    response_snippet = self._get_contextual_response_snippet(payload, check_response.text)
+                                    print(f"    [STOREDXSS] STORED XSS FOUND! Input: {input_name} - {evidence}")
+                                    
+                                    # Mark as found to prevent duplicates
+                                    self.found_vulnerabilities.add(form_key)
+                                    
+                                    results.append({
+                                        'module': 'storedxss',
+                                        'target': form_url,
+                                        'vulnerability': f'Stored XSS in {form_method} Form',
+                                        'severity': severity,
+                                        'parameter': input_name,
+                                        'payload': payload,
+                                        'evidence': evidence,
+                                        'request_url': form_url if form_method != 'GET' else get_url,
+                                        'detector': 'StoredXSSDetector.detect_stored_xss',
+                                        'response_snippet': response_snippet,
+                                        'remediation': StoredXSSDetector.get_remediation_advice()
+                                    })
+                                    break  # Found stored XSS, no need to test more payloads for this input
+                                else:
+                                    print(f"    [STOREDXSS] No stored XSS detected for payload: {payload[:30]}...")
                                 
                         except Exception as e:
                             print(f"    [STOREDXSS] Error testing stored payload: {e}")
