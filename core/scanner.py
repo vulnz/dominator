@@ -4807,9 +4807,8 @@ class VulnScanner:
                     
                     # Use SSTI detector
                     if SSTIDetector.detect_ssti(response.text, response.status_code, payload):
-                        evidence = SSTIDetector.get_evidence(payload, response.text)
-                        response_snippet = SSTIDetector.get_response_snippet(payload, response.text)
-                        remediation = SSTIDetector.get_remediation_advice()
+                        evidence = f"SSTI vulnerability detected - template injection: {payload}"
+                        response_snippet = self._get_contextual_response_snippet(payload, response.text)
                         print(f"    [SSTI] VULNERABILITY FOUND! Parameter: {param}")
                         
                         # Mark as found to prevent duplicates
