@@ -7632,14 +7632,20 @@ class VulnScanner:
                 # Sanitize dangerous fields to prevent XSS in reports
                 clean_result = self._sanitize_vulnerability_data(clean_result)
                 
-                # Use PayloadLoader to get metadata from JSON file
+                # Load metadata from JSON file
                 module_name = clean_result.get('module', 'unknown')
                 severity = clean_result.get('severity', 'Medium')
-                metadata = PayloadLoader.get_vulnerability_metadata(module_name, severity)
                 
-                # Ensure required metadata exists
+                # Try to get metadata from PayloadLoader first, then fallback to JSON methods
+                try:
+                    metadata = PayloadLoader.get_vulnerability_metadata(module_name, severity)
+                except:
+                    metadata = {}
+                
+                # Ensure required metadata exists using JSON-based methods
                 if 'cvss' not in clean_result:
-                    clean_result['cvss'] = metadata.get('cvss', self._get_default_cvss(severity))
+                    json_cvss = self._get_cvss_from_json(module_name, severity)
+                    clean_result['cvss'] = metadata.get('cvss', json_cvss)
                 if 'owasp' not in clean_result:
                     clean_result['owasp'] = metadata.get('owasp', self._get_default_owasp(module_name))
                 if 'cwe' not in clean_result:
@@ -7651,106 +7657,133 @@ class VulnScanner:
         
         return enhanced_results
     
+    def _get_cvss_from_json(self, module: str, severity: str) -> str:
+        """Get CVSS score from JSON based on module and severity"""
+        try:
+            import os
+            json_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'cwe_owasp_mapping.json')
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            vulnerabilities = data.get('vulnerabilities', {})
+            if module in vulnerabilities:
+                vuln_data = vulnerabilities[module]
+                severity_mapping = vuln_data.get('severity_mapping', {})
+                if severity in severity_mapping:
+                    score = severity_mapping[severity]
+                    # Add CVSS vector based on severity
+                    vectors = {
+                        'Critical': 'AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H',
+                        'High': 'AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H',
+                        'Medium': 'AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:H/A:N',
+                        'Low': 'AV:N/AC:H/PR:L/UI:N/S:U/C:L/I:N/A:N',
+                        'Info': 'AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N'
+                    }
+                    vector = vectors.get(severity, 'AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:H/A:N')
+                    return f"{score} ({vector})"
+                else:
+                    # Use base CVSS if no severity mapping
+                    base_score = vuln_data.get('cvss_base', '6.5')
+                    return f"{base_score} (AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:H/A:N)"
+            
+        except Exception as e:
+            print(f"Warning: Could not load CVSS data from JSON: {e}")
+        
+        # Fallback to severity-based CVSS
+        return self._get_default_cvss(severity)
+    
     def _get_default_cvss(self, severity: str) -> str:
-        """Get default CVSS score based on severity"""
-        cvss_mapping = {
-            'Critical': '9.8',
-            'High': '8.8', 
-            'Medium': '6.5',
-            'Low': '3.1',
-            'Info': '0.0'
-        }
-        return cvss_mapping.get(severity, '6.5')
+        """Get default CVSS score based on severity from JSON"""
+        try:
+            # Load severity levels from JSON
+            import os
+            json_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'cwe_owasp_mapping.json')
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            severity_levels = data.get('severity_levels', {})
+            if severity in severity_levels:
+                cvss_range = severity_levels[severity]['cvss_range']
+                # Return the middle value of the range with vector
+                if '-' in cvss_range:
+                    min_val, max_val = cvss_range.split('-')
+                    avg_score = (float(min_val) + float(max_val)) / 2
+                else:
+                    avg_score = float(cvss_range)
+                
+                # Add CVSS vector based on severity
+                vectors = {
+                    'Critical': 'AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H',
+                    'High': 'AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H',
+                    'Medium': 'AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:H/A:N',
+                    'Low': 'AV:N/AC:H/PR:L/UI:N/S:U/C:L/I:N/A:N',
+                    'Info': 'AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N'
+                }
+                vector = vectors.get(severity, 'AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:H/A:N')
+                return f"{avg_score:.1f} ({vector})"
+            
+        except Exception as e:
+            print(f"Warning: Could not load CVSS data from JSON: {e}")
+        
+        # Fallback
+        return '6.5 (AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:H/A:N)'
     
     def _get_default_owasp(self, module: str) -> str:
-        """Get default OWASP classification based on module"""
-        owasp_mapping = {
-            'xss': 'A03:2021 – Injection',
-            'sqli': 'A03:2021 – Injection', 
-            'lfi': 'A03:2021 – Injection',
-            'rfi': 'A03:2021 – Injection',
-            'xxe': 'A05:2021 – Security Misconfiguration',
-            'csrf': 'A01:2021 – Broken Access Control',
-            'idor': 'A01:2021 – Broken Access Control',
-            'commandinjection': 'A03:2021 – Injection',
-            'pathtraversal': 'A03:2021 – Injection',
-            'ldapinjection': 'A03:2021 – Injection',
-            'nosqlinjection': 'A03:2021 – Injection',
-            'ssti': 'A03:2021 – Injection',
-            'crlf': 'A03:2021 – Injection',
-            'htmlinjection': 'A03:2021 – Injection',
-            'textinjection': 'A03:2021 – Injection',
-            'secheaders': 'A05:2021 – Security Misconfiguration',
-            'httponlycookies': 'A05:2021 – Security Misconfiguration',
-            'ssltls': 'A02:2021 – Cryptographic Failures',
-            'cors': 'A05:2021 – Security Misconfiguration',
-            'clickjacking': 'A05:2021 – Security Misconfiguration',
-            'fileupload': 'A03:2021 – Injection',
-            'jwt': 'A02:2021 – Cryptographic Failures',
-            'deserialization': 'A08:2021 – Software and Data Integrity Failures',
-            'responsesplitting': 'A03:2021 – Injection'
-        }
-        return owasp_mapping.get(module, 'A06:2021 – Vulnerable and Outdated Components')
+        """Get default OWASP classification based on module from JSON"""
+        try:
+            # Load vulnerability data from JSON
+            import os
+            json_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'cwe_owasp_mapping.json')
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            vulnerabilities = data.get('vulnerabilities', {})
+            if module in vulnerabilities:
+                return vulnerabilities[module].get('owasp', 'A06:2021 – Vulnerable and Outdated Components')
+            
+        except Exception as e:
+            print(f"Warning: Could not load OWASP data from JSON: {e}")
+        
+        # Fallback
+        return 'A06:2021 – Vulnerable and Outdated Components'
     
     def _get_default_cwe(self, module: str) -> str:
-        """Get default CWE classification based on module"""
-        cwe_mapping = {
-            'xss': 'CWE-79',
-            'sqli': 'CWE-89',
-            'lfi': 'CWE-22',
-            'rfi': 'CWE-98', 
-            'xxe': 'CWE-611',
-            'csrf': 'CWE-352',
-            'idor': 'CWE-639',
-            'commandinjection': 'CWE-78',
-            'pathtraversal': 'CWE-22',
-            'ldapinjection': 'CWE-90',
-            'nosqlinjection': 'CWE-943',
-            'ssti': 'CWE-94',
-            'crlf': 'CWE-93',
-            'htmlinjection': 'CWE-79',
-            'textinjection': 'CWE-74',
-            'secheaders': 'CWE-16',
-            'httponlycookies': 'CWE-614',
-            'ssltls': 'CWE-326',
-            'cors': 'CWE-346',
-            'clickjacking': 'CWE-1021',
-            'fileupload': 'CWE-434',
-            'jwt': 'CWE-287',
-            'deserialization': 'CWE-502',
-            'responsesplitting': 'CWE-113'
-        }
-        return cwe_mapping.get(module, 'CWE-200')
+        """Get default CWE classification based on module from JSON"""
+        try:
+            # Load vulnerability data from JSON
+            import os
+            json_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'cwe_owasp_mapping.json')
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            vulnerabilities = data.get('vulnerabilities', {})
+            if module in vulnerabilities:
+                return vulnerabilities[module].get('cwe', 'CWE-200')
+            
+        except Exception as e:
+            print(f"Warning: Could not load CWE data from JSON: {e}")
+        
+        # Fallback
+        return 'CWE-200'
     
     def _get_default_recommendation(self, module: str) -> str:
-        """Get default recommendation based on module"""
-        recommendations = {
-            'xss': 'Implement proper input validation and output encoding. Use Content Security Policy (CSP).',
-            'sqli': 'Use parameterized queries/prepared statements. Implement proper input validation.',
-            'lfi': 'Validate and sanitize file paths. Use whitelisting for allowed files.',
-            'rfi': 'Disable remote file inclusion. Validate and sanitize all file inputs.',
-            'xxe': 'Disable external entity processing in XML parsers. Use secure XML parsing libraries.',
-            'csrf': 'Implement CSRF tokens. Use SameSite cookie attributes.',
-            'idor': 'Implement proper access controls and authorization checks.',
-            'commandinjection': 'Avoid executing system commands with user input. Use parameterized APIs.',
-            'pathtraversal': 'Validate and sanitize file paths. Use whitelisting for allowed directories.',
-            'ldapinjection': 'Use parameterized LDAP queries. Implement proper input validation.',
-            'nosqlinjection': 'Use parameterized queries. Implement proper input validation and sanitization.',
-            'ssti': 'Use safe template engines. Implement proper input validation and sandboxing.',
-            'crlf': 'Validate and sanitize all user inputs. Encode special characters.',
-            'htmlinjection': 'Implement proper HTML encoding and Content Security Policy (CSP).',
-            'textinjection': 'Implement proper input validation and output encoding.',
-            'secheaders': 'Configure proper security headers to protect against common attacks.',
-            'httponlycookies': 'Set HttpOnly, Secure, and SameSite flags on all cookies.',
-            'ssltls': 'Use strong TLS configuration with modern cipher suites.',
-            'cors': 'Configure CORS policy properly. Avoid using wildcard origins.',
-            'clickjacking': 'Implement X-Frame-Options or CSP frame-ancestors directive.',
-            'fileupload': 'Validate file types, scan for malware, and store uploads securely.',
-            'jwt': 'Use strong signing algorithms and validate JWT tokens properly.',
-            'deserialization': 'Avoid deserializing untrusted data. Use safe serialization formats.',
-            'responsesplitting': 'Validate and sanitize all user inputs used in HTTP responses.'
-        }
-        return recommendations.get(module, 'Review and implement appropriate security controls.')
+        """Get default recommendation based on module from JSON"""
+        try:
+            # Load vulnerability data from JSON
+            import os
+            json_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'cwe_owasp_mapping.json')
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            vulnerabilities = data.get('vulnerabilities', {})
+            if module in vulnerabilities:
+                return vulnerabilities[module].get('recommendation', 'Review and implement appropriate security controls.')
+            
+        except Exception as e:
+            print(f"Warning: Could not load recommendation data from JSON: {e}")
+        
+        # Fallback
+        return 'Review and implement appropriate security controls.'
     
     def _get_contextual_response_snippet(self, payload: str, response_text: str, context_size: int = 30) -> str:
         """Get response snippet with context around where payload was found"""
