@@ -208,7 +208,9 @@ class URLParser:
         form_pattern = r'<form[^>]*>(.*?)</form>'
         forms_html = re.findall(form_pattern, response_text, re.DOTALL | re.IGNORECASE)
         
-        for form_html in forms_html:
+        print(f"    [URL_PARSER] Found {len(forms_html)} forms in HTML")
+        
+        for i, form_html in enumerate(forms_html):
             form_data = {
                 'method': 'GET',
                 'action': '',
@@ -228,7 +230,9 @@ class URLParser:
             input_pattern = r'<input[^>]*>'
             inputs = re.findall(input_pattern, form_html, re.IGNORECASE)
             
-            for input_html in inputs:
+            print(f"    [URL_PARSER] Form {i+1}: Method={form_data['method']}, Action='{form_data['action']}', Found {len(inputs)} input elements")
+            
+            for j, input_html in enumerate(inputs):
                 input_data = {}
                 
                 # Extract input attributes
@@ -242,10 +246,26 @@ class URLParser:
                 value_match = re.search(r'value=["\']([^"\']*)["\']', input_html, re.IGNORECASE)
                 input_data['value'] = value_match.group(1) if value_match else ''
                 
+                # Extract additional attributes
+                placeholder_match = re.search(r'placeholder=["\']([^"\']*)["\']', input_html, re.IGNORECASE)
+                if placeholder_match:
+                    input_data['placeholder'] = placeholder_match.group(1)
+                
                 if 'name' in input_data:
                     form_data['inputs'].append(input_data)
+                    print(f"    [URL_PARSER] Form {i+1} Input {j+1}: name='{input_data['name']}', type='{input_data['type']}', value='{input_data['value'][:20]}{'...' if len(str(input_data['value'])) > 20 else ''}'")
+                else:
+                    print(f"    [URL_PARSER] Form {i+1} Input {j+1}: SKIPPED (no name attribute), type='{input_data['type']}'")
             
             forms.append(form_data)
+            
+            # ЯВНЫЙ ВЫВОД ПАРАМЕТРОВ ФОРМ
+            if form_data['method'] == 'GET':
+                get_params = [inp['name'] for inp in form_data['inputs'] if inp.get('name')]
+                print(f"    [URL_PARSER] *** GET FORM PARAMS EXTRACTED: {get_params} ***")
+            elif form_data['method'] in ['POST', 'PUT']:
+                post_params = [inp['name'] for inp in form_data['inputs'] if inp.get('name')]
+                print(f"    [URL_PARSER] *** POST FORM PARAMS EXTRACTED: {post_params} ***")
         
         return forms
     
