@@ -124,6 +124,44 @@ class PayloadLoader:
         }
     
     @classmethod
+    def load_wordlist(cls, wordlist_name: str) -> List[str]:
+        """Load wordlist from text file with caching"""
+        cache_key = f"wordlist_{wordlist_name}"
+        
+        if cache_key in cls._cache:
+            return cls._cache[cache_key]
+        
+        if cls._base_path is None:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            base_dir = os.path.dirname(current_dir)
+        else:
+            base_dir = os.path.dirname(cls._base_path)
+        
+        wordlist_file = os.path.join(base_dir, 'wordlists', f"{wordlist_name}.txt")
+        
+        if not os.path.exists(wordlist_file):
+            print(f"Warning: Wordlist file not found: {wordlist_file}")
+            return []
+        
+        try:
+            with open(wordlist_file, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            
+            wordlist = []
+            for line in lines:
+                line = line.strip()
+                # Skip empty lines and comments
+                if line and not line.startswith('#'):
+                    wordlist.append(line)
+            
+            cls._cache[cache_key] = wordlist
+            return wordlist
+            
+        except Exception as e:
+            print(f"Error loading wordlist from {wordlist_file}: {e}")
+            return []
+    
+    @classmethod
     def clear_cache(cls):
         """Clear payload cache"""
         cls._cache.clear()

@@ -2,133 +2,39 @@
 CSRF (Cross-Site Request Forgery) payloads
 """
 
+from utils.payload_loader import PayloadLoader
+
 class CSRFPayloads:
     """CSRF payload collection"""
     
     @staticmethod
     def get_basic_payloads():
-        """Get basic CSRF test payloads"""
-        return [
-            # Simple form submission without CSRF token
-            {
-                'name': 'basic_post',
-                'method': 'POST',
-                'data': {'action': 'test', 'value': 'csrf_test'},
-                'description': 'Basic POST request without CSRF token'
-            },
-            # PUT request
-            {
-                'name': 'put_request',
-                'method': 'PUT',
-                'data': {'action': 'update', 'value': 'csrf_test'},
-                'description': 'PUT request without CSRF token'
-            },
-            # DELETE request
-            {
-                'name': 'delete_request',
-                'method': 'DELETE',
-                'data': {'action': 'delete', 'id': '1'},
-                'description': 'DELETE request without CSRF token'
-            },
-            # PATCH request
-            {
-                'name': 'patch_request',
-                'method': 'PATCH',
-                'data': {'action': 'patch', 'value': 'csrf_test'},
-                'description': 'PATCH request without CSRF token'
-            }
-        ]
+        """Get basic CSRF test payloads from text file"""
+        all_payloads = PayloadLoader.load_payloads('csrf')
+        return [p for p in all_payloads if any(keyword in p for keyword in ['POST /', 'PUT /', 'DELETE /', 'PATCH /'])]
     
     @staticmethod
     def get_advanced_payloads():
-        """Get advanced CSRF test payloads"""
-        return [
-            # JSON content type
-            {
-                'name': 'json_post',
-                'method': 'POST',
-                'data': '{"action": "test", "value": "csrf_test"}',
-                'headers': {'Content-Type': 'application/json'},
-                'description': 'JSON POST request without CSRF token'
-            },
-            # XML content type
-            {
-                'name': 'xml_post',
-                'method': 'POST',
-                'data': '<?xml version="1.0"?><request><action>test</action></request>',
-                'headers': {'Content-Type': 'application/xml'},
-                'description': 'XML POST request without CSRF token'
-            },
-            # Multipart form data
-            {
-                'name': 'multipart_post',
-                'method': 'POST',
-                'data': {'action': 'upload', 'file': 'test.txt'},
-                'headers': {'Content-Type': 'multipart/form-data'},
-                'description': 'Multipart form POST without CSRF token'
-            },
-            # Custom headers
-            {
-                'name': 'custom_headers',
-                'method': 'POST',
-                'data': {'action': 'test'},
-                'headers': {
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'X-Custom-Header': 'test'
-                },
-                'description': 'POST with custom headers without CSRF token'
-            }
-        ]
+        """Get advanced CSRF test payloads from text file"""
+        all_payloads = PayloadLoader.load_payloads('csrf')
+        return [p for p in all_payloads if any(keyword in p for keyword in ['Content-Type=', 'X-Requested-With=', 'Origin=', 'Referer='])]
     
     @staticmethod
     def get_bypass_payloads():
-        """Get CSRF protection bypass payloads"""
-        return [
-            # Empty CSRF token
-            {
-                'name': 'empty_token',
-                'method': 'POST',
-                'data': {'csrf_token': '', 'action': 'test'},
-                'description': 'POST with empty CSRF token'
-            },
-            # Invalid CSRF token
-            {
-                'name': 'invalid_token',
-                'method': 'POST',
-                'data': {'csrf_token': 'invalid_token_123', 'action': 'test'},
-                'description': 'POST with invalid CSRF token'
-            },
-            # Wrong parameter name
-            {
-                'name': 'wrong_param',
-                'method': 'POST',
-                'data': {'_token': 'test123', 'action': 'test'},
-                'description': 'POST with wrong CSRF parameter name'
-            },
-            # Case sensitivity test
-            {
-                'name': 'case_test',
-                'method': 'POST',
-                'data': {'CSRF_TOKEN': 'test123', 'action': 'test'},
-                'description': 'POST with uppercase CSRF token parameter'
-            },
-            # Double submit with different values
-            {
-                'name': 'double_submit',
-                'method': 'POST',
-                'data': {'csrf_token': 'token1', '_token': 'token2', 'action': 'test'},
-                'description': 'POST with multiple different CSRF tokens'
-            }
-        ]
+        """Get CSRF protection bypass payloads from text file"""
+        all_payloads = PayloadLoader.load_payloads('csrf')
+        return [p for p in all_payloads if any(keyword in p for keyword in ['csrf_token=', '_token=', 'authenticity_token=', '__RequestVerificationToken='])]
+    
+    @staticmethod
+    def get_parameter_payloads():
+        """Get CSRF parameter payloads from text file"""
+        all_payloads = PayloadLoader.load_payloads('csrf')
+        return [p for p in all_payloads if 'action=' in p]
     
     @staticmethod
     def get_all_payloads():
-        """Get all CSRF payloads"""
-        payloads = []
-        payloads.extend(CSRFPayloads.get_basic_payloads())
-        payloads.extend(CSRFPayloads.get_advanced_payloads())
-        payloads.extend(CSRFPayloads.get_bypass_payloads())
-        return payloads
+        """Get all CSRF payloads from text file"""
+        return PayloadLoader.load_payloads('csrf')
     
     @staticmethod
     def get_html_poc_template():
@@ -155,45 +61,3 @@ class CSRFPayloads:
 </body>
 </html>
         '''
-class CSRFPayloads:
-    """CSRF payload collection optimized for XVWA"""
-    
-    @staticmethod
-    def get_basic_payloads():
-        """Basic CSRF test payloads"""
-        return [
-            # These are conceptual - CSRF testing requires actual form submission
-            "<!-- CSRF Test: Form without token -->",
-            "<!-- CSRF Test: Missing Referer header -->",
-            "<!-- CSRF Test: Cross-origin request -->",
-            "<!-- CSRF Test: Modified token value -->",
-            "<!-- CSRF Test: Empty token value -->",
-            "<!-- CSRF Test: Reused token -->",
-            "<!-- CSRF Test: Predictable token -->"
-        ]
-
-    @staticmethod
-    def get_advanced_payloads():
-        """Advanced CSRF bypass payloads"""
-        return [
-            "<!-- CSRF Bypass: Double submit cookie -->",
-            "<!-- CSRF Bypass: Origin header manipulation -->",
-            "<!-- CSRF Bypass: Referer header manipulation -->",
-            "<!-- CSRF Bypass: Content-Type manipulation -->",
-            "<!-- CSRF Bypass: Method override -->",
-            "<!-- CSRF Bypass: Token in URL parameter -->",
-            "<!-- CSRF Bypass: Case sensitivity bypass -->"
-        ]
-
-    @staticmethod
-    def get_bypass_payloads():
-        """CSRF protection bypass payloads"""
-        return [
-            "<!-- Bypass: Remove token parameter -->",
-            "<!-- Bypass: Change token parameter name -->",
-            "<!-- Bypass: Use empty token value -->",
-            "<!-- Bypass: Use null token value -->",
-            "<!-- Bypass: Use array instead of string -->",
-            "<!-- Bypass: Use different HTTP method -->",
-            "<!-- Bypass: Use different Content-Type -->"
-        ]

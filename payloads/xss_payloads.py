@@ -10,13 +10,14 @@ class XSSPayloads:
     @staticmethod
     def get_basic_payloads():
         """Get basic XSS payloads from text file"""
-        return PayloadLoader.load_payloads('xss')[:50]  # First 50 payloads
+        all_payloads = PayloadLoader.load_payloads('xss')
+        return all_payloads[:20] if len(all_payloads) > 20 else all_payloads
     
     @staticmethod
     def get_advanced_payloads():
         """Get advanced XSS payloads from text file"""
         all_payloads = PayloadLoader.load_payloads('xss')
-        return all_payloads[50:] if len(all_payloads) > 50 else []
+        return all_payloads[20:] if len(all_payloads) > 20 else []
     
     @staticmethod
     def get_all_payloads():

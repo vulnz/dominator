@@ -1,0 +1,39 @@
+POST /admin/delete HTTP/1.1
+POST /user/update HTTP/1.1
+POST /password/change HTTP/1.1
+POST /settings/update HTTP/1.1
+POST /profile/edit HTTP/1.1
+PUT /api/user/1 HTTP/1.1
+DELETE /api/user/1 HTTP/1.1
+PATCH /api/user/1 HTTP/1.1
+POST /transfer/money HTTP/1.1
+POST /email/change HTTP/1.1
+POST /admin/create HTTP/1.1
+POST /file/upload HTTP/1.1
+POST /comment/add HTTP/1.1
+POST /vote/submit HTTP/1.1
+POST /order/place HTTP/1.1
+POST /subscription/cancel HTTP/1.1
+POST /account/delete HTTP/1.1
+POST /permissions/grant HTTP/1.1
+POST /role/assign HTTP/1.1
+POST /backup/create HTTP/1.1
+action=delete&id=1
+action=update&user=admin
+action=transfer&amount=1000
+action=change&password=newpass
+action=grant&permission=admin
+csrf_token=
+_token=invalid123
+authenticity_token=fake
+__RequestVerificationToken=wrong
+csrfmiddlewaretoken=test
+_csrf=empty
+token=null
+csrf=bypass
+X-CSRF-Token=invalid
+X-Requested-With=XMLHttpRequest
+Content-Type=application/json
+Content-Type=text/plain
+Origin=http://evil.com
+Referer=http://evil.com
