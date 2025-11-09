@@ -127,6 +127,16 @@ class RFIDetector:
             Tuple of (is_vulnerable, evidence, severity)
         """
         try:
+            # Initialize variables to avoid UnboundLocalError
+            if baseline_content is None:
+                baseline_content = ""
+            if baseline_length is None:
+                baseline_length = 0
+            if response_text is None:
+                response_text = ""
+            if payload is None:
+                payload = ""
+                
             # Skip error responses
             if response_code >= 400:
                 return False, "Error response", "None"
