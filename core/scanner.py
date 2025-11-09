@@ -1640,7 +1640,7 @@ class VulnScanner:
                 elif form_action.startswith('http'):
                     form_url = form_action
                 elif form_action:
-                    # Для относительных URL используем базовый домен, а не директорию
+                    # Для относительных URL используем базовый домен
                     base_parts = base_url.split('/')
                     base_domain = '/'.join(base_parts[:3])  # http://domain.com
                     form_url = f"{base_domain}/{form_action}"
