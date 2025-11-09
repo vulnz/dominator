@@ -134,15 +134,18 @@ def main():
         
         # Override args for optimal testphp scanning
         args.url = "http://testphp.vulnweb.com/guestbook.php"
-        args.modules = "storedxss,xss,htmlinjection,textinjection"
-        args.threads = 5
-        args.crawl = True
-        args.payload_limit = 50
-        args.request_limit = 1000
-        args.max_time = 10  # 10 minutes
+        args.target = None  # Clear target to avoid conflict
+        args.file = None    # Clear file to avoid conflict
+        args.modules = "storedxss"  # Only stored XSS
+        args.threads = 3
+        args.crawl = False  # No crawling - only target page
+        args.single_url = True  # Only scan the specific page
+        args.payload_limit = 20
+        args.request_limit = 500
+        args.max_time = 5  # 5 minutes
         args.auto_report = True
         args.debug = True
-        print("Configured for maximum Stored XSS detection effectiveness!")
+        print("Configured for focused Stored XSS detection on guestbook page only!")
         print("="*60)
     
     # Check required parameters
