@@ -5469,11 +5469,12 @@ class VulnScanner:
     
     def _get_success_indicators(self) -> List[str]:
         """Get indicators that suggest a request was successful"""
-        return [
-            'success', 'successful', 'completed', 'saved', 'updated', 'created',
-            'added', 'submitted', 'processed', 'confirmed', 'accepted',
-            'thank you', 'thanks', 'welcome', 'congratulations'
-        ]
+        # Load success indicators from file
+        success_indicators = PayloadLoader.load_indicators('success')
+        if not success_indicators:
+            # Fallback to basic indicators if file not found
+            success_indicators = ['success', 'successful', 'completed', 'saved']
+        return success_indicators
     
     def _is_likely_404_response(self, response_text: str, response_code: int) -> bool:
         """Quick check if response is likely a 404 page"""
@@ -5519,12 +5520,11 @@ class VulnScanner:
         if len(response_text.strip()) < 100:
             return False
         
-        # Look for error messages that might leak information
-        meaningful_patterns = [
-            'error', 'exception', 'warning', 'notice', 'fatal',
-            'mysql', 'sql', 'database', 'query', 'syntax',
-            'include', 'require', 'file', 'path', 'directory'
-        ]
+        # Load meaningful 404 patterns from file
+        meaningful_patterns = PayloadLoader.load_patterns('meaningful_404')
+        if not meaningful_patterns:
+            # Fallback to basic patterns if file not found
+            meaningful_patterns = ['error', 'exception', 'mysql', 'sql', 'include']
         
         response_lower = response_text.lower()
         meaningful_count = sum(1 for pattern in meaningful_patterns if pattern in response_lower)
