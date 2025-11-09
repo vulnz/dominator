@@ -810,7 +810,7 @@ class VulnScanner:
                 'successful_payloads': 0
             }
         
-        # Ensure forms are extracted if not already done
+        # Enhanced form extraction with better error handling
         if 'forms' not in parsed_data or not parsed_data['forms']:
             try:
                 print(f"    [MODULE] {module_name.upper()}: Extracting forms from {parsed_data['url']}")
@@ -818,34 +818,73 @@ class VulnScanner:
                     parsed_data['url'],
                     timeout=self.config.timeout,
                     headers=self.config.headers,
-                    verify=False
+                    verify=False,
+                    allow_redirects=True
                 )
                 if response.status_code == 200:
                     forms = self.url_parser.extract_forms(response.text)
                     parsed_data['forms'] = forms
                     print(f"    [MODULE] {module_name.upper()}: Successfully extracted {len(forms)} forms from page")
                     
-                    # Log detailed form information
+                    # Log detailed form information with enhanced analysis
                     for i, form in enumerate(forms):
                         form_method = form.get('method', 'GET').upper()
                         form_action = form.get('action', '')
                         form_inputs = form.get('inputs', [])
-                        print(f"    [FORM] Form {i+1}: Method={form_method}, Action='{form_action}', Inputs={len(form_inputs)}")
+                        form_enctype = form.get('enctype', 'application/x-www-form-urlencoded')
                         
-                        # Log input details
-                        for j, input_field in enumerate(form_inputs):
+                        print(f"    [FORM] Form {i+1}: Method={form_method}, Action='{form_action}', Inputs={len(form_inputs)}, Enctype={form_enctype}")
+                        
+                        # Count input types
+                        input_types = {}
+                        testable_inputs = 0
+                        for input_field in form_inputs:
+                            input_type = input_field.get('type', 'text')
+                            input_types[input_type] = input_types.get(input_type, 0) + 1
+                            if input_type not in ['submit', 'button', 'reset', 'image']:
+                                testable_inputs += 1
+                        
+                        print(f"    [FORM] Form {i+1} Input types: {input_types}, Testable: {testable_inputs}")
+                        
+                        # Log first few input details
+                        for j, input_field in enumerate(form_inputs[:5]):  # Show first 5 inputs
                             input_name = input_field.get('name', 'unnamed')
                             input_type = input_field.get('type', 'text')
                             input_value = input_field.get('value', '')
-                            print(f"    [FORM] Input {j+1}: name='{input_name}', type='{input_type}', value='{input_value}'")
+                            input_placeholder = input_field.get('placeholder', '')
+                            print(f"    [FORM] Input {j+1}: name='{input_name}', type='{input_type}', value='{input_value[:20]}', placeholder='{input_placeholder[:20]}'")
+                        
+                        if len(form_inputs) > 5:
+                            print(f"    [FORM] ... and {len(form_inputs) - 5} more inputs")
+                            
+                elif response.status_code in [301, 302, 303, 307, 308]:
+                    print(f"    [MODULE] {module_name.upper()}: Page redirected (HTTP {response.status_code}) - following redirect")
+                    parsed_data['forms'] = []
                 else:
                     print(f"    [MODULE] {module_name.upper()}: Failed to extract forms - HTTP {response.status_code}")
                     parsed_data['forms'] = []
+            except requests.exceptions.Timeout:
+                print(f"    [MODULE] {module_name.upper()}: Timeout extracting forms")
+                parsed_data['forms'] = []
+            except requests.exceptions.ConnectionError:
+                print(f"    [MODULE] {module_name.upper()}: Connection error extracting forms")
+                parsed_data['forms'] = []
             except Exception as e:
                 print(f"    [MODULE] {module_name.upper()}: Error extracting forms: {e}")
                 parsed_data['forms'] = []
         else:
-            print(f"    [MODULE] {module_name.upper()}: Using cached {len(parsed_data.get('forms', []))} forms")
+            forms_count = len(parsed_data.get('forms', []))
+            print(f"    [MODULE] {module_name.upper()}: Using cached {forms_count} forms")
+            
+            # Log cached form summary
+            if forms_count > 0:
+                methods = {}
+                total_inputs = 0
+                for form in parsed_data['forms']:
+                    method = form.get('method', 'GET').upper()
+                    methods[method] = methods.get(method, 0) + 1
+                    total_inputs += len(form.get('inputs', []))
+                print(f"    [MODULE] {module_name.upper()}: Cached forms - Methods: {methods}, Total inputs: {total_inputs}")
         
         try:
             if module_name == "xss":
@@ -951,11 +990,11 @@ class VulnScanner:
         # Update payload stats
         self.scan_stats['payload_stats']['xss']['payloads_used'] += len(xss_payloads)
         
-        # Test GET parameters
+        # Test GET parameters with enhanced logging
         print(f"    [XSS] Found {len(parsed_data['query_params'])} GET parameters to test: {list(parsed_data['query_params'].keys())}")
         
         for param, values in parsed_data['query_params'].items():
-            print(f"    [XSS] Testing GET parameter: {param} with values: {values}")
+            print(f"    [XSS] Testing GET parameter: {param} with {len(values)} value(s): {values[:3]}{'...' if len(values) > 3 else ''}")
             
             # Create deduplication key for this parameter
             param_key = f"xss_{base_url.split('?')[0]}_{param}"
@@ -1172,7 +1211,7 @@ class VulnScanner:
                     print(f"    [XSS] Error testing payload: {e}")
                     continue
         
-        # Test POST forms
+        # Test POST forms with enhanced form analysis
         forms_data = parsed_data.get('forms', [])
         print(f"    [XSS] Found {len(forms_data)} forms to test")
         
@@ -1183,24 +1222,37 @@ class VulnScanner:
             
             print(f"    [XSS] Analyzing form {i+1}: method={form_method}, action='{form_action}', inputs={len(form_inputs)}")
             
+            # Log detailed form input information
+            for j, input_field in enumerate(form_inputs):
+                input_name = input_field.get('name', 'unnamed')
+                input_type = input_field.get('type', 'text')
+                input_value = input_field.get('value', '')
+                print(f"    [XSS] Form {i+1} Input {j+1}: name='{input_name}', type='{input_type}', value='{input_value[:20]}{'...' if len(str(input_value)) > 20 else ''}'")
+            
             if form_method in ['POST', 'PUT'] and form_inputs:
                 print(f"    [XSS] Testing {form_method} form {i+1}: {form_action} with {len(form_inputs)} inputs")
-            elif form_method == 'GET':
-                print(f"    [XSS] Skipping GET form {i+1} (GET forms tested via parameters)")
+            elif form_method == 'GET' and form_inputs:
+                print(f"    [XSS] Testing GET form {i+1} (will test as URL parameters)")
             elif not form_inputs:
-                print(f"    [XSS] Skipping form {i+1} - no inputs found")
+                print(f"    [XSS] Skipping form {i+1} - no testable inputs found")
             else:
-                print(f"    [XSS] Skipping form {i+1} - unsupported method: {form_method}")
+                print(f"    [XSS] Testing form {i+1} with method: {form_method}")
                 
-                # Build form URL
+                # Build form URL with better URL construction
                 if form_action.startswith('/'):
                     form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
                 elif form_action.startswith('http'):
                     form_url = form_action
+                elif form_action:
+                    # Handle relative URLs
+                    base_path = '/'.join(base_url.split('/')[:-1]) if base_url.count('/') > 3 else base_url.rstrip('/')
+                    form_url = f"{base_path}/{form_action}"
                 else:
-                    form_url = f"{base_url.rstrip('/')}/{form_action}" if form_action else base_url
+                    form_url = base_url
                 
-                # Test each form input
+                print(f"    [XSS] Form URL resolved to: {form_url}")
+                
+                # Test each form input with enhanced filtering
                 testable_inputs = []
                 for input_data in form_inputs:
                     input_name = input_data.get('name')
@@ -1209,8 +1261,11 @@ class VulnScanner:
                     if not input_name:
                         print(f"    [XSS] Skipping input without name: type={input_type}")
                         continue
-                    elif input_type in ['submit', 'button', 'hidden']:
+                    elif input_type in ['submit', 'button', 'reset', 'image']:
                         print(f"    [XSS] Skipping non-testable input: name={input_name}, type={input_type}")
+                        continue
+                    elif input_type == 'hidden' and input_name.lower() in ['csrf_token', '_token', 'authenticity_token']:
+                        print(f"    [XSS] Skipping security token: name={input_name}, type={input_type}")
                         continue
                     else:
                         testable_inputs.append(input_data)
@@ -1235,21 +1290,31 @@ class VulnScanner:
                         try:
                             print(f"    [XSS] Trying form payload: {payload[:50]}...")
                             
-                            # Prepare form data
+                            # Prepare form data with better default values
                             post_data = {}
                             for inp in form_inputs:
                                 inp_name = inp.get('name')
-                                inp_value = inp.get('value', 'test')
+                                inp_value = inp.get('value', '')
                                 inp_type = inp.get('type', 'text')
                                 
-                                if inp_name and inp_type not in ['submit', 'button']:
+                                if inp_name and inp_type not in ['submit', 'button', 'reset', 'image']:
                                     if inp_name == input_name:
                                         post_data[inp_name] = payload
                                     else:
-                                        post_data[inp_name] = inp_value
+                                        # Use appropriate default values based on input type
+                                        if inp_type == 'email':
+                                            post_data[inp_name] = inp_value or 'test@example.com'
+                                        elif inp_type == 'password':
+                                            post_data[inp_name] = inp_value or 'password123'
+                                        elif inp_type == 'number':
+                                            post_data[inp_name] = inp_value or '123'
+                                        elif inp_type == 'url':
+                                            post_data[inp_name] = inp_value or 'http://example.com'
+                                        else:
+                                            post_data[inp_name] = inp_value or 'test'
                             
                             print(f"    [XSS] Sending {form_method} request to {form_url}")
-                            print(f"    [XSS] POST data: {post_data}")
+                            print(f"    [XSS] Form data keys: {list(post_data.keys())}")
                             
                             if form_method == 'POST':
                                 response = requests.post(
@@ -1257,15 +1322,34 @@ class VulnScanner:
                                     data=post_data,
                                     timeout=self.config.timeout,
                                     headers=self.config.headers,
-                                    verify=False
+                                    verify=False,
+                                    allow_redirects=True
                                 )
-                            else:  # PUT
+                            elif form_method == 'PUT':
                                 response = requests.put(
                                     form_url,
                                     data=post_data,
                                     timeout=self.config.timeout,
                                     headers=self.config.headers,
-                                    verify=False
+                                    verify=False,
+                                    allow_redirects=True
+                                )
+                            else:  # GET form - build URL with parameters
+                                # Build query string for GET form
+                                query_parts = []
+                                for k, v in post_data.items():
+                                    from urllib.parse import quote_plus
+                                    query_parts.append(f"{quote_plus(k)}={quote_plus(str(v))}")
+                                
+                                get_url = f"{form_url}?{'&'.join(query_parts)}" if query_parts else form_url
+                                print(f"    [XSS] GET form URL: {get_url}")
+                                
+                                response = requests.get(
+                                    get_url,
+                                    timeout=self.config.timeout,
+                                    headers=self.config.headers,
+                                    verify=False,
+                                    allow_redirects=True
                                 )
                             
                             print(f"    [XSS] Form response code: {response.status_code}")

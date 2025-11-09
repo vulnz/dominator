@@ -11,40 +11,35 @@ class StoredXSSDetector:
     
     @staticmethod
     def get_stored_xss_payloads() -> List[str]:
-        """Get stored XSS payloads from file"""
-        payloads = PayloadLoader.load_payloads('stored_xss')
-        if not payloads:
-            # Fallback payloads if file not found
-            payloads = [
-                '<script>alert("STORED_XSS_TEST")</script>',
-                '<img src=x onerror=alert("STORED_XSS")>',
-                '<svg onload=alert("STORED_XSS")>',
-                'javascript:alert("STORED_XSS")',
-                '<iframe src="javascript:alert(\'STORED_XSS\')"></iframe>',
-                '<body onload=alert("STORED_XSS")>',
-                '<div onclick=alert("STORED_XSS")>Click</div>',
-                '"><script>alert("STORED_XSS")</script>',
-                "'><script>alert('STORED_XSS')</script>",
-                '</script><script>alert("STORED_XSS")</script>'
-            ]
-        return payloads
+        """Get stored XSS payloads from existing XSS payload collection"""
+        from payloads.xss_payloads import XSSPayloads
+        
+        # Use existing XSS payloads - they work for stored XSS too
+        basic_payloads = XSSPayloads.get_basic_payloads()
+        context_payloads = XSSPayloads.get_context_aware_payloads()
+        
+        # Combine and return first 20 most effective payloads
+        all_payloads = basic_payloads + context_payloads
+        return all_payloads[:20] if all_payloads else [
+            '<script>alert("XSS")</script>',
+            '<img src=x onerror=alert("XSS")>'
+        ]
     
     @staticmethod
     def get_stored_xss_indicators() -> List[str]:
         """Get stored XSS vulnerability indicators for detection"""
-        indicators = PayloadLoader.load_payloads('stored_xss_indicators')
+        indicators = PayloadLoader.load_indicators('xss_detection')
         if not indicators:
             # Fallback indicators if file not found
             indicators = [
-                'STORED_XSS_TEST',
-                'STORED_XSS',
-                'alert("xss")',
-                'alert(\'xss\')',
-                'alert(1)',
-                'javascript:alert',
-                '<script>alert',
-                'onerror=alert',
-                'onload=alert'
+                'alert(',
+                'confirm(',
+                'prompt(',
+                'javascript:',
+                '<script>',
+                'onerror=',
+                'onload=',
+                'onclick='
             ]
         return indicators
     
@@ -187,20 +182,8 @@ class StoredXSSDetector:
     @staticmethod
     def get_test_payloads() -> List[str]:
         """Get test payloads for stored XSS detection"""
-        return [
-            '<script>alert("STORED_XSS_TEST")</script>',
-            '<img src=x onerror=alert("STORED_XSS")>',
-            '<svg onload=alert("STORED_XSS")>',
-            'javascript:alert("STORED_XSS")',
-            '<iframe src="javascript:alert(\'STORED_XSS\')"></iframe>',
-            '<body onload=alert("STORED_XSS")>',
-            '<div onclick=alert("STORED_XSS")>Click</div>',
-            '"><script>alert("STORED_XSS")</script>',
-            "'><script>alert('STORED_XSS')</script>",
-            '</script><script>alert("STORED_XSS")</script>',
-            '<script>confirm("STORED_XSS")</script>',
-            '<script>prompt("STORED_XSS")</script>'
-        ]
+        from payloads.xss_payloads import XSSPayloads
+        return XSSPayloads.get_basic_payloads()[:12]
     
     @staticmethod
     def get_remediation_advice() -> str:
