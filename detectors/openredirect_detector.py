@@ -16,7 +16,9 @@ class OpenRedirectDetector:
             'goto', 'target', 'dest', 'destination', 'forward', 'continue',
             'redirect_uri', 'redirect_url', 'callback', 'callback_url',
             'success_url', 'failure_url', 'cancel_url', 'back', 'backurl',
-            'site', 'domain', 'host', 'referer', 'referrer', 'origin'
+            'site', 'domain', 'host', 'referer', 'referrer', 'origin',
+            'returnto', 'redirect_to', 'return_to', 'checkout_url', 
+            'continue_url', 'shop_url'
         ]
     
     @staticmethod
@@ -44,11 +46,11 @@ class OpenRedirectDetector:
         
         # Check for JavaScript redirects in response content
         js_redirect_patterns = [
-            r'window\.location\s*=\s*["\']([^"\']+)["\']',
-            r'window\.location\.href\s*=\s*["\']([^"\']+)["\']',
-            r'document\.location\s*=\s*["\']([^"\']+)["\']',
-            r'location\.replace\s*\(\s*["\']([^"\']+)["\']\s*\)',
-            r'location\.assign\s*\(\s*["\']([^"\']+)["\']\s*\)'
+            r'(?:window|document|self|top)\.location\s*=\s*["\']([^"\']+)["\']',
+            r'(?:window|document|self|top)\.location\.href\s*=\s*["\']([^"\']+)["\']',
+            r'(?:window|document|self|top)\.location\.assign\s*\(\s*["\']([^"\']+)["\']\s*\)',
+            r'(?:window|document|self|top)\.location\.replace\s*\(\s*["\']([^"\']+)["\']\s*\)',
+            r'window\.navigate\s*\(\s*["\']([^"\']+)["\']\s*\)'
         ]
         
         for pattern in js_redirect_patterns:
@@ -63,6 +65,13 @@ class OpenRedirectDetector:
         for match in matches:
             if payload_url.lower() in match.lower():
                 return True, f"Meta refresh redirect to: {match}", "meta_refresh"
+        
+        # Check for iframe src redirects
+        iframe_src_pattern = r'<iframe[^>]*src\s*=\s*["\']([^"\']+)["\']'
+        matches = re.findall(iframe_src_pattern, response_text, re.IGNORECASE)
+        for match in matches:
+            if payload_url.lower() in match.lower():
+                return True, f"iframe src redirect to: {match}", "iframe_redirect"
         
         # Check for form action redirects
         form_action_pattern = r'<form[^>]*action\s*=\s*["\']([^"\']+)["\']'
@@ -81,6 +90,7 @@ class OpenRedirectDetector:
             "external_redirect": f"Redirect to external domain detected: {redirect_target}",
             "js_redirect": f"JavaScript redirect to external URL: {redirect_target}",
             "meta_refresh": f"Meta refresh redirect to external URL: {redirect_target}",
+            "iframe_redirect": f"iframe src points to external URL: {redirect_target}",
             "form_action": f"Form action points to external URL: {redirect_target}"
         }
         
