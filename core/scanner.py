@@ -715,9 +715,14 @@ class VulnScanner:
                         if response.status_code == 200:
                             forms = self.url_parser.extract_forms(response.text)
                             page_data['forms'] = forms
+                            # Update forms count in stats
                             self.scan_stats['total_forms'] += len(forms)
                     except:
                         page_data['forms'] = []
+                else:
+                    # Forms already extracted, make sure stats are updated
+                    if len(page_data.get('forms', [])) > 0:
+                        self.scan_stats['total_forms'] += len(page_data['forms'])
             
                 # Test each module on this page
                 for module_name in self.config.modules:
@@ -736,7 +741,12 @@ class VulnScanner:
                     # Update module stats
                     self.scan_stats['module_stats'][module_name]['pages_tested'] += 1
                     self.scan_stats['module_stats'][module_name]['parameters_tested'] += len(page_data['query_params'])
-                    self.scan_stats['module_stats'][module_name]['forms_tested'] += len(page_data.get('forms', []))
+                    forms_count = len(page_data.get('forms', []))
+                    self.scan_stats['module_stats'][module_name]['forms_tested'] += forms_count
+                    
+                    # Debug stats
+                    if self.debug:
+                        print(f"  [DEBUG] Module {module_name}: params={len(page_data['query_params'])}, forms={forms_count}")
                 
                     if self.debug:
                         print(f"  [DEBUG] Testing {module_name.upper()} on {page_data['url']}")
@@ -1624,15 +1634,17 @@ class VulnScanner:
             if form_method in ['POST', 'PUT'] and form_inputs:
                 print(f"    [SQLI] Testing {form_method} form {i+1}: {form_action}")
                 
-                # Build form URL
+                # Build form URL - ИСПРАВЛЕНО для правильной обработки относительных путей
                 if form_action.startswith('/'):
                     form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
                 elif form_action.startswith('http'):
                     form_url = form_action
                 elif form_action:
-                    # For relative URLs, use the base directory of the current page
-                    base_dir = '/'.join(base_url.split('/')[:-1])
-                    form_url = f"{base_dir}/{form_action}"
+                    # Для относительных URL используем базовый домен, а не директорию
+                    base_parts = base_url.split('/')
+                    base_domain = '/'.join(base_parts[:3])  # http://domain.com
+                    form_url = f"{base_domain}/{form_action}"
+                    print(f"    [STOREDXSS] Relative form action '{form_action}' resolved to: {form_url}")
                 else:
                     form_url = base_url
                 
@@ -3692,22 +3704,6 @@ class VulnScanner:
                             # Добавляем form_url только если он отличается от base_url
                             if form_url != base_url:
                                 check_urls.append(form_url)
-                            
-                            # Для форм поиска также проверяем целевую страницу поиска
-                            if 'search' in form_action.lower():
-                                # Построим правильный URL для страницы поиска
-                                if form_action.startswith('/'):
-                                    search_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
-                                elif form_action.startswith('http'):
-                                    search_url = form_action
-                                else:
-                                    # Относительный путь - используем базовый домен
-                                    base_parts = base_url.split('/')
-                                    base_domain = '/'.join(base_parts[:3])  # http://domain.com
-                                    search_url = f"{base_domain}/{form_action}"
-                                
-                                if search_url not in check_urls:
-                                    check_urls.append(search_url)
                             
                             # Убираем дубликаты
                             check_urls = list(set(check_urls))
