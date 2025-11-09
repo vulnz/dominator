@@ -1103,55 +1103,48 @@ class VulnScanner:
                         response_preview = response.text[:200].replace('\n', ' ').replace('\r', ' ')
                         print(f"    [XSS] Response preview: {response_preview}...")
                     
-                    # Enhanced XSS detection with multiple checks
-                    xss_detected = False
-                    detection_method = ""
+                    # Enhanced XSS detection with context analysis and DOM XSS support
+                    xss_result = XSSDetector.detect_reflected_xss(payload, response.text, response.status_code)
+                    print(f"    [XSS] XSS detection result: {xss_result}")
                     
-                    # Primary detection
-                    primary_result = XSSDetector.detect_reflected_xss(payload, response.text, response.status_code)
-                    print(f"    [XSS] Primary detector result: {primary_result}")
-                    
-                    if primary_result:
+                    if xss_result['vulnerable']:
                         xss_detected = True
-                        detection_method = "primary_detector"
-                        print(f"    [XSS] XSS detected by primary detector")
+                        detection_method = xss_result['detection_method']
+                        xss_type = xss_result['xss_type']
+                        confidence = xss_result['confidence']
+                        print(f"    [XSS] XSS detected: {xss_type} (method: {detection_method}, confidence: {confidence:.2f})")
+                    else:
+                        xss_detected = False
+                        detection_method = "none"
+                        xss_type = "None"
+                        confidence = 0.0
                     
-                    # Secondary detection - payload reflection
-                    elif payload_in_response:
-                        xss_detected = True
-                        detection_method = "payload_reflection"
-                        print(f"    [XSS] XSS detected by payload reflection")
-                    
-                    # Tertiary detection - check for common XSS indicators
-                    elif any(indicator in response.text.lower() for indicator in ['<script', 'javascript:', 'onerror=', 'onload=']):
-                        if any(xss_char in payload for xss_char in ['<', '>', 'script', 'alert']):
-                            xss_detected = True
-                            detection_method = "indicator_matching"
-                            print(f"    [XSS] XSS detected by indicator matching")
-                    
-                    print(f"    [XSS] Final XSS detection result: {xss_detected} (method: {detection_method})")
+                    print(f"    [XSS] Final XSS detection result: {xss_detected} (type: {xss_type})")
                     
                     if xss_detected:
                         try:
-                            evidence = XSSDetector.get_evidence(payload, response.text)
+                            evidence = XSSDetector.get_evidence(payload, response.text, xss_result)
                             response_snippet = XSSDetector.get_response_snippet(payload, response.text)
                         except Exception as e:
                             print(f"    [XSS] Error getting evidence: {e}")
-                            evidence = f"XSS detected with payload: {payload}"
+                            evidence = f"{xss_type} detected with payload: {payload}"
                             response_snippet = "Response analysis failed"
                             
                         # Create vulnerability object for filtering
                         vulnerability = {
                             'module': 'xss',
                             'target': base_url,
-                            'vulnerability': 'Reflected XSS',
-                            'severity': 'High',  # Increased severity for XSS
+                            'vulnerability': xss_type,
+                            'severity': 'High' if confidence >= 0.8 else 'Medium',
                             'parameter': param,
                             'payload': payload,
                             'evidence': evidence,
                             'request_url': test_url,
-                            'detector': 'XSSDetector.detect_reflected_xss',
-                            'response_snippet': response_snippet
+                            'detector': f'XSSDetector.enhanced_detection ({detection_method})',
+                            'response_snippet': response_snippet,
+                            'xss_type': xss_type,
+                            'confidence': confidence,
+                            'detection_method': detection_method
                         }
                         
                         # Filter false positives
@@ -4210,12 +4203,15 @@ class VulnScanner:
                     
                     print(f"    [CMDINJECTION] Response code: {response.status_code}")
                     
-                    # Use Command Injection detector
-                    if CommandInjectionDetector.detect_command_injection(response.text, response.status_code, payload):
-                        evidence = CommandInjectionDetector.get_evidence(payload, response.text)
+                    # Enhanced Command Injection detection with false positive filtering
+                    is_vulnerable, confidence, evidence = CommandInjectionDetector.detect_command_injection(
+                        response.text, response.status_code, payload
+                    )
+                    
+                    if is_vulnerable and confidence >= 0.7:  # High confidence threshold
                         response_snippet = CommandInjectionDetector.get_response_snippet(payload, response.text)
                         remediation = CommandInjectionDetector.get_remediation_advice()
-                        print(f"    [CMDINJECTION] VULNERABILITY FOUND! Parameter: {param}")
+                        print(f"    [CMDINJECTION] VULNERABILITY FOUND! Parameter: {param} (confidence: {confidence:.2f})")
                         
                         # Mark as found to prevent duplicates
                         self.found_vulnerabilities.add(param_key)
@@ -4229,9 +4225,10 @@ class VulnScanner:
                             'payload': payload,
                             'evidence': evidence,
                             'request_url': test_url,
-                            'detector': 'CommandInjectionDetector.detect_command_injection',
+                            'detector': 'CommandInjectionDetector.enhanced_detection',
                             'response_snippet': response_snippet,
-                            'remediation': remediation
+                            'remediation': remediation,
+                            'confidence': confidence
                         })
                         break  # Found command injection, no need to test more payloads for this param
                         
@@ -4246,15 +4243,17 @@ class VulnScanner:
         results = []
         base_url = parsed_data['url']
         
-        # Path traversal payloads
-        path_payloads = [
-            '../../../etc/passwd',
-            '..\\..\\..\\windows\\win.ini',
-            '/etc/passwd',
-            'C:\\windows\\win.ini',
-            '....//....//....//etc/passwd',
-            '....\\\\....\\\\....\\\\windows\\\\win.ini'
-        ]
+        # Get path traversal payloads from payload module
+        try:
+            from payloads.pathtraversal_payloads import PathTraversalPayloads
+            path_payloads = PathTraversalPayloads.get_all_payloads()
+        except ImportError:
+            path_payloads = [
+                '../../../etc/passwd',
+                '..\\..\\..\\windows\\win.ini',
+                '/etc/passwd',
+                'C:\\windows\\win.ini'
+            ]
         
         # Test GET parameters
         for param, values in parsed_data['query_params'].items():
@@ -4327,13 +4326,15 @@ class VulnScanner:
         results = []
         base_url = parsed_data['url']
         
-        # LDAP injection payloads
-        ldap_payloads = [
-            '*', '*)(&', '*))%00', '*()|%26',
-            '*(|(mail=*))', '*(|(objectclass=*))',
-            '*)(uid=*))(|(uid=*',
-            '*)(|(cn=*))', '*)(|(sn=*))'
-        ]
+        # Get LDAP injection payloads from payload module
+        try:
+            from payloads.ldapinjection_payloads import LDAPInjectionPayloads
+            ldap_payloads = LDAPInjectionPayloads.get_all_payloads()
+        except ImportError:
+            ldap_payloads = [
+                '*', '*)(&', '*))%00', '*()|%26',
+                '*(|(mail=*))', '*(|(objectclass=*))'
+            ]
         
         # Test GET parameters
         for param, values in parsed_data['query_params'].items():
@@ -4670,13 +4671,15 @@ class VulnScanner:
         results = []
         base_url = parsed_data['url']
         
-        # Deserialization payloads
-        deser_payloads = [
-            'rO0ABXNyABFqYXZhLnV0aWwuSGFzaE1hcA==',  # Java serialized HashMap
-            'O:8:"stdClass":0:{}',  # PHP serialized object
-            'a:1:{s:4:"test";s:4:"test";}',  # PHP serialized array
-            'YToxOntzOjQ6InRlc3QiO3M6NDoidGVzdCI7fQ==',  # Base64 PHP serialized
-        ]
+        # Get deserialization payloads from payload module
+        try:
+            from payloads.deserialization_payloads import DeserializationPayloads
+            deser_payloads = DeserializationPayloads.get_all_payloads()
+        except ImportError:
+            deser_payloads = [
+                'rO0ABXNyABFqYXZhLnV0aWwuSGFzaE1hcA==',  # Java serialized HashMap
+                'O:8:"stdClass":0:{}',  # PHP serialized object
+            ]
         
         # Test GET parameters
         for param, values in parsed_data['query_params'].items():
@@ -4752,13 +4755,14 @@ class VulnScanner:
         results = []
         base_url = parsed_data['url']
         
-        # More targeted HTTP Response Splitting payloads
-        splitting_payloads = [
-            '%0d%0aSet-Cookie: test=injected',
-            '%0d%0aLocation: http://evil.com',
-            '%0d%0aContent-Type: text/html',
-            '%0d%0aX-Injected-Header: test'
-        ]
+        # Get HTTP Response Splitting payloads from payload module
+        try:
+            splitting_payloads = HTTPResponseSplittingDetector.get_splitting_indicators()
+        except:
+            splitting_payloads = [
+                '%0d%0aSet-Cookie: test=injected',
+                '%0d%0aLocation: http://evil.com'
+            ]
         
         # Test GET parameters
         for param, values in parsed_data['query_params'].items():
@@ -4922,13 +4926,8 @@ class VulnScanner:
         results = []
         base_url = parsed_data['url']
         
-        # More targeted CRLF payloads
-        crlf_payloads = [
-            '%0d%0aSet-Cookie: crlf=injected',
-            '%0d%0aLocation: http://evil.com',
-            '%0aSet-Cookie: crlf=test',
-            '%0d%0aX-CRLF-Test: injected'
-        ]
+        # Get CRLF payloads from payload module
+        crlf_payloads = CRLFPayloads.get_all_payloads()
         
         # Test GET parameters
         for param, values in parsed_data['query_params'].items():
@@ -5417,17 +5416,17 @@ class VulnScanner:
         results = []
         base_url = parsed_data['url']
         
-        # Open redirect payloads
-        redirect_payloads = [
-            'http://evil.com',
-            'https://attacker.com',
-            '//evil.com',
-            '///evil.com',
-            'http://google.com',
-            'https://example.com',
-            'javascript:alert(1)',
-            'data:text/html,<script>alert(1)</script>'
-        ]
+        # Get open redirect payloads from payload module
+        try:
+            from payloads.openredirect_payloads import OpenRedirectPayloads
+            redirect_payloads = OpenRedirectPayloads.get_all_payloads()
+        except ImportError:
+            redirect_payloads = [
+                'http://evil.com',
+                'https://attacker.com', 
+                '//evil.com',
+                'javascript:alert(1)'
+            ]
         
         # Enhanced redirect parameters
         redirect_params = ['url', 'redirect', 'return', 'next', 'goto', 'target', 'link', 'site', 'file', 'page', 'path']
