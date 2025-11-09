@@ -510,6 +510,23 @@ except ImportError:
         def detect_virtual_hosts(base_url, headers, timeout=10):
             return False, "VHost detector not available", "Info", []
 
+try:
+    from detectors.openredirect_detector import OpenRedirectDetector
+except ImportError:
+    class OpenRedirectDetector:
+        @staticmethod
+        def get_redirect_parameters():
+            return ['url', 'redirect', 'return', 'next']
+        @staticmethod
+        def detect_open_redirect(response_text, response_code, response_headers, payload_url, original_url):
+            return False, None, None
+        @staticmethod
+        def get_evidence(redirect_type, redirect_target):
+            return f"Open redirect detected: {redirect_target}"
+        @staticmethod
+        def get_response_snippet(response_text: str, redirect_target: str, max_length: int = 300) -> str:
+            return response_text[:max_length]
+
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -6626,135 +6643,98 @@ class VulnScanner:
         """Test for Open Redirect vulnerabilities"""
         results = []
         base_url = parsed_data['url']
-        
-        # Get open redirect payloads from payload module
-        try:
-            from payloads.openredirect_payloads import OpenRedirectPayloads
-            redirect_payloads = OpenRedirectPayloads.get_all_payloads()
-        except ImportError:
-            redirect_payloads = [
-                'http://evil.com',
-                'https://attacker.com', 
-                '//evil.com',
-                'javascript:alert(1)'
-            ]
-        
-        # Enhanced redirect parameters
-        redirect_params = ['url', 'redirect', 'return', 'next', 'goto', 'target', 'link', 'site', 'file', 'page', 'path']
-        
-        # Test for HTTP Parameter Pollution (HPP) on any site with duplicate parameters
-        duplicate_params = []
-        for param in parsed_data['query_params'].keys():
-            if len(parsed_data['query_params'][param]) > 1:
-                duplicate_params.append(param)
-        
-        if duplicate_params:
-            print(f"    [OPENREDIRECT] Testing HPP with duplicate parameters: {duplicate_params}")
-            for param in duplicate_params:
-                hpp_payloads = [
-                    f'{param}=1&{param}=2&{param}=3',
-                    f'{param}=valid&{param}=12&{param}=13',
-                    f'{param}=test&{param}=evil&{param}=good'
-                ]
-                
-                for hpp_payload in hpp_payloads:
-                    try:
-                        test_url = f"{base_url.split('?')[0]}?{hpp_payload}"
-                        response = requests.get(
-                            test_url,
-                            timeout=self.config.timeout,
-                            headers=self.config.headers,
-                            verify=False,
-                            allow_redirects=False
-                        )
-                        
-                        if response.status_code == 200:
-                            results.append({
-                                'module': 'openredirect',
-                                'target': base_url,
-                                'vulnerability': 'HTTP Parameter Pollution (HPP)',
-                                'severity': 'Medium',
-                                'parameter': param,
-                                'payload': hpp_payload,
-                                'evidence': f'HPP detected - multiple {param} parameters processed: {hpp_payload}',
-                                'request_url': test_url,
-                                'detector': 'hpp_parameter_analysis',
-                                'response_snippet': response.text[:200] + '...' if len(response.text) > 200 else response.text,
-                                'remediation': 'Properly handle duplicate parameters and validate input',
-                                'method': 'GET'
-                            })
-                            break
-                    except Exception as e:
-                        continue
-        
+
+        # Get open redirect payloads from payload loader
+        redirect_payloads = PayloadLoader.load_payloads('openredirect')
+        if not redirect_payloads:
+            print("    [OPENREDIRECT] Warning: Could not load openredirect payloads.")
+            redirect_payloads = ['http://evil.com', '//evil.com']  # Fallback
+
+        # Get redirect parameters from detector
+        redirect_params = OpenRedirectDetector.get_redirect_parameters()
+
+        # Update payload stats
+        if 'openredirect' not in self.scan_stats['payload_stats']:
+            self.scan_stats['payload_stats']['openredirect'] = {'payloads_used': 0, 'requests_made': 0, 'successful_payloads': 0}
+        self.scan_stats['payload_stats']['openredirect']['payloads_used'] += len(redirect_payloads)
+
+        # Test GET parameters
         for param, values in parsed_data['query_params'].items():
-            # Check if parameter name suggests it might be used for redirects or file access
-            if any(redirect_param in param.lower() for redirect_param in redirect_params):
+            # Check if parameter name suggests it might be used for redirects
+            if any(redirect_param.lower() in param.lower() for redirect_param in redirect_params):
                 print(f"    [OPENREDIRECT] Testing parameter: {param}")
-                
+
                 # Create deduplication key for this parameter
                 param_key = f"openredirect_{base_url.split('?')[0]}_{param}"
                 if param_key in self.found_vulnerabilities:
                     print(f"    [OPENREDIRECT] Skipping parameter {param} - already tested")
                     continue
-                
-                for payload in redirect_payloads:
+
+                payload_count = self.payload_limit if self.payload_limit > 0 else len(redirect_payloads)
+                for payload in redirect_payloads[:payload_count]:
                     try:
                         print(f"    [OPENREDIRECT] Trying payload: {payload}")
-                        
+
                         # Create test URL
                         test_params = parsed_data['query_params'].copy()
                         test_params[param] = [payload]
-                        
-                        # Build query string
-                        query_parts = []
-                        for k, v_list in test_params.items():
-                            for v in v_list:
-                                query_parts.append(f"{k}={v}")
-                        
-                        test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
-                        
+
+                        test_url = self._build_test_url(base_url, test_params)
+
                         response = requests.get(
                             test_url,
                             timeout=self.config.timeout,
                             headers=self.config.headers,
                             verify=False,
-                            allow_redirects=False  # Don't follow redirects
+                            allow_redirects=False  # Don't follow redirects to check headers
                         )
-                        
+
+                        # Update request count
+                        self.request_count += 1
+                        self.scan_stats['payload_stats']['openredirect']['requests_made'] += 1
+
                         print(f"    [OPENREDIRECT] Response code: {response.status_code}")
-                        
-                        # Check for redirect responses
-                        if response.status_code in [301, 302, 303, 307, 308]:
-                            location = response.headers.get('Location', '')
-                            if payload in location or 'evil.com' in location or 'attacker.com' in location:
-                                print(f"    [OPENREDIRECT] VULNERABILITY FOUND! Parameter: {param}")
-                                
-                                # Mark as found to prevent duplicates
-                                self.found_vulnerabilities.add(param_key)
-                                
-                                evidence = f"Open redirect detected - Location header: {location}"
-                                
-                                results.append({
-                                    'module': 'openredirect',
-                                    'target': base_url,
-                                    'vulnerability': 'Open Redirect',
-                                    'severity': 'Medium',
-                                    'parameter': param,
-                                    'payload': payload,
-                                    'evidence': evidence,
-                                    'request_url': test_url,
-                                    'detector': 'redirect_header_analysis',
-                                    'response_snippet': f'Location: {location}',
-                                    'remediation': 'Validate redirect URLs against a whitelist of allowed domains',
-                                    'method': 'GET'
-                                })
-                                break  # Found open redirect, no need to test more payloads for this param
-                                
+
+                        # Use OpenRedirectDetector for comprehensive checks
+                        is_vulnerable, details, redirect_type = OpenRedirectDetector.detect_open_redirect(
+                            response.text, response.status_code, dict(response.headers), payload, base_url
+                        )
+
+                        if is_vulnerable:
+                            print(f"    [OPENREDIRECT] VULNERABILITY FOUND! Parameter: {param}")
+
+                            # Mark as found to prevent duplicates
+                            self.found_vulnerabilities.add(param_key)
+
+                            evidence = OpenRedirectDetector.get_evidence(redirect_type, details)
+                            response_snippet = OpenRedirectDetector.get_response_snippet(response.text, details)
+
+                            results.append({
+                                'module': 'openredirect',
+                                'target': base_url,
+                                'vulnerability': 'Open Redirect',
+                                'severity': 'Medium',
+                                'parameter': param,
+                                'payload': payload,
+                                'evidence': evidence,
+                                'request_url': test_url,
+                                'detector': 'OpenRedirectDetector.detect_open_redirect',
+                                'response_snippet': response_snippet,
+                                'remediation': 'Validate redirect URLs against a whitelist of allowed domains.',
+                                'method': 'GET',
+                                'http_method': 'GET'
+                            })
+
+                            # Update successful payload count
+                            self.scan_stats['payload_stats']['openredirect']['successful_payloads'] += 1
+                            self.scan_stats['total_payloads_used'] += 1
+
+                            break  # Found open redirect, no need to test more payloads for this param
+
                     except Exception as e:
                         print(f"    [OPENREDIRECT] Error testing payload: {e}")
                         continue
-        
+
         return results
     
     def _test_hpp(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
