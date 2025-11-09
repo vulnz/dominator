@@ -204,16 +204,6 @@ class URLParser:
         """Extract forms from HTML"""
         forms = []
         
-        # Debug: показываем часть HTML для анализа
-        print(f"    [URL_PARSER] Analyzing HTML content ({len(response_text)} chars)")
-        if '<form' in response_text.lower():
-            print(f"    [URL_PARSER] HTML contains '<form' tag")
-        else:
-            print(f"    [URL_PARSER] HTML does NOT contain '<form' tag")
-        
-        # Улучшенный парсинг форм - ищем все теги <form> и извлекаем содержимое
-        print(f"    [URL_PARSER] Searching for form tags in HTML...")
-        
         # Найдем все открывающие теги <form>
         form_start_pattern = r'<form[^>]*>'
         form_starts = []
@@ -225,14 +215,10 @@ class URLParser:
                 'tag': match.group(0)
             })
         
-        print(f"    [URL_PARSER] Found {len(form_starts)} <form> opening tags")
-        
         forms_html = []
         
         # Для каждого открывающего тега найдем соответствующий закрывающий
         for i, form_start in enumerate(form_starts):
-            print(f"    [URL_PARSER] Processing form {i+1}: {form_start['tag'][:100]}...")
-            
             # Ищем закрывающий тег </form> после текущего открывающего тега
             search_start = form_start['end_pos']
             
@@ -248,11 +234,7 @@ class URLParser:
                 # Извлекаем полное содержимое формы
                 full_form = response_text[form_start['start_pos']:close_end]
                 forms_html.append(full_form)
-                
-                print(f"    [URL_PARSER] Form {i+1} extracted: {len(full_form)} chars")
-                print(f"    [URL_PARSER] Form {i+1} preview: {full_form[:150].replace(chr(10), ' ').replace(chr(13), ' ')}...")
             else:
-                print(f"    [URL_PARSER] Form {i+1}: No closing </form> tag found")
                 # Попробуем взять содержимое до конца документа или до следующей формы
                 if i + 1 < len(form_starts):
                     # До следующей формы
@@ -265,9 +247,6 @@ class URLParser:
                 # Добавляем закрывающий тег
                 partial_form += '</form>'
                 forms_html.append(partial_form)
-                print(f"    [URL_PARSER] Form {i+1} partial extraction: {len(partial_form)} chars")
-        
-        print(f"    [URL_PARSER] Found {len(forms_html)} forms in HTML")
         
         for i, form_html in enumerate(forms_html):
             form_data = {
@@ -276,10 +255,7 @@ class URLParser:
                 'inputs': []
             }
             
-            # Показываем содержимое формы для отладки
-            print(f"    [URL_PARSER] Processing form {i+1} content: {form_html[:200]}...")
-            
-            # Extract method and action с улучшенными паттернами
+            # Extract method and action
             method_patterns = [
                 r'method=["\']([^"\']+)["\']',
                 r'method=([^\s>]+)',
@@ -306,12 +282,12 @@ class URLParser:
                     form_data['action'] = action_match.group(1).strip('\'"')
                     break
             
-            # Extract input fields с улучшенными паттернами
+            # Extract input fields
             input_patterns = [
-                r'<input[^>]*/?>', # Самозакрывающиеся input теги
-                r'<input[^>]*>',   # Обычные input теги
-                r'<INPUT[^>]*/?>', # Верхний регистр самозакрывающиеся
-                r'<INPUT[^>]*>',   # Верхний регистр обычные
+                r'<input[^>]*/?>', 
+                r'<input[^>]*>',   
+                r'<INPUT[^>]*/?>', 
+                r'<INPUT[^>]*>',   
                 r'<textarea[^>]*>.*?</textarea>',
                 r'<TEXTAREA[^>]*>.*?</TEXTAREA>',
                 r'<select[^>]*>.*?</select>',
@@ -319,22 +295,16 @@ class URLParser:
             ]
             
             inputs = []
-            for pattern_idx, pattern in enumerate(input_patterns):
+            for pattern in input_patterns:
                 matches = re.findall(pattern, form_html, re.IGNORECASE | re.DOTALL)
-                if matches:
-                    print(f"    [URL_PARSER] Form {i+1} pattern {pattern_idx+1} found {len(matches)} inputs")
-                    for match in matches:
-                        if match not in inputs:  # Избегаем дубликатов
-                            inputs.append(match)
+                for match in matches:
+                    if match not in inputs:
+                        inputs.append(match)
             
-            print(f"    [URL_PARSER] Form {i+1}: Method={form_data['method']}, Action='{form_data['action']}', Found {len(inputs)} input elements")
-            
-            for j, input_html in enumerate(inputs):
+            for input_html in inputs:
                 input_data = {}
                 
-                print(f"    [URL_PARSER] Processing input {j+1}: {input_html[:100]}...")
-                
-                # Extract input attributes с улучшенными паттернами
+                # Extract input attributes
                 name_patterns = [
                     r'name=["\']([^"\']+)["\']',
                     r'name=([^\s>]+)',
@@ -389,19 +359,8 @@ class URLParser:
                 
                 if 'name' in input_data and input_data['name']:
                     form_data['inputs'].append(input_data)
-                    print(f"    [URL_PARSER] Form {i+1} Input {j+1}: name='{input_data['name']}', type='{input_data['type']}', value='{input_data['value'][:20]}{'...' if len(str(input_data['value'])) > 20 else ''}'")
-                else:
-                    print(f"    [URL_PARSER] Form {i+1} Input {j+1}: SKIPPED (no name attribute), type='{input_data['type']}', html='{input_html[:50]}...'")
             
             forms.append(form_data)
-            
-            # ЯВНЫЙ ВЫВОД ПАРАМЕТРОВ ФОРМ
-            if form_data['method'] == 'GET':
-                get_params = [inp['name'] for inp in form_data['inputs'] if inp.get('name')]
-                print(f"    [URL_PARSER] *** GET FORM PARAMS EXTRACTED: {get_params} ***")
-            elif form_data['method'] in ['POST', 'PUT']:
-                post_params = [inp['name'] for inp in form_data['inputs'] if inp.get('name')]
-                print(f"    [URL_PARSER] *** POST FORM PARAMS EXTRACTED: {post_params} ***")
         
         return forms
     

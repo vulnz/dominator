@@ -1319,7 +1319,7 @@ class VulnScanner:
                         try:
                             print(f"    [XSS] Trying form payload: {payload[:50]}...")
                             
-                            # Prepare form data with better default values
+                            # Prepare form data
                             post_data = {}
                             for inp in form_inputs:
                                 inp_name = inp.get('name')
@@ -1330,20 +1330,11 @@ class VulnScanner:
                                     if inp_name == input_name:
                                         post_data[inp_name] = payload
                                     else:
-                                        # Use appropriate default values based on input type
-                                        if inp_type == 'email':
-                                            post_data[inp_name] = inp_value or 'test@example.com'
-                                        elif inp_type == 'password':
-                                            post_data[inp_name] = inp_value or 'password123'
-                                        elif inp_type == 'number':
-                                            post_data[inp_name] = inp_value or '123'
-                                        elif inp_type == 'url':
-                                            post_data[inp_name] = inp_value or 'http://example.com'
-                                        else:
-                                            post_data[inp_name] = inp_value or 'test'
+                                        # Use existing value or simple default
+                                        post_data[inp_name] = inp_value or 'test'
                             
                             print(f"    [XSS] Sending {form_method} request to {form_url}")
-                            print(f"    [XSS] Form data keys: {list(post_data.keys())}")
+                            print(f"    [XSS] Form data: {post_data}")
                             
                             if form_method == 'POST':
                                 response = requests.post(
@@ -1675,14 +1666,14 @@ class VulnScanner:
                             post_data = {}
                             for inp in form_inputs:
                                 inp_name = inp.get('name')
-                                inp_value = inp.get('value', 'test')
+                                inp_value = inp.get('value', '')
                                 inp_type = inp.get('type', 'text')
                                 
                                 if inp_name and inp_type not in ['submit', 'button']:
                                     if inp_name == input_name:
                                         post_data[inp_name] = payload
                                     else:
-                                        post_data[inp_name] = inp_value
+                                        post_data[inp_name] = inp_value or 'test'
                             
                             if form_method == 'POST':
                                 response = requests.post(
@@ -1910,14 +1901,14 @@ class VulnScanner:
                             post_data = {}
                             for inp in form_inputs:
                                 inp_name = inp.get('name')
-                                inp_value = inp.get('value', 'test')
+                                inp_value = inp.get('value', '')
                                 inp_type = inp.get('type', 'text')
                                 
                                 if inp_name and inp_type not in ['submit', 'button']:
                                     if inp_name == input_name:
                                         post_data[inp_name] = payload
                                     else:
-                                        post_data[inp_name] = inp_value
+                                        post_data[inp_name] = inp_value or 'test'
                             
                             if form_method == 'POST':
                                 response = requests.post(
