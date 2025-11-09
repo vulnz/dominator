@@ -10,32 +10,54 @@ class RFIDetector:
     
     @staticmethod
     def get_rfi_test_urls() -> List[str]:
-        """Get list of RFI test URLs to check for successful inclusion (with timeout considerations)"""
+        """Get list of RFI test URLs to check for successful inclusion (p0wny shell first priority)"""
         return [
-            # Fast responding URLs for testing
+            # FIRST and MOST IMPORTANT: p0wny shell for critical RFI detection
+            'https://raw.githubusercontent.com/flozz/p0wny-shell/refs/heads/master/shell.php',
+            # Secondary test URLs for verification
             'http://httpbin.org/robots.txt',
             'http://example.com/robots.txt',
-            'https://www.google.com/humans.txt',
-            # Shell URLs (may be slower)
-            'https://raw.githubusercontent.com/flozz/p0wny-shell/refs/heads/master/shell.php'
+            'https://www.google.com/humans.txt'
         ]
     
     @staticmethod
     def get_shell_indicators() -> List[str]:
-        """Get indicators that suggest a web shell was successfully included"""
+        """Get indicators that suggest a web shell was successfully included (based on actual p0wny shell content)"""
         return [
-            # p0wny shell specific indicators (highest priority)
-            'p0wny@shell',
+            # p0wny shell specific indicators (HIGHEST PRIORITY - from actual shell content)
+            'p0wny@shell:~#',
             '$SHELL_CONFIG',
             'featureShell',
             'executeCommand',
-            'p0wny',
+            'featureUpload',
+            'featureDownload',
+            'featureHint',
+            'initShellConfig',
             'shell-prompt',
             'shell-content',
             'shell-input',
             '<div id="shell-logo">',
+            'p0wny@shell',
+            'expandPath',
+            'allFunctionExist',
+            'isRunningWindows',
+            'makeRequest',
+            '_insertCommand',
+            '_insertStdout',
+            'genPrompt',
+            'updateCwd',
+            'commandHistory',
+            'historyPosition',
+            
+            # p0wny shell ASCII art (definitive indicator)
             '___                         ____      _          _ _        _  _',
-            'p0wny shell',
+            "| '_ \\| | | \\ \\ /\\ / / '_ \\| | | |/ / _` / __| '_ \\ / _ \\ | (_)/\\/_  ..  _|",
+            '| .__/ \\___/  \\_/\\_/ |_| |_|\\__, |\\ \\__,_|___/_| |_|\\___|_|_(_)    |_||_|',
+            
+            # p0wny shell HTML structure
+            '<title>p0wny@shell:~#</title>',
+            '<input id="shell-cmd"',
+            'onkeydown="_onShellCmdKeyDown(event)"',
             
             # Generic web shell indicators
             'web shell',
@@ -170,9 +192,22 @@ class RFIDetector:
                 evidence = f"Web shell detected - indicators found: {', '.join(shell_matches[:5])}"
                 return True, evidence, "Critical"
             
-            # Special case: p0wny shell logo is definitive
+            # Special cases: p0wny shell definitive indicators (CRITICAL)
             if '<div id="shell-logo">' in response_text:
                 evidence = "p0wny shell successfully included - shell interface loaded"
+                return True, evidence, "Critical"
+            
+            if 'p0wny@shell:~#' in response_text:
+                evidence = "p0wny shell title detected - web shell active"
+                return True, evidence, "Critical"
+            
+            if '$SHELL_CONFIG' in response_text and 'featureShell' in response_text:
+                evidence = "p0wny shell configuration and functions detected"
+                return True, evidence, "Critical"
+            
+            # Check for p0wny ASCII art (definitive proof)
+            if '___                         ____      _          _ _        _  _' in response_text:
+                evidence = "p0wny shell ASCII logo detected - shell fully loaded"
                 return True, evidence, "Critical"
             
             # Priority 2: Check for remote content inclusion (High severity)
@@ -269,8 +304,17 @@ class RFIDetector:
         if not response_text:
             return "Empty response"
         
-        # Try to find shell-specific content first
-        shell_indicators = ['p0wny', 'shell-prompt', 'executeCommand', 'featureShell', '<div id="shell-logo">']
+        # Try to find shell-specific content first (prioritize p0wny indicators)
+        shell_indicators = [
+            'p0wny@shell:~#', 
+            '<div id="shell-logo">', 
+            '$SHELL_CONFIG', 
+            'featureShell', 
+            'executeCommand',
+            'shell-prompt', 
+            'makeRequest',
+            '___                         ____      _          _ _        _  _'
+        ]
         
         for indicator in shell_indicators:
             pos = response_text.lower().find(indicator.lower())
