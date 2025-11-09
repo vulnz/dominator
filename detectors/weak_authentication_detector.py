@@ -11,7 +11,24 @@ class WeakAuthenticationDetector:
     
     @staticmethod
     def get_weak_credentials() -> List[Dict[str, str]]:
-        """Get common weak credential combinations"""
+        """Get common weak credential combinations from TXT file or fallback"""
+        try:
+            # Try to load from TXT file first
+            from utils.payload_loader import PayloadLoader
+            credentials_data = PayloadLoader.load_payloads('weak_credentials')
+            
+            weak_creds = []
+            for line in credentials_data:
+                if ':' in line:
+                    username, password = line.split(':', 1)
+                    weak_creds.append({'username': username.strip(), 'password': password.strip()})
+            
+            if weak_creds:
+                return weak_creds
+        except:
+            pass
+        
+        # Fallback to hardcoded list if file not available
         return [
             {'username': 'admin', 'password': 'admin'},
             {'username': 'admin', 'password': 'password'},
@@ -23,8 +40,15 @@ class WeakAuthenticationDetector:
             {'username': 'root', 'password': 'root'},
             {'username': 'administrator', 'password': 'administrator'},
             {'username': 'demo', 'password': 'demo'},
-            {'username': '', 'password': ''},  # Empty credentials
-            {'username': 'admin', 'password': ''},  # Empty password
+            {'username': 'sa', 'password': ''},
+            {'username': 'admin', 'password': ''},
+            {'username': '', 'password': 'admin'},
+            {'username': 'admin', 'password': 'root'},
+            {'username': 'root', 'password': 'admin'},
+            {'username': 'mysql', 'password': 'mysql'},
+            {'username': 'oracle', 'password': 'oracle'},
+            {'username': 'postgres', 'password': 'postgres'},
+            {'username': 'tomcat', 'password': 'tomcat'}
         ]
     
     @staticmethod
@@ -63,8 +87,9 @@ class WeakAuthenticationDetector:
         ]
     
     @staticmethod
-    def detect_weak_authentication(username: str, password: str, response_text: str, response_code: int) -> Tuple[bool, str, str, Dict[str, Any]]:
-        """Detect weak authentication vulnerabilities"""
+    def detect_weak_authentication(username: str, password: str, response_text: str, response_code: int, 
+                                 baseline_response: str = "") -> Tuple[bool, str, str, Dict[str, Any]]:
+        """Detect weak authentication vulnerabilities with enhanced analysis"""
         if response_code not in [200, 201, 202, 302, 301]:
             return False, "", "", {}
         
@@ -72,12 +97,33 @@ class WeakAuthenticationDetector:
         failure_indicators = WeakAuthenticationDetector.get_auth_failure_indicators()
         
         response_lower = response_text.lower()
+        baseline_lower = baseline_response.lower() if baseline_response else ""
         
         # Check for authentication success
         success_found = any(indicator in response_lower for indicator in success_indicators)
         failure_found = any(indicator in response_lower for indicator in failure_indicators)
         
-        if success_found and not failure_found:
+        # Enhanced success detection via response analysis
+        significant_difference = False
+        if baseline_response:
+            # Compare response lengths
+            length_diff = abs(len(response_text) - len(baseline_response))
+            if length_diff > 100:
+                significant_difference = True
+            
+            # Check for new content in response that suggests successful login
+            if not failure_found and len(response_text) > len(baseline_response):
+                # Look for admin/dashboard content that wasn't in baseline
+                admin_content = ['admin', 'dashboard', 'control', 'panel', 'logout', 'settings']
+                new_admin_content = any(content in response_lower and content not in baseline_lower 
+                                      for content in admin_content)
+                if new_admin_content:
+                    significant_difference = True
+        
+        # Determine if login was successful
+        login_successful = (success_found and not failure_found) or significant_difference
+        
+        if login_successful:
             # Check if credentials are weak
             weak_creds = WeakAuthenticationDetector.get_weak_credentials()
             for cred in weak_creds:
@@ -101,6 +147,15 @@ class WeakAuthenticationDetector:
                     'cvss': '9.8',
                     'owasp': 'A07:2021 – Identification and Authentication Failures',
                     'recommendation': 'Implement strong password policies with minimum length requirements.'
+                }
+            
+            # If login successful but credentials not in common list, still report as potential issue
+            if significant_difference:
+                return True, f"Potential weak credentials detected via response analysis: {username}/{password}", "Medium", {
+                    'cwe': 'CWE-521',
+                    'cvss': '6.5',
+                    'owasp': 'A07:2021 – Identification and Authentication Failures',
+                    'recommendation': 'Verify if these credentials are appropriately strong and implement MFA.'
                 }
         
         return False, "", "", {}

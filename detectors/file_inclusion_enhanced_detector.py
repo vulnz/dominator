@@ -12,7 +12,7 @@ class FileInclusionEnhancedDetector:
     @staticmethod
     def detect_file_inclusion(response_text: str, response_code: int, payload: str) -> Tuple[bool, str, str]:
         """
-        Enhanced file inclusion detection
+        Enhanced file inclusion detection with PHP filter support
         
         Args:
             response_text: HTTP response content
@@ -24,6 +24,10 @@ class FileInclusionEnhancedDetector:
         """
         if response_code >= 400:
             return False, "", ""
+        
+        # Check for PHP filter/wrapper indicators first
+        if FileInclusionEnhancedDetector._detect_php_filters(payload, response_text):
+            return True, "PHP_FILTER", f"PHP filter/wrapper inclusion detected with payload: {payload}"
         
         # LFI indicators for testphp.vulnweb.com
         lfi_indicators = [
@@ -167,6 +171,50 @@ class FileInclusionEnhancedDetector:
                     return True, "LFI", f"Directory traversal successful - found: {success_indicator}"
         
         return False, "", ""
+    
+    @staticmethod
+    def _detect_php_filters(payload: str, response_text: str) -> bool:
+        """Detect PHP filter/wrapper usage"""
+        # Check if payload uses PHP filters
+        php_filters = [
+            'php://filter',
+            'php://input',
+            'php://output', 
+            'data://',
+            'expect://',
+            'zip://',
+            'compress.zlib://',
+            'convert.base64-encode',
+            'convert.base64-decode'
+        ]
+        
+        payload_lower = payload.lower()
+        uses_php_filter = any(filter_name in payload_lower for filter_name in php_filters)
+        
+        if not uses_php_filter:
+            return False
+        
+        # Check for base64 encoded content (common with php://filter)
+        if 'convert.base64-encode' in payload_lower:
+            # Look for base64 patterns in response
+            base64_pattern = r'[A-Za-z0-9+/]{20,}={0,2}'
+            if re.search(base64_pattern, response_text):
+                return True
+        
+        # Check for successful filter execution indicators
+        filter_indicators = [
+            '<?php',
+            'PD9waHA',  # base64 encoded <?php
+            'function ',
+            'class ',
+            '$_GET',
+            '$_POST',
+            'include',
+            'require'
+        ]
+        
+        response_lower = response_text.lower()
+        return any(indicator in response_lower for indicator in filter_indicators)
     
     @staticmethod
     def get_evidence(inclusion_type: str, indicator: str, response_text: str) -> str:
