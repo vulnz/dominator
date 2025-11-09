@@ -75,7 +75,7 @@ class FileHandler:
                 'exploit_links': item.get('exploit_links', []),
                 'technologies': item.get('technologies', []),
                 'form_details': item.get('form_details', []),
-                'method': self._extract_method_from_url(item.get('request_url', '')),
+                'method': item.get('method', self._extract_method_from_url(item.get('request_url', ''))),
                 'url_parameters': self._extract_url_parameters(item.get('request_url', ''))
             }
             vulnerabilities.append(vuln_data)
@@ -1926,7 +1926,7 @@ class FileHandler:
                             <span><i class="fas fa-globe"></i> ${vuln.target || 'Unknown Target'}</span>
                             <span><i class="fas fa-tag"></i> ${vuln.parameter || 'N/A'}</span>
                             <span><i class="fas fa-cog"></i> ${(vuln.module || 'unknown').toUpperCase()}</span>
-                            ${vuln.method ? `<span class="method-badge method-${vuln.method.toLowerCase()}">${vuln.method}</span>` : ''}
+                            ${vuln.method ? `<span class="method-badge method-${vuln.method.toLowerCase()}">${vuln.method}</span>` : '<span class="method-badge method-unknown">Unknown</span>'}
                         </div>
                     </div>
                     <div style="display: flex; align-items: center; gap: 15px;">
@@ -1947,7 +1947,7 @@ class FileHandler:
                         <h4><i class="fas fa-link"></i> Request Details</h4>
                         <div class="detail-content">
                             <strong>URL:</strong> ${vuln.request_url}<br>
-                            <strong>Method:</strong> ${vuln.method || 'GET'}<br>
+                            <strong>Method:</strong> ${vuln.method || 'Unknown'}<br>
                             ${vuln.url_parameters && vuln.url_parameters.length > 0 ? 
                                 `<strong>Parameters:</strong> ${vuln.url_parameters.map(p => `${p.name}=${p.values.join(',')}`).join(', ')}<br>` : ''}
                         </div>

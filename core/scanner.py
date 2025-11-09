@@ -1235,7 +1235,8 @@ class VulnScanner:
                             'response_snippet': response_snippet,
                             'xss_type': xss_type,
                             'confidence': confidence,
-                            'detection_method': detection_method
+                            'detection_method': detection_method,
+                            'method': 'GET'
                         }
                         
                         # Filter false positives
@@ -1482,7 +1483,8 @@ class VulnScanner:
                                     'evidence': evidence,
                                     'request_url': form_url,
                                     'detector': 'XSSDetector.detect_reflected_xss',
-                                    'response_snippet': response_snippet
+                                    'response_snippet': response_snippet,
+                                    'method': form_method
                                 }
                                 
                                 # Filter false positives
@@ -1639,7 +1641,8 @@ class VulnScanner:
                             'evidence': evidence,
                             'request_url': test_url,
                             'detector': 'SQLiDetector.detect_error_based_sqli',
-                            'response_snippet': response_snippet
+                            'response_snippet': response_snippet,
+                            'method': 'GET'
                         }
                         
                         # Filter false positives
@@ -1771,7 +1774,8 @@ class VulnScanner:
                                     'evidence': evidence,
                                     'request_url': form_url,
                                     'detector': 'SQLiDetector.detect_error_based_sqli',
-                                    'response_snippet': response_snippet
+                                    'response_snippet': response_snippet,
+                                    'method': form_method
                                 }
                                 
                                 # Filter false positives
@@ -1885,7 +1889,8 @@ class VulnScanner:
                             'evidence': evidence,
                             'request_url': test_url,
                             'detector': 'Enhanced LFI Detection',
-                            'response_snippet': response_snippet
+                            'response_snippet': response_snippet,
+                            'method': 'GET'
                         }
                         
                         # Filter false positives
@@ -2006,7 +2011,8 @@ class VulnScanner:
                                     'evidence': evidence,
                                     'request_url': form_url,
                                     'detector': 'LFIDetector.detect_lfi',
-                                    'response_snippet': response_snippet
+                                    'response_snippet': response_snippet,
+                                    'method': form_method
                                 }
                                 
                                 # Filter false positives
@@ -2286,7 +2292,8 @@ class VulnScanner:
                         'evidence': evidence,
                         'request_url': base_url,
                         'detector': 'CSRFDetector.form_analysis',
-                        'response_snippet': form_snippet
+                        'response_snippet': form_snippet,
+                        'method': form_info['method']
                     })
                 
                 print(f"    [CSRF] VULNERABILITY FOUND! {len(vulnerable_forms)} vulnerable form(s)")
@@ -2453,7 +2460,8 @@ class VulnScanner:
                             'evidence': evidence + (' - Directory listing enabled' if has_listing else ''),
                             'request_url': test_url,
                             'detector': 'DirBruteDetector.is_valid_response',
-                            'response_snippet': DirBruteDetector.get_response_snippet(response.text)
+                            'response_snippet': DirBruteDetector.get_response_snippet(response.text),
+                            'method': 'GET'
                         })
                         
                         found_directories.append(directory)
@@ -2549,7 +2557,8 @@ class VulnScanner:
                             'evidence': evidence + (f' - {sensitive_evidence}' if is_sensitive else ''),
                             'request_url': test_url,
                             'detector': 'DirBruteDetector.is_valid_response',
-                            'response_snippet': DirBruteDetector.get_response_snippet(response.text)
+                            'response_snippet': DirBruteDetector.get_response_snippet(response.text),
+                            'method': 'GET'
                         })
                     else:
                         print(f"    [DIRBRUTE] File not found: {file} - {evidence}")
@@ -2616,7 +2625,8 @@ class VulnScanner:
                         'evidence': evidence + (f' - {sensitive_evidence}' if is_sensitive else ''),
                         'request_url': test_url,
                         'detector': 'DirBruteDetector.is_valid_response',
-                        'response_snippet': DirBruteDetector.get_response_snippet(response.text)
+                        'response_snippet': DirBruteDetector.get_response_snippet(response.text),
+                        'method': 'GET'
                     })
                     
             except Exception as e:
@@ -2727,7 +2737,8 @@ class VulnScanner:
                             'evidence': evidence,
                             'request_url': test_url,
                             'detector': 'DirectoryTraversalDetector.detect_directory_traversal',
-                            'response_snippet': response_snippet
+                            'response_snippet': response_snippet,
+                            'method': 'GET'
                         })
                         break  # Found traversal, no need to test more payloads for this param
                         
@@ -2877,7 +2888,8 @@ class VulnScanner:
                         'request_url': base_url,
                         'detector': 'SecurityHeadersDetector (grouped)',
                         'response_snippet': response_snippet,
-                        'security_issues': all_issues  # Keep detailed info for reports
+                        'security_issues': all_issues,  # Keep detailed info for reports
+                        'method': 'GET'
                     })
                 else:
                     # Too many issues, create individual vulnerabilities
@@ -2895,7 +2907,8 @@ class VulnScanner:
                                 'evidence': f'{issue["description"]}. {issue["recommendation"]}',
                                 'request_url': base_url,
                                 'detector': 'SecurityHeadersDetector.detect_missing_security_headers',
-                                'response_snippet': f'Current value: {issue["current_value"]}'
+                                'response_snippet': f'Current value: {issue["current_value"]}',
+                                'method': 'GET'
                             })
                         else:  # insecure_cookie
                             results.append({
@@ -2908,7 +2921,8 @@ class VulnScanner:
                                 'evidence': f'Cookie "{issue["cookie_name"]}" {issue["description"]}',
                                 'request_url': base_url,
                                 'detector': 'SecurityHeadersDetector.detect_insecure_cookies',
-                                'response_snippet': issue['cookie_header']
+                                'response_snippet': issue['cookie_header'],
+                                'method': 'GET'
                             })
                 
                 print(f"    [SECHEADERS] Found {len(all_issues)} security configuration issues")
@@ -3022,7 +3036,8 @@ class VulnScanner:
                             'request_url': test_url,
                             'detector': 'SSRFDetector.detect_ssrf',
                             'response_snippet': response_snippet,
-                            'detection_method': detection_details.get('method', 'ssrf_detection')
+                            'detection_method': detection_details.get('method', 'ssrf_detection'),
+                            'method': 'GET'
                         })
                         break  # Found SSRF, no need to test more payloads for this param
                     else:
@@ -3130,7 +3145,8 @@ class VulnScanner:
                                     'evidence': evidence,
                                     'request_url': form_url,
                                     'detector': 'SSRFDetector.detect_ssrf',
-                                    'response_snippet': response_snippet
+                                    'response_snippet': response_snippet,
+                                    'method': form_method
                                 })
                                 break  # Found SSRF, no need to test more payloads for this input
                                 
@@ -3226,7 +3242,8 @@ class VulnScanner:
                             'evidence': evidence,
                             'request_url': test_url,
                             'detector': 'Enhanced RFI Detection',
-                            'response_snippet': response_snippet
+                            'response_snippet': response_snippet,
+                            'method': 'GET'
                         })
                         break  # Found RFI, no need to test more payloads for this param
                         
@@ -3332,7 +3349,8 @@ class VulnScanner:
                                     'evidence': evidence,
                                     'request_url': form_url,
                                     'detector': 'Enhanced RFI Detection',
-                                    'response_snippet': response_snippet
+                                    'response_snippet': response_snippet,
+                                    'method': form_method
                                 })
                                 break  # Found RFI, no need to test more payloads for this input
                                 
@@ -3413,7 +3431,8 @@ class VulnScanner:
                         'evidence': evidence,
                         'request_url': base_url,
                         'detector': 'VersionDisclosureDetector.detect_version_disclosure',
-                        'response_snippet': f'Version: {version}'
+                        'response_snippet': f'Version: {version}',
+                        'method': 'GET'
                     })
             else:
                 print(f"    [VERSIONDISCLOSURE] No version disclosures found")
@@ -3478,7 +3497,8 @@ class VulnScanner:
                     'evidence': clickjacking_result['evidence'],
                     'request_url': base_url,
                     'detector': 'ClickjackingDetector.detect_clickjacking',
-                    'response_snippet': 'Missing X-Frame-Options or CSP frame-ancestors'
+                    'response_snippet': 'Missing X-Frame-Options or CSP frame-ancestors',
+                    'method': 'GET'
                 })
             else:
                 print(f"    [CLICKJACKING] Clickjacking protection is properly configured")
@@ -3553,7 +3573,8 @@ class VulnScanner:
                             'evidence': evidence,
                             'request_url': test_url,
                             'detector': 'BlindXSSDetector.detect_blind_xss',
-                            'response_snippet': response_snippet
+                            'response_snippet': response_snippet,
+                            'method': 'GET'
                         })
                         break  # Found potential blind XSS, no need to test more payloads for this param
                         
@@ -3783,7 +3804,8 @@ class VulnScanner:
                                         'detector': 'StoredXSSDetector.detect_stored_xss (self-stored)',
                                         'response_snippet': response_snippet,
                                         'remediation': StoredXSSDetector.get_remediation_advice(),
-                                        'xss_type': 'self_stored'
+                                        'xss_type': 'self_stored',
+                                        'method': form_method
                                     })
                                     break  # Found self-stored XSS, no need to test more payloads for this input
                             
@@ -3882,7 +3904,8 @@ class VulnScanner:
                                                 'detector': 'StoredXSSDetector.detect_stored_xss (persistent)',
                                                 'response_snippet': response_snippet,
                                                 'remediation': StoredXSSDetector.get_remediation_advice(),
-                                                'xss_type': 'persistent_stored'
+                                                'xss_type': 'persistent_stored',
+                                                'method': form_method
                                             })
                                             break  # Found persistent stored XSS, no need to test more payloads for this input
                                         else:
@@ -3940,7 +3963,8 @@ class VulnScanner:
                     'request_url': base_url,
                     'detector': 'PasswordOverHTTPDetector.detect_password_over_http',
                     'response_snippet': f'Found {len(forms_found)} form(s) with password fields',
-                    'remediation': remediation
+                    'remediation': remediation,
+                    'method': 'GET'
                 })
             else:
                 print(f"    [PASSWORDOVERHTTP] No password over HTTP issues found")
@@ -4058,7 +4082,8 @@ class VulnScanner:
                         'high_cves': high_cves,
                         'cve_links': cve_links,
                         'is_eol': is_eol,
-                        'eol_date': eol_date
+                        'eol_date': eol_date,
+                        'method': 'GET'
                     })
             else:
                 print(f"    [OUTDATEDSOFTWARE] No outdated software detected")
@@ -4141,7 +4166,8 @@ class VulnScanner:
                             'request_url': test_url,
                             'detector': 'DatabaseErrorDetector.detect_database_errors',
                             'response_snippet': response_snippet,
-                            'remediation': remediation
+                            'remediation': remediation,
+                            'method': 'GET'
                         })
                         break  # Found database error, no need to test more payloads for this param
                         
@@ -4219,7 +4245,8 @@ class VulnScanner:
                             'request_url': test_url,
                             'detector': 'PHPInfoDetector.detect_phpinfo_exposure',
                             'response_snippet': response_snippet,
-                            'remediation': remediation
+                            'remediation': remediation,
+                            'method': 'GET'
                         })
                     else:
                         print(f"    [PHPINFO] No exposure: {phpinfo_path} - {evidence}")
@@ -4282,7 +4309,8 @@ class VulnScanner:
                                     'request_url': test_url,
                                     'detector': 'PHPInfoDetector.detect_phpinfo_exposure',
                                     'response_snippet': response_snippet,
-                                    'remediation': remediation
+                                    'remediation': remediation,
+                                    'method': 'GET'
                                 })
                                 break  # Found PHPInfo, no need to test more values for this param
                                 
@@ -4361,7 +4389,8 @@ class VulnScanner:
                     'detector': 'SSLTLSDetector.detect_ssl_tls_implementation',
                     'response_snippet': f"TLS Version: {details.get('tls_version', 'N/A')}, Cipher: {details.get('cipher', 'N/A')}",
                     'remediation': remediation,
-                    'screenshot': screenshot_filename
+                    'screenshot': screenshot_filename,
+                    'method': 'GET'
                 })
             else:
                 print(f"    [SSLTLS] SSL/TLS properly configured for {domain}")
@@ -4470,7 +4499,8 @@ class VulnScanner:
                         'request_url': base_url,
                         'detector': 'HttpOnlyCookieDetector (grouped)',
                         'response_snippet': response_snippet,
-                        'cookie_issues': all_cookie_issues  # Keep detailed info for reports
+                        'cookie_issues': all_cookie_issues,  # Keep detailed info for reports
+                        'method': 'GET'
                     })
                 else:
                     # Too many cookie issues, create individual vulnerabilities
@@ -4488,7 +4518,8 @@ class VulnScanner:
                             'request_url': base_url,
                             'detector': 'HttpOnlyCookieDetector.detect_httponly_cookies',
                             'response_snippet': issue['cookie_header'],
-                            'remediation': HttpOnlyCookieDetector.get_remediation_advice(issue['issue'])
+                            'remediation': HttpOnlyCookieDetector.get_remediation_advice(issue['issue']),
+                            'method': 'GET'
                         })
                 
                 print(f"    [HTTPONLYCOOKIES] Found {len(all_cookie_issues)} cookie security issues")
@@ -4572,7 +4603,8 @@ class VulnScanner:
                         'request_url': base_url,
                         'detector': 'Wappalyzer.analyze',
                         'response_snippet': f'Technologies: {tech_names}',
-                        'technologies': tech_list  # Keep detailed list for reports
+                        'technologies': tech_list,  # Keep detailed list for reports
+                        'method': 'GET'
                     })
                 else:
                     # Too many technologies, create individual findings for important ones
@@ -4589,7 +4621,8 @@ class VulnScanner:
                                 'evidence': f'Technology {tech_name} detected by Wappalyzer',
                                 'request_url': base_url,
                                 'detector': 'Wappalyzer.analyze',
-                                'response_snippet': f'Technology: {tech_name}'
+                                'response_snippet': f'Technology: {tech_name}',
+                                'method': 'GET'
                             })
             else:
                 print(f"    [TECHNOLOGY] No technologies detected")
@@ -4688,7 +4721,8 @@ class VulnScanner:
                             'request_url': test_url,
                             'detector': 'Enhanced XXE Detection',
                             'response_snippet': response_snippet,
-                            'remediation': 'Disable external entity processing in XML parsers'
+                            'remediation': 'Disable external entity processing in XML parsers',
+                            'method': 'GET'
                         })
                         break  # Found XXE, no need to test more payloads for this param
                         
@@ -4805,7 +4839,8 @@ class VulnScanner:
                                             'request_url': form_url,
                                             'detector': 'Enhanced XXE Detection',
                                             'response_snippet': response_snippet,
-                                            'remediation': 'Disable external entity processing in XML parsers'
+                                            'remediation': 'Disable external entity processing in XML parsers',
+                                            'method': form_method
                                         })
                                         break  # Found XXE, no need to test more payloads for this input
                                         
@@ -4900,7 +4935,8 @@ class VulnScanner:
                                 'request_url': test_url,
                                 'detector': 'IDORDetector.detect_idor',
                                 'response_snippet': response_snippet,
-                                'remediation': remediation
+                                'remediation': remediation,
+                                'method': 'GET'
                             })
                             break  # Found IDOR, no need to test more payloads for this param
                             
@@ -4984,7 +5020,8 @@ class VulnScanner:
                             'detector': 'CommandInjectionDetector.enhanced_detection',
                             'response_snippet': response_snippet,
                             'remediation': remediation,
-                            'confidence': confidence
+                            'confidence': confidence,
+                            'method': 'GET'
                         })
                         break  # Found command injection, no need to test more payloads for this param
                         
@@ -5088,7 +5125,8 @@ class VulnScanner:
                                     'detector': 'CommandInjectionDetector.enhanced_detection',
                                     'response_snippet': response_snippet,
                                     'remediation': remediation,
-                                    'confidence': confidence
+                                    'confidence': confidence,
+                                    'method': form_method
                                 })
                                 break  # Found command injection, no need to test more payloads for this input
                                 
@@ -5171,7 +5209,8 @@ class VulnScanner:
                             'request_url': test_url,
                             'detector': 'PathTraversalDetector.detect_path_traversal',
                             'response_snippet': response_snippet,
-                            'remediation': remediation
+                            'remediation': remediation,
+                            'method': 'GET'
                         })
                         break  # Found path traversal, no need to test more payloads for this param
                         
@@ -5252,7 +5291,8 @@ class VulnScanner:
                             'request_url': test_url,
                             'detector': 'LDAPInjectionDetector.detect_ldap_injection',
                             'response_snippet': response_snippet,
-                            'remediation': remediation
+                            'remediation': remediation,
+                            'method': 'GET'
                         })
                         break  # Found LDAP injection, no need to test more payloads for this param
                         
@@ -5326,7 +5366,8 @@ class VulnScanner:
                             'request_url': test_url,
                             'detector': 'NoSQLInjectionDetector.detect_nosql_injection',
                             'response_snippet': response_snippet,
-                            'remediation': remediation
+                            'remediation': remediation,
+                            'method': 'GET'
                         })
                         break  # Found NoSQL injection, no need to test more payloads for this param
                         
@@ -5376,7 +5417,8 @@ class VulnScanner:
                     'request_url': base_url,
                     'detector': 'FileUploadDetector.detect_file_upload_vulnerability',
                     'response_snippet': response_snippet,
-                    'remediation': remediation
+                    'remediation': remediation,
+                    'method': 'GET'
                 })
             else:
                 print(f"    [FILEUPLOAD] No file upload vulnerabilities found")
@@ -5441,7 +5483,8 @@ class VulnScanner:
                                 'request_url': base_url,
                                 'detector': 'CORSDetector.detect_cors_misconfiguration',
                                 'response_snippet': f'Access-Control-Allow-Origin: {response.headers.get("Access-Control-Allow-Origin", "Not set")}',
-                                'remediation': remediation
+                                'remediation': remediation,
+                                'method': 'GET'
                             })
                         break  # Found CORS issue, no need to test more origins
                         
@@ -5501,7 +5544,8 @@ class VulnScanner:
                         'request_url': base_url,
                         'detector': 'JWTDetector.detect_jwt_vulnerabilities',
                         'response_snippet': response_snippet,
-                        'remediation': remediation
+                        'remediation': remediation,
+                        'method': 'GET'
                     })
             elif is_vulnerable:
                 print(f"    [JWT] JWT tokens found - manual analysis recommended")
@@ -5516,7 +5560,8 @@ class VulnScanner:
                     'evidence': evidence,
                     'request_url': base_url,
                     'detector': 'JWTDetector.detect_jwt_vulnerabilities',
-                    'response_snippet': JWTDetector.get_response_snippet(response.text)
+                    'response_snippet': JWTDetector.get_response_snippet(response.text),
+                    'method': 'GET'
                 })
             else:
                 print(f"    [JWT] No JWT tokens found")
@@ -5600,7 +5645,8 @@ class VulnScanner:
                             'request_url': test_url,
                             'detector': 'InsecureDeserializationDetector.detect_insecure_deserialization',
                             'response_snippet': response_snippet,
-                            'remediation': remediation
+                            'remediation': remediation,
+                            'method': 'GET'
                         })
                         break  # Found deserialization issue, no need to test more payloads for this param
                         
@@ -5696,7 +5742,8 @@ class VulnScanner:
                             'request_url': test_url,
                             'detector': 'Enhanced Response Splitting Detection',
                             'response_snippet': response_snippet,
-                            'remediation': 'Validate and sanitize all user inputs used in HTTP responses'
+                            'remediation': 'Validate and sanitize all user inputs used in HTTP responses',
+                            'method': 'GET'
                         })
                         break  # Found response splitting, no need to test more payloads for this param
                         
@@ -5772,7 +5819,8 @@ class VulnScanner:
                             'request_url': test_url,
                             'detector': 'SSTIDetector.detect_ssti',
                             'response_snippet': response_snippet,
-                            'remediation': remediation
+                            'remediation': remediation,
+                            'method': 'GET'
                         })
                         break  # Found SSTI, no need to test more payloads for this param
                         
@@ -5872,7 +5920,8 @@ class VulnScanner:
                                     'request_url': form_url,
                                     'detector': 'SSTIDetector.detect_ssti',
                                     'response_snippet': response_snippet,
-                                    'remediation': remediation
+                                    'remediation': remediation,
+                                    'method': form_method
                                 })
                                 break  # Found SSTI, no need to test more payloads for this input
                                 
@@ -5963,7 +6012,8 @@ class VulnScanner:
                             'request_url': test_url,
                             'detector': 'Enhanced CRLF Detection',
                             'response_snippet': response_snippet,
-                            'remediation': 'Validate and sanitize all user inputs used in HTTP responses'
+                            'remediation': 'Validate and sanitize all user inputs used in HTTP responses',
+                            'method': 'GET'
                         })
                         break  # Found CRLF, no need to test more payloads for this param
                         
@@ -6051,7 +6101,8 @@ class VulnScanner:
                             'request_url': test_url,
                             'detector': 'TextInjectionDetector.detect_text_injection',
                             'response_snippet': response_snippet,
-                            'remediation': remediation
+                            'remediation': remediation,
+                            'method': 'GET'
                         })
                         break  # Found text injection, no need to test more payloads for this param
                         
@@ -6139,7 +6190,8 @@ class VulnScanner:
                             'request_url': test_url,
                             'detector': 'HTMLInjectionDetector.detect_html_injection',
                             'response_snippet': response_snippet,
-                            'remediation': remediation
+                            'remediation': remediation,
+                            'method': 'GET'
                         })
                         break  # Found HTML injection, no need to test more payloads for this param
                         
@@ -6174,7 +6226,8 @@ class VulnScanner:
                         'request_url': base_url,
                         'detector': 'HostHeaderDetector.detect_host_header_injection',
                         'response_snippet': f'Host: {vuln["payload"]}',
-                        'remediation': HostHeaderDetector.get_remediation_advice()
+                        'remediation': HostHeaderDetector.get_remediation_advice(),
+                        'method': 'GET'
                     })
                 
                 print(f"    [HOSTHEADER] Found {len(vulnerabilities)} Host Header vulnerabilities")
@@ -6211,7 +6264,8 @@ class VulnScanner:
                         'request_url': base_url,
                         'detector': 'PrototypePollutionDetector.detect_prototype_pollution',
                         'response_snippet': f'Payload: {vuln["payload"]}',
-                        'remediation': PrototypePollutionDetector.get_remediation_advice()
+                        'remediation': PrototypePollutionDetector.get_remediation_advice(),
+                        'method': 'POST'
                     })
                 
                 print(f"    [PROTOTYPEPOLLUTION] Found {len(vulnerabilities)} Prototype Pollution vulnerabilities")
@@ -6248,7 +6302,8 @@ class VulnScanner:
                         'request_url': base_url,
                         'detector': 'VHostDetector.detect_virtual_hosts',
                         'response_snippet': f'Status: {vhost["status_code"]}, Length: {vhost["content_length"]}',
-                        'remediation': VHostDetector.get_remediation_advice()
+                        'remediation': VHostDetector.get_remediation_advice(),
+                        'method': 'GET'
                     })
                 
                 print(f"    [VHOST] Discovered {len(vhosts)} Virtual Hosts")
@@ -6321,7 +6376,8 @@ class VulnScanner:
                     'request_url': base_url,
                     'detector': 'regex_email_detection',
                     'response_snippet': f'Found {len(unique_emails)} unique email addresses',
-                    'email_addresses': unique_emails  # Store for detailed reporting
+                    'email_addresses': unique_emails,  # Store for detailed reporting
+                    'method': 'GET'
                 })
             
             # Load IP patterns from file and check for internal IP addresses
@@ -6349,7 +6405,8 @@ class VulnScanner:
                     'evidence': evidence,
                     'request_url': base_url,
                     'detector': 'regex_ip_detection',
-                    'response_snippet': f'Found {len(unique_ips)} internal IPs'
+                    'response_snippet': f'Found {len(unique_ips)} internal IPs',
+                    'method': 'GET'
                 })
             
             # Load debug patterns from file
@@ -6376,7 +6433,8 @@ class VulnScanner:
                     'evidence': evidence,
                     'request_url': base_url,
                     'detector': 'debug_pattern_detection',
-                    'response_snippet': f'Debug patterns: {", ".join(found_debug)}'
+                    'response_snippet': f'Debug patterns: {", ".join(found_debug)}',
+                    'method': 'GET'
                 })
             
         except Exception as e:
@@ -6442,7 +6500,8 @@ class VulnScanner:
                                 'request_url': test_url,
                                 'detector': 'hpp_parameter_analysis',
                                 'response_snippet': response.text[:200] + '...' if len(response.text) > 200 else response.text,
-                                'remediation': 'Properly handle duplicate parameters and validate input'
+                                'remediation': 'Properly handle duplicate parameters and validate input',
+                                'method': 'GET'
                             })
                             break
                     except Exception as e:
@@ -6507,7 +6566,8 @@ class VulnScanner:
                                     'request_url': test_url,
                                     'detector': 'redirect_header_analysis',
                                     'response_snippet': f'Location: {location}',
-                                    'remediation': 'Validate redirect URLs against a whitelist of allowed domains'
+                                    'remediation': 'Validate redirect URLs against a whitelist of allowed domains',
+                                    'method': 'GET'
                                 })
                                 break  # Found open redirect, no need to test more payloads for this param
                                 
@@ -6596,6 +6656,7 @@ class VulnScanner:
                                 'detector': 'HPPDetector.detect_hpp_vulnerability',
                                 'response_snippet': HPPDetector.get_response_snippet(response.text),
                                 'remediation': HPPDetector.get_remediation_advice(),
+                                'method': 'GET',
                                 **metadata
                             })
                             break  # Found HPP, no need to test more payloads for this param
@@ -6668,6 +6729,7 @@ class VulnScanner:
                     'response_snippet': response_snippet,
                     'remediation': remediation,
                     'vulnerable_links_count': len(vulnerable_links),
+                    'method': 'GET',
                     **{k: v for k, v in metadata.items() if k != 'vulnerable_links'}
                 })
             else:
@@ -6752,6 +6814,7 @@ class VulnScanner:
                             'remediation': remediation,
                             'reflection_context': reflection_details.get('context', 'unknown'),
                             'reflection_encoding': reflection_details.get('encoding', 'none'),
+                            'method': 'GET',
                             **{k: v for k, v in metadata.items() if k != 'reflection_details'}
                         })
                         break  # Found insecure reflection, no need to test more payloads for this param
@@ -6821,7 +6884,8 @@ class VulnScanner:
                         'detector': 'PHPConfigDetector.detect_php_config_issues',
                         'response_snippet': response_snippet,
                         'remediation': remediation,
-                        'php_issues': issues
+                        'php_issues': issues,
+                        'method': 'GET'
                     })
                 else:
                     # Create individual findings for each issue
@@ -6837,7 +6901,8 @@ class VulnScanner:
                             'request_url': base_url,
                             'detector': 'PHPConfigDetector.detect_php_config_issues',
                             'response_snippet': f'{issue["setting"]}: {issue["value"]}',
-                            'remediation': remediation
+                            'remediation': remediation,
+                            'method': 'GET'
                         })
             else:
                 print(f"    [PHPCONFIG] No PHP configuration issues found")
@@ -6908,7 +6973,8 @@ class VulnScanner:
                         'detector': 'CSPDetector.detect_csp_issues',
                         'response_snippet': response_snippet,
                         'remediation': remediation,
-                        'csp_issues': issues
+                        'csp_issues': issues,
+                        'method': 'GET'
                     })
                 else:
                     # Create individual findings for critical issues
@@ -6925,7 +6991,8 @@ class VulnScanner:
                                 'request_url': base_url,
                                 'detector': 'CSPDetector.detect_csp_issues',
                                 'response_snippet': f'{issue["directive"]}: {issue["issue"]}',
-                                'remediation': remediation
+                                'remediation': remediation,
+                                'method': 'GET'
                             })
             else:
                 print(f"    [CSP] No CSP issues found")
@@ -7002,7 +7069,8 @@ class VulnScanner:
                     'remediation': remediation,
                     'active_issues_count': len(active_issues),
                     'passive_issues_count': len(passive_issues),
-                    'mixed_content_details': mixed_content_issues
+                    'mixed_content_details': mixed_content_issues,
+                    'method': 'GET'
                 })
             else:
                 print(f"    [MIXEDCONTENT] No mixed content issues found")
@@ -7623,6 +7691,7 @@ class VulnScanner:
         safe_print(f"     Target: {result.get('target', '')}")
         safe_print(f"     Parameter: {result.get('parameter', '')}")
         safe_print(f"     Module: {result.get('module', '')}")
+        safe_print(f"     Method: {result.get('method', 'Unknown')}")
         safe_print(f"     Detector: {result.get('detector', 'Unknown')}")
         
         payload = str(result.get('payload', ''))
