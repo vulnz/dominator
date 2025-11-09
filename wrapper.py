@@ -12,6 +12,7 @@ import os
 import time
 import threading
 from datetime import datetime
+from menu import create_parser
 
 class ScannerWrapper:
     """Wrapper class for monitoring and controlling the scanner"""
@@ -156,17 +157,74 @@ def main():
         print("Ispol'zovanie: python wrapper.py [argumenty dlya main.py]")
         print("Primery:")
         print("  python wrapper.py -t example.com")
+        print("  python wrapper.py -t http://testphp.vulnweb.com http://185.233.118.120:8082/xvwa/")
         print("  python wrapper.py -t 192.168.1.1 -m xss,sqli")
         print("  python wrapper.py -f targets.txt -o report.html")
         sys.exit(1)
-    
-    # Передаем все аргументы кроме имени скрипта
-    scanner_args = sys.argv[1:]
-    
+
+    parser = create_parser()
+    args = parser.parse_args()
+
+    targets = []
+    if args.target:
+        targets = args.target
+    elif args.url:
+        targets = args.url
+
+    if args.file or len(targets) <= 1:
+        scanner_args = sys.argv[1:]
+        wrapper = ScannerWrapper()
+        return_code = wrapper.run_scanner(scanner_args)
+        sys.exit(return_code)
+
+    original_argv = sys.argv[1:]
+    target_arg_name = None
+    if '-t' in original_argv:
+        target_arg_name = '-t'
+    elif '--target' in original_argv:
+        target_arg_name = '--target'
+    elif '-u' in original_argv:
+        target_arg_name = '-u'
+    elif '--url' in original_argv:
+        target_arg_name = '--url'
+    else:
+        print("[WRAPPER] Oshibka: Ne udalos' nayti flag tseli (-t, -u) v argumentakh.")
+        sys.exit(1)
+
+    base_args = []
+    is_target_arg_section = False
+    for arg in original_argv:
+        if arg == target_arg_name:
+            base_args.append(arg)
+            is_target_arg_section = True
+        elif is_target_arg_section and not arg.startswith('-'):
+            continue
+        else:
+            base_args.append(arg)
+            is_target_arg_section = False
+
     wrapper = ScannerWrapper()
-    return_code = wrapper.run_scanner(scanner_args)
+    total_return_code = 0
     
-    sys.exit(return_code)
+    for i, target in enumerate(targets):
+        print("=" * 80)
+        print(f"[WRAPPER] Zapusk skanirovaniya {i+1}/{len(targets)} dlya tseli: {target}")
+        print("=" * 80)
+        
+        current_run_args = list(base_args)
+        try:
+            idx = current_run_args.index(target_arg_name)
+            current_run_args.insert(idx + 1, target)
+        except ValueError:
+            print(f"[WRAPPER] Kriticheskaya oshibka: flag tseli '{target_arg_name}' ne nayden v bazovykh argumentakh.")
+            sys.exit(1)
+
+        return_code = wrapper.run_scanner(current_run_args)
+        total_return_code = max(total_return_code, return_code if return_code is not None else 0)
+
+    print("=" * 80)
+    print(f"[WRAPPER] Vse skanirovaniya zaversheny. Itogovyy kod zaversheniya: {total_return_code}")
+    sys.exit(total_return_code)
 
 if __name__ == "__main__":
     main()

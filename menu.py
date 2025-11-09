@@ -24,9 +24,9 @@ Usage examples:
     
     # Target options
     target_group = parser.add_mutually_exclusive_group(required=True)
-    target_group.add_argument('-t', '--target', 
-                       help='Scan target (IP, domain, URL, IP:port, URL:port, subnet)')
-    target_group.add_argument('-u', '--url', help='Target URL to scan')
+    target_group.add_argument('-t', '--target', nargs='+',
+                       help='One or more scan targets (IP, domain, URL, IP:port, URL:port, subnet)')
+    target_group.add_argument('-u', '--url', nargs='+', help='One or more target URLs to scan')
     target_group.add_argument('-f', '--file', 
                        help='File with targets for scanning')
     
