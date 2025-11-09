@@ -678,31 +678,31 @@ class VulnScanner:
             
             # Always enable crawling unless explicitly disabled with --single-url or --nocrawl
             skip_crawling = getattr(self.config, 'single_url', False) or getattr(self.config, 'nocrawl', False)
-            
+        
             if not skip_crawling:
                 # Always crawl for additional pages
                 if self.debug:
                     print(f"  [DEBUG] Starting enhanced crawler to find additional pages...")
                 crawled_urls = self.crawler.crawl_for_pages(parsed_data['url'])
-                
+            
                 # Update crawler stats
                 self.scan_stats['total_ajax_endpoints'] = len(self.crawler.get_ajax_endpoints())
                 self.scan_stats['total_js_files'] = len(self.crawler.js_urls)
-                
+            
                 if crawled_urls:
                     if self.debug:
                         print(f"  [DEBUG] Crawler found {len(crawled_urls)} additional pages")
                     for url in crawled_urls:
                         crawled_data = self.url_parser.parse(url)
                         all_found_pages.append(crawled_data)
-                        
+                    
                         # Update stats
                         self.scan_stats['total_urls'] += 1
                         self.scan_stats['total_params'] += len(crawled_data['query_params'])
                 else:
                     if self.debug:
                         print(f"  [DEBUG] No additional pages found by crawler")
-                
+            
                 # Only test pages that were actually discovered by the crawler
                 if self.debug:
                     print(f"  [DEBUG] Using only crawler-discovered pages")
@@ -714,6 +714,11 @@ class VulnScanner:
                         print(f"  [DEBUG] No-crawl mode enabled - skipping crawler")
                     else:
                         print(f"  [DEBUG] Crawling disabled by configuration")
+        
+            # Run passive analysis on all discovered pages
+            print(f"  [PASSIVE] Running passive analysis on {len(all_found_pages)} pages...")
+            passive_results = self._run_passive_analysis(all_found_pages)
+            target_results.extend(passive_results)
             
             # Collect file tree data if filetree is enabled
             if getattr(self.config, 'filetree', False):
@@ -833,6 +838,165 @@ class VulnScanner:
             traceback.print_exc()
         
         return target_results
+    
+    def _run_passive_analysis(self, pages_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Run passive analysis on discovered pages"""
+        passive_results = []
+        
+        try:
+            # Import passive detectors
+            from passive_detectors.security_headers_detector import SecurityHeadersDetector as PassiveSecurityHeaders
+            from passive_detectors.sensitive_data_detector import SensitiveDataDetector as PassiveSensitiveData
+            from passive_detectors.technology_detector import TechnologyDetector as PassiveTechnology
+            from passive_detectors.version_disclosure_detector import VersionDisclosureDetector as PassiveVersionDisclosure
+            
+            print(f"    [PASSIVE] Analyzing {len(pages_data)} pages for passive vulnerabilities...")
+            
+            # Collect unique domains to avoid duplicate analysis
+            analyzed_domains = set()
+            
+            for page_data in pages_data:
+                url = page_data.get('url', '')
+                if not url:
+                    continue
+                
+                try:
+                    from urllib.parse import urlparse
+                    parsed_url = urlparse(url)
+                    domain = parsed_url.hostname
+                    
+                    # Skip if domain already analyzed
+                    if domain in analyzed_domains:
+                        continue
+                    analyzed_domains.add(domain)
+                    
+                    print(f"    [PASSIVE] Analyzing domain: {domain}")
+                    
+                    # Make request to get headers and content
+                    response = requests.get(
+                        url,
+                        timeout=self.config.timeout,
+                        headers=self.config.headers,
+                        verify=False
+                    )
+                    
+                    if response.status_code >= 400:
+                        continue
+                    
+                    # Run passive security headers analysis
+                    try:
+                        has_issues, issues = PassiveSecurityHeaders.analyze_cookies(
+                            dict(response.headers), url
+                        )
+                        if has_issues:
+                            for issue in issues:
+                                passive_results.append({
+                                    'module': 'passive_security',
+                                    'target': url,
+                                    'vulnerability': f'Passive Security Issue: {issue["type"]}',
+                                    'severity': issue['severity'],
+                                    'parameter': 'headers/cookies',
+                                    'payload': 'N/A',
+                                    'evidence': issue['description'],
+                                    'request_url': url,
+                                    'detector': 'PassiveSecurityHeaders.analyze_cookies',
+                                    'response_snippet': issue.get('details', ''),
+                                    'method': 'GET',
+                                    'passive_analysis': True
+                                })
+                    except Exception as e:
+                        if self.debug:
+                            print(f"    [PASSIVE] Security headers analysis error: {e}")
+                    
+                    # Run passive sensitive data detection
+                    try:
+                        sensitive_findings = PassiveSensitiveData._analyze_content(response.text, url)
+                        for finding in sensitive_findings:
+                            passive_results.append({
+                                'module': 'passive_sensitive',
+                                'target': url,
+                                'vulnerability': f'Sensitive Data Exposure: {finding["type"]}',
+                                'severity': finding['severity'],
+                                'parameter': 'response_content',
+                                'payload': 'N/A',
+                                'evidence': finding['description'],
+                                'request_url': url,
+                                'detector': 'PassiveSensitiveData._analyze_content',
+                                'response_snippet': finding.get('context', ''),
+                                'method': 'GET',
+                                'passive_analysis': True
+                            })
+                    except Exception as e:
+                        if self.debug:
+                            print(f"    [PASSIVE] Sensitive data analysis error: {e}")
+                    
+                    # Run passive technology detection
+                    try:
+                        tech_findings = PassiveTechnology._analyze_headers(dict(response.headers), url)
+                        tech_findings.extend(PassiveTechnology._analyze_content(response.text, url))
+                        
+                        if tech_findings:
+                            # Group technologies into single finding to avoid spam
+                            tech_names = [finding['technology'] for finding in tech_findings]
+                            passive_results.append({
+                                'module': 'passive_technology',
+                                'target': url,
+                                'vulnerability': f'Technologies Detected ({len(tech_names)} found)',
+                                'severity': 'Info',
+                                'parameter': 'headers/content',
+                                'payload': 'N/A',
+                                'evidence': f'Technologies detected: {", ".join(tech_names)}',
+                                'request_url': url,
+                                'detector': 'PassiveTechnology.analyze',
+                                'response_snippet': f'Found: {", ".join(tech_names)}',
+                                'method': 'GET',
+                                'passive_analysis': True,
+                                'technologies': tech_names
+                            })
+                    except Exception as e:
+                        if self.debug:
+                            print(f"    [PASSIVE] Technology detection error: {e}")
+                    
+                    # Run passive version disclosure detection
+                    try:
+                        version_findings = PassiveVersionDisclosure._analyze_headers(dict(response.headers), url)
+                        version_findings.extend(PassiveVersionDisclosure._analyze_content(response.text, url))
+                        
+                        for finding in version_findings:
+                            passive_results.append({
+                                'module': 'passive_version',
+                                'target': url,
+                                'vulnerability': f'Version Disclosure: {finding["software"]}',
+                                'severity': finding['severity'],
+                                'parameter': 'headers/content',
+                                'payload': 'N/A',
+                                'evidence': finding['description'],
+                                'request_url': url,
+                                'detector': 'PassiveVersionDisclosure.analyze',
+                                'response_snippet': finding.get('context', ''),
+                                'method': 'GET',
+                                'passive_analysis': True
+                            })
+                    except Exception as e:
+                        if self.debug:
+                            print(f"    [PASSIVE] Version disclosure analysis error: {e}")
+                    
+                except Exception as e:
+                    if self.debug:
+                        print(f"    [PASSIVE] Error analyzing {url}: {e}")
+                    continue
+            
+            if passive_results:
+                print(f"    [PASSIVE] Found {len(passive_results)} passive vulnerabilities")
+            else:
+                print(f"    [PASSIVE] No passive vulnerabilities found")
+            
+        except ImportError as e:
+            print(f"    [PASSIVE] Could not import passive detectors: {e}")
+        except Exception as e:
+            print(f"    [PASSIVE] Passive analysis error: {e}")
+        
+        return passive_results
     
     def _run_module(self, module_name: str, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Run scanning module"""
@@ -7830,36 +7994,43 @@ class VulnScanner:
         print(f"Info:                 {len(info_vulns)}")
         print("="*80)
         
-        # Print vulnerability details
-        if critical_vulns:
-            print(f"\nCRITICAL SEVERITY VULNERABILITIES ({len(critical_vulns)} found):")
-            print("-" * 50)
-            for i, result in enumerate(critical_vulns, 1):
-                self._print_vulnerability(i, result)
+        # Separate active and passive vulnerabilities
+        active_vulns = {'critical': [], 'high': [], 'medium': [], 'low': [], 'info': []}
+        passive_vulns = {'critical': [], 'high': [], 'medium': [], 'low': [], 'info': []}
         
-        if high_vulns:
-            print(f"\nHIGH SEVERITY VULNERABILITIES ({len(high_vulns)} found):")
-            print("-" * 50)
-            for i, result in enumerate(high_vulns, 1):
-                self._print_vulnerability(i, result)
+        for vuln_list, severity in [(critical_vulns, 'critical'), (high_vulns, 'high'), 
+                                   (medium_vulns, 'medium'), (low_vulns, 'low'), (info_vulns, 'info')]:
+            for vuln in vuln_list:
+                if vuln.get('passive_analysis', False):
+                    passive_vulns[severity].append(vuln)
+                else:
+                    active_vulns[severity].append(vuln)
         
-        if medium_vulns:
-            print(f"\nMEDIUM SEVERITY VULNERABILITIES ({len(medium_vulns)} found):")
-            print("-" * 50)
-            for i, result in enumerate(medium_vulns, 1):
-                self._print_vulnerability(i, result)
+        # Print active vulnerabilities
+        total_active = sum(len(vulns) for vulns in active_vulns.values())
+        if total_active > 0:
+            print(f"\nACTIVE VULNERABILITIES ({total_active} found):")
+            print("="*60)
+            
+            for severity, vulns in active_vulns.items():
+                if vulns:
+                    print(f"\n{severity.upper()} SEVERITY ({len(vulns)} found):")
+                    print("-" * 50)
+                    for i, result in enumerate(vulns, 1):
+                        self._print_vulnerability(i, result)
         
-        if low_vulns:
-            print(f"\nLOW SEVERITY VULNERABILITIES ({len(low_vulns)} found):")
-            print("-" * 50)
-            for i, result in enumerate(low_vulns, 1):
-                self._print_vulnerability(i, result)
-        
-        if info_vulns:
-            print(f"\nINFO VULNERABILITIES ({len(info_vulns)} found):")
-            print("-" * 50)
-            for i, result in enumerate(info_vulns, 1):
-                self._print_vulnerability(i, result)
+        # Print passive vulnerabilities
+        total_passive = sum(len(vulns) for vulns in passive_vulns.values())
+        if total_passive > 0:
+            print(f"\nPASSIVE VULNERABILITIES ({total_passive} found):")
+            print("="*60)
+            
+            for severity, vulns in passive_vulns.items():
+                if vulns:
+                    print(f"\n{severity.upper()} SEVERITY ({len(vulns)} found):")
+                    print("-" * 50)
+                    for i, result in enumerate(vulns, 1):
+                        self._print_vulnerability(i, result, is_passive=True)
         
         # Print general vulnerability summary
         if vulnerabilities:
@@ -7923,7 +8094,7 @@ class VulnScanner:
         
         return False
     
-    def _print_vulnerability(self, index: int, result: Dict[str, Any]):
+    def _print_vulnerability(self, index: int, result: Dict[str, Any], is_passive: bool = False):
         """Print single vulnerability details with safe encoding and enhanced metadata"""
         def safe_print(text):
             """Safely print text, handling encoding issues"""
@@ -7938,11 +8109,13 @@ class VulnScanner:
                 safe_text = str(text).encode('ascii', 'replace').decode('ascii')
                 print(safe_text)
         
-        safe_print(f"\n  {index}. {result.get('vulnerability', 'Unknown')}")
+        analysis_type = "[PASSIVE]" if is_passive else "[ACTIVE]"
+        safe_print(f"\n  {index}. {analysis_type} {result.get('vulnerability', 'Unknown')}")
         safe_print(f"     Target: {result.get('target', '')}")
         safe_print(f"     Parameter: {result.get('parameter', '')}")
         safe_print(f"     Module: {result.get('module', '')}")
-        safe_print(f"     HTTP Method: {result.get('http_method', result.get('method', 'Unknown'))}")
+        if not is_passive:
+            safe_print(f"     HTTP Method: {result.get('http_method', result.get('method', 'Unknown'))}")
         safe_print(f"     Detector: {result.get('detector', 'Unknown')}")
         
         payload = str(result.get('payload', ''))

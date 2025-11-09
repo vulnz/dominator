@@ -113,9 +113,21 @@ class FileHandler:
         
         scan_stats['technologies'] = tech_by_domain
         
+        # Separate active and passive vulnerabilities for better reporting
+        active_vulnerabilities = []
+        passive_vulnerabilities = []
+        
+        for vuln in vulnerabilities:
+            if vuln.get('passive_analysis', False):
+                passive_vulnerabilities.append(vuln)
+            else:
+                active_vulnerabilities.append(vuln)
+        
         # Prepare report data
         report_data = {
             'vulnerabilities': vulnerabilities,
+            'active_vulnerabilities': active_vulnerabilities,
+            'passive_vulnerabilities': passive_vulnerabilities,
             'scan_stats': scan_stats,
             'filetree_enabled': bool(scan_stats.get('file_tree_paths')),
             'benchmark_analysis': benchmark_analysis,
@@ -1068,14 +1080,25 @@ class FileHandler:
             </div>
         </div>
         
-        <!-- Vulnerabilities List -->
-        <div class="vulnerabilities">
+        <!-- Active Vulnerabilities List -->
+        <div class="vulnerabilities" id="active-vulnerabilities">
             <div class="vuln-header">
-                <h2><i class="fas fa-bug"></i> Vulnerabilities Found</h2>
-                <p>Click on any vulnerability to view detailed information</p>
+                <h2><i class="fas fa-bug"></i> Active Vulnerabilities Found</h2>
+                <p>Vulnerabilities found through active testing and payload injection</p>
             </div>
-            <div id="vulnerabilities-list">
-                <!-- Vulnerabilities will be populated here -->
+            <div id="active-vulnerabilities-list">
+                <!-- Active vulnerabilities will be populated here -->
+            </div>
+        </div>
+        
+        <!-- Passive Vulnerabilities List -->
+        <div class="vulnerabilities" id="passive-vulnerabilities" style="margin-top: 20px;">
+            <div class="vuln-header" style="background: linear-gradient(135deg, #17a2b8, #138496);">
+                <h2><i class="fas fa-eye"></i> Passive Vulnerabilities Found</h2>
+                <p>Vulnerabilities found through passive analysis of responses and headers</p>
+            </div>
+            <div id="passive-vulnerabilities-list">
+                <!-- Passive vulnerabilities will be populated here -->
             </div>
         </div>
     </div>
@@ -1897,63 +1920,95 @@ class FileHandler:
         
         function populateVulnerabilities() {
             console.log('Populating vulnerabilities...');
-            const vulnerabilities = reportData.vulnerabilities || [];
-            console.log('Vulnerabilities array:', vulnerabilities);
-            console.log('Vulnerabilities length:', vulnerabilities.length);
+            const activeVulnerabilities = reportData.active_vulnerabilities || [];
+            const passiveVulnerabilities = reportData.passive_vulnerabilities || [];
+            const allVulnerabilities = reportData.vulnerabilities || [];
             
-            const container = document.getElementById('vulnerabilities-list');
-            if (!container) {
-                console.error('Vulnerabilities container not found');
+            console.log('Active vulnerabilities:', activeVulnerabilities.length);
+            console.log('Passive vulnerabilities:', passiveVulnerabilities.length);
+            console.log('Total vulnerabilities:', allVulnerabilities.length);
+            
+            const activeContainer = document.getElementById('active-vulnerabilities-list');
+            const passiveContainer = document.getElementById('passive-vulnerabilities-list');
+            
+            if (!activeContainer || !passiveContainer) {
+                console.error('Vulnerability containers not found');
                 return;
             }
             
-            if (vulnerabilities.length === 0) {
-                console.log('No vulnerabilities found, showing empty state');
-                container.innerHTML = '<div class="no-results"><i class="fas fa-check-circle" style="font-size: 3rem; color: #2ecc71; margin-bottom: 15px;"></i><h3>No Vulnerabilities Found</h3><p>The scan completed successfully with no security issues detected.</p></div>';
-                return;
-            }
-            
-            console.log('Processing', vulnerabilities.length, 'vulnerabilities');
-            
-            // Sort vulnerabilities by severity (Critical -> High -> Medium -> Low -> Info)
+            // Sort vulnerabilities by severity
             const severityOrder = { 'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3, 'Info': 4 };
-            vulnerabilities.sort((a, b) => {
+            const sortVulns = (vulns) => vulns.sort((a, b) => {
                 const severityA = severityOrder[a.severity] !== undefined ? severityOrder[a.severity] : 5;
                 const severityB = severityOrder[b.severity] !== undefined ? severityOrder[b.severity] : 5;
                 return severityA - severityB;
             });
             
-            // Populate module filter
-            const modules = [...new Set(vulnerabilities.map(v => v.module))];
+            sortVulns(activeVulnerabilities);
+            sortVulns(passiveVulnerabilities);
+            
+            // Populate module filter with all modules
+            const allModules = [...new Set(allVulnerabilities.map(v => v.module))];
             const moduleFilter = document.getElementById('module-filter');
-            modules.forEach(module => {
+            allModules.forEach(module => {
                 const option = document.createElement('option');
                 option.value = module;
                 option.textContent = module.toUpperCase();
                 moduleFilter.appendChild(option);
             });
             
-            vulnerabilities.forEach((vuln, index) => {
-                try {
-                    const vulnElement = createVulnerabilityElement(vuln, index);
-                    container.appendChild(vulnElement);
-                } catch (error) {
-                    console.error(`Error creating vulnerability element ${index}:`, error, vuln);
-                }
-            });
+            // Populate active vulnerabilities
+            if (activeVulnerabilities.length === 0) {
+                activeContainer.innerHTML = '<div class="no-results"><i class="fas fa-check-circle" style="font-size: 2rem; color: #2ecc71; margin-bottom: 10px;"></i><h4>No Active Vulnerabilities Found</h4><p>No vulnerabilities found through active testing.</p></div>';
+            } else {
+                activeVulnerabilities.forEach((vuln, index) => {
+                    try {
+                        const vulnElement = createVulnerabilityElement(vuln, index, 'active');
+                        activeContainer.appendChild(vulnElement);
+                    } catch (error) {
+                        console.error(`Error creating active vulnerability element ${index}:`, error, vuln);
+                    }
+                });
+            }
+            
+            // Populate passive vulnerabilities
+            if (passiveVulnerabilities.length === 0) {
+                passiveContainer.innerHTML = '<div class="no-results"><i class="fas fa-info-circle" style="font-size: 2rem; color: #17a2b8; margin-bottom: 10px;"></i><h4>No Passive Vulnerabilities Found</h4><p>No vulnerabilities found through passive analysis.</p></div>';
+            } else {
+                passiveVulnerabilities.forEach((vuln, index) => {
+                    try {
+                        const vulnElement = createVulnerabilityElement(vuln, index + activeVulnerabilities.length, 'passive');
+                        passiveContainer.appendChild(vulnElement);
+                    } catch (error) {
+                        console.error(`Error creating passive vulnerability element ${index}:`, error, vuln);
+                    }
+                });
+            }
+            
+            // Hide sections if no vulnerabilities
+            if (activeVulnerabilities.length === 0) {
+                document.getElementById('active-vulnerabilities').style.display = 'none';
+            }
+            if (passiveVulnerabilities.length === 0) {
+                document.getElementById('passive-vulnerabilities').style.display = 'none';
+            }
         }
         
-        function createVulnerabilityElement(vuln, index) {
+        function createVulnerabilityElement(vuln, index, type = 'active') {
             const vulnDiv = document.createElement('div');
             vulnDiv.className = 'vuln-item';
             vulnDiv.dataset.severity = vuln.severity || 'Unknown';
             vulnDiv.dataset.module = vuln.module || 'unknown';
+            vulnDiv.dataset.type = type;
             vulnDiv.dataset.searchText = `${vuln.vulnerability || ''} ${vuln.target || ''} ${vuln.parameter || ''} ${vuln.evidence || ''}`.toLowerCase();
+            
+            // Add visual indicator for passive vulnerabilities
+            const typeIndicator = type === 'passive' ? '<span class="passive-indicator">[PASSIVE]</span> ' : '';
             
             vulnDiv.innerHTML = `
                 <div class="vuln-summary" onclick="toggleDetails(${index})">
                     <div class="vuln-info">
-                        <div class="vuln-title">${vuln.vulnerability || 'Unknown Vulnerability'}</div>
+                        <div class="vuln-title">${typeIndicator}${vuln.vulnerability || 'Unknown Vulnerability'}</div>
                         <div class="vuln-meta">
                             <span><i class="fas fa-globe"></i> ${vuln.target || 'Unknown Target'}</span>
                             <span><i class="fas fa-tag"></i> ${vuln.parameter || 'N/A'}</span>
