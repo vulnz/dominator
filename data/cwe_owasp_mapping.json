@@ -13,6 +13,32 @@
       "recommendation": "Implement proper input validation and output encoding. Use Content Security Policy (CSP) headers.",
       "description": "Cross-Site Scripting allows attackers to inject malicious scripts into web pages viewed by other users."
     },
+    "storedxss": {
+      "cwe": "CWE-79",
+      "owasp": "A03:2021 – Injection",
+      "cvss_base": "8.8",
+      "severity_mapping": {
+        "Critical": "9.6",
+        "High": "8.8",
+        "Medium": "6.1",
+        "Low": "3.1"
+      },
+      "recommendation": "Implement proper input validation and output encoding. Use Content Security Policy (CSP) headers. Sanitize stored data.",
+      "description": "Stored Cross-Site Scripting allows attackers to inject malicious scripts that are permanently stored on the target server."
+    },
+    "blindxss": {
+      "cwe": "CWE-79",
+      "owasp": "A03:2021 – Injection",
+      "cvss_base": "8.8",
+      "severity_mapping": {
+        "Critical": "9.6",
+        "High": "8.8",
+        "Medium": "6.1",
+        "Low": "3.1"
+      },
+      "recommendation": "Implement proper input validation and output encoding. Monitor for XSS callbacks.",
+      "description": "Blind Cross-Site Scripting occurs when XSS payload is stored and executed in a different context than where it was submitted."
+    },
     "sqli": {
       "cwe": "CWE-89",
       "owasp": "A03:2021 – Injection",
@@ -311,6 +337,292 @@
       },
       "recommendation": "Validate and sanitize all user inputs used in HTTP responses.",
       "description": "HTTP Response Splitting allows attackers to inject malicious HTTP responses."
+    },
+    "dirbrute": {
+      "cwe": "CWE-200",
+      "owasp": "A05:2021 – Security Misconfiguration",
+      "cvss_base": "5.3",
+      "severity_mapping": {
+        "Critical": "7.5",
+        "High": "5.3",
+        "Medium": "3.1",
+        "Low": "2.1"
+      },
+      "recommendation": "Restrict access to sensitive directories and files. Implement proper access controls.",
+      "description": "Directory and file enumeration allows attackers to discover hidden resources and sensitive information."
+    },
+    "git": {
+      "cwe": "CWE-200",
+      "owasp": "A05:2021 – Security Misconfiguration",
+      "cvss_base": "7.5",
+      "severity_mapping": {
+        "Critical": "9.1",
+        "High": "7.5",
+        "Medium": "5.3",
+        "Low": "3.1"
+      },
+      "recommendation": "Remove .git directories from web-accessible locations. Use proper deployment practices.",
+      "description": "Exposed Git repositories can reveal source code, credentials, and sensitive configuration data."
+    },
+    "gitexposed": {
+      "cwe": "CWE-200",
+      "owasp": "A05:2021 – Security Misconfiguration",
+      "cvss_base": "7.5",
+      "severity_mapping": {
+        "Critical": "9.1",
+        "High": "7.5",
+        "Medium": "5.3",
+        "Low": "3.1"
+      },
+      "recommendation": "Remove .git directories from web-accessible locations. Use proper deployment practices.",
+      "description": "Exposed Git repositories can reveal source code, credentials, and sensitive configuration data."
+    },
+    "dirtraversal": {
+      "cwe": "CWE-22",
+      "owasp": "A01:2021 – Broken Access Control",
+      "cvss_base": "7.5",
+      "severity_mapping": {
+        "Critical": "8.8",
+        "High": "7.5",
+        "Medium": "5.3",
+        "Low": "3.1"
+      },
+      "recommendation": "Validate and sanitize file paths. Use whitelisting for allowed directories.",
+      "description": "Directory Traversal allows attackers to access files outside the intended directory structure."
+    },
+    "ssrf": {
+      "cwe": "CWE-918",
+      "owasp": "A10:2021 – Server-Side Request Forgery",
+      "cvss_base": "8.8",
+      "severity_mapping": {
+        "Critical": "9.1",
+        "High": "8.8",
+        "Medium": "6.5",
+        "Low": "3.1"
+      },
+      "recommendation": "Validate and whitelist allowed URLs. Implement network segmentation.",
+      "description": "Server-Side Request Forgery allows attackers to make requests from the server to internal or external resources."
+    },
+    "versiondisclosure": {
+      "cwe": "CWE-200",
+      "owasp": "A05:2021 – Security Misconfiguration",
+      "cvss_base": "3.1",
+      "severity_mapping": {
+        "Critical": "5.3",
+        "High": "3.1",
+        "Medium": "2.1",
+        "Low": "1.0"
+      },
+      "recommendation": "Remove or obfuscate version information from HTTP headers and error messages.",
+      "description": "Version disclosure provides attackers with information about software versions that may have known vulnerabilities."
+    },
+    "passwordoverhttp": {
+      "cwe": "CWE-319",
+      "owasp": "A02:2021 – Cryptographic Failures",
+      "cvss_base": "8.8",
+      "severity_mapping": {
+        "Critical": "9.1",
+        "High": "8.8",
+        "Medium": "6.5",
+        "Low": "3.1"
+      },
+      "recommendation": "Use HTTPS for all authentication forms and sensitive data transmission.",
+      "description": "Transmitting passwords over HTTP allows attackers to intercept credentials in transit."
+    },
+    "outdatedsoftware": {
+      "cwe": "CWE-1104",
+      "owasp": "A06:2021 – Vulnerable and Outdated Components",
+      "cvss_base": "5.3",
+      "severity_mapping": {
+        "Critical": "9.8",
+        "High": "7.5",
+        "Medium": "5.3",
+        "Low": "3.1"
+      },
+      "recommendation": "Keep all software components up to date. Implement vulnerability management processes.",
+      "description": "Outdated software components may contain known security vulnerabilities."
+    },
+    "databaseerrors": {
+      "cwe": "CWE-209",
+      "owasp": "A09:2021 – Security Logging and Monitoring Failures",
+      "cvss_base": "3.1",
+      "severity_mapping": {
+        "Critical": "5.3",
+        "High": "3.1",
+        "Medium": "2.1",
+        "Low": "1.0"
+      },
+      "recommendation": "Implement proper error handling. Avoid exposing database error messages to users.",
+      "description": "Database error messages can reveal sensitive information about the application structure and data."
+    },
+    "phpinfo": {
+      "cwe": "CWE-200",
+      "owasp": "A05:2021 – Security Misconfiguration",
+      "cvss_base": "7.5",
+      "severity_mapping": {
+        "Critical": "8.8",
+        "High": "7.5",
+        "Medium": "5.3",
+        "Low": "3.1"
+      },
+      "recommendation": "Remove phpinfo() pages from production environments.",
+      "description": "PHPInfo pages expose detailed server configuration information that can aid attackers."
+    },
+    "technology": {
+      "cwe": "CWE-200",
+      "owasp": "A05:2021 – Security Misconfiguration",
+      "cvss_base": "2.1",
+      "severity_mapping": {
+        "Critical": "3.1",
+        "High": "2.1",
+        "Medium": "1.0",
+        "Low": "0.0"
+      },
+      "recommendation": "Minimize technology fingerprinting. Remove unnecessary headers and signatures.",
+      "description": "Technology detection provides attackers with information about the technology stack used."
+    },
+    "openredirect": {
+      "cwe": "CWE-601",
+      "owasp": "A01:2021 – Broken Access Control",
+      "cvss_base": "6.1",
+      "severity_mapping": {
+        "Critical": "8.1",
+        "High": "6.1",
+        "Medium": "4.3",
+        "Low": "2.1"
+      },
+      "recommendation": "Validate redirect URLs against a whitelist of allowed domains.",
+      "description": "Open Redirect allows attackers to redirect users to malicious websites."
+    },
+    "hpp": {
+      "cwe": "CWE-235",
+      "owasp": "A03:2021 – Injection",
+      "cvss_base": "5.3",
+      "severity_mapping": {
+        "Critical": "7.5",
+        "High": "5.3",
+        "Medium": "3.1",
+        "Low": "2.1"
+      },
+      "recommendation": "Implement proper parameter parsing and validation. Handle duplicate parameters consistently.",
+      "description": "HTTP Parameter Pollution allows attackers to manipulate application logic through parameter confusion."
+    },
+    "reversetabnabbing": {
+      "cwe": "CWE-1021",
+      "owasp": "A05:2021 – Security Misconfiguration",
+      "cvss_base": "4.3",
+      "severity_mapping": {
+        "Critical": "6.5",
+        "High": "4.3",
+        "Medium": "3.1",
+        "Low": "2.1"
+      },
+      "recommendation": "Add rel='noopener noreferrer' to external links with target='_blank'.",
+      "description": "Reverse Tabnabbing allows malicious websites to manipulate the original page through window.opener."
+    },
+    "insecurereflection": {
+      "cwe": "CWE-79",
+      "owasp": "A03:2021 – Injection",
+      "cvss_base": "5.3",
+      "severity_mapping": {
+        "Critical": "7.5",
+        "High": "5.3",
+        "Medium": "3.1",
+        "Low": "2.1"
+      },
+      "recommendation": "Implement proper output encoding and Content Security Policy (CSP).",
+      "description": "Insecure content reflection can lead to XSS vulnerabilities when user input is reflected without proper encoding."
+    },
+    "phpconfig": {
+      "cwe": "CWE-16",
+      "owasp": "A05:2021 – Security Misconfiguration",
+      "cvss_base": "5.3",
+      "severity_mapping": {
+        "Critical": "7.5",
+        "High": "5.3",
+        "Medium": "3.1",
+        "Low": "2.1"
+      },
+      "recommendation": "Configure PHP with secure settings. Disable dangerous functions and features.",
+      "description": "Insecure PHP configuration can expose the application to various security risks."
+    },
+    "csp": {
+      "cwe": "CWE-16",
+      "owasp": "A05:2021 – Security Misconfiguration",
+      "cvss_base": "4.3",
+      "severity_mapping": {
+        "Critical": "6.5",
+        "High": "4.3",
+        "Medium": "3.1",
+        "Low": "2.1"
+      },
+      "recommendation": "Implement a strict Content Security Policy to prevent XSS and other injection attacks.",
+      "description": "Missing or weak Content Security Policy allows various injection attacks to succeed."
+    },
+    "mixedcontent": {
+      "cwe": "CWE-319",
+      "owasp": "A02:2021 – Cryptographic Failures",
+      "cvss_base": "5.3",
+      "severity_mapping": {
+        "Critical": "7.5",
+        "High": "5.3",
+        "Medium": "3.1",
+        "Low": "2.1"
+      },
+      "recommendation": "Ensure all resources are loaded over HTTPS on HTTPS pages.",
+      "description": "Mixed content vulnerabilities allow attackers to intercept or modify resources loaded over HTTP on HTTPS pages."
+    },
+    "hostheader": {
+      "cwe": "CWE-20",
+      "owasp": "A03:2021 – Injection",
+      "cvss_base": "6.5",
+      "severity_mapping": {
+        "Critical": "8.1",
+        "High": "6.5",
+        "Medium": "4.3",
+        "Low": "2.1"
+      },
+      "recommendation": "Validate Host header values. Use a whitelist of allowed hosts.",
+      "description": "Host Header Injection allows attackers to manipulate server behavior through malicious Host headers."
+    },
+    "prototypepollution": {
+      "cwe": "CWE-1321",
+      "owasp": "A08:2021 – Software and Data Integrity Failures",
+      "cvss_base": "7.5",
+      "severity_mapping": {
+        "Critical": "8.8",
+        "High": "7.5",
+        "Medium": "5.3",
+        "Low": "3.1"
+      },
+      "recommendation": "Validate object properties. Use Object.create(null) or Map for data storage.",
+      "description": "Prototype Pollution allows attackers to modify JavaScript object prototypes, potentially leading to RCE."
+    },
+    "vhost": {
+      "cwe": "CWE-200",
+      "owasp": "A05:2021 – Security Misconfiguration",
+      "cvss_base": "4.3",
+      "severity_mapping": {
+        "Critical": "6.5",
+        "High": "4.3",
+        "Medium": "3.1",
+        "Low": "2.1"
+      },
+      "recommendation": "Properly configure virtual hosts. Avoid default catch-all configurations.",
+      "description": "Virtual Host discovery can reveal hidden applications and services on the same server."
+    },
+    "infoleak": {
+      "cwe": "CWE-200",
+      "owasp": "A09:2021 – Security Logging and Monitoring Failures",
+      "cvss_base": "3.1",
+      "severity_mapping": {
+        "Critical": "5.3",
+        "High": "3.1",
+        "Medium": "2.1",
+        "Low": "1.0"
+      },
+      "recommendation": "Remove sensitive information from public responses. Implement proper error handling.",
+      "description": "Information leakage exposes sensitive data such as email addresses, internal IPs, or debug information."
     }
   },
   "severity_levels": {
