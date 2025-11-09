@@ -228,8 +228,9 @@ class DirBruteDetector:
         has_size_column = 'size' in response_lower and ('kb' in response_lower or 'mb' in response_lower or 'bytes' in response_lower)
         
         # Filter out false positives from sorting parameters
-        has_sorting_params = bool(re.search(r'\?[Cc]=[NnMmSsDd];[Oo]=[AaDd]', response_text))
+        has_sorting_params = bool(re.search(r'\?[Cc]=[NnMmSsDd];?[Oo]=[AaDd]', response_text))
         if has_sorting_params:
+            print(f"    [DIRBRUTE] Directory listing with sorting parameters detected")
             # If we detect sorting parameters, we need stronger evidence
             return indicators_found >= 3 or (has_parent_dir and has_file_links and has_size_column)
         

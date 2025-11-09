@@ -135,7 +135,7 @@ class PayloadLoader:
             current_dir = os.path.dirname(os.path.abspath(__file__))
             base_dir = os.path.dirname(current_dir)
         else:
-            base_dir = os.path.dirname(cls._base_path)
+            base_dir = os.path.dirname(os.path.dirname(cls._base_path))
         
         wordlist_file = os.path.join(base_dir, 'data', 'wordlists', f"{wordlist_name}.txt")
         
@@ -214,7 +214,7 @@ class PayloadLoader:
             current_dir = os.path.dirname(os.path.abspath(__file__))
             base_dir = os.path.dirname(current_dir)
         else:
-            base_dir = os.path.dirname(cls._base_path)
+            base_dir = os.path.dirname(os.path.dirname(cls._base_path))
         
         indicators_file = os.path.join(base_dir, 'data', 'indicators', f"{indicator_type}_indicators.txt")
         
@@ -253,7 +253,7 @@ class PayloadLoader:
             current_dir = os.path.dirname(os.path.abspath(__file__))
             base_dir = os.path.dirname(current_dir)
         else:
-            base_dir = os.path.dirname(cls._base_path)
+            base_dir = os.path.dirname(os.path.dirname(cls._base_path))
         
         patterns_dir = os.path.join(base_dir, 'data', 'error_patterns')
         

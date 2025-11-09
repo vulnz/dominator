@@ -749,11 +749,22 @@ class VulnScanner:
                 print(f"  [DEBUG] Testing {len(all_found_pages)} total pages with all modules")
         
             for page_data in all_found_pages:
+                # Check if this page has directory listing - skip vulnerability testing if it does
+                page_url = page_data.get('url', '')
+                if self._is_directory_listing_page(page_url):
+                    print(f"  [DEBUG] Skipping vulnerability testing for directory listing page: {page_url}")
+                    continue
+                
                 # Extract forms if not already done
                 if 'forms' not in page_data:
                     try:
                         response = requests.get(page_data['url'], timeout=10, verify=False)
                         if response.status_code == 200:
+                            # Check if response contains directory listing
+                            if self._contains_directory_listing(response.text):
+                                print(f"  [DEBUG] Skipping vulnerability testing - page contains directory listing: {page_url}")
+                                continue
+                            
                             forms = self.url_parser.extract_forms(response.text)
                             page_data['forms'] = forms
                             # Update forms count in stats
@@ -7709,6 +7720,54 @@ class VulnScanner:
         print(f"Low Severity:         {len(low_vulns)}")
         print(f"Info:                 {len(info_vulns)}")
         print("="*80)
+    
+    def _is_directory_listing_page(self, url: str) -> bool:
+        """Check if URL appears to be a directory listing page"""
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            
+            # Check for directory listing sorting parameters
+            if parsed.query:
+                query_upper = parsed.query.upper()
+                if any(param in query_upper for param in ['C=', 'O=', 'SORT=', 'ORDER=']):
+                    return True
+            
+            # Check if URL ends with / (directory)
+            if parsed.path.endswith('/'):
+                return True
+                
+            return False
+        except:
+            return False
+    
+    def _contains_directory_listing(self, response_text: str) -> bool:
+        """Check if response contains directory listing"""
+        response_lower = response_text.lower()
+        
+        # Directory listing indicators
+        directory_indicators = [
+            'index of /',
+            'directory listing',
+            'parent directory',
+            '<title>index of',
+            'directory listing for',
+            '[to parent directory]',
+            'last modified',
+            'size</th>',
+            'name</th>',
+            '<pre><a href="../">../</a>',
+            '<a href="?c=n;o=d">name</a>',
+            '<a href="?c=m;o=a">last modified</a>',
+            '<a href="?c=s;o=a">size</a>'
+        ]
+        
+        # Count indicators found
+        indicators_found = sum(1 for indicator in directory_indicators 
+                             if indicator in response_lower)
+        
+        # Directory listing detected if we have multiple indicators
+        return indicators_found >= 2
         
         # Print vulnerability details
         if critical_vulns:

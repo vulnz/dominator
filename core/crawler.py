@@ -62,10 +62,18 @@ class WebCrawler:
             
             if response.status_code == 200:
                 print(f"    [CRAWLER] Successfully connected to {base_url}")
-                
+                    
+                # Check for directory listing on main page first
+                if self._detect_directory_listing(response.text):
+                    print(f"    [CRAWLER] Directory listing detected on main page: {base_url}")
+                    # Extract directory listing URLs
+                    dir_urls = self._extract_directory_listing_urls(response.text, base_url)
+                    found_urls.extend(dir_urls)
+                    print(f"    [CRAWLER] Extracted {len(dir_urls)} URLs from main page directory listing")
+                    
                 # Run passive analysis on initial response
                 self._run_passive_analysis(response.headers, response.text, base_url)
-                
+                    
                 # Extract JavaScript and AJAX endpoints
                 self._extract_js_endpoints(response.text, base_url)
                 
@@ -777,13 +785,12 @@ class WebCrawler:
                 if href in ['../', '../', '..']:
                     continue
                 
-                # Skip sorting parameters that look like attack payloads
-                if href.startswith('?C=') or href.startswith('?c='):
-                    continue
-                
-                # Skip other query parameters that are for directory listing control
-                if href.startswith('?') and any(param in href.lower() for param in ['sort', 'order', 'c=', 'o=']):
-                    continue
+                # Skip ALL sorting and directory listing control parameters
+                if href.startswith('?'):
+                    # Check for directory listing sorting parameters
+                    if any(param in href.upper() for param in ['C=', 'O=', 'SORT=', 'ORDER=']):
+                        print(f"    [CRAWLER] Skipping directory listing control parameter: {href}")
+                        continue
                 
                 # Skip empty or invalid links
                 if not href or href == '#':
