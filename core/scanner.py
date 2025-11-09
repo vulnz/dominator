@@ -2799,6 +2799,111 @@ class VulnScanner:
                     print(f"    [SSRF] Error testing payload: {e}")
                     continue
         
+        # Test POST forms
+        forms_data = parsed_data.get('forms', [])
+        for i, form_data in enumerate(forms_data):
+            form_method = form_data.get('method', 'GET').upper()
+            form_action = form_data.get('action', '')
+            form_inputs = form_data.get('inputs', [])
+            
+            if form_method in ['POST', 'PUT'] and form_inputs:
+                print(f"    [SSRF] Testing {form_method} form {i+1}: {form_action}")
+                
+                # Build form URL
+                if form_action.startswith('/'):
+                    form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
+                elif form_action.startswith('http'):
+                    form_url = form_action
+                else:
+                    form_url = f"{base_url.rstrip('/')}/{form_action}" if form_action else base_url
+                
+                # Test each form input
+                for input_data in form_inputs:
+                    input_name = input_data.get('name')
+                    input_type = input_data.get('type', 'text')
+                    
+                    if not input_name or input_type in ['submit', 'button', 'hidden']:
+                        continue
+                    
+                    print(f"    [SSRF] Testing form input: {input_name}")
+                    
+                    # Create deduplication key for this form input
+                    form_key = f"ssrf_form_{form_url.split('?')[0]}_{input_name}"
+                    if form_key in self.found_vulnerabilities:
+                        print(f"    [SSRF] Skipping form input {input_name} - already tested")
+                        continue
+                    
+                    for payload in ssrf_payloads[:15]:  # Test fewer payloads for forms
+                        try:
+                            print(f"    [SSRF] Trying form payload: {payload[:50]}...")
+                            
+                            # Prepare form data
+                            post_data = {}
+                            for inp in form_inputs:
+                                inp_name = inp.get('name')
+                                inp_value = inp.get('value', 'test')
+                                inp_type = inp.get('type', 'text')
+                                
+                                if inp_name and inp_type not in ['submit', 'button']:
+                                    if inp_name == input_name:
+                                        post_data[inp_name] = payload
+                                    else:
+                                        post_data[inp_name] = inp_value
+                            
+                            if form_method == 'POST':
+                                response = requests.post(
+                                    form_url,
+                                    data=post_data,
+                                    timeout=self.config.timeout,
+                                    headers=self.config.headers,
+                                    verify=False
+                                )
+                            else:  # PUT
+                                response = requests.put(
+                                    form_url,
+                                    data=post_data,
+                                    timeout=self.config.timeout,
+                                    headers=self.config.headers,
+                                    verify=False
+                                )
+                            
+                            # Update request count
+                            self.request_count += 1
+                            self.scan_stats['payload_stats']['ssrf']['requests_made'] += 1
+                            
+                            print(f"    [SSRF] Form response code: {response.status_code}")
+                            
+                            # Use SSRF detector
+                            is_vulnerable, evidence, severity = SSRFDetector.detect_ssrf(
+                                response.text, response.status_code, payload
+                            )
+                            
+                            if is_vulnerable:
+                                print(f"    [SSRF] FORM VULNERABILITY FOUND! Input: {input_name}")
+                                
+                                # Mark as found to prevent duplicates
+                                self.found_vulnerabilities.add(form_key)
+                                
+                                response_snippet = self._get_contextual_response_snippet(payload, response.text)
+                                
+                                results.append({
+                                    'module': 'ssrf',
+                                    'target': form_url,
+                                    'vulnerability': f'Server-Side Request Forgery in {form_method} Form',
+                                    'severity': severity,
+                                    'parameter': input_name,
+                                    'payload': payload,
+                                    'evidence': evidence,
+                                    'request_url': form_url,
+                                    'detector': 'SSRFDetector.detect_ssrf',
+                                    'response_snippet': response_snippet
+                                })
+                                break  # Found SSRF, no need to test more payloads for this input
+                                
+                        except Exception as e:
+                            print(f"    [SSRF] Error testing form payload: {e}")
+                            continue
+        
         return results
     
     def _test_rfi(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -2894,6 +2999,112 @@ class VulnScanner:
                 except Exception as e:
                     print(f"    [RFI] Error testing payload: {e}")
                     continue
+        
+        # Test POST forms
+        forms_data = parsed_data.get('forms', [])
+        for i, form_data in enumerate(forms_data):
+            form_method = form_data.get('method', 'GET').upper()
+            form_action = form_data.get('action', '')
+            form_inputs = form_data.get('inputs', [])
+            
+            if form_method in ['POST', 'PUT'] and form_inputs:
+                print(f"    [RFI] Testing {form_method} form {i+1}: {form_action}")
+                
+                # Build form URL
+                if form_action.startswith('/'):
+                    form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
+                elif form_action.startswith('http'):
+                    form_url = form_action
+                else:
+                    form_url = f"{base_url.rstrip('/')}/{form_action}" if form_action else base_url
+                
+                # Test each form input
+                for input_data in form_inputs:
+                    input_name = input_data.get('name')
+                    input_type = input_data.get('type', 'text')
+                    
+                    if not input_name or input_type in ['submit', 'button', 'hidden']:
+                        continue
+                    
+                    print(f"    [RFI] Testing form input: {input_name}")
+                    
+                    # Create deduplication key for this form input
+                    form_key = f"rfi_form_{form_url.split('?')[0]}_{input_name}"
+                    if form_key in self.found_vulnerabilities:
+                        print(f"    [RFI] Skipping form input {input_name} - already tested")
+                        continue
+                    
+                    for payload in rfi_payloads[:10]:  # Test fewer payloads for forms
+                        try:
+                            # Skip non-HTTP payloads for RFI testing
+                            if not payload.startswith(('http://', 'https://', 'ftp://')):
+                                continue
+                            
+                            print(f"    [RFI] Trying form payload: {payload[:50]}...")
+                            
+                            # Prepare form data
+                            post_data = {}
+                            for inp in form_inputs:
+                                inp_name = inp.get('name')
+                                inp_value = inp.get('value', 'test')
+                                inp_type = inp.get('type', 'text')
+                                
+                                if inp_name and inp_type not in ['submit', 'button']:
+                                    if inp_name == input_name:
+                                        post_data[inp_name] = payload
+                                    else:
+                                        post_data[inp_name] = inp_value
+                            
+                            if form_method == 'POST':
+                                response = requests.post(
+                                    form_url,
+                                    data=post_data,
+                                    timeout=self.config.timeout,
+                                    headers=self.config.headers,
+                                    verify=False
+                                )
+                            else:  # PUT
+                                response = requests.put(
+                                    form_url,
+                                    data=post_data,
+                                    timeout=self.config.timeout,
+                                    headers=self.config.headers,
+                                    verify=False
+                                )
+                            
+                            print(f"    [RFI] Form response code: {response.status_code}")
+                            
+                            # Enhanced RFI detection
+                            is_rfi = self._enhanced_rfi_detection(
+                                response.text, response.status_code, payload, 
+                                baseline_content, baseline_length
+                            )
+                            
+                            if is_rfi:
+                                evidence = f"Remote file inclusion in {form_method} form - payload: {payload}"
+                                response_snippet = self._get_contextual_response_snippet(payload, response.text)
+                                print(f"    [RFI] FORM VULNERABILITY FOUND! Input: {input_name}")
+                                
+                                # Mark as found to prevent duplicates
+                                self.found_vulnerabilities.add(form_key)
+                                
+                                results.append({
+                                    'module': 'rfi',
+                                    'target': form_url,
+                                    'vulnerability': f'Remote File Inclusion in {form_method} Form',
+                                    'severity': 'High',
+                                    'parameter': input_name,
+                                    'payload': payload,
+                                    'evidence': evidence,
+                                    'request_url': form_url,
+                                    'detector': 'Enhanced RFI Detection',
+                                    'response_snippet': response_snippet
+                                })
+                                break  # Found RFI, no need to test more payloads for this input
+                                
+                        except Exception as e:
+                            print(f"    [RFI] Error testing form payload: {e}")
+                            continue
         
         return results
     
@@ -3914,6 +4125,123 @@ class VulnScanner:
                     print(f"    [XXE] Error testing payload: {e}")
                     continue
         
+        # Test POST forms that might accept XML
+        forms_data = parsed_data.get('forms', [])
+        for i, form_data in enumerate(forms_data):
+            form_method = form_data.get('method', 'GET').upper()
+            form_action = form_data.get('action', '')
+            form_inputs = form_data.get('inputs', [])
+            
+            if form_method in ['POST', 'PUT'] and form_inputs:
+                # Check if form might accept XML data
+                xml_form = False
+                for input_field in form_inputs:
+                    input_type = input_field.get('type', 'text')
+                    input_name = input_field.get('name', '').lower()
+                    if input_type in ['file', 'textarea'] or 'xml' in input_name or 'data' in input_name:
+                        xml_form = True
+                        break
+                
+                if xml_form:
+                    print(f"    [XXE] Testing {form_method} form {i+1}: {form_action}")
+                    
+                    # Build form URL
+                    if form_action.startswith('/'):
+                        form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
+                    elif form_action.startswith('http'):
+                        form_url = form_action
+                    else:
+                        form_url = f"{base_url.rstrip('/')}/{form_action}" if form_action else base_url
+                    
+                    # Test each form input that might accept XML
+                    for input_data in form_inputs:
+                        input_name = input_data.get('name')
+                        input_type = input_data.get('type', 'text')
+                        
+                        if not input_name or input_type in ['submit', 'button', 'hidden']:
+                            continue
+                        
+                        # Only test inputs that might accept XML
+                        if input_type in ['file', 'textarea'] or any(xml_word in input_name.lower() for xml_word in ['xml', 'data', 'content']):
+                            print(f"    [XXE] Testing form input: {input_name}")
+                            
+                            # Create deduplication key for this form input
+                            form_key = f"xxe_form_{form_url.split('?')[0]}_{input_name}"
+                            if form_key in self.found_vulnerabilities:
+                                print(f"    [XXE] Skipping form input {input_name} - already tested")
+                                continue
+                            
+                            for payload in xxe_payloads[:10]:  # Test fewer payloads for forms
+                                try:
+                                    print(f"    [XXE] Trying form payload: {payload[:50]}...")
+                                    
+                                    # Prepare form data
+                                    post_data = {}
+                                    for inp in form_inputs:
+                                        inp_name = inp.get('name')
+                                        inp_value = inp.get('value', 'test')
+                                        inp_type = inp.get('type', 'text')
+                                        
+                                        if inp_name and inp_type not in ['submit', 'button']:
+                                            if inp_name == input_name:
+                                                post_data[inp_name] = payload
+                                            else:
+                                                post_data[inp_name] = inp_value
+                                    
+                                    # Set appropriate content type for XML
+                                    headers = self.config.headers.copy()
+                                    if input_type == 'file' or 'xml' in input_name.lower():
+                                        headers['Content-Type'] = 'application/xml'
+                                    
+                                    if form_method == 'POST':
+                                        response = requests.post(
+                                            form_url,
+                                            data=post_data,
+                                            timeout=self.config.timeout,
+                                            headers=headers,
+                                            verify=False
+                                        )
+                                    else:  # PUT
+                                        response = requests.put(
+                                            form_url,
+                                            data=post_data,
+                                            timeout=self.config.timeout,
+                                            headers=headers,
+                                            verify=False
+                                        )
+                                    
+                                    print(f"    [XXE] Form response code: {response.status_code}")
+                                    
+                                    # Enhanced XXE detection
+                                    is_xxe = self._enhanced_xxe_detection(response.text, response.status_code, payload)
+                                    
+                                    if is_xxe:
+                                        evidence = f"XXE vulnerability in {form_method} form - XML entity processed: {payload[:100]}"
+                                        response_snippet = self._get_contextual_response_snippet(payload, response.text)
+                                        print(f"    [XXE] FORM VULNERABILITY FOUND! Input: {input_name}")
+                                        
+                                        # Mark as found to prevent duplicates
+                                        self.found_vulnerabilities.add(form_key)
+                                        
+                                        results.append({
+                                            'module': 'xxe',
+                                            'target': form_url,
+                                            'vulnerability': f'XML External Entity (XXE) in {form_method} Form',
+                                            'severity': 'High',
+                                            'parameter': input_name,
+                                            'payload': payload,
+                                            'evidence': evidence,
+                                            'request_url': form_url,
+                                            'detector': 'Enhanced XXE Detection',
+                                            'response_snippet': response_snippet,
+                                            'remediation': 'Disable external entity processing in XML parsers'
+                                        })
+                                        break  # Found XXE, no need to test more payloads for this input
+                                        
+                                except Exception as e:
+                                    print(f"    [XXE] Error testing form payload: {e}")
+                                    continue
+
         return results
 
     def _test_idor(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -4014,7 +4342,7 @@ class VulnScanner:
                 continue
         
         return results
-
+    
     def _test_command_injection(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Test for Command Injection vulnerabilities"""
         results = []
@@ -4091,6 +4419,109 @@ class VulnScanner:
                 except Exception as e:
                     print(f"    [CMDINJECTION] Error testing payload: {e}")
                     continue
+        
+        # Test POST forms
+        forms_data = parsed_data.get('forms', [])
+        for i, form_data in enumerate(forms_data):
+            form_method = form_data.get('method', 'GET').upper()
+            form_action = form_data.get('action', '')
+            form_inputs = form_data.get('inputs', [])
+            
+            if form_method in ['POST', 'PUT'] and form_inputs:
+                print(f"    [CMDINJECTION] Testing {form_method} form {i+1}: {form_action}")
+                
+                # Build form URL
+                if form_action.startswith('/'):
+                    form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
+                elif form_action.startswith('http'):
+                    form_url = form_action
+                else:
+                    form_url = f"{base_url.rstrip('/')}/{form_action}" if form_action else base_url
+                
+                # Test each form input
+                for input_data in form_inputs:
+                    input_name = input_data.get('name')
+                    input_type = input_data.get('type', 'text')
+                    
+                    if not input_name or input_type in ['submit', 'button', 'hidden']:
+                        continue
+                    
+                    print(f"    [CMDINJECTION] Testing form input: {input_name}")
+                    
+                    # Create deduplication key for this form input
+                    form_key = f"cmdinjection_form_{form_url.split('?')[0]}_{input_name}"
+                    if form_key in self.found_vulnerabilities:
+                        print(f"    [CMDINJECTION] Skipping form input {input_name} - already tested")
+                        continue
+                    
+                    for payload in cmd_payloads[:20]:  # Test fewer payloads for forms
+                        try:
+                            print(f"    [CMDINJECTION] Trying form payload: {payload}")
+                            
+                            # Prepare form data
+                            post_data = {}
+                            for inp in form_inputs:
+                                inp_name = inp.get('name')
+                                inp_value = inp.get('value', 'test')
+                                inp_type = inp.get('type', 'text')
+                                
+                                if inp_name and inp_type not in ['submit', 'button']:
+                                    if inp_name == input_name:
+                                        post_data[inp_name] = payload
+                                    else:
+                                        post_data[inp_name] = inp_value
+                            
+                            if form_method == 'POST':
+                                response = requests.post(
+                                    form_url,
+                                    data=post_data,
+                                    timeout=self.config.timeout,
+                                    headers=self.config.headers,
+                                    verify=False
+                                )
+                            else:  # PUT
+                                response = requests.put(
+                                    form_url,
+                                    data=post_data,
+                                    timeout=self.config.timeout,
+                                    headers=self.config.headers,
+                                    verify=False
+                                )
+                            
+                            print(f"    [CMDINJECTION] Form response code: {response.status_code}")
+                            
+                            # Enhanced Command Injection detection
+                            is_vulnerable, confidence, evidence = CommandInjectionDetector.detect_command_injection(
+                                response.text, response.status_code, payload
+                            )
+                            
+                            if is_vulnerable and confidence >= 0.7:
+                                response_snippet = CommandInjectionDetector.get_response_snippet(payload, response.text)
+                                remediation = CommandInjectionDetector.get_remediation_advice()
+                                print(f"    [CMDINJECTION] FORM VULNERABILITY FOUND! Input: {input_name} (confidence: {confidence:.2f})")
+                                
+                                # Mark as found to prevent duplicates
+                                self.found_vulnerabilities.add(form_key)
+                                
+                                results.append({
+                                    'module': 'commandinjection',
+                                    'target': form_url,
+                                    'vulnerability': f'Command Injection in {form_method} Form',
+                                    'severity': 'High',
+                                    'parameter': input_name,
+                                    'payload': payload,
+                                    'evidence': evidence,
+                                    'request_url': form_url,
+                                    'detector': 'CommandInjectionDetector.enhanced_detection',
+                                    'response_snippet': response_snippet,
+                                    'remediation': remediation,
+                                    'confidence': confidence
+                                })
+                                break  # Found command injection, no need to test more payloads for this input
+                                
+                        except Exception as e:
+                            print(f"    [CMDINJECTION] Error testing form payload: {e}")
+                            continue
         
         return results
 
@@ -4775,8 +5206,107 @@ class VulnScanner:
                     print(f"    [SSTI] Error testing payload: {e}")
                     continue
         
+        # Test POST forms
+        forms_data = parsed_data.get('forms', [])
+        for i, form_data in enumerate(forms_data):
+            form_method = form_data.get('method', 'GET').upper()
+            form_action = form_data.get('action', '')
+            form_inputs = form_data.get('inputs', [])
+            
+            if form_method in ['POST', 'PUT'] and form_inputs:
+                print(f"    [SSTI] Testing {form_method} form {i+1}: {form_action}")
+                
+                # Build form URL
+                if form_action.startswith('/'):
+                    form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
+                elif form_action.startswith('http'):
+                    form_url = form_action
+                else:
+                    form_url = f"{base_url.rstrip('/')}/{form_action}" if form_action else base_url
+                
+                # Test each form input
+                for input_data in form_inputs:
+                    input_name = input_data.get('name')
+                    input_type = input_data.get('type', 'text')
+                    
+                    if not input_name or input_type in ['submit', 'button', 'hidden']:
+                        continue
+                    
+                    print(f"    [SSTI] Testing form input: {input_name}")
+                    
+                    # Create deduplication key for this form input
+                    form_key = f"ssti_form_{form_url.split('?')[0]}_{input_name}"
+                    if form_key in self.found_vulnerabilities:
+                        print(f"    [SSTI] Skipping form input {input_name} - already tested")
+                        continue
+                    
+                    for payload in ssti_payloads[:20]:  # Test fewer payloads for forms
+                        try:
+                            print(f"    [SSTI] Trying form payload: {payload[:50]}...")
+                            
+                            # Prepare form data
+                            post_data = {}
+                            for inp in form_inputs:
+                                inp_name = inp.get('name')
+                                inp_value = inp.get('value', 'test')
+                                inp_type = inp.get('type', 'text')
+                                
+                                if inp_name and inp_type not in ['submit', 'button']:
+                                    if inp_name == input_name:
+                                        post_data[inp_name] = payload
+                                    else:
+                                        post_data[inp_name] = inp_value
+                            
+                            if form_method == 'POST':
+                                response = requests.post(
+                                    form_url,
+                                    data=post_data,
+                                    timeout=self.config.timeout,
+                                    headers=self.config.headers,
+                                    verify=False
+                                )
+                            else:  # PUT
+                                response = requests.put(
+                                    form_url,
+                                    data=post_data,
+                                    timeout=self.config.timeout,
+                                    headers=self.config.headers,
+                                    verify=False
+                                )
+                            
+                            print(f"    [SSTI] Form response code: {response.status_code}")
+                            
+                            # Use SSTI detector
+                            if SSTIDetector.detect_ssti(response.text, response.status_code, payload):
+                                evidence = f"SSTI vulnerability in {form_method} form - template injection: {payload}"
+                                response_snippet = self._get_contextual_response_snippet(payload, response.text)
+                                remediation = 'Use safe template engines. Implement proper input validation and sandboxing.'
+                                print(f"    [SSTI] FORM VULNERABILITY FOUND! Input: {input_name}")
+                                
+                                # Mark as found to prevent duplicates
+                                self.found_vulnerabilities.add(form_key)
+                                
+                                results.append({
+                                    'module': 'ssti',
+                                    'target': form_url,
+                                    'vulnerability': f'Server-Side Template Injection in {form_method} Form',
+                                    'severity': 'High',
+                                    'parameter': input_name,
+                                    'payload': payload,
+                                    'evidence': evidence,
+                                    'request_url': form_url,
+                                    'detector': 'SSTIDetector.detect_ssti',
+                                    'response_snippet': response_snippet,
+                                    'remediation': remediation
+                                })
+                                break  # Found SSTI, no need to test more payloads for this input
+                                
+                        except Exception as e:
+                            print(f"    [SSTI] Error testing form payload: {e}")
+                            continue
+        
         return results
-
+    
     def _test_crlf(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Test for CRLF injection vulnerabilities with enhanced detection"""
         results = []
