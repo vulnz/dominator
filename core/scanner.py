@@ -3635,19 +3635,8 @@ class VulnScanner:
                                     if inp_name == input_name:
                                         post_data[inp_name] = payload
                                     else:
-                                        # Для guestbook добавляем текст сообщения
-                                        if inp_name == 'text' or inp_name == 'message' or inp_name == 'comment':
-                                            post_data[inp_name] = f"Test message with payload: {payload}"
-                                        else:
-                                            post_data[inp_name] = inp_value
-                            
-                            # Для guestbook.php добавляем обязательные поля если их нет
-                            if 'guestbook.php' in form_url:
-                                if 'text' not in post_data:
-                                    post_data['text'] = f"DOMINATOR777 test message: {payload}"
-                                if 'name' not in post_data and input_name != 'name':
-                                    post_data['name'] = 'DOMINATOR777_tester'
-                                print(f"    [STOREDXSS] Guestbook form data: {list(post_data.keys())}")
+                                        # Use existing value or simple default
+                                        post_data[inp_name] = inp_value or 'test'
                             
                             print(f"    [STOREDXSS] Submitting payload to form...")
                             
