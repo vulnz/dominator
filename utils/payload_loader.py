@@ -89,7 +89,16 @@ class PayloadLoader:
         if 'vulnerabilities' not in mapping:
             return cls._get_default_metadata(module_name, severity)
         
+        # Try exact match first
         vuln_data = mapping['vulnerabilities'].get(module_name)
+        
+        # If no exact match, try partial matches
+        if not vuln_data:
+            for key in mapping['vulnerabilities'].keys():
+                if module_name.lower() in key.lower() or key.lower() in module_name.lower():
+                    vuln_data = mapping['vulnerabilities'][key]
+                    break
+        
         if not vuln_data:
             return cls._get_default_metadata(module_name, severity)
         
@@ -114,6 +123,57 @@ class PayloadLoader:
             'Low': '3.1',
             'Info': '0.0'
         }
+        
+        # Map common module names to appropriate CWE/OWASP categories
+        module_mappings = {
+            'xss': {
+                'cwe': 'CWE-79',
+                'owasp': 'A03:2021 – Injection',
+                'recommendation': 'Implement proper input validation and output encoding to prevent XSS attacks.'
+            },
+            'sqli': {
+                'cwe': 'CWE-89',
+                'owasp': 'A03:2021 – Injection',
+                'recommendation': 'Use parameterized queries and input validation to prevent SQL injection.'
+            },
+            'lfi': {
+                'cwe': 'CWE-22',
+                'owasp': 'A01:2021 – Broken Access Control',
+                'recommendation': 'Validate and sanitize file paths, use whitelist approach for file access.'
+            },
+            'rfi': {
+                'cwe': 'CWE-98',
+                'owasp': 'A03:2021 – Injection',
+                'recommendation': 'Disable remote file inclusion and validate all file paths.'
+            },
+            'csrf': {
+                'cwe': 'CWE-352',
+                'owasp': 'A01:2021 – Broken Access Control',
+                'recommendation': 'Implement CSRF tokens and validate referrer headers.'
+            },
+            'dirbrute': {
+                'cwe': 'CWE-200',
+                'owasp': 'A05:2021 – Security Misconfiguration',
+                'recommendation': 'Implement proper access controls and hide sensitive directories.'
+            },
+            'command_injection': {
+                'cwe': 'CWE-78',
+                'owasp': 'A03:2021 – Injection',
+                'recommendation': 'Avoid system calls with user input, use parameterized commands.'
+            }
+        }
+        
+        # Find matching module mapping
+        module_lower = module_name.lower()
+        for key, mapping in module_mappings.items():
+            if key in module_lower or module_lower in key:
+                return {
+                    'cwe': mapping['cwe'],
+                    'owasp': mapping['owasp'],
+                    'cvss': cvss_defaults.get(severity, '6.5'),
+                    'recommendation': mapping['recommendation'],
+                    'description': f'{module_name} vulnerability detected.'
+                }
         
         return {
             'cwe': 'CWE-200',

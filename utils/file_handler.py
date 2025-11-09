@@ -44,6 +44,23 @@ class FileHandler:
                 print(f"[DEBUG] Skipping item {i}: no vulnerability field or empty vulnerability")
                 continue
             
+            # Enrich vulnerability with metadata if missing
+            if not item.get('cwe') or not item.get('owasp') or not item.get('cvss'):
+                from utils.payload_loader import PayloadLoader
+                module_name = item.get('module', 'unknown')
+                severity = item.get('severity', 'Medium')
+                metadata = PayloadLoader.get_vulnerability_metadata(module_name, severity)
+                
+                # Add missing metadata
+                if not item.get('cwe'):
+                    item['cwe'] = metadata.get('cwe', 'CWE-200')
+                if not item.get('owasp'):
+                    item['owasp'] = metadata.get('owasp', 'A06:2021 – Vulnerable and Outdated Components')
+                if not item.get('cvss'):
+                    item['cvss'] = metadata.get('cvss', '6.5')
+                if not item.get('recommendation') and not item.get('remediation'):
+                    item['remediation'] = metadata.get('recommendation', 'Review and implement appropriate security controls.')
+            
             # Process screenshot if present
             screenshot_base64 = None
             if item.get('screenshot'):
@@ -78,7 +95,11 @@ class FileHandler:
                 'method': item.get('method', item.get('http_method', self._extract_method_from_url(item.get('request_url', '')))),
                 'http_method': item.get('http_method', item.get('method', self._extract_method_from_url(item.get('request_url', '')))),
                 'url_parameters': self._extract_url_parameters(item.get('request_url', '')),
-                'form_details': item.get('form_details', [])
+                'form_details': item.get('form_details', []),
+                'cwe': item.get('cwe', 'CWE-200'),
+                'owasp': item.get('owasp', 'A06:2021 – Vulnerable and Outdated Components'),
+                'cvss': item.get('cvss', '6.5'),
+                'passive_analysis': item.get('passive_analysis', False)
             }
             vulnerabilities.append(vuln_data)
         
