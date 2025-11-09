@@ -9,6 +9,61 @@ class CRLFDetector:
     """CRLF injection vulnerability detection logic"""
     
     @staticmethod
+    def is_apache_directory_listing(url: str, response_text: str) -> bool:
+        """Check if URL is an Apache directory listing that should be skipped"""
+        # Check for Apache directory listing URL parameters
+        apache_dir_params = ['C=N', 'C=M', 'C=S', 'C=D', 'O=A', 'O=D']
+        if any(param in url for param in apache_dir_params):
+            return True
+        
+        # Check for Apache directory listing content indicators
+        apache_indicators = [
+            'Index of /',
+            'Parent Directory',
+            '<title>Index of',
+            'Apache Server at',
+            'Directory Listing',
+            '[DIR]',
+            '[   ]',
+            'Last modified',
+            'Size',
+            'Description'
+        ]
+        
+        response_lower = response_text.lower()
+        apache_matches = sum(1 for indicator in apache_indicators if indicator.lower() in response_lower)
+        
+        # If we have multiple Apache directory indicators, it's likely a directory listing
+        return apache_matches >= 3
+    
+    @staticmethod
+    def should_skip_crlf_testing(url: str, response_text: str) -> Tuple[bool, str]:
+        """Determine if CRLF testing should be skipped for this URL"""
+        # Skip Apache directory listings
+        if CRLFDetector.is_apache_directory_listing(url, response_text):
+            return True, "Apache directory listing detected - skipping CRLF testing"
+        
+        # Skip other common non-vulnerable endpoints
+        skip_patterns = [
+            '/robots.txt',
+            '/sitemap.xml',
+            '/favicon.ico',
+            '.css',
+            '.js',
+            '.png',
+            '.jpg',
+            '.gif',
+            '.pdf'
+        ]
+        
+        url_lower = url.lower()
+        for pattern in skip_patterns:
+            if pattern in url_lower:
+                return True, f"Static resource detected ({pattern}) - skipping CRLF testing"
+        
+        return False, ""
+    
+    @staticmethod
     def get_crlf_indicators() -> List[str]:
         """Get CRLF injection indicators"""
         return [
@@ -26,8 +81,14 @@ class CRLFDetector:
         ]
     
     @staticmethod
-    def detect_crlf_injection(response_text: str, response_code: int, payload: str, response_headers: Dict[str, str]) -> bool:
+    def detect_crlf_injection(response_text: str, response_code: int, payload: str, response_headers: Dict[str, str], url: str = "") -> bool:
         """Detect CRLF injection vulnerability"""
+        # Skip testing if this is an Apache directory listing or other non-vulnerable endpoint
+        if url:
+            should_skip, skip_reason = CRLFDetector.should_skip_crlf_testing(url, response_text)
+            if should_skip:
+                return False
+        
         # Check if payload contains CRLF sequences
         crlf_sequences = ['\r\n', '%0d%0a', '%0a', '%0d', '\n', '\r']
         has_crlf_payload = any(seq in payload.lower() for seq in crlf_sequences)
@@ -178,8 +239,14 @@ class CRLFDetector:
         """
     
     @staticmethod
-    def get_evidence(payload: str, response_text: str, response_headers: dict) -> str:
-        """Get evidence for CRLF injection"""
+    def get_evidence_detailed(payload: str, response_text: str, response_headers: dict, url: str = "") -> str:
+        """Get detailed evidence for CRLF injection (avoiding false positives from directory listings)"""
+        # Check if this should be skipped
+        if url:
+            should_skip, skip_reason = CRLFDetector.should_skip_crlf_testing(url, response_text)
+            if should_skip:
+                return f"Skipped: {skip_reason}"
+        
         evidence_parts = []
         
         # Check for injected headers
@@ -196,6 +263,11 @@ class CRLFDetector:
             return f"CRLF injection detected: {'; '.join(evidence_parts)}"
         else:
             return f"Potential CRLF injection with payload: {payload}"
+    
+    @staticmethod
+    def get_evidence(payload: str, response_text: str, response_headers: dict) -> str:
+        """Get evidence for CRLF injection (legacy method for compatibility)"""
+        return CRLFDetector.get_evidence_detailed(payload, response_text, response_headers)
     
     @staticmethod
     def get_response_snippet(payload: str, response_text: str) -> str:
