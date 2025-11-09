@@ -7764,16 +7764,15 @@ class VulnScanner:
             from urllib.parse import urlparse
             parsed = urlparse(url)
             
-            # Check for directory listing sorting parameters
+            # Only skip URLs with Apache directory listing sorting parameters
             if parsed.query:
                 query_upper = parsed.query.upper()
-                if any(param in query_upper for param in ['C=', 'O=', 'SORT=', 'ORDER=']):
+                # Be more specific - only skip if it's clearly Apache directory sorting
+                apache_sort_patterns = ['C=N;O=D', 'C=M;O=A', 'C=S;O=A', 'C=D;O=A']
+                if any(pattern in query_upper for pattern in apache_sort_patterns):
                     return True
             
-            # Check if URL ends with / (directory)
-            if parsed.path.endswith('/'):
-                return True
-                
+            # Don't skip directories automatically - they might have vulnerable apps
             return False
         except:
             return False
@@ -7782,29 +7781,38 @@ class VulnScanner:
         """Check if response contains directory listing"""
         response_lower = response_text.lower()
         
-        # Directory listing indicators
+        # Directory listing indicators - be more strict
         directory_indicators = [
             'index of /',
             'directory listing',
             'parent directory',
             '<title>index of',
-            'directory listing for',
             '[to parent directory]',
-            'last modified',
-            'size</th>',
-            'name</th>',
             '<pre><a href="../">../</a>',
+        ]
+        
+        # Apache-specific indicators
+        apache_indicators = [
             '<a href="?c=n;o=d">name</a>',
             '<a href="?c=m;o=a">last modified</a>',
             '<a href="?c=s;o=a">size</a>'
         ]
         
         # Count indicators found
-        indicators_found = sum(1 for indicator in directory_indicators 
+        basic_indicators = sum(1 for indicator in directory_indicators 
                              if indicator in response_lower)
+        apache_indicators_found = sum(1 for indicator in apache_indicators 
+                                    if indicator in response_lower)
         
-        # Directory listing detected if we have multiple indicators
-        return indicators_found >= 2
+        # Only skip if we have strong evidence of directory listing
+        # AND it's not an application (like XVWA)
+        if basic_indicators >= 2 or apache_indicators_found >= 2:
+            # Don't skip if response contains application indicators
+            app_indicators = ['xvwa', 'login', 'vulnerabilities', 'bootstrap', 'jquery']
+            has_app_content = any(indicator in response_lower for indicator in app_indicators)
+            return not has_app_content
+        
+        return False
     
     def _print_vulnerability(self, index: int, result: Dict[str, Any]):
         """Print single vulnerability details with safe encoding and enhanced metadata"""
