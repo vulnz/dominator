@@ -2415,6 +2415,7 @@ class VulnScanner:
         """Test for directory and file bruteforce"""
         results = []
         base_url = parsed_data['url']
+        found_directories = []  # Track found directories for integration
         
         # Update payload stats
         if 'dirbrute' not in self.scan_stats['payload_stats']:
@@ -2500,11 +2501,8 @@ class VulnScanner:
             
             for directory in all_directories[:120]:  # Увеличиваем до 120 директорий
                 try:
-                    if base_url.endswith('.php') or base_url.endswith('.html') or base_url.endswith('.asp'):
-                        # For file-based URLs, test as path info
-                        test_url = f"{base_url}/{directory}/"
-                    else:
-                        test_url = f"{base_url}{directory}/"
+                    # Only test directories, not files
+                    test_url = f"{base_dir}{directory}/"
                     
                     response = requests.get(
                         test_url,
@@ -2547,6 +2545,14 @@ class VulnScanner:
                     if is_valid:
                         print(f"    [DIRBRUTE] DIRECTORY FOUND: {directory}/ - {evidence}")
                         
+                        # Add found directory to list for integration with other modules
+                        found_directories.append({
+                            'directory': directory,
+                            'url': test_url,
+                            'response_text': response.text,
+                            'status_code': response.status_code
+                        })
+                        
                         # Check for directory listing
                         has_listing = DirBruteDetector.detect_directory_listing(response.text)
                         severity = 'Medium' if has_listing else 'Low'
@@ -2569,10 +2575,8 @@ class VulnScanner:
                             'method': 'GET'
                         })
                         
-                        found_directories.append(directory)
-                        
                         # If directory found, recursively test files in it
-                        self._test_files_in_directory(base_url, directory, results, baseline_404_text, baseline_404_size, original_fingerprint)
+                        self._test_files_in_directory(base_dir, directory, results, baseline_404_text, baseline_404_size, original_fingerprint)
                     else:
                         print(f"    [DIRBRUTE] Directory not found: {directory} - {evidence}")
                         
@@ -2598,15 +2602,12 @@ class VulnScanner:
             # Update payload stats for files
             self.scan_stats['payload_stats']['dirbrute']['payloads_used'] += len(all_files)
         
-            print(f"    [DIRBRUTE] Testing {len(all_files)} files...")
+            print(f"    [DIRBRUTE] Testing {len(all_files)} files in root directory...")
         
             for file in all_files[:150]:  # Увеличиваем до 150 файлов
                 try:
-                    if base_url.endswith('.php') or base_url.endswith('.html') or base_url.endswith('.asp'):
-                        # For file-based URLs, test as path info
-                        test_url = f"{base_url}/{file}"
-                    else:
-                        test_url = f"{base_url}{file}"
+                    # Only test files in root directory
+                    test_url = f"{base_dir}{file}"
                     
                     response = requests.get(
                         test_url,
@@ -2676,13 +2677,18 @@ class VulnScanner:
                 print(f"    [DIRBRUTE] Found {len(results)} directories/files")
             else:
                 print(f"    [DIRBRUTE] No directories or files found")
+            
+            # Integrate found directories with general testing system
+            if found_directories:
+                print(f"    [DIRBRUTE] Integrating {len(found_directories)} found directories with general testing")
+                self._integrate_found_directories(found_directories)
                 
         except Exception as e:
             print(f"    [DIRBRUTE] Error during directory bruteforce: {e}")
         
         return results
     
-    def _test_files_in_directory(self, base_url: str, directory: str, results: List[Dict[str, Any]], baseline_404_text: str = None, baseline_404_size: int = 0, original_fingerprint: str = None):
+    def _test_files_in_directory(self, base_dir: str, directory: str, results: List[Dict[str, Any]], baseline_404_text: str = None, baseline_404_size: int = 0, original_fingerprint: str = None):
         """Test files in a found directory"""
         files = DirBrutePayloads.get_all_files()
         
@@ -2690,7 +2696,7 @@ class VulnScanner:
         
         for file in files[:30]:  # Оптимизируем количество файлов
             try:
-                test_url = f"{base_url}{directory}/{file}"
+                test_url = f"{base_dir}{directory}/{file}"
                 
                 response = requests.get(
                     test_url,
@@ -2736,6 +2742,35 @@ class VulnScanner:
                     
             except Exception as e:
                 continue
+    
+    def _integrate_found_directories(self, found_directories: List[Dict[str, Any]]):
+        """Integrate found directories into general testing system"""
+        print(f"    [INTEGRATION] Adding {len(found_directories)} directories to testing queue")
+        
+        # Add found directories to crawler's discovered URLs for comprehensive testing
+        if hasattr(self.crawler, 'found_urls'):
+            for dir_info in found_directories:
+                dir_url = dir_info['url']
+                if dir_url not in self.crawler.found_urls:
+                    self.crawler.found_urls.add(dir_url)
+                    print(f"    [INTEGRATION] Added directory to testing queue: {dir_url}")
+        
+        # Store directory information for potential use by other modules
+        if not hasattr(self, 'discovered_directories'):
+            self.discovered_directories = []
+        
+        self.discovered_directories.extend(found_directories)
+        
+        # Update scan stats with discovered directories
+        if 'discovered_directories' not in self.scan_stats:
+            self.scan_stats['discovered_directories'] = []
+        
+        for dir_info in found_directories:
+            self.scan_stats['discovered_directories'].append({
+                'directory': dir_info['directory'],
+                'url': dir_info['url'],
+                'status_code': dir_info['status_code']
+            })
     
     def _test_git_exposed(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Test for exposed .git repository using specialized Git scanner"""

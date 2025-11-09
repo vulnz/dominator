@@ -19,6 +19,10 @@ class DirBruteDetector:
         from .real404_detector import Real404Detector
         from libs.response_analyzer import ResponseAnalyzer
         
+        # Check if URL is a file (has extension) - only test directories for dirbrute
+        if url and DirBruteDetector._is_file_url(url):
+            return False, "Skipping file URL - dirbrute only tests directories"
+        
         # Use response analyzer for better analysis
         analyzer = ResponseAnalyzer()
         analysis = analyzer.analyze_response(response_text, response_code)
@@ -369,6 +373,38 @@ class DirBruteDetector:
         except Exception as e:
             print(f"    [DIRBRUTE] Error following redirect: {e}")
             return False, f"HTTP 302 - Error following redirect: {str(e)}"
+    
+    @staticmethod
+    def _is_file_url(url: str) -> bool:
+        """Check if URL points to a file (has file extension)"""
+        from urllib.parse import urlparse
+        try:
+            parsed = urlparse(url)
+            path = parsed.path
+            
+            # Common file extensions that should not be tested by dirbrute
+            file_extensions = [
+                '.php', '.html', '.htm', '.asp', '.aspx', '.jsp', '.py', '.pl',
+                '.js', '.css', '.txt', '.xml', '.json', '.pdf', '.doc', '.docx',
+                '.xls', '.xlsx', '.zip', '.rar', '.tar', '.gz', '.jpg', '.jpeg',
+                '.png', '.gif', '.bmp', '.svg', '.ico', '.mp3', '.mp4', '.avi',
+                '.mov', '.wmv', '.flv', '.swf', '.exe', '.dll', '.so', '.bin'
+            ]
+            
+            # Check if path ends with a file extension
+            for ext in file_extensions:
+                if path.lower().endswith(ext):
+                    return True
+            
+            # Check for path info pattern (file.php/something)
+            path_parts = path.split('/')
+            for part in path_parts:
+                if '.' in part and any(part.lower().endswith(ext) for ext in file_extensions):
+                    return True
+            
+            return False
+        except:
+            return False
     
     @staticmethod
     def _is_redirect_to_main_page(redirect_url: str, redirect_content: str) -> bool:
