@@ -73,7 +73,10 @@ class FileHandler:
                 'screenshot_base64': screenshot_base64,
                 'cve_links': item.get('cve_links', []),
                 'exploit_links': item.get('exploit_links', []),
-                'technologies': item.get('technologies', [])
+                'technologies': item.get('technologies', []),
+                'form_details': item.get('form_details', []),
+                'method': self._extract_method_from_url(item.get('request_url', '')),
+                'url_parameters': self._extract_url_parameters(item.get('request_url', ''))
             }
             vulnerabilities.append(vuln_data)
         
@@ -113,7 +116,8 @@ class FileHandler:
             'vulnerabilities': vulnerabilities,
             'scan_stats': scan_stats,
             'filetree_enabled': bool(scan_stats.get('file_tree_paths')),
-            'benchmark_analysis': benchmark_analysis
+            'benchmark_analysis': benchmark_analysis,
+            'site_structure': self._build_site_structure(vulnerabilities, scan_stats)
         }
         
         print(f"[DEBUG] Final report_data: {len(vulnerabilities)} vulnerabilities")
@@ -172,6 +176,94 @@ class FileHandler:
             'no error', 'valid', 'accepted', 'approved'
         ]
     
+    def _build_site_structure(self, vulnerabilities: List[Dict[str, Any]], scan_stats: Dict[str, Any]) -> Dict[str, Any]:
+        """Build site structure from discovered URLs and paths"""
+        structure = {
+            'domains': {},
+            'total_urls': 0,
+            'total_parameters': 0,
+            'total_forms': 0,
+            'file_types': {},
+            'directories': set(),
+            'files': set()
+        }
+        
+        # Collect URLs from vulnerabilities
+        urls = set()
+        for vuln in vulnerabilities:
+            if vuln.get('target'):
+                urls.add(vuln['target'])
+            if vuln.get('request_url'):
+                urls.add(vuln['request_url'])
+        
+        # Add URLs from scan stats
+        if scan_stats.get('file_tree_paths'):
+            for path in scan_stats['file_tree_paths']:
+                # Reconstruct full URLs from paths
+                if vulnerabilities:
+                    base_domain = vulnerabilities[0].get('target', '').split('/')[0:3]
+                    if len(base_domain) == 3:
+                        full_url = '/'.join(base_domain) + path
+                        urls.add(full_url)
+        
+        # Process each URL
+        for url in urls:
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(url)
+                domain = parsed.netloc
+                path = parsed.path
+                query = parsed.query
+                
+                if domain not in structure['domains']:
+                    structure['domains'][domain] = {
+                        'paths': set(),
+                        'files': set(),
+                        'directories': set(),
+                        'parameters': set(),
+                        'forms': []
+                    }
+                
+                # Add path
+                if path and path != '/':
+                    structure['domains'][domain]['paths'].add(path)
+                    
+                    # Determine if it's a file or directory
+                    if '.' in path.split('/')[-1]:
+                        structure['domains'][domain]['files'].add(path)
+                        structure['files'].add(path)
+                        
+                        # Track file types
+                        ext = path.split('.')[-1].lower()
+                        structure['file_types'][ext] = structure['file_types'].get(ext, 0) + 1
+                    else:
+                        structure['domains'][domain]['directories'].add(path)
+                        structure['directories'].add(path)
+                
+                # Add parameters
+                if query:
+                    from urllib.parse import parse_qs
+                    params = parse_qs(query)
+                    for param in params.keys():
+                        structure['domains'][domain]['parameters'].add(param)
+                        structure['total_parameters'] += 1
+                
+            except Exception as e:
+                continue
+        
+        # Convert sets to lists for JSON serialization
+        for domain_data in structure['domains'].values():
+            domain_data['paths'] = list(domain_data['paths'])
+            domain_data['files'] = list(domain_data['files'])
+            domain_data['directories'] = list(domain_data['directories'])
+            domain_data['parameters'] = list(domain_data['parameters'])
+        
+        structure['directories'] = list(structure['directories'])
+        structure['files'] = list(structure['files'])
+        structure['total_urls'] = len(urls)
+        
+        return structure
+    
     def _json_serializer(self, obj):
         """Custom JSON serializer for non-serializable objects"""
         import datetime
@@ -201,6 +293,25 @@ class FileHandler:
                 return str(obj)
             except Exception:
                 return f"<non-serializable: {type(obj).__name__}>"
+    
+    def _extract_method_from_url(self, url: str) -> str:
+        """Extract HTTP method from request URL or context"""
+        # This is a simple heuristic - in practice, method info should be stored separately
+        if 'form' in url.lower():
+            return 'POST'
+        return 'GET'
+    
+    def _extract_url_parameters(self, url: str) -> List[Dict[str, str]]:
+        """Extract parameters from URL"""
+        try:
+            from urllib.parse import urlparse, parse_qs
+            parsed = urlparse(url)
+            if parsed.query:
+                params = parse_qs(parsed.query)
+                return [{'name': k, 'values': v} for k, v in params.items()]
+        except:
+            pass
+        return []
     
     def _escape_html(self, text: str) -> str:
         """Escape HTML characters"""
@@ -914,6 +1025,17 @@ class FileHandler:
             </div>
         </div>
         
+        <!-- Site Structure Section -->
+        <div id="site-structure-section" class="vulnerabilities" style="margin-bottom: 20px;">
+            <div class="vuln-header">
+                <h2><i class="fas fa-sitemap"></i> Site Structure</h2>
+                <p>Discovered files, directories, and parameters during scanning</p>
+            </div>
+            <div id="site-structure-content">
+                <!-- Site structure will be populated here -->
+            </div>
+        </div>
+        
         <!-- Vulnerabilities List -->
         <div class="vulnerabilities">
             <div class="vuln-header">
@@ -978,12 +1100,13 @@ class FileHandler:
                 populateStats();
                 populateTechnologies();
                 populateVulnerabilities();
+                populateSiteStructure();
                 setupFilters();
                 setupEventListeners();
-                
+            
                 // Set report date
                 document.getElementById('report-date').textContent = new Date().toLocaleString();
-                
+            
                 console.log('Report initialization completed successfully');
             } catch (error) {
                 console.error('Error during report initialization:', error);
@@ -1640,6 +1763,106 @@ class FileHandler:
             }
         }
         
+        function populateSiteStructure() {
+            console.log('Populating site structure...');
+            const siteStructure = reportData.site_structure || {};
+            const container = document.getElementById('site-structure-content');
+            
+            if (!container) {
+                console.error('Site structure container not found');
+                return;
+            }
+            
+            if (!siteStructure.domains || Object.keys(siteStructure.domains).length === 0) {
+                container.innerHTML = '<div class="no-results"><p>No site structure data available</p></div>';
+                return;
+            }
+            
+            let structureHtml = '<div class="site-structure">';
+            
+            // Summary stats
+            structureHtml += `
+                <div class="structure-summary">
+                    <h3>Site Discovery Summary</h3>
+                    <div class="summary-stats">
+                        <span><strong>URLs:</strong> ${siteStructure.total_urls || 0}</span>
+                        <span><strong>Parameters:</strong> ${siteStructure.total_parameters || 0}</span>
+                        <span><strong>Files:</strong> ${siteStructure.files ? siteStructure.files.length : 0}</span>
+                        <span><strong>Directories:</strong> ${siteStructure.directories ? siteStructure.directories.length : 0}</span>
+                    </div>
+                </div>
+            `;
+            
+            // Structure grid
+            structureHtml += '<div class="structure-grid">';
+            
+            for (const [domain, domainData] of Object.entries(siteStructure.domains)) {
+                structureHtml += `<div class="structure-section">`;
+                structureHtml += `<h4><i class="fas fa-globe"></i> ${domain}</h4>`;
+                
+                // Files
+                if (domainData.files && domainData.files.length > 0) {
+                    structureHtml += '<div class="files-section"><h5>Files:</h5>';
+                    domainData.files.forEach(file => {
+                        const ext = file.split('.').pop().toLowerCase();
+                        let icon = 'fas fa-file';
+                        
+                        switch (ext) {
+                            case 'php': icon = 'fab fa-php'; break;
+                            case 'html': case 'htm': icon = 'fab fa-html5'; break;
+                            case 'js': icon = 'fab fa-js-square'; break;
+                            case 'css': icon = 'fab fa-css3-alt'; break;
+                            case 'jpg': case 'jpeg': case 'png': case 'gif': icon = 'fas fa-image'; break;
+                            case 'pdf': icon = 'fas fa-file-pdf'; break;
+                            case 'txt': icon = 'fas fa-file-alt'; break;
+                            case 'xml': icon = 'fas fa-file-code'; break;
+                        }
+                        
+                        structureHtml += `
+                            <div class="file-item">
+                                <i class="${icon} file-icon"></i>
+                                <span>${file}</span>
+                            </div>
+                        `;
+                    });
+                    structureHtml += '</div>';
+                }
+                
+                // Directories
+                if (domainData.directories && domainData.directories.length > 0) {
+                    structureHtml += '<div class="dirs-section"><h5>Directories:</h5>';
+                    domainData.directories.forEach(dir => {
+                        structureHtml += `
+                            <div class="dir-item">
+                                <i class="fas fa-folder dir-icon"></i>
+                                <span>${dir}</span>
+                            </div>
+                        `;
+                    });
+                    structureHtml += '</div>';
+                }
+                
+                // Parameters
+                if (domainData.parameters && domainData.parameters.length > 0) {
+                    structureHtml += '<div class="params-section"><h5>Parameters:</h5>';
+                    domainData.parameters.forEach(param => {
+                        structureHtml += `
+                            <div class="param-item">
+                                <i class="fas fa-cog param-icon"></i>
+                                <span>${param}</span>
+                            </div>
+                        `;
+                    });
+                    structureHtml += '</div>';
+                }
+                
+                structureHtml += '</div>';
+            }
+            
+            structureHtml += '</div></div>';
+            container.innerHTML = structureHtml;
+        }
+        
         function populateVulnerabilities() {
             console.log('Populating vulnerabilities...');
             const vulnerabilities = reportData.vulnerabilities || [];
@@ -1703,6 +1926,7 @@ class FileHandler:
                             <span><i class="fas fa-globe"></i> ${vuln.target || 'Unknown Target'}</span>
                             <span><i class="fas fa-tag"></i> ${vuln.parameter || 'N/A'}</span>
                             <span><i class="fas fa-cog"></i> ${(vuln.module || 'unknown').toUpperCase()}</span>
+                            ${vuln.method ? `<span class="method-badge method-${vuln.method.toLowerCase()}">${vuln.method}</span>` : ''}
                         </div>
                     </div>
                     <div style="display: flex; align-items: center; gap: 15px;">
@@ -1720,9 +1944,26 @@ class FileHandler:
                         <div class="detail-content">${vuln.payload}</div>
                     </div>
                     <div class="detail-section">
-                        <h4><i class="fas fa-link"></i> Request URL</h4>
-                        <div class="detail-content">${vuln.request_url}</div>
+                        <h4><i class="fas fa-link"></i> Request Details</h4>
+                        <div class="detail-content">
+                            <strong>URL:</strong> ${vuln.request_url}<br>
+                            <strong>Method:</strong> ${vuln.method || 'GET'}<br>
+                            ${vuln.url_parameters && vuln.url_parameters.length > 0 ? 
+                                `<strong>Parameters:</strong> ${vuln.url_parameters.map(p => `${p.name}=${p.values.join(',')}`).join(', ')}<br>` : ''}
+                        </div>
                     </div>
+                    ${vuln.form_details && vuln.form_details.length > 0 ? `
+                    <div class="detail-section">
+                        <h4><i class="fas fa-wpforms"></i> Form Details</h4>
+                        <div class="detail-content">
+                            ${vuln.form_details.map(form => `
+                                <strong>Form:</strong> ${form.method} ${form.action}<br>
+                                <strong>Inputs:</strong> ${form.inputs ? form.inputs.map(inp => `${inp.name}(${inp.type})`).join(', ') : 'None'}<br>
+                                <strong>CSRF Protected:</strong> ${form.has_csrf_token ? 'Yes' : 'No'}<br>
+                            `).join('<br>')}
+                        </div>
+                    </div>
+                    ` : ''}
                     ${vuln.response_snippet ? `
                     <div class="detail-section">
                         <h4><i class="fas fa-file-code"></i> Response Snippet</h4>

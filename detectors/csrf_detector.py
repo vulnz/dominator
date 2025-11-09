@@ -226,36 +226,72 @@ class CSRFDetector:
 
     @staticmethod
     def detect_csrf_vulnerability(response_text: str, response_headers: Dict[str, str], url: str) -> Tuple[bool, str, str, Dict[str, Any]]:
-        """Detect CSRF vulnerabilities in forms with enhanced login form detection"""
+        """Detect CSRF vulnerabilities in forms with enhanced login form detection and detailed form analysis"""
         if not response_text:
             return False, "", "", {}
 
-        # Find all forms in the response
-        form_pattern = r'<form[^>]*>(.*?)</form>'
+        # Find all forms in the response with detailed extraction
+        form_pattern = r'<form([^>]*)>(.*?)</form>'
         forms = re.findall(form_pattern, response_text, re.IGNORECASE | re.DOTALL)
         
         vulnerable_forms = []
         login_forms = []
         csrf_indicators = CSRFDetector.get_csrf_indicators()
+        form_details = []
         
-        for form in forms:
+        for form_attrs, form_content in forms:
+            # Extract form method
+            method_match = re.search(r'method\s*=\s*["\']?(get|post|put|delete)["\']?', form_attrs, re.IGNORECASE)
+            method = method_match.group(1).upper() if method_match else "GET"
+            
+            # Extract form action
+            action_match = re.search(r'action\s*=\s*["\']?([^"\'>\s]+)["\']?', form_attrs, re.IGNORECASE)
+            action = action_match.group(1) if action_match else "current page"
+            
+            # Extract form inputs
+            input_pattern = r'<input([^>]*)>'
+            inputs = re.findall(input_pattern, form_content, re.IGNORECASE)
+            
+            input_details = []
+            for input_attrs in inputs:
+                name_match = re.search(r'name\s*=\s*["\']?([^"\'>\s]+)["\']?', input_attrs, re.IGNORECASE)
+                type_match = re.search(r'type\s*=\s*["\']?([^"\'>\s]+)["\']?', input_attrs, re.IGNORECASE)
+                
+                input_name = name_match.group(1) if name_match else "unnamed"
+                input_type = type_match.group(1) if type_match else "text"
+                
+                input_details.append({
+                    'name': input_name,
+                    'type': input_type
+                })
+            
             # Check if form has CSRF protection
             has_csrf_token = False
+            csrf_token_found = None
             for indicator in csrf_indicators:
-                if re.search(rf'name\s*=\s*["\']?{indicator}["\']?', form, re.IGNORECASE):
+                if re.search(rf'name\s*=\s*["\']?{indicator}["\']?', form_content, re.IGNORECASE):
                     has_csrf_token = True
+                    csrf_token_found = indicator
                     break
             
             # Check if this is a login form
-            is_login_form = CSRFDetector._is_login_form(form)
+            is_login_form = CSRFDetector._is_login_form(form_content)
+            
+            # Store detailed form information
+            form_detail = {
+                'method': method,
+                'action': action,
+                'inputs': input_details,
+                'has_csrf_token': has_csrf_token,
+                'csrf_token': csrf_token_found,
+                'is_login_form': is_login_form,
+                'input_count': len(input_details)
+            }
+            form_details.append(form_detail)
             
             # Check if form modifies data (POST, PUT, DELETE methods)
-            method_match = re.search(r'method\s*=\s*["\']?(post|put|delete)["\']?', form, re.IGNORECASE)
-            if method_match and not has_csrf_token:
-                action_match = re.search(r'action\s*=\s*["\']?([^"\'>\s]+)["\']?', form, re.IGNORECASE)
-                action = action_match.group(1) if action_match else "current page"
-                
-                form_info = f"Form with action '{action}' (method: {method_match.group(1).upper()})"
+            if method in ['POST', 'PUT', 'DELETE'] and not has_csrf_token:
+                form_info = f"Form with action '{action}' (method: {method}, inputs: {len(input_details)})"
                 
                 if is_login_form:
                     login_forms.append(form_info + " [LOGIN FORM]")
@@ -275,10 +311,15 @@ class CSRFDetector:
                 'owasp': 'A01:2021 – Broken Access Control',
                 'recommendation': 'Implement CSRF tokens in all state-changing forms, especially login forms. Use SameSite cookie attributes and validate Referer headers.',
                 'login_forms_affected': len(login_forms),
-                'total_forms_affected': len(all_vulnerable)
+                'total_forms_affected': len(all_vulnerable),
+                'form_details': form_details,
+                'total_forms_found': len(forms)
             }
 
-        return False, "", "", {}
+        return False, "", "", {
+            'form_details': form_details,
+            'total_forms_found': len(forms)
+        }
     
     @staticmethod
     def _is_login_form(form_content: str) -> bool:
