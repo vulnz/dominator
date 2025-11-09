@@ -7,6 +7,7 @@ import json
 import re
 import requests
 import urllib3
+import html
 from urllib.parse import quote_plus
 from typing import List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -5733,6 +5734,9 @@ class VulnScanner:
                         clean_result[key] = str(value)
             
             if 'vulnerability' in clean_result and clean_result.get('vulnerability'):
+                # Sanitize dangerous fields to prevent XSS in reports
+                clean_result = self._sanitize_vulnerability_data(clean_result)
+                
                 # Ensure required metadata exists
                 if 'cvss' not in clean_result:
                     clean_result['cvss'] = self._get_default_cvss(clean_result.get('severity', 'Medium'))
@@ -5847,6 +5851,27 @@ class VulnScanner:
             'responsesplitting': 'Validate and sanitize all user inputs used in HTTP responses.'
         }
         return recommendations.get(module, 'Review and implement appropriate security controls.')
+    
+    def _sanitize_vulnerability_data(self, vuln_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Sanitize vulnerability data to prevent XSS in reports"""
+        # Fields that may contain dangerous payloads
+        dangerous_fields = [
+            'payload', 'evidence', 'response_snippet', 'request_url',
+            'vulnerability', 'parameter', 'target'
+        ]
+        
+        sanitized = vuln_data.copy()
+        
+        for field in dangerous_fields:
+            if field in sanitized and sanitized[field]:
+                # HTML escape the content to prevent XSS
+                original_value = str(sanitized[field])
+                sanitized[field] = html.escape(original_value, quote=True)
+                
+                # Store original value for technical analysis if needed
+                sanitized[f'{field}_raw'] = original_value
+        
+        return sanitized
     
     def _clean_data_structure(self, data):
         """Recursively clean data structures to make them JSON serializable"""
