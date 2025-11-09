@@ -1,0 +1,16 @@
+# Success indicators
+success
+successful
+completed
+saved
+updated
+created
+added
+submitted
+processed
+confirmed
+accepted
+thank you
+thanks
+welcome
+congratulations

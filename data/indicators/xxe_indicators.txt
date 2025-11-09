@@ -1,0 +1,8 @@
+# XXE indicators
+root:x:0:0:root
+ENTITY
+DOCTYPE
+file://
+http://
+xml parsing error
+entity

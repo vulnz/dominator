@@ -1,0 +1,16 @@
+# Meaningful 404 patterns
+error
+exception
+warning
+notice
+fatal
+mysql
+sql
+database
+query
+syntax
+include
+require
+file
+path
+directory

@@ -1,0 +1,9 @@
+# Remote content indicators
+<?php
+<html
+<script
+http://
+https://
+remote file
+include
+require

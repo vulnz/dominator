@@ -5241,9 +5241,14 @@ class VulnScanner:
             
             print(f"    [INFOLEAK] Response code: {response.status_code}")
             
-            # Check for email addresses
+            # Load email patterns from file and check for email addresses
             import re
-            email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+            email_patterns = PayloadLoader.load_patterns('email')
+            if not email_patterns:
+                # Fallback to basic pattern if file not found
+                email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+            else:
+                email_pattern = email_patterns[0]  # Use first pattern from file
             emails = re.findall(email_pattern, response.text)
             
             if emails:
@@ -5268,8 +5273,13 @@ class VulnScanner:
                     'email_addresses': unique_emails  # Store for detailed reporting
                 })
             
-            # Check for internal IP addresses
-            ip_pattern = r'\b(?:127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b'
+            # Load IP patterns from file and check for internal IP addresses
+            ip_patterns = PayloadLoader.load_patterns('internal_ip')
+            if not ip_patterns:
+                # Fallback to basic pattern if file not found
+                ip_pattern = r'\b(?:127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b'
+            else:
+                ip_pattern = ip_patterns[0]  # Use first pattern from file
             internal_ips = re.findall(ip_pattern, response.text)
             
             if internal_ips:
@@ -5739,11 +5749,11 @@ class VulnScanner:
             if content_diff < 100:  # Minimal content change
                 return False
             
-            # Look for remote content indicators
-            remote_indicators = [
-                '<?php', '<html', '<script', 'http://', 'https://',
-                'remote file', 'include', 'require'
-            ]
+            # Load remote content indicators from file
+            remote_indicators = PayloadLoader.load_indicators('remote_content')
+            if not remote_indicators:
+                # Fallback to basic indicators if file not found
+                remote_indicators = ['<?php', '<html', '<script', 'http://', 'https://']
             
             response_lower = response_text.lower()
             baseline_lower = baseline_content.lower()
@@ -5768,13 +5778,11 @@ class VulnScanner:
             if response_code >= 400:
                 return False
             
-            # Look for specific XXE indicators
-            xxe_indicators = [
-                'root:x:0:0:root',  # /etc/passwd content
-                'ENTITY', 'DOCTYPE',  # XML entity processing
-                'file://', 'http://',  # External entity URLs
-                'xml parsing error', 'entity'
-            ]
+            # Load XXE indicators from file
+            xxe_indicators = PayloadLoader.load_indicators('xxe')
+            if not xxe_indicators:
+                # Fallback to basic indicators if file not found
+                xxe_indicators = ['root:x:0:0:root', 'ENTITY', 'DOCTYPE', 'file://']
             
             response_lower = response_text.lower()
             
