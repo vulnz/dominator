@@ -8,27 +8,12 @@ class IDORDetector:
 
     @staticmethod
     def get_idor_parameters() -> List[str]:
-        """Get common parameter names that might be vulnerable to IDOR"""
+        """Get common parameter names that might be vulnerable to IDOR - simplified list"""
+        # Simplified - we'll test most parameters anyway in is_parameter_testable
         return [
-            # Common ID parameters
-            'id', 'user_id', 'userid', 'uid', 'account_id', 'accountid',
-            'profile_id', 'profileid', 'doc_id', 'docid', 'file_id', 'fileid',
-            'order_id', 'orderid', 'invoice_id', 'invoiceid', 'ticket_id',
-            'ticketid', 'message_id', 'messageid', 'post_id', 'postid',
-            'comment_id', 'commentid', 'item_id', 'itemid', 'product_id',
-            'productid', 'customer_id', 'customerid', 'client_id', 'clientid',
-            
-            # Additional common patterns
-            'key', 'ref', 'reference', 'session_id', 'sessionid',
-            'transaction_id', 'transactionid', 'payment_id', 'paymentid',
-            'report_id', 'reportid', 'document_id', 'documentid',
-            'folder_id', 'folderid', 'category_id', 'categoryid',
-            'group_id', 'groupid', 'team_id', 'teamid', 'project_id', 'projectid',
-            
-            # XVWA IDOR specific patterns (itemcode and item are real IDOR parameters)
-            'itemcode', 'item_code', 'item', 'code', 'number', 'phone',
-            'record', 'entry', 'data', 'info', 'details', 'product',
-            'product_code', 'sku', 'catalog', 'inventory'
+            'id', 'user', 'item', 'artist', 'product', 'file', 'doc', 'page',
+            'account', 'profile', 'order', 'invoice', 'ticket', 'message', 'post',
+            'comment', 'category', 'group', 'team', 'project', 'key', 'ref'
         ]
     
     @staticmethod
@@ -38,54 +23,30 @@ class IDORDetector:
         Returns specific test values to check if IDOR vulnerability exists
         """
         test_values = []
-        param_lower = parameter_name.lower()
-        
-        # For item/product parameters, use specific sequential values
-        if 'item' in param_lower or 'product' in param_lower:
-            # Always test these specific values for items - they often reveal IDOR
-            test_values = ['0', '1', '2', '3', '4', '5']
-            # Remove original value if it's in the list
-            if original_value in test_values:
-                test_values.remove(original_value)
-            return test_values[:5]  # Return up to 5 test values
         
         # Try to parse original value as integer
         try:
             orig_int = int(original_value)
             
-            # For numeric IDs, test adjacent values and common patterns
-            test_values.extend([
-                str(max(0, orig_int - 1)),  # Previous ID (not below 0)
+            # For numeric values, test adjacent and common values
+            test_values = [
+                str(max(1, orig_int - 1)),  # Previous ID
                 str(orig_int + 1),          # Next ID
                 str(orig_int + 2),          # Skip ahead
-            ])
-            
-            # Add some common test values for specific parameter types
-            if 'user' in param_lower:
-                test_values.extend(['1', '2', '999'])  # Common user IDs
-            elif 'account' in param_lower:
-                test_values.extend(['1', '10', '100'])  # Common account IDs
-            else:
-                test_values.extend(['1', '2', '10'])  # Generic test values
+                '1',                        # Common ID
+                '2',                        # Common ID
+                '3',                        # Common ID
+                '10',                       # Common ID
+                '100'                       # Common ID
+            ]
                 
         except ValueError:
-            # Non-numeric original value
-            if original_value.isalpha():
-                # For alphabetic codes, try common variations
-                if len(original_value) <= 3:
-                    test_values.extend(['A', 'B', 'C'])
-                else:
-                    test_values.extend(['admin', 'test', 'user'])
-            elif original_value.isalnum():
-                # For alphanumeric codes
-                test_values.extend(['A1', 'B2', 'C3'])
-            else:
-                # For other formats, try common patterns
-                test_values.extend(['1', '2', '3'])
+            # Non-numeric original value - try common patterns
+            test_values = ['1', '2', '3', '10', '100', 'admin', 'test', 'user']
         
-        # Remove duplicates and original value, keep only first 5
+        # Remove duplicates and original value
         test_values = [v for v in test_values if v != original_value]
-        return list(dict.fromkeys(test_values))[:5]  # Remove duplicates, keep order, limit to 5
+        return list(dict.fromkeys(test_values))[:8]  # Remove duplicates, keep order
 
     @staticmethod
     def get_excluded_parameters() -> List[str]:
@@ -129,34 +90,17 @@ class IDORDetector:
         url_lower = url.lower()
         context_lower = form_context.lower()
         
-        # First check: Exclude parameters that are clearly not IDOR candidates
-        excluded = IDORDetector.get_excluded_parameters()
+        # Exclude only obvious non-IDOR parameters
+        excluded = ['username', 'password', 'email', 'csrf_token', '_token', 'submit']
         if param_lower in excluded:
             return False
         
-        # Second check: Exclude if URL suggests registration/signup/login context
-        auth_indicators = ['login', 'auth', 'signin', 'register', 'signup', 'forgot', 'reset', 'newuser', 'adduser', 'secured/newuser']
-        if any(indicator in url_lower for indicator in auth_indicators):
+        # Exclude only obvious auth/registration contexts
+        if any(indicator in url_lower for indicator in ['login', 'register', 'signup', 'newuser']):
             return False
         
-        # Third check: Exclude if form context suggests login/auth/registration
-        form_context_indicators = [
-            'login', 'sign in', 'authentication', 'log in', 'signin',
-            'register', 'registration', 'sign up', 'signup', 'new user',
-            'add user', 'create account', 'username', 'password', 'email',
-            'add new user', 'create user'
-        ]
-        if any(indicator in context_lower for indicator in form_context_indicators):
-            return False
-        
-        # Fourth check: Only test parameters that look like IDs or references
-        idor_params = IDORDetector.get_idor_parameters()
-        is_id_like = (param_lower in idor_params or 
-                     param_lower.endswith('_id') or 
-                     param_lower.endswith('id') or
-                     param_lower in ['key', 'ref', 'reference'])
-        
-        return is_id_like
+        # Test everything else - let the detection logic decide if it's IDOR
+        return True
 
     @staticmethod
     def detect_idor(original_response: str, modified_response: str,
