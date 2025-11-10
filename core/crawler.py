@@ -752,6 +752,11 @@ class WebCrawler:
                             r'["\']((?:/|/api/|/v\d+/|/rest/)[a-zA-Z0-9_./-]+)["\']'
                         ]
                     
+                    # Also use AJAX patterns for more specific matching
+                    ajax_patterns = PayloadLoader.load_patterns('ajax')
+                    if ajax_patterns:
+                        endpoint_patterns.extend(ajax_patterns)
+                    
                     found_endpoints_in_file = 0
                     static_file_extensions = ['.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.woff', '.ttf', '.eot']
                     
