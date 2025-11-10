@@ -44,15 +44,17 @@ class IDORDetector:
                     '1', '2', '10', '0'          # Common values
                 ]
             else:
-                # Large numbers - test wider range
+                # Large numbers - test wider range with MORE values
                 test_values = [
                     str(max(1, orig_int - 1)),           # Previous
                     str(orig_int + 1),                   # Next
-                    str(max(1, orig_int - 100)),         # Jump back
-                    str(orig_int + 100),                 # Jump forward
+                    str(max(1, orig_int - 10)),          # Jump back 10
+                    str(orig_int + 10),                  # Jump forward 10
+                    str(max(1, orig_int - 100)),         # Jump back 100
+                    str(orig_int + 100),                 # Jump forward 100
                     str(int(orig_int / 2)),              # Half
                     str(orig_int * 2),                   # Double
-                    '1', '10', '100', '0'                # Common values
+                    '1', '2', '3', '10', '100', '0'      # More common values
                 ]
                 
         elif value_analysis['type'] == 'alphanumeric':
@@ -203,22 +205,40 @@ class IDORDetector:
             if value_analysis['type'] in ['numeric', 'file_path', 'alphanumeric']:
                 return True
         
-        # 5. Generic numeric parameters that could be IDs
+        # 5. Generic numeric parameters that could be IDs - EXPANDED DETECTION
         if value_analysis['type'] == 'numeric':
             # If parameter name suggests it could be an identifier
-            generic_id_hints = ['code', 'num', 'ref', 'key', 'index', 'pos', 'seq']
+            generic_id_hints = ['code', 'num', 'ref', 'key', 'index', 'pos', 'seq', 'no', 'nr']
             if any(hint in param_lower for hint in generic_id_hints):
                 return True
             
             # If numeric value is in typical ID range (1-999999)
             if 1 <= value_analysis['numeric_value'] <= 999999:
-                # And parameter name is short (likely an ID)
-                if len(param_lower) <= 10 and param_lower.isalpha():
+                # More aggressive: test ANY short numeric parameter
+                if len(param_lower) <= 15:  # Increased from 10 to 15
                     return True
+                
+            # Test ANY numeric parameter that could be an ID (even single letters)
+            if len(param_lower) >= 1 and param_lower.isalpha():
+                return True
         
         # 6. File path parameters
         if value_analysis['type'] == 'file_path':
             return True
+        
+        # 7. ANY parameter with mixed content that has numbers
+        if value_analysis['type'] == 'mixed' and value_analysis['numeric_part']:
+            return True
+        
+        # 8. Single character parameters with numeric values (like 'c', 'p', 'v', etc.)
+        if len(param_lower) == 1 and value_analysis['type'] == 'numeric':
+            return True
+        
+        # 9. Common web app parameter patterns
+        common_patterns = ['view', 'show', 'display', 'get', 'load', 'fetch']
+        if any(pattern in param_lower for pattern in common_patterns):
+            if value_analysis['type'] in ['numeric', 'alphanumeric']:
+                return True
         
         return False
 

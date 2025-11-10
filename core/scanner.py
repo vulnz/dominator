@@ -5234,8 +5234,12 @@ class VulnScanner:
         for param, values in parsed_data['query_params'].items():
             if values and len(values) > 0:
                 param_value = str(values[0])
+                # Test MORE parameters - be more aggressive in detection
                 if IDORDetector.is_parameter_testable(param, base_url, "", param_value):
                     get_testable_params.append((param, param_value))
+                    print(f"    [IDOR] ✓ Parameter '{param}' with value '{param_value}' marked as testable")
+                else:
+                    print(f"    [IDOR] ✗ Parameter '{param}' with value '{param_value}' excluded from testing")
         
         forms_with_testable_params = []
         for form_data in parsed_data.get('forms', []):
@@ -5269,7 +5273,7 @@ class VulnScanner:
                 test_values = IDORDetector.get_idor_test_values(original_value, param)
                 print(f"    [IDOR] Generated {len(test_values)} test values for parameter '{param}': {test_values[:5]}{'...' if len(test_values) > 5 else ''}")
                 
-                for test_value in test_values[:self.payload_limit or 12]:
+                for test_value in test_values[:self.payload_limit or 20]:  # Increased from 12 to 20
                     if str(test_value) == str(original_value): 
                         continue
                     try:
@@ -5338,7 +5342,7 @@ class VulnScanner:
                     test_values = IDORDetector.get_idor_test_values(str(original_value), param)
                     print(f"    [IDOR] Generated {len(test_values)} test values for form parameter '{param}': {test_values[:5]}{'...' if len(test_values) > 5 else ''}")
 
-                    for test_value in test_values[:self.payload_limit or 12]:
+                    for test_value in test_values[:self.payload_limit or 20]:  # Increased from 12 to 20
                         if str(test_value) == str(original_value): 
                             continue
                         try:
