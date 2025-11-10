@@ -5246,6 +5246,11 @@ class VulnScanner:
 
         # --- Test GET parameters ---
         for param in get_id_params:
+            # Дополнительная проверка на пригодность параметра для IDOR тестирования
+            if not IDORDetector.is_parameter_testable(param, base_url):
+                print(f"    [IDOR] Skipping GET parameter {param} - not suitable for IDOR testing")
+                continue
+                
             print(f"    [IDOR] Testing GET parameter: {param}")
             param_key = f"idor_get_{base_url.split('?')[0]}_{param}"
             if param_key in self.found_vulnerabilities:
@@ -5291,6 +5296,11 @@ class VulnScanner:
             for input_data in form_data.get('inputs', []):
                 param = input_data.get('name')
                 if not param or not any(id_word in param.lower() for id_word in IDORDetector.get_idor_parameters()):
+                    continue
+
+                # Дополнительная проверка на пригодность параметра для IDOR тестирования
+                if not IDORDetector.is_parameter_testable(param, form_url, form_action):
+                    print(f"    [IDOR] Skipping form parameter {param} - not suitable for IDOR testing")
                     continue
 
                 print(f"    [IDOR] Testing form parameter: {param} in form with action '{form_action}'")
