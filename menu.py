@@ -99,10 +99,9 @@ Usage examples:
     # Auto Reports
     parser.add_argument('--auto-report', action='store_true',
                        help='Automatically generate HTML report with timestamp')
-    parser.add_argument('--format', 
-                       choices=['html'],
+    parser.add_argument('--format',
                        default='html',
-                       help='Report format (only HTML supported for auto-reports)')
+                       help='Report format or comma-separated list of formats (e.g., html,txt)')
     
     # Information commands
     parser.add_argument('--modules-list', action='store_true',
@@ -193,11 +192,7 @@ def process_args(args):
         args.output = None
     if not hasattr(args, 'proxy'):
         args.proxy = None
-    # Ensure format is always HTML for auto-reports
-    if hasattr(args, 'format') and args.format != 'html':
-        print("Warning: Only HTML format is supported for auto-reports. Using HTML format.")
-        args.format = 'html'
-    elif not hasattr(args, 'format'):
+    if not hasattr(args, 'format'):
         args.format = 'html'
     if not hasattr(args, 'group_findings'):
         args.group_findings = not args.no_grouping

@@ -266,11 +266,11 @@ def main():
         # Always print results to console first
         scanner.print_results(results)
         
-        # Auto-generate HTML report if flag is set
+        # Auto-generate report(s) if flag is set
         if args.auto_report:
             import datetime
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            
+
             # Handle multiple targets for filename
             targets = config.get_targets()
             if targets:
@@ -282,16 +282,22 @@ def main():
                     target_name = targets[0].replace(':', '_').replace('/', '_').replace('\\', '_').replace('?', '_').replace('=', '_').replace('&', '_')
             else:
                 target_name = "unknown_target"
-            
+
             # Limit filename length to avoid errors
             if len(target_name) > 150:
                 target_name = target_name[:150]
-            auto_filename = f"scan_report_{target_name}_{timestamp}.html"
-            try:
-                scanner.save_report(results, auto_filename, 'html')
-                print(f"\nHTML report saved to {auto_filename}")
-            except Exception as e:
-                print(f"Error saving auto-report: {e}")
+            
+            base_filename = f"scan_report_{target_name}_{timestamp}"
+            
+            report_formats = [f.strip() for f in args.format.split(',')]
+            
+            for report_format in report_formats:
+                auto_filename = f"{base_filename}.{report_format}"
+                try:
+                    scanner.save_report(results, auto_filename, report_format)
+                    print(f"\n{report_format.upper()} report saved to {auto_filename}")
+                except Exception as e:
+                    print(f"Error saving {report_format.upper()} auto-report: {e}")
         
         # Exit with appropriate code
         vulnerabilities_found = any(r.get('vulnerability') for r in results)
