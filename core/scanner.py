@@ -5229,29 +5229,32 @@ class VulnScanner:
         if 'idor' not in self.scan_stats['payload_stats']:
             self.scan_stats['payload_stats']['idor'] = {'payloads_used': 0, 'requests_made': 0, 'successful_payloads': 0}
 
-        # --- Find potential IDOR parameters ---
-        get_id_params = [p for p in parsed_data['query_params'] if any(id_word in p.lower() for id_word in IDORDetector.get_idor_parameters())]
+        # --- Find ALL parameters with values (not just "ID-like" names) ---
+        get_testable_params = []
+        for param, values in parsed_data['query_params'].items():
+            if values and len(values) > 0:
+                param_value = str(values[0])
+                if IDORDetector.is_parameter_testable(param, base_url, "", param_value):
+                    get_testable_params.append((param, param_value))
         
-        forms_with_id_params = []
+        forms_with_testable_params = []
         for form_data in parsed_data.get('forms', []):
             for input_data in form_data.get('inputs', []):
                 input_name = input_data.get('name')
-                if input_name and any(id_word in input_name.lower() for id_word in IDORDetector.get_idor_parameters()):
-                    if form_data not in forms_with_id_params:
-                        forms_with_id_params.append(form_data)
+                input_value = input_data.get('value', '')
+                if input_name and IDORDetector.is_parameter_testable(input_name, base_url, form_data.get('action', ''), str(input_value)):
+                    if form_data not in forms_with_testable_params:
+                        forms_with_testable_params.append(form_data)
 
-        if not get_id_params and not forms_with_id_params:
-            print("    [IDOR] No ID-like parameters found in URL or forms, skipping IDOR test")
+        if not get_testable_params and not forms_with_testable_params:
+            print("    [IDOR] No testable parameters found in URL or forms, skipping IDOR test")
             return results
+        
+        print(f"    [IDOR] Found {len(get_testable_params)} testable GET parameters and {len(forms_with_testable_params)} forms with testable parameters")
 
         # --- Test GET parameters ---
-        for param in get_id_params:
-            # Дополнительная проверка на пригодность параметра для IDOR тестирования
-            if not IDORDetector.is_parameter_testable(param, base_url):
-                print(f"    [IDOR] Skipping GET parameter {param} - not suitable for IDOR testing")
-                continue
-                
-            print(f"    [IDOR] Testing GET parameter: {param}")
+        for param, original_value in get_testable_params:
+            print(f"    [IDOR] Testing GET parameter: {param} (original value: '{original_value}')")
             param_key = f"idor_get_{base_url.split('?')[0]}_{param}"
             if param_key in self.found_vulnerabilities:
                 print(f"    [IDOR] Skipping GET parameter {param} - already tested")
@@ -5261,33 +5264,42 @@ class VulnScanner:
                 original_response = requests.get(parsed_data['url'], timeout=self.config.timeout, headers=self.config.headers, verify=False)
                 self.request_count += 1
                 self.scan_stats['payload_stats']['idor']['requests_made'] += 1
-                original_value = parsed_data['query_params'][param][0]
                 
-                payloads = list(set(IDORPayloads.get_sequential_payloads(original_value) + IDORPayloads.get_all_payloads()))
+                # Generate test values based on original value
+                test_values = IDORDetector.get_idor_test_values(original_value, param)
+                print(f"    [IDOR] Generated {len(test_values)} test values for parameter '{param}': {test_values[:5]}{'...' if len(test_values) > 5 else ''}")
                 
-                for payload in payloads[:self.payload_limit or 10]:
-                    if str(payload) == str(original_value): continue
+                for test_value in test_values[:self.payload_limit or 12]:
+                    if str(test_value) == str(original_value): 
+                        continue
                     try:
                         test_params = parsed_data['query_params'].copy()
-                        test_params[param] = [payload]
+                        test_params[param] = [test_value]
                         test_url = self._build_test_url(base_url, test_params)
                         modified_response = requests.get(test_url, timeout=self.config.timeout, headers=self.config.headers, verify=False)
                         self.request_count += 1
                         self.scan_stats['payload_stats']['idor']['requests_made'] += 1
                         
-                        if IDORDetector.detect_idor(original_response.text, modified_response.text, original_response.status_code, modified_response.status_code):
-                            evidence = f"The GET parameter '{param}' appears to be vulnerable. Accessing with ID '{payload}' was successful (original was '{original_value}')."
-                            results.append(self._create_idor_vulnerability(base_url, 'GET', param, payload, evidence, test_url, modified_response.text))
+                        is_vulnerable, confidence, evidence = IDORDetector.detect_idor(
+                            original_response.text, modified_response.text, 
+                            original_response.status_code, modified_response.status_code,
+                            dict(original_response.headers), dict(modified_response.headers),
+                            param, test_url, 'GET'
+                        )
+                        
+                        if is_vulnerable:
+                            evidence = f"The GET parameter '{param}' appears to be vulnerable. Accessing with ID '{test_value}' was successful (original was '{original_value}')."
+                            results.append(self._create_idor_vulnerability(base_url, 'GET', param, test_value, evidence, test_url, modified_response.text))
                             self.found_vulnerabilities.add(param_key)
                             self.scan_stats['payload_stats']['idor']['successful_payloads'] += 1
                             break
                     except Exception as e:
-                        print(f"    [IDOR] Error testing GET payload '{payload}': {e}")
+                        print(f"    [IDOR] Error testing GET payload '{test_value}': {e}")
             except Exception as e:
                 print(f"    [IDOR] Error on GET parameter '{param}': {e}")
 
         # --- Test forms ---
-        for form_data in forms_with_id_params:
+        for form_data in forms_with_testable_params:
             from urllib.parse import urljoin
             form_method = form_data.get('method', 'GET').upper()
             form_action = form_data.get('action', '')
@@ -5295,26 +5307,24 @@ class VulnScanner:
 
             for input_data in form_data.get('inputs', []):
                 param = input_data.get('name')
-                if not param or not any(id_word in param.lower() for id_word in IDORDetector.get_idor_parameters()):
+                original_value = input_data.get('value', '')
+                
+                if not param:
+                    continue
+                
+                # Check if this specific parameter is testable
+                if not IDORDetector.is_parameter_testable(param, form_url, form_action, str(original_value)):
                     continue
 
-                # Дополнительная проверка на пригодность параметра для IDOR тестирования
-                if not IDORDetector.is_parameter_testable(param, form_url, form_action):
-                    print(f"    [IDOR] Skipping form parameter {param} - not suitable for IDOR testing")
-                    continue
-
-                print(f"    [IDOR] Testing form parameter: {param} in form with action '{form_action}'")
+                print(f"    [IDOR] Testing form parameter: {param} (original value: '{original_value}') in form with action '{form_action}'")
                 param_key = f"idor_form_{form_url.split('?')[0]}_{param}"
                 if param_key in self.found_vulnerabilities:
                     print(f"    [IDOR] Skipping form parameter {param} - already tested")
                     continue
                 
                 try:
-                    original_value = input_data.get('value', '1')
-                    payloads = list(set(IDORPayloads.get_sequential_payloads(original_value) + IDORPayloads.get_all_payloads()))
-                    
                     # Submit with original value to get a baseline
-                    original_form_data = {inp.get('name'): inp.get('value', '1') for inp in form_data.get('inputs', []) if inp.get('name')}
+                    original_form_data = {inp.get('name'): inp.get('value', '') for inp in form_data.get('inputs', []) if inp.get('name')}
                     if form_method == 'POST':
                         original_response = requests.post(form_url, data=original_form_data, timeout=self.config.timeout, headers=self.config.headers, verify=False)
                     else: # GET
@@ -5322,11 +5332,16 @@ class VulnScanner:
                     self.request_count += 1
                     self.scan_stats['payload_stats']['idor']['requests_made'] += 1
 
-                    for payload in payloads[:self.payload_limit or 10]:
-                        if str(payload) == str(original_value): continue
+                    # Generate test values based on original value
+                    test_values = IDORDetector.get_idor_test_values(str(original_value), param)
+                    print(f"    [IDOR] Generated {len(test_values)} test values for form parameter '{param}': {test_values[:5]}{'...' if len(test_values) > 5 else ''}")
+
+                    for test_value in test_values[:self.payload_limit or 12]:
+                        if str(test_value) == str(original_value): 
+                            continue
                         try:
                             test_form_data = original_form_data.copy()
-                            test_form_data[param] = payload
+                            test_form_data[param] = test_value
                             
                             if form_method == 'POST':
                                 modified_response = requests.post(form_url, data=test_form_data, timeout=self.config.timeout, headers=self.config.headers, verify=False)
@@ -5337,14 +5352,21 @@ class VulnScanner:
                             self.request_count += 1
                             self.scan_stats['payload_stats']['idor']['requests_made'] += 1
 
-                            if IDORDetector.detect_idor(original_response.text, modified_response.text, original_response.status_code, modified_response.status_code):
-                                evidence = f"The form parameter '{param}' appears to be vulnerable. Accessing with ID '{payload}' was successful (original was '{original_value}')."
-                                results.append(self._create_idor_vulnerability(base_url, form_method, param, payload, evidence, test_url, modified_response.text))
+                            is_vulnerable, confidence, evidence = IDORDetector.detect_idor(
+                                original_response.text, modified_response.text, 
+                                original_response.status_code, modified_response.status_code,
+                                dict(original_response.headers), dict(modified_response.headers),
+                                param, test_url, form_method
+                            )
+                            
+                            if is_vulnerable:
+                                evidence = f"The form parameter '{param}' appears to be vulnerable. Accessing with ID '{test_value}' was successful (original was '{original_value}')."
+                                results.append(self._create_idor_vulnerability(base_url, form_method, param, test_value, evidence, test_url, modified_response.text))
                                 self.found_vulnerabilities.add(param_key)
                                 self.scan_stats['payload_stats']['idor']['successful_payloads'] += 1
                                 break
                         except Exception as e:
-                            print(f"    [IDOR] Error testing form payload '{payload}': {e}")
+                            print(f"    [IDOR] Error testing form payload '{test_value}': {e}")
                 except Exception as e:
                     print(f"    [IDOR] Error on form parameter '{param}': {e}")
         

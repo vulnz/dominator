@@ -9,12 +9,8 @@ class IDORDetector:
     @staticmethod
     def get_idor_parameters() -> List[str]:
         """Get common parameter names that might be vulnerable to IDOR - simplified list"""
-        # Simplified - we'll test most parameters anyway in is_parameter_testable
-        return [
-            'id', 'user', 'item', 'artist', 'product', 'file', 'doc', 'page',
-            'account', 'profile', 'order', 'invoice', 'ticket', 'message', 'post',
-            'comment', 'category', 'group', 'team', 'project', 'key', 'ref'
-        ]
+        # We'll test ALL parameters with numeric values, not just these
+        return []  # Empty list - test everything
     
     @staticmethod
     def get_idor_test_values(original_value: str, parameter_name: str = "") -> List[str]:
@@ -28,25 +24,52 @@ class IDORDetector:
         try:
             orig_int = int(original_value)
             
-            # For numeric values, test adjacent and common values
+            # For numeric values, test adjacent and systematic values
             test_values = [
-                str(max(1, orig_int - 1)),  # Previous ID
-                str(orig_int + 1),          # Next ID
-                str(orig_int + 2),          # Skip ahead
-                '1',                        # Common ID
-                '2',                        # Common ID
-                '3',                        # Common ID
-                '10',                       # Common ID
-                '100'                       # Common ID
+                str(max(0, orig_int - 2)),   # Two back
+                str(max(0, orig_int - 1)),   # Previous ID
+                str(orig_int + 1),           # Next ID
+                str(orig_int + 2),           # Two ahead
+                str(orig_int + 10),          # Jump ahead
+                '0',                         # Zero (often admin/system)
+                '1',                         # First ID
+                '2',                         # Second ID
+                '3',                         # Third ID
+                '10',                        # Common ID
+                '100',                       # Higher ID
+                '999',                       # High ID
+                str(orig_int * 2),           # Double original
+                str(int(orig_int / 2)) if orig_int > 1 else '1',  # Half original
             ]
                 
         except ValueError:
-            # Non-numeric original value - try common patterns
-            test_values = ['1', '2', '3', '10', '100', 'admin', 'test', 'user']
+            # Non-numeric original value
+            if original_value.isalnum() and len(original_value) <= 10:
+                # Try to extract numbers and modify them
+                import re
+                numbers = re.findall(r'\d+', original_value)
+                if numbers:
+                    # Modify the numeric part
+                    base_num = int(numbers[0])
+                    test_values = [
+                        original_value.replace(numbers[0], str(base_num - 1)),
+                        original_value.replace(numbers[0], str(base_num + 1)),
+                        original_value.replace(numbers[0], '1'),
+                        original_value.replace(numbers[0], '2'),
+                        original_value.replace(numbers[0], '10'),
+                    ]
+                else:
+                    # Try common patterns for non-numeric values
+                    test_values = ['1', '2', '3', '10', '100', 'admin', 'test', 'user', '0']
+            else:
+                # Fallback for complex values
+                test_values = ['1', '2', '3', '10', '100', '0']
         
-        # Remove duplicates and original value
-        test_values = [v for v in test_values if v != original_value]
-        return list(dict.fromkeys(test_values))[:8]  # Remove duplicates, keep order
+        # Remove duplicates and original value, keep empty string for testing
+        test_values = [v for v in test_values if v != original_value and v is not None]
+        test_values.append('')  # Add empty value test
+        
+        return list(dict.fromkeys(test_values))[:12]  # Remove duplicates, keep order, limit to 12
 
     @staticmethod
     def get_excluded_parameters() -> List[str]:
@@ -84,20 +107,29 @@ class IDORDetector:
         ]
 
     @staticmethod
-    def is_parameter_testable(param_name: str, url: str = "", form_context: str = "") -> bool:
-        """Check if parameter should be tested for IDOR based on context"""
+    def is_parameter_testable(param_name: str, url: str = "", form_context: str = "", param_value: str = "") -> bool:
+        """Check if parameter should be tested for IDOR based on context and value"""
         param_lower = param_name.lower()
         url_lower = url.lower()
         context_lower = form_context.lower()
         
         # Exclude only obvious non-IDOR parameters
-        excluded = ['username', 'password', 'email', 'csrf_token', '_token', 'submit']
+        excluded = ['username', 'password', 'email', 'csrf_token', '_token', 'submit', 'search', 'q', 'query']
         if param_lower in excluded:
             return False
         
         # Exclude only obvious auth/registration contexts
         if any(indicator in url_lower for indicator in ['login', 'register', 'signup', 'newuser']):
             return False
+        
+        # MAIN LOGIC: Test parameters that have numeric values or look like IDs
+        if param_value:
+            # Test if value is numeric (main IDOR indicator)
+            if param_value.isdigit():
+                return True
+            # Test if value is alphanumeric ID-like (e.g., "abc123", "user_456")
+            if len(param_value) <= 20 and any(c.isdigit() for c in param_value):
+                return True
         
         # Test everything else - let the detection logic decide if it's IDOR
         return True
