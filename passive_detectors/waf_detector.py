@@ -56,7 +56,7 @@ class WAFDetector:
         },
         'F5 BIG-IP': {
             'headers': {'Server': r'BigIP|BIG-IP'},
-            'cookies': {'TS\w{10}': r'.*'},
+            'cookies': {r'TS\w{10}': r'.*'},
             'body': r'The requested URL was rejected. Please consult with your administrator.',
             'icon': 'fas fa-shield-alt'
         },
