@@ -1,0 +1,7 @@
+# Patterns to find API endpoints in JavaScript code
+# Matches paths starting with /, /api/, /v1/, /rest/, etc.
+["\']((?:/|/api/|/v\d+/|/rest/)[a-zA-Z0-9_./-]+)["\']
+# Matches constructs like path: "/api/users"
+path\s*:\s*["\']([^"\']+)["\']
+# Matches constructs like endpoint: "/v1/data"
+endpoint\s*:\s*["\']([^"\']+)["\']

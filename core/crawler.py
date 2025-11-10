@@ -78,6 +78,9 @@ class WebCrawler:
                 # Extract JavaScript and AJAX endpoints
                 self._extract_js_endpoints(response.text, base_url)
                 
+                # Analyze discovered JavaScript files for more endpoints and secrets
+                self._analyze_javascript_files(base_url)
+                
                 # Extract URLs from response
                 urls = self._extract_all_urls(response.text, base_url)
                 print(f"    [CRAWLER] Found {len(urls)} URLs to analyze")
@@ -716,6 +719,60 @@ class WebCrawler:
         except Exception as e:
             print(f"    [PASSIVE] Error during passive analysis of {url}: {e}")
     
+    def _analyze_javascript_files(self, base_url: str):
+        """Downloads and analyzes discovered JavaScript files for endpoints and secrets."""
+        if not self.js_urls:
+            return
+            
+        print(f"    [CRAWLER] Analyzing content of {len(set(self.js_urls))} JavaScript files...")
+        unique_js_urls = sorted(list(set(self.js_urls)))
+
+        for js_url in unique_js_urls:
+            if js_url in self.visited_urls:
+                continue
+            
+            try:
+                print(f"    [CRAWLER] Fetching JS file: {js_url}")
+                response = requests.get(
+                    js_url,
+                    timeout=self.config.timeout,
+                    headers=self.config.headers,
+                    verify=False
+                )
+                self.visited_urls.add(js_url)
+
+                if response.status_code == 200:
+                    js_content = response.text
+                    
+                    # 1. Find new API endpoints from JS code
+                    endpoint_patterns = PayloadLoader.load_patterns('js_api_endpoints')
+                    if not endpoint_patterns:
+                        print("    [CRAWLER] Warning: JS API endpoint patterns not loaded, using fallback.")
+                        endpoint_patterns = [
+                            r'["\']((?:/|/api/|/v\d+/|/rest/)[a-zA-Z0-9_./-]+)["\']'
+                        ]
+                    
+                    found_endpoints_in_file = 0
+                    static_file_extensions = ['.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.woff', '.ttf', '.eot']
+                    
+                    for pattern in endpoint_patterns:
+                        matches = re.findall(pattern, js_content)
+                        for match in matches:
+                            if match and not any(match.lower().endswith(ext) for ext in static_file_extensions):
+                                endpoint_url = self._resolve_url(match, base_url)
+                                if self._is_same_domain(endpoint_url, base_url) and endpoint_url not in self.ajax_endpoints:
+                                    self.ajax_endpoints.append(endpoint_url)
+                                    found_endpoints_in_file += 1
+                    
+                    if found_endpoints_in_file > 0:
+                        print(f"    [CRAWLER] Found {found_endpoints_in_file} new API endpoints in {js_url}")
+
+                    # 2. Run all passive detectors on JS content to find secrets, etc.
+                    self._run_passive_analysis(response.headers, js_content, js_url)
+
+            except Exception as e:
+                print(f"    [CRAWLER] Error analyzing JS file {js_url}: {e}")
+
     def get_passive_findings(self) -> Dict[str, List[Dict[str, Any]]]:
         """Get all passive detection findings"""
         return {
