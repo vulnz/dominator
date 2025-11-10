@@ -5234,7 +5234,7 @@ class VulnScanner:
         for param, values in parsed_data['query_params'].items():
             if values and len(values) > 0:
                 param_value = str(values[0])
-                # Test MORE parameters - be more aggressive in detection
+                # AGGRESSIVE: Test ALL parameters with values
                 if IDORDetector.is_parameter_testable(param, base_url, "", param_value):
                     get_testable_params.append((param, param_value))
                     print(f"    [IDOR] ✓ Parameter '{param}' with value '{param_value}' marked as testable")

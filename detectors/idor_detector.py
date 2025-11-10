@@ -152,8 +152,7 @@ class IDORDetector:
     @staticmethod
     def is_parameter_testable(param_name: str, url: str = "", form_context: str = "", param_value: str = "") -> bool:
         """
-        Intelligent parameter analysis to determine if it should be tested for IDOR
-        Uses dynamic analysis of parameter name, value, and context
+        AGGRESSIVE parameter analysis - test almost everything with numeric values
         """
         if not param_name or not param_value:
             return False
@@ -162,82 +161,43 @@ class IDORDetector:
         url_lower = url.lower()
         value_analysis = IDORDetector._analyze_parameter_value(param_value, param_name)
         
-        # Exclude obvious non-IDOR parameters
+        # Only exclude obvious authentication parameters
         excluded_params = {
             'username', 'password', 'email', 'login', 'passwd', 'pass', 'pwd',
-            'csrf_token', 'token', '_token', 'submit', 'search', 'q', 'query',
-            'text', 'message', 'comment', 'content', 'description', 'body',
-            'title', 'subject', 'name', 'firstname', 'lastname', 'fullname',
-            'phone', 'address', 'city', 'country', 'zip', 'state'
+            'csrf_token', 'token', '_token', 'submit'
         }
         
         if param_lower in excluded_params:
             return False
         
-        # Exclude based on URL context
-        excluded_contexts = ['login', 'register', 'signup', 'newuser', 'auth', 'guestbook', 'comment', 'feedback']
+        # Only exclude authentication URLs
+        excluded_contexts = ['login', 'register', 'signup', 'newuser', 'auth']
         if any(context in url_lower for context in excluded_contexts):
             return False
         
-        # MAIN IDOR DETECTION LOGIC - Dynamic analysis
+        # AGGRESSIVE IDOR DETECTION - Test EVERYTHING with numeric values
         
-        # 1. Direct ID parameters (highest priority)
-        direct_id_patterns = ['id', 'userid', 'user_id', 'itemid', 'item_id', 'productid', 'product_id']
-        if param_lower in direct_id_patterns or param_lower.endswith('id'):
-            if value_analysis['type'] in ['numeric', 'alphanumeric']:
-                return True
-        
-        # 2. Resource reference parameters
-        resource_indicators = ['item', 'product', 'file', 'doc', 'page', 'order', 'account', 'profile']
-        if any(indicator in param_lower for indicator in resource_indicators):
-            if value_analysis['type'] in ['numeric', 'alphanumeric', 'file_path']:
-                return True
-        
-        # 3. Category/classification parameters
-        category_indicators = ['cat', 'category', 'artist', 'author', 'type', 'kind', 'class']
-        if param_lower in category_indicators:
-            if value_analysis['type'] == 'numeric':
-                return True
-        
-        # 4. File/media parameters
-        file_indicators = ['pic', 'image', 'img', 'photo', 'file', 'document', 'media']
-        if any(indicator in param_lower for indicator in file_indicators):
-            if value_analysis['type'] in ['numeric', 'file_path', 'alphanumeric']:
-                return True
-        
-        # 5. Generic numeric parameters that could be IDs - EXPANDED DETECTION
+        # 1. ANY numeric parameter gets tested
         if value_analysis['type'] == 'numeric':
-            # If parameter name suggests it could be an identifier
-            generic_id_hints = ['code', 'num', 'ref', 'key', 'index', 'pos', 'seq', 'no', 'nr']
-            if any(hint in param_lower for hint in generic_id_hints):
-                return True
-            
-            # If numeric value is in typical ID range (1-999999)
-            if 1 <= value_analysis['numeric_value'] <= 999999:
-                # More aggressive: test ANY short numeric parameter
-                if len(param_lower) <= 15:  # Increased from 10 to 15
-                    return True
-                
-            # Test ANY numeric parameter that could be an ID (even single letters)
-            if len(param_lower) >= 1 and param_lower.isalpha():
-                return True
+            return True
         
-        # 6. File path parameters
+        # 2. ANY alphanumeric parameter gets tested
+        if value_analysis['type'] == 'alphanumeric':
+            return True
+        
+        # 3. ANY file path parameter gets tested
         if value_analysis['type'] == 'file_path':
             return True
         
-        # 7. ANY parameter with mixed content that has numbers
+        # 4. ANY parameter with mixed content that has numbers
         if value_analysis['type'] == 'mixed' and value_analysis['numeric_part']:
             return True
         
-        # 8. Single character parameters with numeric values (like 'c', 'p', 'v', etc.)
-        if len(param_lower) == 1 and value_analysis['type'] == 'numeric':
-            return True
-        
-        # 9. Common web app parameter patterns
-        common_patterns = ['view', 'show', 'display', 'get', 'load', 'fetch']
-        if any(pattern in param_lower for pattern in common_patterns):
-            if value_analysis['type'] in ['numeric', 'alphanumeric']:
+        # 5. Even text parameters if they look like IDs
+        if value_analysis['type'] == 'text':
+            # Test if parameter name suggests it's an ID
+            id_hints = ['id', 'code', 'ref', 'key', 'item', 'product', 'file', 'doc', 'page', 'cat', 'category', 'artist', 'author', 'pic', 'image', 'img']
+            if any(hint in param_lower for hint in id_hints):
                 return True
         
         return False
@@ -271,15 +231,15 @@ class IDORDetector:
             parameter_name, url
         )
         
-        # Decision logic based on enhanced analysis
-        if analysis_result['vulnerability_score'] >= 0.7:
+        # Decision logic based on enhanced analysis - LOWER THRESHOLD
+        if analysis_result['vulnerability_score'] >= 0.5:
             confidence = 'high'
-        elif analysis_result['vulnerability_score'] >= 0.4:
+        elif analysis_result['vulnerability_score'] >= 0.2:
             confidence = 'medium'
         else:
             confidence = 'low'
         
-        is_vulnerable = analysis_result['vulnerability_score'] >= 0.4
+        is_vulnerable = analysis_result['vulnerability_score'] >= 0.2
         
         if is_vulnerable:
             # Generate comprehensive evidence
@@ -328,14 +288,17 @@ class IDORDetector:
             analysis['reason'] = 'Responses are identical'
             return analysis
         
-        # 3. Size difference analysis
+        # 3. Size difference analysis - MORE SENSITIVE
         size_diff = abs(len(original_response) - len(modified_response))
-        if size_diff > 500:
+        if size_diff > 200:
             analysis['vulnerability_score'] += 0.4
             analysis['indicators'].append('significant_size_difference')
-        elif size_diff > 100:
-            analysis['vulnerability_score'] += 0.2
+        elif size_diff > 50:
+            analysis['vulnerability_score'] += 0.3
             analysis['indicators'].append('moderate_size_difference')
+        elif size_diff > 10:
+            analysis['vulnerability_score'] += 0.2
+            analysis['indicators'].append('small_size_difference')
         
         analysis['evidence_details']['size_difference'] = size_diff
         
@@ -351,9 +314,9 @@ class IDORDetector:
         orig_title = IDORDetector._extract_title(original_response)
         mod_title = IDORDetector._extract_title(modified_response)
         
-        if orig_title != mod_title and mod_title and not IDORDetector._is_generic_title(mod_title):
-            analysis['vulnerability_score'] += 0.3
-            analysis['indicators'].append('different_meaningful_titles')
+        if orig_title != mod_title and mod_title:
+            analysis['vulnerability_score'] += 0.4
+            analysis['indicators'].append('different_titles')
             analysis['evidence_details']['title_change'] = f'"{orig_title}" -> "{mod_title}"'
         
         # 6. Data pattern analysis
