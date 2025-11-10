@@ -152,55 +152,19 @@ class IDORDetector:
     @staticmethod
     def is_parameter_testable(param_name: str, url: str = "", form_context: str = "", param_value: str = "") -> bool:
         """
-        AGGRESSIVE parameter analysis - test almost everything with numeric values
+        SUPER SIMPLE - test EVERYTHING except passwords!
         """
         if not param_name or not param_value:
             return False
             
         param_lower = param_name.lower().strip()
-        url_lower = url.lower()
-        value_analysis = IDORDetector._analyze_parameter_value(param_value, param_name)
         
-        # Only exclude obvious authentication parameters
-        excluded_params = {
-            'username', 'password', 'email', 'login', 'passwd', 'pass', 'pwd',
-            'csrf_token', 'token', '_token', 'submit'
-        }
-        
-        if param_lower in excluded_params:
+        # ONLY exclude passwords and tokens
+        if param_lower in ['username', 'password', 'email', 'login', 'passwd', 'pass', 'pwd', 'csrf_token', 'token', '_token', 'submit']:
             return False
         
-        # Only exclude authentication URLs
-        excluded_contexts = ['login', 'register', 'signup', 'newuser', 'auth']
-        if any(context in url_lower for context in excluded_contexts):
-            return False
-        
-        # AGGRESSIVE IDOR DETECTION - Test EVERYTHING with numeric values
-        
-        # 1. ANY numeric parameter gets tested
-        if value_analysis['type'] == 'numeric':
-            return True
-        
-        # 2. ANY alphanumeric parameter gets tested
-        if value_analysis['type'] == 'alphanumeric':
-            return True
-        
-        # 3. ANY file path parameter gets tested
-        if value_analysis['type'] == 'file_path':
-            return True
-        
-        # 4. ANY parameter with mixed content that has numbers
-        if value_analysis['type'] == 'mixed' and value_analysis['numeric_part']:
-            return True
-        
-        # 5. Even text parameters if they look like IDs
-        if value_analysis['type'] == 'text':
-            # Test if parameter name suggests it's an ID
-            id_hints = ['id', 'code', 'ref', 'key', 'item', 'product', 'file', 'doc', 'page', 'cat', 'category', 'artist', 'author', 'pic', 'image', 'img']
-            if any(hint in param_lower for hint in id_hints):
-                return True
-        
-        return False
+        # Test EVERYTHING ELSE!
+        return True
 
     @staticmethod
     def detect_idor(original_response: str, modified_response: str,
@@ -211,7 +175,7 @@ class IDORDetector:
                     url: str = "",
                     http_method: str = "GET") -> Tuple[bool, str, str]:
         """
-        Enhanced IDOR detection with intelligent response analysis
+        SUPER SIMPLE IDOR detection - if responses are different, it's IDOR!
         Returns (is_vulnerable, confidence_level, evidence)
         """
         if original_headers is None:
@@ -219,38 +183,26 @@ class IDORDetector:
         if modified_headers is None:
             modified_headers = {}
         
-        # Pre-filter: Exclude non-IDOR parameters using intelligent analysis
-        if parameter_name and not IDORDetector.is_parameter_testable(parameter_name, url, "", ""):
-            return False, 'excluded', f'Parameter "{parameter_name}" excluded from IDOR testing based on context analysis'
+        # STEP 1: Both responses must be successful
+        if original_code != 200 or modified_code != 200:
+            return False, 'low', f'One or both responses not HTTP 200 (original: {original_code}, modified: {modified_code})'
         
-        # Enhanced response analysis
-        analysis_result = IDORDetector._enhanced_response_analysis(
-            original_response, modified_response, 
-            original_code, modified_code,
-            original_headers, modified_headers,
-            parameter_name, url
-        )
+        # STEP 2: Responses must be different
+        if original_response.strip() == modified_response.strip():
+            return False, 'low', 'Responses are identical - no IDOR'
         
-        # Decision logic based on enhanced analysis - LOWER THRESHOLD
-        if analysis_result['vulnerability_score'] >= 0.5:
-            confidence = 'high'
-        elif analysis_result['vulnerability_score'] >= 0.2:
-            confidence = 'medium'
-        else:
-            confidence = 'low'
+        # STEP 3: Size difference check - ANY difference is IDOR
+        size_diff = abs(len(original_response) - len(modified_response))
+        if size_diff > 10:  # Even 10 bytes difference = IDOR
+            evidence = f"IDOR DETECTED: Response size difference of {size_diff} bytes indicates different content returned"
+            return True, 'high', evidence
         
-        is_vulnerable = analysis_result['vulnerability_score'] >= 0.2
+        # STEP 4: Content difference check - ANY content difference is IDOR
+        if original_response != modified_response:
+            evidence = f"IDOR DETECTED: Response content is different - parameter '{parameter_name}' allows access to different objects"
+            return True, 'high', evidence
         
-        if is_vulnerable:
-            # Generate comprehensive evidence
-            evidence = IDORDetector._build_comprehensive_evidence(
-                analysis_result, parameter_name, url, 
-                original_response, modified_response
-            )
-        else:
-            evidence = analysis_result.get('reason', 'No significant differences detected')
-        
-        return is_vulnerable, confidence, evidence
+        return False, 'low', 'No differences detected'
 
     @staticmethod
     def _enhanced_response_analysis(original_response: str, modified_response: str,

@@ -5292,8 +5292,7 @@ class VulnScanner:
                         )
                         
                         if is_vulnerable:
-                            evidence = f"The GET parameter '{param}' appears to be vulnerable. Accessing with ID '{test_value}' was successful (original was '{original_value}')."
-                            print(f"    [IDOR] *** VULNERABILITY CONFIRMED: {param}={test_value} (was {original_value}) ***")
+                            print(f"    [IDOR] *** IDOR FOUND: {param}={test_value} (was {original_value}) - {evidence} ***")
                             results.append(self._create_idor_vulnerability(base_url, 'GET', param, test_value, evidence, test_url, modified_response.text))
                             self.found_vulnerabilities.add(param_key)
                             self.scan_stats['payload_stats']['idor']['successful_payloads'] += 1
@@ -5366,8 +5365,7 @@ class VulnScanner:
                             )
                             
                             if is_vulnerable:
-                                evidence = f"The form parameter '{param}' appears to be vulnerable. Accessing with ID '{test_value}' was successful (original was '{original_value}')."
-                                print(f"    [IDOR] *** FORM VULNERABILITY CONFIRMED: {param}={test_value} (was {original_value}) ***")
+                                print(f"    [IDOR] *** FORM IDOR FOUND: {param}={test_value} (was {original_value}) - {evidence} ***")
                                 results.append(self._create_idor_vulnerability(base_url, form_method, param, test_value, evidence, test_url, modified_response.text))
                                 self.found_vulnerabilities.add(param_key)
                                 self.scan_stats['payload_stats']['idor']['successful_payloads'] += 1
