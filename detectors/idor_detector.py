@@ -25,16 +25,67 @@ class IDORDetector:
             'folder_id', 'folderid', 'category_id', 'categoryid',
             'group_id', 'groupid', 'team_id', 'teamid', 'project_id', 'projectid',
             
-            # XVWA specific patterns
-            'user', 'username', 'email', 'phone', 'number', 'code',
+            # XVWA specific patterns (excluding login-related parameters)
+            'user', 'phone', 'number', 'code',
             'record', 'entry', 'data', 'info', 'details'
         ]
+
+    @staticmethod
+    def get_excluded_parameters() -> List[str]:
+        """Get parameter names that should NOT be tested for IDOR (login forms, etc.)"""
+        return [
+            # Login form parameters
+            'username', 'email', 'login', 'user_name', 'user_email',
+            'password', 'passwd', 'pass', 'pwd', 'user_password',
+            
+            # Registration form parameters
+            'confirm_password', 'password_confirm', 'repeat_password',
+            'first_name', 'last_name', 'full_name', 'name',
+            
+            # Search and filter parameters
+            'search', 'query', 'q', 'filter', 'sort', 'order',
+            'page', 'limit', 'offset', 'per_page',
+            
+            # CSRF and security tokens
+            'csrf_token', 'token', '_token', 'authenticity_token',
+            'nonce', '_nonce', 'security_token',
+            
+            # Form control parameters
+            'submit', 'action', 'method', 'redirect', 'return_url'
+        ]
+
+    @staticmethod
+    def is_parameter_testable(param_name: str, url: str = "", form_context: str = "") -> bool:
+        """Check if parameter should be tested for IDOR based on context"""
+        param_lower = param_name.lower()
+        url_lower = url.lower()
+        context_lower = form_context.lower()
+        
+        # Exclude parameters that are clearly not IDOR candidates
+        excluded = IDORDetector.get_excluded_parameters()
+        if param_lower in excluded:
+            return False
+        
+        # Exclude if URL suggests login/auth context
+        auth_indicators = ['login', 'auth', 'signin', 'register', 'signup', 'forgot', 'reset']
+        if any(indicator in url_lower for indicator in auth_indicators):
+            return False
+        
+        # Exclude if form context suggests login/auth
+        if any(indicator in context_lower for indicator in ['login', 'sign in', 'authentication']):
+            return False
+        
+        # Only test parameters that look like IDs or references
+        idor_params = IDORDetector.get_idor_parameters()
+        return param_lower in idor_params or param_lower.endswith('_id') or param_lower.endswith('id')
 
     @staticmethod
     def detect_idor(original_response: str, modified_response: str,
                     original_code: int, modified_code: int, 
                     original_headers: Dict[str, str] = None,
-                    modified_headers: Dict[str, str] = None) -> Tuple[bool, str, str]:
+                    modified_headers: Dict[str, str] = None,
+                    parameter_name: str = "",
+                    url: str = "") -> Tuple[bool, str, str]:
         """
         Enhanced IDOR detection by comparing original and modified responses.
         Returns (is_vulnerable, confidence_level, evidence)
@@ -43,6 +94,10 @@ class IDORDetector:
             original_headers = {}
         if modified_headers is None:
             modified_headers = {}
+        
+        # 0. Pre-check: Skip if parameter shouldn't be tested for IDOR
+        if parameter_name and not IDORDetector.is_parameter_testable(parameter_name, url, original_response):
+            return False, 'low', f'Parameter "{parameter_name}" excluded from IDOR testing (likely login/auth context)'
             
         # 1. Handle redirect responses
         if modified_code in [301, 302, 303, 307, 308]:
@@ -66,29 +121,44 @@ class IDORDetector:
         # 3. Check for empty or minimal responses
         if len(modified_response.strip()) < 50:
             return False, 'low', 'Response too short to be meaningful'
+        
+        # 4. Check if responses are identical (no IDOR)
+        if original_response.strip() == modified_response.strip():
+            return False, 'low', 'Responses are identical - no IDOR detected'
             
-        # 4. Enhanced error detection
+        # 5. Enhanced error detection
         modified_lower = modified_response.lower()
         error_patterns = [
             'error', 'not found', 'access denied', 'forbidden', 
             'login required', 'please log in', 'unauthorized',
             'permission denied', 'invalid request', 'bad request',
             'you are not authorized', 'access restricted',
-            'authentication required', 'session expired'
+            'authentication required', 'session expired',
+            'invalid user', 'user not found', 'no such user'
         ]
         
         if any(pattern in modified_lower for pattern in error_patterns):
             return False, 'low', 'Response contains error indicators'
+        
+        # 6. Check for login form responses (common false positive)
+        login_indicators = [
+            '<input[^>]*type=["\']password["\']',
+            'login', 'sign in', 'authentication',
+            'username.*password', 'email.*password'
+        ]
+        
+        if any(re.search(pattern, modified_lower, re.IGNORECASE) for pattern in login_indicators):
+            return False, 'low', 'Response appears to be a login form'
 
-        # 5. Compare response characteristics
+        # 7. Compare response characteristics
         analysis = IDORDetector._analyze_response_differences(
             original_response, modified_response, original_headers, modified_headers
         )
         
-        # 6. Determine vulnerability based on analysis
-        if analysis['different_content'] and analysis['confidence'] > 0.3:
+        # 8. Determine vulnerability based on analysis with stricter thresholds
+        if analysis['different_content'] and analysis['confidence'] > 0.5:
             evidence = IDORDetector._build_evidence(analysis)
-            confidence = 'high' if analysis['confidence'] > 0.7 else 'medium'
+            confidence = 'high' if analysis['confidence'] > 0.8 else 'medium'
             return True, confidence, evidence
         
         return False, 'low', 'Responses are too similar or indicate no IDOR'
@@ -105,7 +175,8 @@ class IDORDetector:
             'title_different': False,
             'personal_data_found': False,
             'structure_different': False,
-            'content_type_same': True
+            'content_type_same': True,
+            'meaningful_difference': False
         }
         
         # Compare content types
@@ -113,43 +184,66 @@ class IDORDetector:
         mod_ct = modified_headers.get('Content-Type', '').lower()
         if orig_ct != mod_ct:
             analysis['content_type_same'] = False
-            analysis['confidence'] += 0.2
+            analysis['confidence'] += 0.1
         
-        # Compare response sizes
+        # Compare response sizes with more strict thresholds
         size_diff = abs(len(original_response) - len(modified_response))
         analysis['size_difference'] = size_diff
-        if size_diff > 100:  # Significant size difference
+        if size_diff > 500:  # More significant size difference required
             analysis['different_content'] = True
-            analysis['confidence'] += 0.3
+            analysis['confidence'] += 0.2
+            analysis['meaningful_difference'] = True
         
-        # Compare titles
+        # Compare titles (but be more careful about generic titles)
         orig_title = IDORDetector._extract_title(original_response)
         mod_title = IDORDetector._extract_title(modified_response)
-        if orig_title != mod_title and mod_title:
+        if orig_title != mod_title and mod_title and not IDORDetector._is_generic_title(mod_title):
             analysis['title_different'] = True
             analysis['different_content'] = True
-            analysis['confidence'] += 0.4
+            analysis['confidence'] += 0.3
+            analysis['meaningful_difference'] = True
         
-        # Check for personal data patterns in modified response
-        if IDORDetector._contains_personal_data(modified_response):
+        # Check for personal data patterns in modified response (but not in original)
+        mod_has_personal = IDORDetector._contains_personal_data(modified_response)
+        orig_has_personal = IDORDetector._contains_personal_data(original_response)
+        
+        if mod_has_personal and not orig_has_personal:
             analysis['personal_data_found'] = True
             analysis['different_content'] = True
-            analysis['confidence'] += 0.5
+            analysis['confidence'] += 0.4
+            analysis['meaningful_difference'] = True
         
-        # Compare HTML structure
+        # Compare HTML structure with better detection
         if IDORDetector._compare_html_structure(original_response, modified_response):
             analysis['structure_different'] = True
             analysis['different_content'] = True
-            analysis['confidence'] += 0.3
+            analysis['confidence'] += 0.2
         
         # Compare content fingerprints
         orig_fingerprint = IDORDetector._get_response_fingerprint(original_response)
         mod_fingerprint = IDORDetector._get_response_fingerprint(modified_response)
         if orig_fingerprint != mod_fingerprint:
             analysis['different_content'] = True
-            analysis['confidence'] += 0.2
+            analysis['confidence'] += 0.1
+        
+        # Reduce confidence if no meaningful differences found
+        if not analysis['meaningful_difference']:
+            analysis['confidence'] *= 0.5
         
         return analysis
+
+    @staticmethod
+    def _is_generic_title(title: str) -> bool:
+        """Check if title is too generic to be meaningful for IDOR detection"""
+        generic_titles = [
+            'xvwa', 'xtreme vulnerable web application',
+            'login', 'sign in', 'authentication',
+            'error', 'not found', '404', '403', '401',
+            'home', 'index', 'main', 'welcome'
+        ]
+        
+        title_lower = title.lower().strip()
+        return any(generic in title_lower for generic in generic_titles)
 
     @staticmethod
     def _extract_title(response: str) -> str:
