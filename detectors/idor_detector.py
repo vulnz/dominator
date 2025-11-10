@@ -25,9 +25,10 @@ class IDORDetector:
             'folder_id', 'folderid', 'category_id', 'categoryid',
             'group_id', 'groupid', 'team_id', 'teamid', 'project_id', 'projectid',
             
-            # XVWA IDOR specific patterns (itemcode is the real IDOR parameter)
-            'itemcode', 'item_code', 'code', 'number', 'phone',
-            'record', 'entry', 'data', 'info', 'details'
+            # XVWA IDOR specific patterns (itemcode and item are real IDOR parameters)
+            'itemcode', 'item_code', 'item', 'code', 'number', 'phone',
+            'record', 'entry', 'data', 'info', 'details', 'product',
+            'product_code', 'sku', 'catalog', 'inventory'
         ]
 
     @staticmethod
@@ -200,11 +201,17 @@ class IDORDetector:
             analysis['confidence'] += 0.4
             analysis['evidence'] += f'Different titles: "{orig_title}" vs "{mod_title}". '
         
-        # Проверка на персональные данные
+        # Проверка на персональные данные и данные товаров
         if IDORDetector._contains_personal_data(modified_response):
             analysis['is_different'] = True
             analysis['confidence'] += 0.5
             analysis['evidence'] += 'Personal data found in response. '
+        
+        # Проверка на данные товаров/продуктов
+        if IDORDetector._contains_item_data(modified_response):
+            analysis['is_different'] = True
+            analysis['confidence'] += 0.4
+            analysis['evidence'] += 'Item/product data found in response. '
         
         # Проверка на пользовательский контент
         user_indicators = ['user:', 'name:', 'email:', 'profile', 'account', 'welcome']
@@ -299,6 +306,27 @@ class IDORDetector:
         ]
         
         for pattern in personal_patterns:
+            if re.search(pattern, response, re.IGNORECASE):
+                return True
+        return False
+    
+    @staticmethod
+    def _contains_item_data(response: str) -> bool:
+        """Check if response contains item/product data patterns"""
+        item_patterns = [
+            r'<b>\s*item\s+(?:code|name|id)\s*:\s*</b>',  # Item Code : 
+            r'<b>\s*product\s+(?:code|name|id)\s*:\s*</b>',  # Product Name :
+            r'<b>\s*(?:price|category|description)\s*:\s*</b>',  # Price : Category :
+            r'item\s*(?:code|name|id)\s*[:=]\s*\S+',
+            r'product\s*(?:code|name|id)\s*[:=]\s*\S+',
+            r'price\s*[:=]\s*[\d,\.]+\$?',
+            r'category\s*[:=]\s*\w+',
+            r'<td><b>(?:item|product|price|category)',
+            r'<img\s+src=.*height=\d+.*weight=\d+',  # Product images
+            r'<option\s+value="[^"]*">[^<]+</option>',  # Select options with items
+        ]
+        
+        for pattern in item_patterns:
             if re.search(pattern, response, re.IGNORECASE):
                 return True
         return False

@@ -31,12 +31,20 @@ class IDORDetector:
             (r'[?&]account_?id=(\d+)', 'Account ID Parameter'),
             (r'[?&]profile_?id=(\d+)', 'Profile ID Parameter'),
             (r'[?&]item_?id=(\d+)', 'Item ID Parameter'),
+            (r'[?&]item=([^&]+)', 'Item Parameter'),
             (r'[?&]itemcode=([^&]+)', 'Item Code Parameter'),
             (r'[?&]code=([^&]+)', 'Code Parameter'),
+            (r'[?&]product_?id=(\d+)', 'Product ID Parameter'),
+            (r'[?&]product=([^&]+)', 'Product Parameter'),
+            (r'[?&]doc_?id=(\d+)', 'Document ID Parameter'),
+            (r'[?&]file_?id=(\d+)', 'File ID Parameter'),
+            (r'[?&]record_?id=(\d+)', 'Record ID Parameter'),
+            (r'[?&]entry_?id=(\d+)', 'Entry ID Parameter'),
             (r'/users?/(\d+)', 'User Path ID'),
             (r'/profiles?/(\d+)', 'Profile Path ID'),
             (r'/accounts?/(\d+)', 'Account Path ID'),
             (r'/items?/(\d+)', 'Item Path ID'),
+            (r'/products?/(\d+)', 'Product Path ID'),
         ]
         
         for pattern, param_type in idor_url_patterns:
@@ -45,14 +53,16 @@ class IDORDetector:
                 # Анализ ответа на наличие пользовательских данных
                 user_data_found = IDORDetector._check_user_data(response_text)
                 sensitive_data_found = IDORDetector._check_sensitive_data(response_text)
+                item_data_found = IDORDetector._check_item_data(response_text)
+                database_content_found = IDORDetector._check_database_content(response_text)
                 
                 # Определение серьезности
                 severity = 'Low'
                 if sensitive_data_found:
                     severity = 'High'
-                elif user_data_found:
+                elif user_data_found or item_data_found:
                     severity = 'Medium'
-                elif len(response_text) > 500:  # Значительный контент
+                elif database_content_found or len(response_text) > 500:  # Значительный контент
                     severity = 'Medium'
                 
                 findings.append({
@@ -63,6 +73,8 @@ class IDORDetector:
                     'parameter_values': matches[:3],
                     'has_user_data': user_data_found,
                     'has_sensitive_data': sensitive_data_found,
+                    'has_item_data': item_data_found,
+                    'has_database_content': database_content_found,
                     'response_size': len(response_text),
                     'description': f'Potential IDOR vulnerability: {param_type} found in URL',
                     'recommendation': 'Implement proper authorization checks for object access',
@@ -72,6 +84,8 @@ class IDORDetector:
                         'response_analysis': {
                             'contains_user_data': user_data_found,
                             'contains_sensitive_data': sensitive_data_found,
+                            'contains_item_data': item_data_found,
+                            'contains_database_content': database_content_found,
                             'response_length': len(response_text)
                         }
                     }
@@ -139,6 +153,47 @@ class IDORDetector:
         
         for pattern in sensitive_patterns:
             if re.search(pattern, response_text, re.IGNORECASE):
+                return True
+        
+        return False
+    
+    @staticmethod
+    def _check_item_data(response_text: str) -> bool:
+        """Check if response contains item/product data that could indicate IDOR"""
+        item_indicators = [
+            r'item\s*(?:code|name|id)\s*[:=]\s*\S+',
+            r'product\s*(?:code|name|id)\s*[:=]\s*\S+',
+            r'<b>\s*item\s+(?:code|name)\s*:\s*</b>',
+            r'<b>\s*product\s+(?:code|name)\s*:\s*</b>',
+            r'<td><b>item\s+(?:code|name)',
+            r'<td><b>product\s+(?:code|name)',
+            r'price\s*[:=]\s*[\d,\.]+\$?',
+            r'category\s*[:=]\s*\w+',
+            r'description\s*[:=]\s*\S+',
+            r'<b>\s*(?:price|category|description)\s*:\s*</b>',
+        ]
+        
+        for pattern in item_indicators:
+            if re.search(pattern, response_text, re.IGNORECASE):
+                return True
+        
+        return False
+    
+    @staticmethod
+    def _check_database_content(response_text: str) -> bool:
+        """Check if response contains structured database content"""
+        db_indicators = [
+            r'<table>.*</table>',
+            r'<tr><td><b>.*:</b>.*</td>',
+            r'htmlspecialchars\(',
+            r'fetch\(PDO::FETCH_NUM\)',
+            r'while\(\$rows\s*=',
+            r'<option\s+value=',
+            r'select.*from.*where',
+        ]
+        
+        for pattern in db_indicators:
+            if re.search(pattern, response_text, re.IGNORECASE | re.DOTALL):
                 return True
         
         return False
