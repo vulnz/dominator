@@ -98,7 +98,8 @@ class IDORDetector:
                     original_headers: Dict[str, str] = None,
                     modified_headers: Dict[str, str] = None,
                     parameter_name: str = "",
-                    url: str = "") -> Tuple[bool, str, str]:
+                    url: str = "",
+                    http_method: str = "GET") -> Tuple[bool, str, str]:
         """
         Enhanced IDOR detection by comparing original and modified responses.
         Returns (is_vulnerable, confidence_level, evidence)
@@ -130,6 +131,14 @@ class IDORDetector:
             if any(auth_url in url.lower() for auth_url in auth_urls):
                 return False, 'excluded', f'Authentication context detected in URL - parameter excluded'
             
+            # Дополнительная проверка: если это POST запрос к странице логина - исключить все параметры
+            if 'login' in url.lower() and http_method.upper() == 'POST':
+                return False, 'excluded', f'POST request to login page - all parameters excluded from IDOR testing'
+            
+            # Исключить POST параметры в формах аутентификации
+            if http_method.upper() == 'POST' and any(auth_param in original_response.lower() for auth_param in ['username', 'password', 'login']):
+                return False, 'excluded', f'POST form with authentication fields - parameter excluded from IDOR testing'
+            
             # Только ID-подобные параметры могут быть уязвимы к IDOR
             valid_idor_patterns = [
                 'id', '_id', 'itemcode', 'item_code', 'code', 'key', 'ref', 'reference',
@@ -141,6 +150,11 @@ class IDORDetector:
             
             if not is_valid_idor_param:
                 return False, 'excluded', f'Parameter "{parameter_name}" is not an ID-like parameter suitable for IDOR testing'
+            
+            # Дополнительная проверка: IDOR обычно встречается в GET параметрах, а не в POST формах
+            # Если это явно форма аутентификации (содержит username/password), исключить
+            if param_lower == 'username' or 'username' in original_response.lower():
+                return False, 'excluded', f'Authentication form detected - parameter excluded from IDOR testing'
             
         # 1. Handle redirect responses
         if modified_code in [301, 302, 303, 307, 308]:
