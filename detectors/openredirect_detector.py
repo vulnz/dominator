@@ -28,10 +28,10 @@ class OpenRedirectDetector:
         
         # Check for HTTP redirects (3xx status codes)
         if 300 <= response_code < 400:
-            location_header = response_headers.get('Location', '').lower()
+            location_header = response_headers.get('Location', '') or response_headers.get('location', '')
             if location_header:
                 # Check if redirect goes to our payload URL
-                if payload_url.lower() in location_header:
+                if payload_url.lower() in location_header.lower():
                     return True, f"HTTP {response_code} redirect to: {location_header}", "redirect_header"
                 
                 # Check for external domain redirects
@@ -43,6 +43,10 @@ class OpenRedirectDetector:
                         return True, f"External redirect to: {redirect_domain}", "external_redirect"
                 except:
                     pass
+        
+        # Also check 200 responses that might contain redirects
+        if response_code == 200 and payload_url.lower() in response_text.lower():
+            return True, f"Payload URL found in response", "response_redirect"
         
         # Check for JavaScript redirects in response content
         js_redirect_patterns = [

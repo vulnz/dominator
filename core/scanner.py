@@ -782,14 +782,9 @@ class VulnScanner:
             # Add main page to testing list
             all_found_pages.append(parsed_data)
             
-            # Always enable crawling unless explicitly disabled with --single-url or --nocrawl
-            skip_crawling = getattr(self.config, 'single_url', False) or getattr(self.config, 'nocrawl', False)
-        
-            if not skip_crawling:
-                # Always crawl for additional pages
-                if self.debug:
-                    print(f"  [DEBUG] Starting enhanced crawler to find additional pages...")
-                crawled_urls = self.crawler.crawl_for_pages(parsed_data['url'])
+            # Простой краулинг через URL parser
+            print(f"  [CRAWLER] Starting page discovery...")
+            crawled_urls = self._discover_pages(parsed_data['url'])
                 
                 # Check for detected WAF and prompt user if --wafiffound is set
                 if self.crawler.detected_wafs and self.waf_if_found and not self.waf:
@@ -1459,49 +1454,8 @@ class VulnScanner:
                         response_preview = response.text[:200].replace('\n', ' ').replace('\r', ' ')
                         print(f"    [XSS] Response preview: {response_preview}...")
                     
-                    # Улучшенная проверка отражения XSS payload с защитой от ложных срабатываний
-                    payload_in_response = False
-                    
-                    # Проверяем точное отражение payload
-                    if payload in response.text:
-                        # Дополнительная проверка контекста - payload должен быть в опасном месте
-                        payload_pos = response.text.find(payload)
-                        context_start = max(0, payload_pos - 50)
-                        context_end = min(len(response.text), payload_pos + len(payload) + 50)
-                        context = response.text[context_start:context_end].lower()
-                        
-                        # Проверяем, что payload находится в HTML контексте, а не в комментариях или скриптах
-                        dangerous_contexts = [
-                            'value="' + payload.lower(),
-                            "value='" + payload.lower(),
-                            '>' + payload.lower() + '<',
-                            'href="' + payload.lower(),
-                            "href='" + payload.lower(),
-                            'src="' + payload.lower(),
-                            "src='" + payload.lower()
-                        ]
-                        
-                        # Исключаем безопасные контексты
-                        safe_contexts = [
-                            '<!--' in context and '-->' in context,  # HTML комментарии
-                            '<script>' in context and '</script>' in context and 'console.log' in context,  # Логирование
-                            'error' in context and 'log' in context,  # Логи ошибок
-                            'debug' in context,  # Отладочная информация
-                        ]
-                        
-                        if any(safe_contexts):
-                            print(f"    [XSS] Payload found in safe context, skipping")
-                            payload_in_response = False
-                        elif any(dangerous in context for dangerous in dangerous_contexts):
-                            payload_in_response = True
-                            print(f"    [XSS] Payload found in dangerous context")
-                        elif '<' in payload and '>' in payload and payload.lower() in context:
-                            # HTML теги должны быть в HTML контексте
-                            payload_in_response = True
-                            print(f"    [XSS] HTML payload found in response")
-                        else:
-                            print(f"    [XSS] Payload found but context unclear, checking further")
-                            payload_in_response = True
+                    # Простая проверка отражения - если payload в ответе, то XSS
+                    payload_in_response = payload in response.text
                     
                     # Используем XSS детектор только как дополнительную проверку
                     xss_detected_by_detector = False
@@ -1878,7 +1832,8 @@ class VulnScanner:
                             test_url,
                             timeout=self.config.timeout,
                             headers=self.config.headers,
-                            verify=False
+                            verify=False,
+                            allow_redirects=False  # Не следуем редиректам для Open Redirect
                         )
                         
                         # Update request count
@@ -5875,50 +5830,82 @@ class VulnScanner:
         return results
 
     def _test_file_upload(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Test for File Upload vulnerabilities"""
+        """Test for File Upload vulnerabilities with proof"""
         results = []
         base_url = parsed_data['url']
         
         try:
-            print(f"    [FILEUPLOAD] Testing for file upload vulnerabilities...")
+            print(f"    [FILEUPLOAD] Testing file upload with proof...")
             
-            # Make request to get page content
-            response = requests.get(
-                base_url,
-                timeout=self.config.timeout,
-                headers=self.config.headers,
-                verify=False
-            )
-            
-            print(f"    [FILEUPLOAD] Response code: {response.status_code}")
-            
-            # Use File Upload detector
-            is_vulnerable, evidence, severity = FileUploadDetector.detect_file_upload_vulnerability(
-                response.text, response.status_code, base_url
-            )
-            
-            if is_vulnerable:
-                print(f"    [FILEUPLOAD] VULNERABILITY FOUND! {evidence}")
+            # Test all forms for file upload
+            forms_data = parsed_data.get('forms', [])
+            for i, form_data in enumerate(forms_data):
+                form_method = form_data.get('method', 'GET').upper()
+                form_action = form_data.get('action', '')
+                form_inputs = form_data.get('inputs', [])
                 
-                response_snippet = FileUploadDetector.get_response_snippet(response.text)
-                remediation = FileUploadDetector.get_remediation_advice()
+                # Check if form has file input
+                has_file_input = any(inp.get('type') == 'file' for inp in form_inputs)
+                if not has_file_input:
+                    continue
                 
-                results.append({
-                    'module': 'fileupload',
-                    'target': base_url,
-                    'vulnerability': 'File Upload Vulnerability',
-                    'severity': severity,
-                    'parameter': 'file_upload_form',
-                    'payload': 'N/A',
-                    'evidence': evidence,
-                    'request_url': base_url,
-                    'detector': 'FileUploadDetector.detect_file_upload_vulnerability',
-                    'response_snippet': response_snippet,
-                    'remediation': remediation,
-                    'method': 'GET'
-                })
-            else:
-                print(f"    [FILEUPLOAD] No file upload vulnerabilities found")
+                print(f"    [FILEUPLOAD] Found file upload form: {form_action}")
+                
+                # Build form URL
+                from urllib.parse import urljoin
+                form_url = urljoin(base_url, form_action)
+                
+                # Try to upload test file
+                try:
+                    files_data = {}
+                    post_data = {}
+                    
+                    for inp in form_inputs:
+                        inp_name = inp.get('name')
+                        inp_type = inp.get('type', 'text')
+                        inp_value = inp.get('value', '')
+                        
+                        if inp_type == 'file' and inp_name:
+                            # Create test file
+                            files_data[inp_name] = ('test.txt', 'DOMINATOR_TEST_FILE', 'text/plain')
+                        elif inp_name and inp_type not in ['submit', 'button']:
+                            post_data[inp_name] = inp_value or 'test'
+                    
+                    if files_data:
+                        upload_response = requests.post(
+                            form_url,
+                            data=post_data,
+                            files=files_data,
+                            timeout=self.config.timeout,
+                            headers=self.config.headers,
+                            verify=False
+                        )
+                        
+                        print(f"    [FILEUPLOAD] Upload response: {upload_response.status_code}")
+                        
+                        # Check if upload was successful
+                        if (upload_response.status_code == 200 and 
+                            ('success' in upload_response.text.lower() or 
+                             'uploaded' in upload_response.text.lower() or
+                             'DOMINATOR_TEST_FILE' in upload_response.text)):
+                            
+                            results.append({
+                                'module': 'fileupload',
+                                'target': form_url,
+                                'vulnerability': 'File Upload Accepted',
+                                'severity': 'High',
+                                'parameter': 'file_upload',
+                                'payload': 'test.txt with DOMINATOR_TEST_FILE content',
+                                'evidence': f'File upload successful - server accepted test file',
+                                'request_url': form_url,
+                                'detector': 'FileUploadDetector.proof_test',
+                                'response_snippet': upload_response.text[:200],
+                                'method': form_method
+                            })
+                            print(f"    [FILEUPLOAD] PROOF: File upload works!")
+                
+                except Exception as e:
+                    print(f"    [FILEUPLOAD] Upload test error: {e}")
             
         except Exception as e:
             print(f"    [FILEUPLOAD] Error during file upload testing: {e}")
