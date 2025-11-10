@@ -1,0 +1,8 @@
+# Patterns to extract URLs from HTML and JavaScript content
+href\s*=\s*["\']([^"\']+)["\']
+src\s*=\s*["\']([^"\']+)["\']
+action\s*=\s*["\']([^"\']+)["\']
+data-url\s*=\s*["\']([^"\']+)["\']
+data-href\s*=\s*["\']([^"\']+)["\']
+window\.location\s*=\s*["\']([^"\']+)["\']
+location\.href\s*=\s*["\']([^"\']+)["\']

@@ -1,0 +1,7 @@
+# Patterns to detect AJAX calls in JavaScript code
+\.ajax\s*\(\s*["\']([^"\']+)["\']
+fetch\s*\(\s*["\']([^"\']+)["\']
+XMLHttpRequest.*?open\s*\(\s*["\'][^"\']*["\']\s*,\s*["\']([^"\']+)["\']
+axios\.[get|post|put|delete]+\s*\(\s*["\']([^"\']+)["\']
+url\s*:\s*["\']([^"\']+)["\']
+action\s*:\s*["\']([^"\']+)["\']

@@ -1,0 +1,18 @@
+# File extensions to skip during crawling, unless they have parameters
+.css
+.js
+.jpg
+.jpeg
+.png
+.gif
+.svg
+.ico
+.pdf
+.zip
+.rar
+.mp3
+.mp4
+.avi
+.mov
+.wmv
+.flv

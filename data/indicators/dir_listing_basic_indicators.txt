@@ -1,0 +1,6 @@
+index of /
+directory listing
+parent directory
+<title>index of
+[to parent directory]
+<pre><a href="../">../</a>

@@ -9,6 +9,7 @@ import json
 from typing import List, Dict, Any, Set
 from urllib.parse import urljoin, urlparse, parse_qs, unquote
 from core.url_parser import URLParser
+from utils.payload_loader import PayloadLoader
 
 # Import passive detectors
 from passive_detectors.security_headers_detector import SecurityHeadersDetector
@@ -141,14 +142,17 @@ class WebCrawler:
         """Extract JavaScript and AJAX endpoints from HTML"""
         try:
             # Extract AJAX URLs from JavaScript
-            ajax_patterns = [
-                r'\.ajax\s*\(\s*["\']([^"\']+)["\']',
-                r'fetch\s*\(\s*["\']([^"\']+)["\']',
-                r'XMLHttpRequest.*?open\s*\(\s*["\'][^"\']*["\']\s*,\s*["\']([^"\']+)["\']',
-                r'axios\.[get|post|put|delete]+\s*\(\s*["\']([^"\']+)["\']',
-                r'url\s*:\s*["\']([^"\']+)["\']',
-                r'action\s*:\s*["\']([^"\']+)["\']'
-            ]
+            ajax_patterns = PayloadLoader.load_patterns('ajax')
+            if not ajax_patterns:
+                print("    [CRAWLER] Warning: AJAX patterns not loaded, using fallback.")
+                ajax_patterns = [
+                    r'\.ajax\s*\(\s*["\']([^"\']+)["\']',
+                    r'fetch\s*\(\s*["\']([^"\']+)["\']',
+                    r'XMLHttpRequest.*?open\s*\(\s*["\'][^"\']*["\']\s*,\s*["\']([^"\']+)["\']',
+                    r'axios\.[get|post|put|delete]+\s*\(\s*["\']([^"\']+)["\']',
+                    r'url\s*:\s*["\']([^"\']+)["\']',
+                    r'action\s*:\s*["\']([^"\']+)["\']'
+                ]
             
             for pattern in ajax_patterns:
                 matches = re.findall(pattern, html_content, re.IGNORECASE)
@@ -159,10 +163,13 @@ class WebCrawler:
                             self.ajax_endpoints.append(full_url)
             
             # Extract JavaScript files for further analysis
-            js_patterns = [
-                r'<script[^>]+src=["\']([^"\']+)["\']',
-                r'<script[^>]*>[^<]*src\s*=\s*["\']([^"\']+)["\']'
-            ]
+            js_patterns = PayloadLoader.load_patterns('js_script')
+            if not js_patterns:
+                print("    [CRAWLER] Warning: JS script patterns not loaded, using fallback.")
+                js_patterns = [
+                    r'<script[^>]+src=["\']([^"\']+)["\']',
+                    r'<script[^>]*>[^<]*src\s*=\s*["\']([^"\']+)["\']'
+                ]
             
             for pattern in js_patterns:
                 matches = re.findall(pattern, html_content, re.IGNORECASE)
@@ -188,15 +195,18 @@ class WebCrawler:
             urls.extend(basic_urls)
             
             # Extract additional URL patterns
-            additional_patterns = [
-                r'href\s*=\s*["\']([^"\']+)["\']',
-                r'src\s*=\s*["\']([^"\']+)["\']',
-                r'action\s*=\s*["\']([^"\']+)["\']',
-                r'data-url\s*=\s*["\']([^"\']+)["\']',
-                r'data-href\s*=\s*["\']([^"\']+)["\']',
-                r'window\.location\s*=\s*["\']([^"\']+)["\']',
-                r'location\.href\s*=\s*["\']([^"\']+)["\']'
-            ]
+            additional_patterns = PayloadLoader.load_patterns('url_extraction')
+            if not additional_patterns:
+                print("    [CRAWLER] Warning: URL extraction patterns not loaded, using fallback.")
+                additional_patterns = [
+                    r'href\s*=\s*["\']([^"\']+)["\']',
+                    r'src\s*=\s*["\']([^"\']+)["\']',
+                    r'action\s*=\s*["\']([^"\']+)["\']',
+                    r'data-url\s*=\s*["\']([^"\']+)["\']',
+                    r'data-href\s*=\s*["\']([^"\']+)["\']',
+                    r'window\.location\s*=\s*["\']([^"\']+)["\']',
+                    r'location\.href\s*=\s*["\']([^"\']+)["\']'
+                ]
             
             for pattern in additional_patterns:
                 matches = re.findall(pattern, html_content, re.IGNORECASE)
@@ -329,10 +339,13 @@ class WebCrawler:
     def _should_skip_url(self, url: str) -> bool:
         """Check if URL should be skipped"""
         # Only skip obvious static files, be less aggressive
-        skip_extensions = [
-            '.css', '.js', '.jpg', '.jpeg', '.png', '.gif', '.svg', '.ico',
-            '.pdf', '.zip', '.rar', '.mp3', '.mp4', '.avi', '.mov', '.wmv', '.flv'
-        ]
+        skip_extensions = PayloadLoader.load_wordlist('skip_extensions')
+        if not skip_extensions:
+            print("    [CRAWLER] Warning: Skip extensions not loaded, using fallback.")
+            skip_extensions = [
+                '.css', '.js', '.jpg', '.jpeg', '.png', '.gif', '.svg', '.ico',
+                '.pdf', '.zip', '.rar', '.mp3', '.mp4', '.avi', '.mov', '.wmv', '.flv'
+            ]
         
         parsed = urlparse(url)
         path = parsed.path.lower()
@@ -534,12 +547,17 @@ class WebCrawler:
         """Extract URLs from sitemap.xml"""
         try:
             from urllib.parse import urljoin
-            sitemap_urls = [
-                urljoin(base_url, '/sitemap.xml'),
-                urljoin(base_url, '/sitemap_index.xml'),
-                urljoin(base_url, '/sitemaps.xml'),
-                urljoin(base_url, '/sitemap/sitemap.xml')
-            ]
+            sitemap_paths = PayloadLoader.load_wordlist('sitemaps')
+            if not sitemap_paths:
+                print("    [CRAWLER] Warning: Sitemap paths not loaded, using fallback.")
+                sitemap_paths = [
+                    '/sitemap.xml',
+                    '/sitemap_index.xml',
+                    '/sitemaps.xml',
+                    '/sitemap/sitemap.xml'
+                ]
+            
+            sitemap_urls = [urljoin(base_url, path) for path in sitemap_paths]
             
             for sitemap_url in sitemap_urls:
                 try:
@@ -738,26 +756,29 @@ class WebCrawler:
         response_lower = response_text.lower()
         
         # Enhanced directory listing indicators
-        directory_indicators = [
-            'index of /',
-            'directory listing',
-            'parent directory',
-            '<title>index of',
-            'directory listing for',
-            '[to parent directory]',
-            'folder.gif',
-            'dir.gif',
-            '[dir]',
-            '[   ]',  # Apache directory listing spacing
-            'last modified',
-            'size</th>',
-            'name</th>',
-            '<pre><a href="../">../</a>',  # Common Apache format
-            '<a href="?c=n;o=d">name</a>',  # Sorting links
-            '<a href="?c=m;o=a">last modified</a>',
-            '<a href="?c=s;o=a">size</a>',
-            '<a href="?c=d;o=a">description</a>'
-        ]
+        directory_indicators = PayloadLoader.load_indicators('directory_listing')
+        if not directory_indicators:
+            print("    [CRAWLER] Warning: Directory listing indicators not loaded, using fallback.")
+            directory_indicators = [
+                'index of /',
+                'directory listing',
+                'parent directory',
+                '<title>index of',
+                'directory listing for',
+                '[to parent directory]',
+                'folder.gif',
+                'dir.gif',
+                '[dir]',
+                '[   ]',
+                'last modified',
+                'size</th>',
+                'name</th>',
+                '<pre><a href="../">../</a>',
+                '<a href="?c=n;o=d">name</a>',
+                '<a href="?c=m;o=a">last modified</a>',
+                '<a href="?c=s;o=a">size</a>',
+                '<a href="?c=d;o=a">description</a>'
+            ]
         
         # Check for multiple indicators to reduce false positives
         indicators_found = sum(1 for indicator in directory_indicators 

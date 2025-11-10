@@ -8159,7 +8159,10 @@ class VulnScanner:
             if parsed.query:
                 query_upper = parsed.query.upper()
                 # Be more specific - only skip if it's clearly Apache directory sorting
-                apache_sort_patterns = ['C=N;O=D', 'C=M;O=A', 'C=S;O=A', 'C=D;O=A']
+                apache_sort_patterns = PayloadLoader.load_patterns('apache_dir_sorting')
+                if not apache_sort_patterns:
+                    apache_sort_patterns = ['C=N;O=D', 'C=M;O=A', 'C=S;O=A', 'C=D;O=A']
+
                 if any(pattern in query_upper for pattern in apache_sort_patterns):
                     return True
             
@@ -8173,21 +8176,21 @@ class VulnScanner:
         response_lower = response_text.lower()
         
         # Directory listing indicators - be more strict
-        directory_indicators = [
-            'index of /',
-            'directory listing',
-            'parent directory',
-            '<title>index of',
-            '[to parent directory]',
-            '<pre><a href="../">../</a>',
-        ]
+        directory_indicators = PayloadLoader.load_indicators('dir_listing_basic')
+        if not directory_indicators:
+            directory_indicators = [
+                'index of /', 'directory listing', 'parent directory',
+                '<title>index of', '[to parent directory]', '<pre><a href="../">../</a>',
+            ]
         
         # Apache-specific indicators
-        apache_indicators = [
-            '<a href="?c=n;o=d">name</a>',
-            '<a href="?c=m;o=a">last modified</a>',
-            '<a href="?c=s;o=a">size</a>'
-        ]
+        apache_indicators = PayloadLoader.load_indicators('dir_listing_apache')
+        if not apache_indicators:
+            apache_indicators = [
+                '<a href="?c=n;o=d">name</a>',
+                '<a href="?c=m;o=a">last modified</a>',
+                '<a href="?c=s;o=a">size</a>'
+            ]
         
         # Count indicators found
         basic_indicators = sum(1 for indicator in directory_indicators 
@@ -8199,7 +8202,9 @@ class VulnScanner:
         # AND it's not an application (like XVWA)
         if basic_indicators >= 2 or apache_indicators_found >= 2:
             # Don't skip if response contains application indicators
-            app_indicators = ['xvwa', 'login', 'vulnerabilities', 'bootstrap', 'jquery']
+            app_indicators = PayloadLoader.load_indicators('dir_listing_app')
+            if not app_indicators:
+                app_indicators = ['xvwa', 'login', 'vulnerabilities', 'bootstrap', 'jquery']
             has_app_content = any(indicator in response_lower for indicator in app_indicators)
             return not has_app_content
         

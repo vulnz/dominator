@@ -1,15 +1,19 @@
-# Directory listing indicators
-Index of /
-Directory Listing
-<title>Index of
-Parent Directory
-[DIR]
+# Indicators for detecting directory listing pages
+index of /
+directory listing
+parent directory
+<title>index of
+directory listing for
+[to parent directory]
+folder.gif
+dir.gif
+[dir]
 [   ]
-<pre>
-<a href="../">../</a>
-Last modified
-Size
-Description
-Apache/
-nginx/
-Microsoft-IIS/
+last modified
+size</th>
+name</th>
+<pre><a href="../">../</a>
+<a href="?c=n;o=d">name</a>
+<a href="?c=m;o=a">last modified</a>
+<a href="?c=s;o=a">size</a>
+<a href="?c=d;o=a">description</a>

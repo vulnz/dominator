@@ -1,0 +1,3 @@
+# Patterns to find JavaScript source files in HTML
+<script[^>]+src=["\']([^"\']+)["\']
+<script[^>]*>[^<]*src\s*=\s*["\']([^"\']+)["\']

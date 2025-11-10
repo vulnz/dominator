@@ -1,0 +1,3 @@
+<a href="?c=n;o=d">name</a>
+<a href="?c=m;o=a">last modified</a>
+<a href="?c=s;o=a">size</a>
