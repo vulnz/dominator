@@ -83,6 +83,12 @@ class WAFDetector:
             'cookies': {},
             'body': r'Sorry, your request has been blocked as it may cause potential threats to the server\'s security',
             'icon': 'fab fa-alibabacloud'
+        },
+        'Qrator Labs': {
+            'headers': {'Server': r'qrator'},
+            'cookies': {'qrator_jsid': r'.*'},
+            'body': r'qrator\.net|qrator_jsid',
+            'icon': 'fas fa-shield-alt'
         }
     }
 
