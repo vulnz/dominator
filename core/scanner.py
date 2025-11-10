@@ -5314,6 +5314,7 @@ class VulnScanner:
                 
                 # Check if this specific parameter is testable
                 if not IDORDetector.is_parameter_testable(param, form_url, form_action, str(original_value)):
+                    print(f"    [IDOR] Skipping form parameter {param} - not suitable for IDOR testing (value: '{original_value}')")
                     continue
 
                 print(f"    [IDOR] Testing form parameter: {param} (original value: '{original_value}') in form with action '{form_action}'")

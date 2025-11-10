@@ -113,26 +113,51 @@ class IDORDetector:
         url_lower = url.lower()
         context_lower = form_context.lower()
         
-        # Exclude only obvious non-IDOR parameters
-        excluded = ['username', 'password', 'email', 'csrf_token', '_token', 'submit', 'search', 'q', 'query']
+        # Exclude obvious non-IDOR parameters - расширенный список
+        excluded = [
+            'username', 'password', 'email', 'csrf_token', '_token', 'submit', 
+            'search', 'q', 'query', 'text', 'message', 'comment', 'content',
+            'description', 'body', 'title', 'subject', 'name', 'firstname', 
+            'lastname', 'phone', 'address', 'city', 'country', 'zip'
+        ]
         if param_lower in excluded:
             return False
         
-        # Exclude only obvious auth/registration contexts
+        # Exclude guestbook and comment forms
+        if any(indicator in url_lower for indicator in ['guestbook', 'comment', 'feedback', 'contact']):
+            return False
+        
+        # Exclude obvious auth/registration contexts
         if any(indicator in url_lower for indicator in ['login', 'register', 'signup', 'newuser']):
             return False
         
-        # MAIN LOGIC: Test parameters that have numeric values or look like IDs
+        # MAIN LOGIC: Only test parameters that actually look like IDs
         if param_value:
             # Test if value is numeric (main IDOR indicator)
-            if param_value.isdigit():
-                return True
+            if param_value.isdigit() and len(param_value) <= 10:
+                # Additional check: parameter name should suggest it's an ID
+                id_indicators = ['id', 'user', 'item', 'product', 'file', 'doc', 'page', 'order', 'account']
+                if any(indicator in param_lower for indicator in id_indicators):
+                    return True
+                # Or if parameter name ends with 'id'
+                if param_lower.endswith('id'):
+                    return True
+                # Or if it's a common ID parameter name
+                if param_lower in ['artist', 'author', 'member', 'player', 'category', 'section']:
+                    return True
+            
             # Test if value is alphanumeric ID-like (e.g., "abc123", "user_456")
             if len(param_value) <= 20 and any(c.isdigit() for c in param_value):
-                return True
+                # Must have ID-like parameter name
+                id_indicators = ['id', 'key', 'ref', 'code']
+                if any(indicator in param_lower for indicator in id_indicators):
+                    return True
         
-        # Test everything else - let the detection logic decide if it's IDOR
-        return True
+        # Don't test parameters without values or with empty values
+        if not param_value or param_value.strip() == '':
+            return False
+        
+        return False
 
     @staticmethod
     def detect_idor(original_response: str, modified_response: str,
@@ -160,7 +185,9 @@ class IDORDetector:
                 'username', 'password', 'email', 'login', 'passwd', 'pass', 'pwd',
                 'csrf_token', 'token', '_token', 'submit', 'uname', 'fname', 'lname',
                 'phone', 'uphone', 'telephone', 'mobile', 'address', 'city', 'state',
-                'fullname', 'name', 'first_name', 'last_name', 'age', 'gender'
+                'fullname', 'name', 'first_name', 'last_name', 'age', 'gender',
+                'text', 'message', 'comment', 'content', 'description', 'body',
+                'title', 'subject', 'feedback', 'review', 'note', 'memo'
             }
             
             # Исключить параметры форм регистрации/аутентификации
