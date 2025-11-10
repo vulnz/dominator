@@ -46,6 +46,8 @@ Usage examples:
                        help='Enable WAF detection and use WAF bypass payloads')
     parser.add_argument('--wafiffound', action='store_true',
                        help='Prompt to enable WAF bypass mode if a WAF is detected')
+    parser.add_argument('--waf-detect', action='store_true',
+                       help='Run only WAF detection and exit')
     parser.add_argument('-m', '--modules', 
                        help='Scanning modules (comma separated)')
     parser.add_argument('--all', action='store_true',
@@ -225,9 +227,18 @@ def process_args(args):
         args.waf = False
     if not hasattr(args, 'wafiffound'):
         args.wafiffound = False
+    if not hasattr(args, 'waf_detect'):
+        args.waf_detect = False
     
     # Apply nocrawl logic
     if args.nocrawl:
         args.single_url = True
     
+    # If only WAF detection is requested, override modules
+    if args.waf_detect:
+        args.modules = 'wafdetect'
+        args.all = False
+        args.nocrawl = True  # WAF detection doesn't need crawling
+        print("WAF detection mode enabled. Running only the WAF detection module.")
+
     return args

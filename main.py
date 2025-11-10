@@ -163,6 +163,11 @@ def main():
         # Set WAF flags from arguments
         scanner.waf = getattr(args, 'waf', False)
         scanner.waf_if_found = getattr(args, 'wafiffound', False)
+
+        # If only WAF detection is requested, adjust config
+        if getattr(args, 'waf_detect', False):
+            config.modules = ['wafdetect']
+            config.nopassive = True # Disable other passive scans
         
         # Set up max time handler if specified
         max_time_handler = None

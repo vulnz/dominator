@@ -93,6 +93,15 @@ except ImportError as e:
 
 # Import detector classes with error handling
 try:
+    from passive_detectors.waf_detector import WAFDetector
+except ImportError as e:
+    print(f"Warning: Could not import WAFDetector: {e}")
+    class WAFDetector:
+        @staticmethod
+        def analyze(headers, response_text, url): return (False, [])
+        @staticmethod
+        def active_detect(url, headers, timeout): return (False, [])
+try:
     from detectors.xss_detector import XSSDetector
 except ImportError as e:
     print(f"Warning: Could not import XSSDetector: {e}")
@@ -610,6 +619,7 @@ class VulnScanner:
         }
         self.stop_requested = False  # Flag for graceful stopping
         self._module_map = {
+            "wafdetect": self._test_waf_detection,
             "xss": self._test_xss,
             "sqli": self._test_sqli,
             "lfi": self._test_lfi,
@@ -5413,6 +5423,53 @@ class VulnScanner:
         
         return results
     
+    def _test_waf_detection(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Run WAF detection module"""
+        results = []
+        base_url = parsed_data['url']
+        
+        print("    [WAF-DETECT] Running WAF detection...")
+        
+        # 1. Run passive analysis to get initial response data
+        try:
+            response = requests.get(
+                base_url,
+                timeout=self.config.timeout,
+                headers=self.config.headers,
+                verify=False
+            )
+            has_passive_waf, passive_findings = WAFDetector.analyze(response.headers, response.text, base_url)
+            if has_passive_waf:
+                results.extend(passive_findings)
+        except Exception as e:
+            print(f"    [WAF-DETECT] Error during passive check: {e}")
+
+        # 2. Run active detection
+        print("    [WAF-DETECT] Running active WAF detection probe...")
+        try:
+            has_active_waf, active_findings = WAFDetector.active_detect(
+                base_url, self.config.headers, self.config.timeout
+            )
+            if has_active_waf:
+                results.extend(active_findings)
+        except Exception as e:
+            print(f"    [WAF-DETECT] Error during active detection: {e}")
+
+        if results:
+            # Deduplicate findings
+            unique_findings = []
+            seen_wafs = set()
+            for finding in results:
+                waf_name = finding.get('waf_name', 'Generic WAF')
+                if waf_name not in seen_wafs:
+                    unique_findings.append(finding)
+                    seen_wafs.add(waf_name)
+            print(f"    [WAF-DETECT] WAF detection complete. Found: {', '.join(seen_wafs) if seen_wafs else 'None'}")
+            return unique_findings
+        
+        print("    [WAF-DETECT] No WAF detected.")
+        return []
+
     def _test_command_injection(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Test for Command Injection vulnerabilities"""
         results = []
@@ -8271,7 +8328,9 @@ class VulnScanner:
                 print(safe_text)
         
         analysis_type = "[PASSIVE]" if is_passive else "[ACTIVE]"
-        safe_print(f"\n  {index}. {analysis_type} {result.get('vulnerability', 'Unknown')}")
+        icon = '🛡️' if result.get('module') == 'wafdetect' else ''
+        
+        safe_print(f"\n  {index}. {icon} {analysis_type} {result.get('vulnerability', 'Unknown')}".strip())
         safe_print(f"     Target: {result.get('target', '')}")
         safe_print(f"     Parameter: {result.get('parameter', '')}")
         safe_print(f"     Module: {result.get('module', '')}")
