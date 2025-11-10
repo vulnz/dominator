@@ -171,14 +171,55 @@ def main():
             config.modules = ['wafdetect']
             config.nopassive = True # Disable other passive scans
         
+        # Enable module coordination for conflict prevention
+        if hasattr(config, 'enable_module_coordination') and config.enable_module_coordination:
+            print("Module coordination enabled - optimizing execution order to prevent conflicts")
+            
+            # If WAF detection is not explicitly requested but other modules are, add it automatically
+            if 'wafdetect' not in config.modules and len(config.modules) > 1:
+                config.modules.insert(0, 'wafdetect')
+                print("WAF detection automatically added for better module coordination")
+        
         # Set up max time handler if specified
         max_time_handler = None
         if args.max_time:
             max_time_handler = MaxTimeHandler(args.max_time, scanner)
             max_time_handler.start()
         
-        # Start scanning
+        # Start scanning with coordination
         start_time = time.time()
+        
+        # Print module execution plan
+        if hasattr(scanner, 'module_execution_order') and len(config.modules) > 1:
+            ordered_modules = [m for m in scanner.module_execution_order if m in config.modules]
+            remaining_modules = [m for m in config.modules if m not in ordered_modules]
+            all_ordered = ordered_modules + remaining_modules
+            
+            print(f"Module execution plan ({len(all_ordered)} modules):")
+            phase_names = {
+                'wafdetect': 'Information Gathering',
+                'technology': 'Information Gathering', 
+                'dirbrute': 'Infrastructure Discovery',
+                'secheaders': 'Security Configuration',
+                'sqli': 'Injection Testing',
+                'xss': 'Injection Testing',
+                'idor': 'Logic Testing',
+                'csrf': 'Logic Testing'
+            }
+            
+            current_phase = ""
+            for i, module in enumerate(all_ordered[:10]):  # Show first 10
+                phase = phase_names.get(module, 'Advanced Testing')
+                if phase != current_phase:
+                    if current_phase:
+                        print()
+                    print(f"  Phase: {phase}")
+                    current_phase = phase
+                print(f"    {i+1}. {module}")
+            
+            if len(all_ordered) > 10:
+                print(f"    ... and {len(all_ordered) - 10} more modules")
+            print()
         
         # Check for timeout during scan
         results = []
@@ -202,6 +243,26 @@ def main():
         
         scan_duration = time.time() - start_time
         print(f"\nScan completed in {scan_duration:.2f} seconds")
+        
+        # Print coordination statistics if available
+        if hasattr(scanner, 'shared_module_data') and scanner.shared_module_data:
+            print("\nModule Coordination Summary:")
+            if 'waf_detected' in scanner.shared_module_data:
+                waf_info = scanner.shared_module_data['waf_detected']
+                if waf_info['detected']:
+                    print(f"  WAF Detection: {', '.join(waf_info['waf_names'])} - bypass mode enabled for subsequent modules")
+                else:
+                    print("  WAF Detection: No WAF detected - normal payloads used")
+            
+            if 'technology_detected' in scanner.shared_module_data:
+                tech_info = scanner.shared_module_data['technology_detected']
+                if tech_info['technologies']:
+                    print(f"  Technology Detection: {len(tech_info['technologies'])} technologies found - context-aware testing enabled")
+            
+            if 'directories_found' in scanner.shared_module_data:
+                dir_info = scanner.shared_module_data['directories_found']
+                if dir_info['directories']:
+                    print(f"  Directory Discovery: {len(dir_info['directories'])} directories found - enhanced path testing enabled")
         
         # Always print results to console first
         scanner.print_results(results)
