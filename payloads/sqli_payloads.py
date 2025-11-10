@@ -29,3 +29,8 @@ class SQLiPayloads:
     def get_all_payloads():
         """Get all SQL injection payloads from text file"""
         return PayloadLoader.load_payloads('sqli')
+
+    @staticmethod
+    def get_waf_bypass_payloads():
+        """Get WAF bypass SQL injection payloads"""
+        return PayloadLoader.load_payloads('sqli_waf_bypass')

@@ -230,3 +230,8 @@ class CommandInjectionPayloads:
         """Get blind command injection payloads"""
         all_payloads = PayloadLoader.load_payloads('command_injection')
         return [p for p in all_payloads if any(keyword in p.lower() for keyword in ['sleep', 'ping', 'timeout'])]
+
+    @staticmethod
+    def get_waf_bypass_payloads() -> List[str]:
+        """Get WAF bypass command injection payloads"""
+        return PayloadLoader.load_payloads('command_injection_waf_bypass')

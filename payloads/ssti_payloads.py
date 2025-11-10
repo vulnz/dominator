@@ -36,6 +36,11 @@ class SSTIPayloads:
     def get_all_payloads() -> List[str]:
         """Get all SSTI payloads from text file"""
         return PayloadLoader.load_payloads('ssti')
+
+    @staticmethod
+    def get_waf_bypass_payloads() -> List[str]:
+        """Get WAF bypass SSTI payloads"""
+        return PayloadLoader.load_payloads('ssti_waf_bypass')
     
     @staticmethod
     def get_engine_specific_payloads() -> Dict[str, List[str]]:

