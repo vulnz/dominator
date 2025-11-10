@@ -7,7 +7,32 @@
     <title>Dominator Security Scan Report</title>
     <link rel="icon" type="image/x-icon" id="dynamic-favicon">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-   
+    <style>
+        .grouped-items {
+            padding-left: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #f0f0f0;
+            border-radius: 4px;
+        }
+        .grouped-item {
+            border-bottom: 1px solid #eee;
+            padding: 10px;
+            font-size: 0.9em;
+        }
+        .grouped-item:last-child {
+            border-bottom: none;
+        }
+        .code-block {
+            background-color: #f5f5f5;
+            padding: 5px;
+            border-radius: 3px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            word-break: break-all;
+            margin-top: 5px;
+        }
+    </style>
 </head>
 <body>
     <div class="header">
@@ -188,6 +213,48 @@
     
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
+        function groupVulnerabilities(vulns) {
+            if (!vulns || vulns.length === 0) return [];
+            
+            const groups = {};
+            vulns.forEach(vuln => {
+                const key = vuln.vulnerability;
+                if (!groups[key]) {
+                    groups[key] = [];
+                }
+                groups[key].push(vuln);
+            });
+
+            const result = [];
+            for (const key in groups) {
+                const items = groups[key];
+                if (items.length > 1 && key !== 'Technologies Detected (5 found)') { // Simple exclusion for already grouped-like items
+                    const severities = ['Info', 'Low', 'Medium', 'High', 'Critical'];
+                    const maxSeverity = items.reduce((max, item) => {
+                        const maxIndex = severities.indexOf(max);
+                        const itemIndex = severities.indexOf(item.severity);
+                        return itemIndex > maxIndex ? item.severity : max;
+                    }, 'Info');
+
+                    const group = {
+                        ...items[0], // Use first item as a template
+                        is_grouped: true,
+                        vulnerability: `${key} (${items.length} instances)`,
+                        items: items,
+                        severity: maxSeverity,
+                        cvss: Math.max(...items.map(item => parseFloat(item.cvss) || 0)).toString(),
+                    };
+                    const targets = [...new Set(items.map(item => item.target))];
+                    group.target = targets.length > 2 ? `${targets.slice(0, 2).join(', ')}... and ${targets.length-2} more` : targets.join(', ');
+                    group.parameter = `${items.length} findings`;
+                    result.push(group);
+                } else {
+                    result.push(...items);
+                }
+            }
+            return result.sort((a, b) => (parseFloat(b.cvss) || 0) - (parseFloat(a.cvss) || 0));
+        }
+
         // Report data will be injected here
         let reportData;
         try {
@@ -29992,45 +30059,65 @@
                     </div>
                 </div>
                 <div class="vuln-details" id="details-${index}">
-                    <div class="detail-section">
-                        <h4><i class="fas fa-info-circle"></i> Evidence</h4>
-                        <div class="detail-content">${vuln.evidence}</div>
-                    </div>
-                    <div class="detail-section">
-                        <h4><i class="fas fa-code"></i> Payload</h4>
-                        <div class="detail-content">${vuln.payload}</div>
-                    </div>
-                    <div class="detail-section">
-                        <h4><i class="fas fa-link"></i> Request Details</h4>
-                        <div class="detail-content">
-                            <strong>URL:</strong> ${vuln.request_url}<br>
-                            <strong>HTTP Method:</strong> ${vuln.http_method || vuln.method || 'Unknown'}<br>
-                            ${vuln.url_parameters && vuln.url_parameters.length > 0 ? 
-                                `<strong>Parameters:</strong> ${vuln.url_parameters.map(p => `${p.name}=${p.values.join(',')}`).join(', ')}<br>` : ''}
-                            ${vuln.form_details && vuln.form_details.action ? 
-                                `<strong>Form Action:</strong> ${vuln.form_details.action}<br>
-                                 <strong>Form Method:</strong> ${vuln.form_details.method}<br>
-                                 <strong>Form Inputs:</strong> ${vuln.form_details.input_count || 0}<br>` : ''}
+                    ${vuln.is_grouped ? `
+                        <div class="detail-section">
+                            <h4><i class="fas fa-info-circle"></i> Description</h4>
+                            <div class="detail-content">${vuln.evidence}</div>
                         </div>
-                    </div>
-                    ${vuln.form_details && vuln.form_details.length > 0 ? `
-                    <div class="detail-section">
-                        <h4><i class="fas fa-wpforms"></i> Form Details</h4>
-                        <div class="detail-content">
-                            ${vuln.form_details.map(form => `
-                                <strong>Form:</strong> ${form.method} ${form.action}<br>
-                                <strong>Inputs:</strong> ${form.inputs ? form.inputs.map(inp => `${inp.name}(${inp.type})`).join(', ') : 'None'}<br>
-                                <strong>CSRF Protected:</strong> ${form.has_csrf_token ? 'Yes' : 'No'}<br>
-                            `).join('<br>')}
+                        <div class="detail-section">
+                            <h4><i class="fas fa-list-ul"></i> Affected Items (${vuln.items.length})</h4>
+                            <div class="grouped-items">
+                            ${vuln.items.map(item => `
+                                <div class="grouped-item">
+                                    <div><strong><i class="fas fa-globe"></i> Target:</strong> <a href="${item.request_url}" target="_blank">${item.target}</a></div>
+                                    ${item.parameter ? `<div><strong><i class="fas fa-tag"></i> Parameter:</strong> ${item.parameter}</div>` : ''}
+                                    ${item.evidence ? `<div><strong><i class="fas fa-info-circle"></i> Evidence:</strong> ${item.evidence}</div>` : ''}
+                                    ${item.response_snippet ? `<div class="code-block"><strong>Snippet:</strong> ${item.response_snippet}</div>` : ''}
+                                </div>
+                            `).join('')}
+                            </div>
                         </div>
-                    </div>
-                    ` : ''}
-                    ${vuln.response_snippet ? `
-                    <div class="detail-section">
-                        <h4><i class="fas fa-file-code"></i> Response Snippet</h4>
-                        <div class="detail-content">${vuln.response_snippet}</div>
-                    </div>
-                    ` : ''}
+                    ` : `
+                        <div class="detail-section">
+                            <h4><i class="fas fa-info-circle"></i> Evidence</h4>
+                            <div class="detail-content">${vuln.evidence}</div>
+                        </div>
+                        <div class="detail-section">
+                            <h4><i class="fas fa-code"></i> Payload</h4>
+                            <div class="detail-content">${vuln.payload}</div>
+                        </div>
+                        <div class="detail-section">
+                            <h4><i class="fas fa-link"></i> Request Details</h4>
+                            <div class="detail-content">
+                                <strong>URL:</strong> ${vuln.request_url}<br>
+                                <strong>HTTP Method:</strong> ${vuln.http_method || vuln.method || 'Unknown'}<br>
+                                ${vuln.url_parameters && vuln.url_parameters.length > 0 ? 
+                                    `<strong>Parameters:</strong> ${vuln.url_parameters.map(p => `${p.name}=${p.values.join(',')}`).join(', ')}<br>` : ''}
+                                ${vuln.form_details && vuln.form_details.action ? 
+                                    `<strong>Form Action:</strong> ${vuln.form_details.action}<br>
+                                     <strong>Form Method:</strong> ${vuln.form_details.method}<br>
+                                     <strong>Form Inputs:</strong> ${vuln.form_details.input_count || 0}<br>` : ''}
+                            </div>
+                        </div>
+                        ${vuln.form_details && vuln.form_details.length > 0 ? `
+                        <div class="detail-section">
+                            <h4><i class="fas fa-wpforms"></i> Form Details</h4>
+                            <div class="detail-content">
+                                ${vuln.form_details.map(form => `
+                                    <strong>Form:</strong> ${form.method} ${form.action}<br>
+                                    <strong>Inputs:</strong> ${form.inputs ? form.inputs.map(inp => `${inp.name}(${inp.type})`).join(', ') : 'None'}<br>
+                                    <strong>CSRF Protected:</strong> ${form.has_csrf_token ? 'Yes' : 'No'}<br>
+                                `).join('<br>')}
+                            </div>
+                        </div>
+                        ` : ''}
+                        ${vuln.response_snippet ? `
+                        <div class="detail-section">
+                            <h4><i class="fas fa-file-code"></i> Response Snippet</h4>
+                            <div class="detail-content">${vuln.response_snippet}</div>
+                        </div>
+                        ` : ''}
+                    `}
                     ${vuln.screenshot_base64 ? `
                     <div class="detail-section">
                         <h4><i class="fas fa-camera"></i> Proof of Concept Screenshot</h4>
