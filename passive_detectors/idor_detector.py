@@ -67,17 +67,22 @@ class IDORDetector:
                 
                 # Generate test values for manual testing
                 test_suggestions = []
+                proof_examples = {}
                 if matches:
                     original_value = matches[0]
                     param_name = IDORDetector._extract_parameter_name(pattern)
                     test_values = IDORDetector._generate_test_values(original_value, param_name)
+                    
+                    # Generate detailed proof examples
+                    proof_examples = IDORDetector.generate_idor_proof_examples(url, param_name, original_value)
                     
                     for test_value in test_values:
                         test_url = url.replace(f'{param_name}={original_value}', f'{param_name}={test_value}')
                         test_suggestions.append({
                             'test_value': test_value,
                             'test_url': test_url,
-                            'description': f'Test with {param_name}={test_value}'
+                            'description': f'Test with {param_name}={test_value}',
+                            'expected_result': f'Should show different content if IDOR exists'
                         })
                 
                 findings.append({
@@ -92,12 +97,14 @@ class IDORDetector:
                     'has_database_content': database_content_found,
                     'response_size': len(response_text),
                     'test_suggestions': test_suggestions[:3],  # First 3 test suggestions
-                    'description': f'Potential IDOR vulnerability: {param_type} found in URL',
-                    'recommendation': 'Implement proper authorization checks for object access. Test manually with suggested values.',
+                    'proof_examples': proof_examples,
+                    'description': f'Potential IDOR vulnerability: {param_type} found in URL. Original value: {original_value}',
+                    'recommendation': f'MANUAL TEST REQUIRED: 1) Access original URL, 2) Try test URLs: {", ".join([t["test_url"] for t in test_suggestions[:2]])}, 3) Compare responses - different content indicates IDOR.',
                     'evidence': {
                         'url_pattern': pattern,
                         'found_values': matches[:3],
                         'suggested_tests': test_suggestions[:3],
+                        'proof_of_concept': proof_examples,
                         'response_analysis': {
                             'contains_user_data': user_data_found,
                             'contains_sensitive_data': sensitive_data_found,
@@ -154,6 +161,43 @@ class IDORDetector:
                 return True
         
         return False
+    
+    @staticmethod
+    def generate_idor_proof_examples(url: str, parameter_name: str, original_value: str) -> Dict[str, Any]:
+        """Generate proof-of-concept examples for IDOR testing"""
+        test_values = IDORDetector._generate_test_values(original_value, parameter_name)
+        
+        examples = {
+            'original_request': {
+                'url': url,
+                'parameter': f'{parameter_name}={original_value}',
+                'description': 'Original request'
+            },
+            'test_requests': [],
+            'manual_test_steps': [
+                f'1. Access original URL: {url}',
+                f'2. Note the content/data returned',
+                f'3. Try test URLs below and compare responses:',
+            ]
+        }
+        
+        for i, test_value in enumerate(test_values):
+            test_url = url.replace(f'{parameter_name}={original_value}', f'{parameter_name}={test_value}')
+            examples['test_requests'].append({
+                'url': test_url,
+                'parameter': f'{parameter_name}={test_value}',
+                'description': f'Test request {i+1}: Change {parameter_name} to {test_value}',
+                'expected_if_vulnerable': 'Different content/data should be returned'
+            })
+            examples['manual_test_steps'].append(f'   - {test_url}')
+        
+        examples['manual_test_steps'].extend([
+            '4. If different content is returned for different parameter values,',
+            '   this confirms IDOR vulnerability',
+            '5. Check if you can access other users\' data or unauthorized resources'
+        ])
+        
+        return examples
     
     @staticmethod
     def _extract_parameter_name(pattern: str) -> str:

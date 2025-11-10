@@ -220,7 +220,9 @@ class IDORDetector:
         analysis = IDORDetector._simple_response_analysis(original_response, modified_response)
         
         if analysis['is_different'] and analysis['confidence'] > 0.3:
-            evidence = f"Response analysis: {analysis['evidence']}"
+            # Generate test examples for the evidence
+            test_examples = IDORDetector._generate_test_examples(url, parameter_name, original_response, modified_response)
+            evidence = f"Response analysis: {analysis['evidence']} {test_examples}"
             confidence = 'high' if analysis['confidence'] > 0.7 else 'medium'
             return True, confidence, evidence
         
@@ -479,6 +481,40 @@ class IDORDetector:
             'file_id': ['1', '2', '10'],
             'doc_id': ['1', '2', '100'],
         }
+    
+    @staticmethod
+    def _generate_test_examples(url: str, parameter_name: str, original_response: str, modified_response: str) -> str:
+        """Generate test examples showing IDOR vulnerability"""
+        examples = []
+        
+        # Extract parameter value from URL
+        param_match = re.search(f'{parameter_name}=([^&]+)', url)
+        if param_match:
+            original_value = param_match.group(1)
+            test_values = IDORDetector.get_idor_test_values(original_value, parameter_name)
+            
+            # Create example URLs
+            for i, test_value in enumerate(test_values[:2]):  # Show first 2 examples
+                test_url = url.replace(f'{parameter_name}={original_value}', f'{parameter_name}={test_value}')
+                examples.append(f"Test {i+1}: {test_url}")
+        
+        # Add response comparison info
+        orig_size = len(original_response)
+        mod_size = len(modified_response)
+        size_diff = abs(orig_size - mod_size)
+        
+        if size_diff > 0:
+            examples.append(f"Response size difference: {size_diff} bytes")
+        
+        # Check for different content types
+        orig_title = IDORDetector._extract_title(original_response)
+        mod_title = IDORDetector._extract_title(modified_response)
+        if orig_title != mod_title:
+            examples.append(f"Different content: '{orig_title}' vs '{mod_title}'")
+        
+        if examples:
+            return "Examples: " + " | ".join(examples)
+        return ""
     
     @staticmethod
     def get_remediation_advice() -> str:
