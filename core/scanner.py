@@ -1631,20 +1631,8 @@ class VulnScanner:
                 print(f"    [XSS] Testing form {i+1} with method: {form_method}")
                 
                 # Build form URL with better URL construction
-                if form_action.startswith('/'):
-                    # Для абсолютных путей сохраняем порт из исходного URL
-                    if parsed_data.get('port'):
-                        form_url = f"{parsed_data['scheme']}://{parsed_data['host']}:{parsed_data['port']}{form_action}"
-                    else:
-                        form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
-                elif form_action.startswith('http'):
-                    form_url = form_action
-                elif form_action:
-                    # Handle relative URLs
-                    base_path = '/'.join(base_url.split('/')[:-1]) if base_url.count('/') > 3 else base_url.rstrip('/')
-                    form_url = f"{base_path}/{form_action}"
-                else:
-                    form_url = base_url
+                from urllib.parse import urljoin
+                form_url = urljoin(base_url, form_action)
                 
                 print(f"    [XSS] Form URL resolved to: {form_url}")
                 
@@ -2022,26 +2010,8 @@ class VulnScanner:
                 print(f"    [SQLI] Testing {form_method} form {i+1}: {form_action}")
                 
                 # Build form URL - ИСПРАВЛЕНО для правильной обработки относительных путей
-                if form_action.startswith('/'):
-                    # Для абсолютных путей сохраняем порт из исходного URL
-                    if parsed_data.get('port'):
-                        form_url = f"{parsed_data['scheme']}://{parsed_data['host']}:{parsed_data['port']}{form_action}"
-                    else:
-                        form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
-                elif form_action.startswith('http'):
-                    form_url = form_action
-                elif form_action:
-                    # Для относительных URL используем базовый URL с портом
-                    from urllib.parse import urlparse
-                    parsed_base = urlparse(base_url)
-                    if parsed_base.port:
-                        base_domain = f"{parsed_base.scheme}://{parsed_base.hostname}:{parsed_base.port}"
-                    else:
-                        base_domain = f"{parsed_base.scheme}://{parsed_base.hostname}"
-                    form_url = f"{base_domain}/{form_action}"
-                    print(f"    [STOREDXSS] Relative form action '{form_action}' resolved to: {form_url}")
-                else:
-                    form_url = base_url
+                from urllib.parse import urljoin
+                form_url = urljoin(base_url, form_action)
                 
                 # Test each form input
                 for input_data in form_inputs:
@@ -2302,22 +2272,8 @@ class VulnScanner:
                 print(f"    [LFI] Testing {form_method} form {i+1}: {form_action}")
                 
                 # Build form URL with proper port handling
-                if form_action.startswith('/'):
-                    # Для абсолютных путей сохраняем порт из исходного URL
-                    from urllib.parse import urlparse
-                    parsed_base = urlparse(base_url)
-                    if parsed_base.port:
-                        form_url = f"{parsed_base.scheme}://{parsed_base.hostname}:{parsed_base.port}{form_action}"
-                    else:
-                        form_url = f"{parsed_base.scheme}://{parsed_base.hostname}{form_action}"
-                elif form_action.startswith('http'):
-                    form_url = form_action
-                elif form_action:
-                    # Handle relative URLs
-                    base_path = '/'.join(base_url.split('/')[:-1]) if base_url.count('/') > 3 else base_url.rstrip('/')
-                    form_url = f"{base_path}/{form_action}"
-                else:
-                    form_url = base_url
+                from urllib.parse import urljoin
+                form_url = urljoin(base_url, form_action)
                 
                 # Test each form input
                 for input_data in form_inputs:
@@ -3120,13 +3076,7 @@ class VulnScanner:
                     test_params = parsed_data['query_params'].copy()
                     test_params[param] = [payload]
                     
-                    # Build query string
-                    query_parts = []
-                    for k, v_list in test_params.items():
-                        for v in v_list:
-                            query_parts.append(f"{k}={v}")
-                    
-                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    test_url = self._build_test_url(base_url, test_params)
                     print(f"    [DIRTRAVERSAL] Request URL: {test_url}")
                     
                     response = requests.get(
@@ -3391,13 +3341,7 @@ class VulnScanner:
                     test_params = parsed_data['query_params'].copy()
                     test_params[param] = [payload]
                     
-                    # Build query string
-                    query_parts = []
-                    for k, v_list in test_params.items():
-                        for v in v_list:
-                            query_parts.append(f"{k}={v}")
-                    
-                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    test_url = self._build_test_url(base_url, test_params)
                     print(f"    [SSRF] Request URL: {test_url}")
                     
                     response = requests.get(
@@ -3655,13 +3599,7 @@ class VulnScanner:
                     test_params = parsed_data['query_params'].copy()
                     test_params[param] = [payload]
                     
-                    # Build query string
-                    query_parts = []
-                    for k, v_list in test_params.items():
-                        for v in v_list:
-                            query_parts.append(f"{k}={v}")
-                    
-                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    test_url = self._build_test_url(base_url, test_params)
                     print(f"    [RFI] Request URL: {test_url}")
                     
                     response = requests.get(
@@ -3717,21 +3655,8 @@ class VulnScanner:
                 print(f"    [RFI] Testing {form_method} form {i+1}: {form_action}")
                 
                 # Build form URL with proper port handling
-                if form_action.startswith('/'):
-                    from urllib.parse import urlparse
-                    parsed_base = urlparse(base_url)
-                    if parsed_base.port:
-                        form_url = f"{parsed_base.scheme}://{parsed_base.hostname}:{parsed_base.port}{form_action}"
-                    else:
-                        form_url = f"{parsed_base.scheme}://{parsed_base.hostname}{form_action}"
-                elif form_action.startswith('http'):
-                    form_url = form_action
-                elif form_action:
-                    # Handle relative URLs
-                    base_path = '/'.join(base_url.split('/')[:-1]) if base_url.count('/') > 3 else base_url.rstrip('/')
-                    form_url = f"{base_path}/{form_action}"
-                else:
-                    form_url = base_url
+                from urllib.parse import urljoin
+                form_url = urljoin(base_url, form_action)
                 
                 # Test each form input
                 for input_data in form_inputs:
@@ -4000,13 +3925,7 @@ class VulnScanner:
                     test_params = parsed_data['query_params'].copy()
                     test_params[param] = [test_payload]
                     
-                    # Build query string
-                    query_parts = []
-                    for k, v_list in test_params.items():
-                        for v in v_list:
-                            query_parts.append(f"{k}={v}")
-                    
-                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    test_url = self._build_test_url(base_url, test_params)
                     print(f"    [BLINDXSS] Request URL: {test_url}")
                     
                     response = requests.get(
@@ -4124,21 +4043,8 @@ class VulnScanner:
                 print(f"    [STOREDXSS] Testing {form_method} form {i+1}: {form_action}")
             
                 # Build form URL with proper port handling
-                if form_action.startswith('/'):
-                    from urllib.parse import urlparse
-                    parsed_base = urlparse(base_url)
-                    if parsed_base.port:
-                        form_url = f"{parsed_base.scheme}://{parsed_base.hostname}:{parsed_base.port}{form_action}"
-                    else:
-                        form_url = f"{parsed_base.scheme}://{parsed_base.hostname}{form_action}"
-                elif form_action.startswith('http'):
-                    form_url = form_action
-                elif form_action:
-                    # Handle relative URLs
-                    base_path = '/'.join(base_url.split('/')[:-1]) if base_url.count('/') > 3 else base_url.rstrip('/')
-                    form_url = f"{base_path}/{form_action}"
-                else:
-                    form_url = base_url
+                from urllib.parse import urljoin
+                form_url = urljoin(base_url, form_action)
             
                 # Test each form input - включая скрытые поля для guestbook
                 for input_data in form_inputs:
@@ -4150,8 +4056,12 @@ class VulnScanner:
                         continue
                 
                     if input_type == 'hidden':
-                        print(f"    [STOREDXSS] Skipping hidden field: {input_name}")
-                        continue
+                        # Test hidden fields unless they look like CSRF tokens
+                        if any(token in input_name.lower() for token in ['csrf', '_token', 'nonce', 'authenticity_token']):
+                            print(f"    [STOREDXSS] Skipping CSRF-like hidden field: {input_name}")
+                            continue
+                        else:
+                            print(f"    [STOREDXSS] Testing hidden field: {input_name}")
                     else:
                         print(f"    [STOREDXSS] Testing form input: {input_name}")
                     
@@ -4595,13 +4505,7 @@ class VulnScanner:
                     test_params = parsed_data['query_params'].copy()
                     test_params[param] = [payload]
                     
-                    # Build query string
-                    query_parts = []
-                    for k, v_list in test_params.items():
-                        for v in v_list:
-                            query_parts.append(f"{k}={v}")
-                    
-                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    test_url = self._build_test_url(base_url, test_params)
                     print(f"    [DATABASEERRORS] Request URL: {test_url}")
                     
                     response = requests.get(
@@ -5154,13 +5058,7 @@ class VulnScanner:
                     test_params = parsed_data['query_params'].copy()
                     test_params[param] = [payload]
                     
-                    # Build query string
-                    query_parts = []
-                    for k, v_list in test_params.items():
-                        for v in v_list:
-                            query_parts.append(f"{k}={v}")
-                    
-                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    test_url = self._build_test_url(base_url, test_params)
                     print(f"    [XXE] Request URL: {test_url}")
                     
                     response = requests.get(
@@ -5224,12 +5122,8 @@ class VulnScanner:
                     print(f"    [XXE] Testing {form_method} form {i+1}: {form_action}")
                     
                     # Build form URL
-                    if form_action.startswith('/'):
-                        form_url = f"{parsed_data['scheme']}://{parsed_data['host']}{form_action}"
-                    elif form_action.startswith('http'):
-                        form_url = form_action
-                    else:
-                        form_url = f"{base_url.rstrip('/')}/{form_action}" if form_action else base_url
+                    from urllib.parse import urljoin
+                    form_url = urljoin(base_url, form_action)
                     
                     # Test each form input that might accept XML
                     for input_data in form_inputs:
@@ -5503,13 +5397,7 @@ class VulnScanner:
                     test_params = parsed_data['query_params'].copy()
                     test_params[param] = [payload]
                     
-                    # Build query string
-                    query_parts = []
-                    for k, v_list in test_params.items():
-                        for v in v_list:
-                            query_parts.append(f"{k}={v}")
-                    
-                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    test_url = self._build_test_url(base_url, test_params)
                     print(f"    [CMDINJECTION] Request URL: {test_url}")
                     
                     response = requests.get(
@@ -5579,21 +5467,8 @@ class VulnScanner:
                 print(f"    [CMDINJECTION] Testing {form_method} form {i+1}: {form_action}")
                 
                 # Build form URL with proper port handling
-                if form_action.startswith('/'):
-                    from urllib.parse import urlparse
-                    parsed_base = urlparse(base_url)
-                    if parsed_base.port:
-                        form_url = f"{parsed_base.scheme}://{parsed_base.hostname}:{parsed_base.port}{form_action}"
-                    else:
-                        form_url = f"{parsed_base.scheme}://{parsed_base.hostname}{form_action}"
-                elif form_action.startswith('http'):
-                    form_url = form_action
-                elif form_action:
-                    # Handle relative URLs
-                    base_path = '/'.join(base_url.split('/')[:-1]) if base_url.count('/') > 3 else base_url.rstrip('/')
-                    form_url = f"{base_path}/{form_action}"
-                else:
-                    form_url = base_url
+                from urllib.parse import urljoin
+                form_url = urljoin(base_url, form_action)
                 
                 # Test each form input
                 for input_data in form_inputs:
@@ -5732,13 +5607,7 @@ class VulnScanner:
                     test_params = parsed_data['query_params'].copy()
                     test_params[param] = [payload]
                     
-                    # Build query string
-                    query_parts = []
-                    for k, v_list in test_params.items():
-                        for v in v_list:
-                            query_parts.append(f"{k}={v}")
-                    
-                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    test_url = self._build_test_url(base_url, test_params)
                     
                     response = requests.get(
                         test_url,
@@ -5814,13 +5683,7 @@ class VulnScanner:
                     test_params = parsed_data['query_params'].copy()
                     test_params[param] = [payload]
                     
-                    # Build query string
-                    query_parts = []
-                    for k, v_list in test_params.items():
-                        for v in v_list:
-                            query_parts.append(f"{k}={v}")
-                    
-                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    test_url = self._build_test_url(base_url, test_params)
                     
                     response = requests.get(
                         test_url,
@@ -5889,13 +5752,7 @@ class VulnScanner:
                     test_params = parsed_data['query_params'].copy()
                     test_params[param] = [payload]
                     
-                    # Build query string
-                    query_parts = []
-                    for k, v_list in test_params.items():
-                        for v in v_list:
-                            query_parts.append(f"{k}={v}")
-                    
-                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    test_url = self._build_test_url(base_url, test_params)
                     
                     response = requests.get(
                         test_url,
@@ -6165,13 +6022,7 @@ class VulnScanner:
                     test_params = parsed_data['query_params'].copy()
                     test_params[param] = [payload]
                     
-                    # Build query string
-                    query_parts = []
-                    for k, v_list in test_params.items():
-                        for v in v_list:
-                            query_parts.append(f"{k}={v}")
-                    
-                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    test_url = self._build_test_url(base_url, test_params)
                     
                     response = requests.get(
                         test_url,
@@ -6261,13 +6112,7 @@ class VulnScanner:
                     test_params = parsed_data['query_params'].copy()
                     test_params[param] = [payload]
                     
-                    # Build query string
-                    query_parts = []
-                    for k, v_list in test_params.items():
-                        for v in v_list:
-                            query_parts.append(f"{k}={v}")
-                    
-                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    test_url = self._build_test_url(base_url, test_params)
                     
                     response = requests.get(
                         test_url,
@@ -6347,13 +6192,7 @@ class VulnScanner:
                     test_params = parsed_data['query_params'].copy()
                     test_params[param] = [payload]
                     
-                    # Build query string
-                    query_parts = []
-                    for k, v_list in test_params.items():
-                        for v in v_list:
-                            query_parts.append(f"{k}={v}")
-                    
-                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    test_url = self._build_test_url(base_url, test_params)
                     print(f"    [SSTI] Request URL: {test_url}")
                     
                     response = requests.get(
@@ -6406,21 +6245,8 @@ class VulnScanner:
                 print(f"    [SSTI] Testing {form_method} form {i+1}: {form_action}")
                 
                 # Build form URL with proper port handling
-                if form_action.startswith('/'):
-                    from urllib.parse import urlparse
-                    parsed_base = urlparse(base_url)
-                    if parsed_base.port:
-                        form_url = f"{parsed_base.scheme}://{parsed_base.hostname}:{parsed_base.port}{form_action}"
-                    else:
-                        form_url = f"{parsed_base.scheme}://{parsed_base.hostname}{form_action}"
-                elif form_action.startswith('http'):
-                    form_url = form_action
-                elif form_action:
-                    # Handle relative URLs
-                    base_path = '/'.join(base_url.split('/')[:-1]) if base_url.count('/') > 3 else base_url.rstrip('/')
-                    form_url = f"{base_path}/{form_action}"
-                else:
-                    form_url = base_url
+                from urllib.parse import urljoin
+                form_url = urljoin(base_url, form_action)
                 
                 # Test each form input
                 for input_data in form_inputs:
@@ -6545,13 +6371,7 @@ class VulnScanner:
                     test_params = parsed_data['query_params'].copy()
                     test_params[param] = [payload]
                     
-                    # Build query string
-                    query_parts = []
-                    for k, v_list in test_params.items():
-                        for v in v_list:
-                            query_parts.append(f"{k}={v}")
-                    
-                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    test_url = self._build_test_url(base_url, test_params)
                     print(f"    [CRLF] Request URL: {test_url}")
                     
                     response = requests.get(
@@ -6631,13 +6451,7 @@ class VulnScanner:
                     test_params = parsed_data['query_params'].copy()
                     test_params[param] = [payload]
                     
-                    # Build query string
-                    query_parts = []
-                    for k, v_list in test_params.items():
-                        for v in v_list:
-                            query_parts.append(f"{k}={v}")
-                    
-                    test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                    test_url = self._build_test_url(base_url, test_params)
                     
                     response = requests.get(
                         test_url,
@@ -7151,17 +6965,18 @@ class VulnScanner:
                         print(f"    [HPP] Trying payload: {payload_info['name']}")
                         
                         # Create HPP URL with duplicate parameters
-                        test_params = []
+                        from urllib.parse import quote_plus
+                        test_params_list = []
                         for value in payload_info['values']:
-                            test_params.append(f"{param}={value}")
+                            test_params_list.append(f"{quote_plus(param)}={quote_plus(str(value))}")
                         
                         # Add original parameters
                         for k, v_list in parsed_data['query_params'].items():
                             if k != param:
                                 for v in v_list:
-                                    test_params.append(f"{k}={v}")
+                                    test_params_list.append(f"{quote_plus(k)}={quote_plus(str(v))}")
                         
-                        test_url = f"{base_url.split('?')[0]}?{'&'.join(test_params)}"
+                        test_url = f"{base_url.split('?')[0]}?{'&'.join(test_params_list)}"
                         
                         response = requests.get(
                             test_url,
