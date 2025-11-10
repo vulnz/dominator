@@ -98,6 +98,13 @@ class IDORDetector:
             # Registration form parameters
             'confirm_password', 'password_confirm', 'repeat_password',
             'first_name', 'last_name', 'full_name', 'name',
+            'uname', 'fname', 'lname', 'fullname',
+            
+            # Contact information (not IDOR candidates)
+            'phone', 'telephone', 'mobile', 'cell', 'fax',
+            'uphone', 'user_phone', 'phone_number', 'tel',
+            'address', 'street', 'city', 'state', 'zip', 'postal_code',
+            'country', 'region', 'location',
             
             # Search and filter parameters
             'search', 'query', 'q', 'filter', 'sort', 'order',
@@ -127,17 +134,18 @@ class IDORDetector:
         if param_lower in excluded:
             return False
         
-        # Second check: Exclude if URL suggests login/auth context
-        auth_indicators = ['login', 'auth', 'signin', 'register', 'signup', 'forgot', 'reset']
+        # Second check: Exclude if URL suggests registration/signup/login context
+        auth_indicators = ['login', 'auth', 'signin', 'register', 'signup', 'forgot', 'reset', 'newuser', 'adduser']
         if any(indicator in url_lower for indicator in auth_indicators):
             return False
         
-        # Third check: Exclude if form context suggests login/auth
-        login_context_indicators = [
-            'login', 'sign in', 'authentication', 'log in',
-            'username', 'password', 'email', 'signin'
+        # Third check: Exclude if form context suggests login/auth/registration
+        form_context_indicators = [
+            'login', 'sign in', 'authentication', 'log in', 'signin',
+            'register', 'registration', 'sign up', 'signup', 'new user',
+            'add user', 'create account', 'username', 'password', 'email'
         ]
-        if any(indicator in context_lower for indicator in login_context_indicators):
+        if any(indicator in context_lower for indicator in form_context_indicators):
             return False
         
         # Fourth check: Only test parameters that look like IDs or references
@@ -166,23 +174,25 @@ class IDORDetector:
         if modified_headers is None:
             modified_headers = {}
         
-        # Простая проверка: исключить только явные параметры аутентификации
+        # Расширенная проверка: исключить параметры форм регистрации и аутентификации
         if parameter_name:
             param_lower = parameter_name.lower().strip()
             
-            # Минимальный список исключений - только явная аутентификация
+            # Расширенный список исключений
             forbidden_params = {
                 'username', 'password', 'email', 'login', 'passwd', 'pass', 'pwd',
-                'csrf_token', 'token', '_token', 'submit'
+                'csrf_token', 'token', '_token', 'submit', 'uname', 'fname', 'lname',
+                'phone', 'uphone', 'telephone', 'mobile', 'address', 'city', 'state'
             }
             
-            # Исключить только если это точно параметр аутентификации
+            # Исключить параметры форм регистрации/аутентификации
             if param_lower in forbidden_params:
-                return False, 'excluded', f'Authentication parameter "{parameter_name}" excluded from IDOR testing'
+                return False, 'excluded', f'Form field parameter "{parameter_name}" excluded from IDOR testing'
             
-            # Исключить только если URL явно содержит login/auth
-            if any(auth_url in url.lower() for auth_url in ['login', 'signin', 'auth']):
-                return False, 'excluded', f'Authentication URL detected - parameter excluded'
+            # Исключить если URL содержит индикаторы форм регистрации/аутентификации
+            form_urls = ['login', 'signin', 'auth', 'signup', 'register', 'newuser', 'adduser']
+            if any(form_url in url.lower() for form_url in form_urls):
+                return False, 'excluded', f'Form URL detected - parameter excluded from IDOR testing'
             
         # 1. Проверка успешных ответов - если оба ответа успешные, это хороший знак
         if original_code == 200 and modified_code == 200:

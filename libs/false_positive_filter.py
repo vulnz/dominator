@@ -48,6 +48,8 @@ class FalsePositiveFilter:
             return self._filter_csrf_false_positive(vuln)
         elif module == 'passive_debug':
             return self._filter_debug_false_positive(vuln)
+        elif module == 'idor':
+            return self._filter_idor_false_positive(vuln)
         
         return True, "No false positive detected"
     
@@ -287,3 +289,46 @@ class FalsePositiveFilter:
                         return False, f"Comment too short to be meaningful development comment"
         
         return True, "Valid debug information finding"
+    
+    def _filter_idor_false_positive(self, vuln: Dict[str, Any]) -> Tuple[bool, str]:
+        """Filter IDOR false positives"""
+        target = vuln.get('target', '').lower()
+        parameter = vuln.get('parameter', '').lower()
+        payload = vuln.get('payload', '')
+        evidence = vuln.get('evidence', '').lower()
+        
+        # Check if this is a registration/signup form
+        registration_indicators = [
+            'signup', 'register', 'registration', 'newuser', 'adduser', 'createuser'
+        ]
+        
+        if any(indicator in target for indicator in registration_indicators):
+            return False, "Registration/signup form detected - not IDOR vulnerable"
+        
+        # Check if parameter is a form field (not an ID)
+        form_field_params = [
+            'phone', 'uphone', 'telephone', 'mobile', 'email', 'username',
+            'name', 'fname', 'lname', 'address', 'city', 'state'
+        ]
+        
+        if parameter in form_field_params:
+            return False, f"Form field parameter '{parameter}' is not IDOR vulnerable"
+        
+        # Check for nonsensical payloads for form fields
+        if parameter in ['phone', 'uphone', 'telephone'] and '../' in payload:
+            return False, f"Path traversal payload '{payload}' makes no sense for phone field"
+        
+        # Check if evidence suggests form submission rather than IDOR
+        form_evidence_indicators = [
+            'add new user', 'create user', 'registration', 'signup',
+            'user created', 'account created'
+        ]
+        
+        if any(indicator in evidence for indicator in form_evidence_indicators):
+            return False, "Evidence suggests form submission, not IDOR vulnerability"
+        
+        # Check for empty original values with form-like payloads
+        if "original was ''" in evidence and '../' in payload:
+            return False, "Empty original value with path traversal payload suggests form field, not IDOR"
+        
+        return True, "Valid IDOR vulnerability"
