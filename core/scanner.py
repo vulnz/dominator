@@ -579,6 +579,8 @@ class VulnScanner:
         """Initialize scanner"""
         self.config = config
         self.debug = getattr(config, 'debug', False)
+        self.waf = False  # Will be set from main.py or interactively
+        self.waf_if_found = False  # Will be set from main.py
         self.payload_limit = getattr(config, 'payload_limit', 0)
         self.url_parser = URLParser()
         self.crawler = WebCrawler(config)
@@ -776,6 +778,19 @@ class VulnScanner:
                 if self.debug:
                     print(f"  [DEBUG] Starting enhanced crawler to find additional pages...")
                 crawled_urls = self.crawler.crawl_for_pages(parsed_data['url'])
+                
+                # Check for detected WAF and prompt user if --wafiffound is set
+                if self.crawler.detected_wafs and self.waf_if_found and not self.waf:
+                    waf_names = ', '.join(self.crawler.detected_wafs)
+                    try:
+                        prompt = input(f"  [WAF] WAFs detected: {waf_names}. Enable WAF bypass payloads? [y/N]: ")
+                        if prompt.lower() == 'y':
+                            self.waf = True
+                            print("  [WAF] WAF bypass mode enabled for active scanning.")
+                        else:
+                            print("  [WAF] Continuing without WAF bypass payloads.")
+                    except (EOFError, KeyboardInterrupt):
+                        print("\n  [WAF] User cancelled prompt. Continuing without WAF bypass payloads.")
             
                 # Update crawler stats
                 self.scan_stats['total_ajax_endpoints'] = len(self.crawler.get_ajax_endpoints())
@@ -1326,6 +1341,12 @@ class VulnScanner:
         
         # Get XSS payloads
         xss_payloads = XSSPayloads.get_all_payloads()
+        if self.waf:
+            print("    [XSS] WAF mode enabled, loading bypass payloads...")
+            try:
+                xss_payloads.extend(XSSPayloads.get_waf_bypass_payloads())
+            except AttributeError:
+                print("    [XSS] Warning: get_waf_bypass_payloads() not found in XSSPayloads.")
         
         # Update payload stats
         self.scan_stats['payload_stats']['xss']['payloads_used'] += len(xss_payloads)
@@ -1803,7 +1824,13 @@ class VulnScanner:
         
         # Get SQL injection payloads
         sqli_payloads = SQLiPayloads.get_all_payloads()
-        
+        if self.waf:
+            print("    [SQLI] WAF mode enabled, loading bypass payloads...")
+            try:
+                sqli_payloads.extend(SQLiPayloads.get_waf_bypass_payloads())
+            except AttributeError:
+                print("    [SQLI] Warning: get_waf_bypass_payloads() not found in SQLiPayloads.")
+
         # Update payload stats
         if 'sqli' not in self.scan_stats['payload_stats']:
             self.scan_stats['payload_stats']['sqli'] = {'payloads_used': 0, 'requests_made': 0, 'successful_payloads': 0}
@@ -2141,7 +2168,13 @@ class VulnScanner:
         
         # Get LFI payloads
         lfi_payloads = LFIPayloads.get_all_payloads()
-        
+        if self.waf:
+            print("    [LFI] WAF mode enabled, loading bypass payloads...")
+            try:
+                lfi_payloads.extend(LFIPayloads.get_waf_bypass_payloads())
+            except AttributeError:
+                print("    [LFI] Warning: get_waf_bypass_payloads() not found in LFIPayloads.")
+
         # Update payload stats
         if 'lfi' not in self.scan_stats['payload_stats']:
             self.scan_stats['payload_stats']['lfi'] = {'payloads_used': 0, 'requests_made': 0, 'successful_payloads': 0}
@@ -5387,6 +5420,12 @@ class VulnScanner:
         
         # Get command injection payloads
         cmd_payloads = CommandInjectionPayloads.get_all_payloads()
+        if self.waf:
+            print("    [CMDINJECTION] WAF mode enabled, loading bypass payloads...")
+            try:
+                cmd_payloads.extend(CommandInjectionPayloads.get_waf_bypass_payloads())
+            except AttributeError:
+                print("    [CMDINJECTION] Warning: get_waf_bypass_payloads() not found in CommandInjectionPayloads.")
         
         # Test GET parameters
         for param, values in parsed_data['query_params'].items():
@@ -6225,6 +6264,12 @@ class VulnScanner:
         
         # Get SSTI payloads
         ssti_payloads = SSTIPayloads.get_all_payloads()
+        if self.waf:
+            print("    [SSTI] WAF mode enabled, loading bypass payloads...")
+            try:
+                ssti_payloads.extend(SSTIPayloads.get_waf_bypass_payloads())
+            except AttributeError:
+                print("    [SSTI] Warning: get_waf_bypass_payloads() not found in SSTIPayloads.")
         
         # Test GET parameters
         for param, values in parsed_data['query_params'].items():

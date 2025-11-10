@@ -44,6 +44,8 @@ Usage examples:
     # Scanning parameters
     parser.add_argument('--waf', action='store_true',
                        help='Enable WAF detection and use WAF bypass payloads')
+    parser.add_argument('--wafiffound', action='store_true',
+                       help='Prompt to enable WAF bypass mode if a WAF is detected')
     parser.add_argument('-m', '--modules', 
                        help='Scanning modules (comma separated)')
     parser.add_argument('--all', action='store_true',
@@ -221,6 +223,8 @@ def process_args(args):
         args.nopassive = False
     if not hasattr(args, 'waf'):
         args.waf = False
+    if not hasattr(args, 'wafiffound'):
+        args.wafiffound = False
     
     # Apply nocrawl logic
     if args.nocrawl:

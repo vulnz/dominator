@@ -16,6 +16,7 @@ from passive_detectors.security_headers_detector import SecurityHeadersDetector
 from passive_detectors.sensitive_data_detector import SensitiveDataDetector
 from passive_detectors.technology_detector import TechnologyDetector
 from passive_detectors.version_disclosure_detector import VersionDisclosureDetector
+from passive_detectors.waf_detector import WAFDetector
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -34,6 +35,7 @@ class WebCrawler:
         self.sitemap_urls: List[str] = []
         self.robots_urls: List[str] = []
         self.discovered_directories: Set[str] = set()
+        self.detected_wafs: Set[str] = set()
         
         # Passive detection results
         self.passive_findings: List[Dict[str, Any]] = []
@@ -669,6 +671,13 @@ class WebCrawler:
         try:
             print(f"    [PASSIVE] Running passive analysis on {url}")
             
+            # WAF Detection
+            has_waf, waf_findings = WAFDetector.analyze(headers, response_text, url)
+            if has_waf:
+                for finding in waf_findings:
+                    self.detected_wafs.add(finding['waf_name'])
+                print(f"    [PASSIVE] Found WAF: {', '.join(self.detected_wafs)}")
+
             # Security headers analysis
             has_security_issues, security_issues = SecurityHeadersDetector.analyze(headers, url)
             if has_security_issues:
@@ -706,6 +715,7 @@ class WebCrawler:
             
             # Combine all findings
             all_findings = []
+            all_findings.extend(waf_findings if has_waf else [])
             all_findings.extend(security_issues if has_security_issues else [])
             all_findings.extend(cookie_issues if has_cookie_issues else [])
             all_findings.extend(sensitive_leaks if has_sensitive_data else [])

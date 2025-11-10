@@ -159,6 +159,10 @@ def main():
         
         # Create scanner
         scanner = VulnScanner(config)
+
+        # Set WAF flags from arguments
+        scanner.waf = getattr(args, 'waf', False)
+        scanner.waf_if_found = getattr(args, 'wafiffound', False)
         
         # Set up max time handler if specified
         max_time_handler = None
