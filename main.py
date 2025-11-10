@@ -129,9 +129,8 @@ def main():
     
     
     # Check required parameters
-    if not args.target and not args.file and not args.url:
-        print("Error: Must specify target (-t), URL (-u) or targets file (-f)")
-        print("Tip: Use --quick-testphp for instant testphp.vulnweb.com guestbook scan")
+    if not args.target and not args.file:
+        print("Error: Must specify target (-t) or targets file (-f)")
         parser.print_help()
         sys.exit(1)
     

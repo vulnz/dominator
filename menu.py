@@ -26,7 +26,6 @@ Usage examples:
     target_group = parser.add_mutually_exclusive_group(required=True)
     target_group.add_argument('-t', '--target', nargs='+',
                        help='One or more scan targets (IP, domain, URL, IP:port, URL:port, subnet)')
-    target_group.add_argument('-u', '--url', nargs='+', help='One or more target URLs to scan')
     target_group.add_argument('-f', '--file', 
                        help='File with targets for scanning')
     
@@ -51,8 +50,6 @@ Usage examples:
     parser.add_argument('-m', '--modules', 
                        help='Scanning modules (comma separated)')
     parser.add_argument('--all', action='store_true',
-                       help='Use all modules')
-    parser.add_argument('--all-modules', action='store_true',
                        help='Use all available modules')
     parser.add_argument('--exclude',
                        help='Exclude paths from scanning (comma separated)')
@@ -68,10 +65,6 @@ Usage examples:
                        help='Maximum scan time in minutes (will stop scan and show report)')
     parser.add_argument('--threads', type=int, default=15,
                        help='Number of threads')
-    parser.add_argument('-threats', type=int, dest='threads',
-                       help='Number of threads (alias for --threads)')
-    parser.add_argument('--limit', type=int,
-                       help='Request limit before scan finish')
     parser.add_argument('--page-limit', type=int,
                        help='Page limit for scanning')
     parser.add_argument('--delay', type=float, default=0,
@@ -84,8 +77,6 @@ Usage examples:
                        help='User-Agent string to use')
     parser.add_argument('--single-url', action='store_true',
                        help='Scan only the specified URL without crawling or testing other pages')
-    parser.add_argument('--crawl', action='store_true',
-                       help='Force enable web crawling (enabled by default)')
     parser.add_argument('--nocrawl', action='store_true',
                        help='Disable web crawling completely')
     parser.add_argument('--max-crawl-pages', type=int, default=50,
@@ -173,9 +164,7 @@ def show_modules():
 def process_args(args):
     """Process and validate command line arguments"""
     # Fix args for Config compatibility
-    if hasattr(args, 'url') and args.url:
-        args.target = args.url
-    elif hasattr(args, 'file') and args.file:
+    if hasattr(args, 'file') and args.file:
         args.target = args.file
     
     # Keep multiple targets as list, convert single target to string
@@ -197,9 +186,7 @@ def process_args(args):
     if not hasattr(args, 'auth'):
         args.auth = None
     if not hasattr(args, 'all'):
-        args.all = (args.modules == 'all' or args.all_modules if hasattr(args, 'all_modules') else False)
-    if not hasattr(args, 'limit'):
-        args.limit = args.request_limit
+        args.all = (args.modules == 'all' if args.modules else False)
     if not hasattr(args, 'page_limit'):
         args.page_limit = None
     if not hasattr(args, 'output'):
