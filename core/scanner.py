@@ -8,6 +8,7 @@ import re
 import requests
 import urllib3
 import html
+import threading
 from urllib.parse import quote_plus
 from typing import List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -595,6 +596,7 @@ class VulnScanner:
         self.crawler = WebCrawler(config)
         self.file_handler = FileHandler()
         self.screenshot_handler = ScreenshotHandler()
+        self.screenshot_lock = threading.Lock()
         self.false_positive_filter = FalsePositiveFilter()
         self.response_analyzer = ResponseAnalyzer()
         self.path_manager = PathManager()
@@ -1572,11 +1574,12 @@ class VulnScanner:
                             # Take screenshot for XSS vulnerability
                             screenshot_filename = None
                             try:
-                                import time
-                                vuln_id = f"xss_{param}_{int(time.time())}"
-                                screenshot_filename = self.screenshot_handler.take_screenshot_with_payload(
-                                    test_url, "xss", vuln_id, payload
-                                )
+                                with self.screenshot_lock:
+                                    import time
+                                    vuln_id = f"xss_{param}_{int(time.time())}"
+                                    screenshot_filename = self.screenshot_handler.take_screenshot_with_payload(
+                                        test_url, "xss", vuln_id, payload
+                                    )
                                 vulnerability['screenshot'] = screenshot_filename
                             except Exception as e:
                                 print(f"    [XSS] Could not take screenshot: {e}")
@@ -4746,11 +4749,12 @@ class VulnScanner:
                 # Take screenshot for SSL/TLS issues
                 screenshot_filename = None
                 try:
-                    import time
-                    vuln_id = f"ssl_{domain}_{int(time.time())}"
-                    screenshot_filename = self.screenshot_handler.take_screenshot(
-                        base_url, "ssl_tls", vuln_id
-                    )
+                    with self.screenshot_lock:
+                        import time
+                        vuln_id = f"ssl_{domain}_{int(time.time())}"
+                        screenshot_filename = self.screenshot_handler.take_screenshot(
+                            base_url, "ssl_tls", vuln_id
+                        )
                 except Exception as e:
                     print(f"    [SSLTLS] Could not take screenshot: {e}")
                 
