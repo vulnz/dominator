@@ -101,7 +101,7 @@ class IDORDetector:
                     url: str = "",
                     http_method: str = "GET") -> Tuple[bool, str, str]:
         """
-        Enhanced IDOR detection by comparing original and modified responses.
+        Simplified IDOR detection by comparing original and modified responses.
         Returns (is_vulnerable, confidence_level, evidence)
         """
         if original_headers is None:
@@ -109,179 +109,138 @@ class IDORDetector:
         if modified_headers is None:
             modified_headers = {}
         
-        # 0. ЖЕСТКОЕ ИСКЛЮЧЕНИЕ: Эти параметры НИКОГДА не тестируются на IDOR
+        # Простая проверка: исключить только явные параметры аутентификации
         if parameter_name:
             param_lower = parameter_name.lower().strip()
             
-            # Абсолютный список исключений - эти параметры НИКОГДА не должны тестироваться
+            # Минимальный список исключений - только явная аутентификация
             forbidden_params = {
                 'username', 'password', 'email', 'login', 'passwd', 'pass', 'pwd',
-                'user_name', 'user_email', 'user_password', 'confirm_password',
-                'first_name', 'last_name', 'full_name', 'name', 'search', 'query',
-                'csrf_token', 'token', '_token', 'submit', 'action', 'method',
-                'captcha', 'recaptcha', 'remember_me', 'terms', 'agree'
+                'csrf_token', 'token', '_token', 'submit'
             }
             
-            # Прямая проверка на исключенные параметры
+            # Исключить только если это точно параметр аутентификации
             if param_lower in forbidden_params:
-                return False, 'excluded', f'Parameter "{parameter_name}" is in forbidden list - never tested for IDOR'
+                return False, 'excluded', f'Authentication parameter "{parameter_name}" excluded from IDOR testing'
             
-            # Проверка контекста аутентификации в URL
-            auth_urls = ['login', 'auth', 'signin', 'register', 'signup', 'forgot', 'reset']
-            if any(auth_url in url.lower() for auth_url in auth_urls):
-                return False, 'excluded', f'Authentication context detected in URL - parameter excluded'
+            # Исключить только если URL явно содержит login/auth
+            if any(auth_url in url.lower() for auth_url in ['login', 'signin', 'auth']):
+                return False, 'excluded', f'Authentication URL detected - parameter excluded'
             
-            # Дополнительная проверка: если это POST запрос к странице логина - исключить все параметры
-            if 'login' in url.lower() and http_method.upper() == 'POST':
-                return False, 'excluded', f'POST request to login page - all parameters excluded from IDOR testing'
-            
-            # Исключить POST параметры в формах аутентификации
-            if http_method.upper() == 'POST' and any(auth_param in original_response.lower() for auth_param in ['username', 'password', 'login']):
-                return False, 'excluded', f'POST form with authentication fields - parameter excluded from IDOR testing'
-            
-            # Только ID-подобные параметры могут быть уязвимы к IDOR
-            valid_idor_patterns = [
-                'id', '_id', 'itemcode', 'item_code', 'code', 'key', 'ref', 'reference',
-                'user_id', 'userid', 'account_id', 'profile_id', 'doc_id', 'file_id',
-                'order_id', 'product_id', 'item_id', 'message_id', 'post_id'
-            ]
-            
-            is_valid_idor_param = any(pattern in param_lower for pattern in valid_idor_patterns)
-            
-            if not is_valid_idor_param:
-                return False, 'excluded', f'Parameter "{parameter_name}" is not an ID-like parameter suitable for IDOR testing'
-            
-            # Дополнительная проверка: IDOR обычно встречается в GET параметрах, а не в POST формах
-            # Если это явно форма аутентификации (содержит username/password), исключить
-            if param_lower == 'username' or 'username' in original_response.lower():
-                return False, 'excluded', f'Authentication form detected - parameter excluded from IDOR testing'
-            
-        # 1. Handle redirect responses
+        # 1. Проверка успешных ответов - если оба ответа успешные, это хороший знак
+        if original_code == 200 and modified_code == 200:
+            # Если ответы разные по содержанию, это может быть IDOR
+            if original_response != modified_response:
+                # Проверим, что это не просто ошибка
+                if not IDORDetector._is_error_response(modified_response):
+                    # Проверим размер ответов
+                    size_diff = abs(len(original_response) - len(modified_response))
+                    if size_diff > 100:  # Значительная разница в размере
+                        return True, 'high', f'Different responses with size difference: {size_diff} bytes'
+                    elif size_diff > 10:  # Небольшая разница
+                        return True, 'medium', f'Different responses with size difference: {size_diff} bytes'
+        
+        # 2. Обработка редиректов
         if modified_code in [301, 302, 303, 307, 308]:
             location = modified_headers.get('Location', '')
             if 'login' in location.lower() or 'auth' in location.lower():
                 return False, 'low', 'Redirected to authentication page'
-            # Redirect to different resource might indicate IDOR
+            # Редирект на другой ресурс может указывать на IDOR
             return True, 'medium', f'Redirected to different resource: {location}'
         
-        # 2. Check for successful response codes
-        if modified_code not in [200, 201, 202]:
-            if modified_code == 403:
-                return False, 'low', 'Access forbidden - proper authorization check'
-            elif modified_code == 404:
-                return False, 'low', 'Resource not found'
-            elif modified_code == 401:
-                return False, 'low', 'Authentication required'
-            else:
-                return False, 'low', f'Non-success response code: {modified_code}'
+        # 3. Проверка кодов ошибок
+        if modified_code == 403:
+            return False, 'low', 'Access forbidden - proper authorization check'
+        elif modified_code == 404:
+            return False, 'low', 'Resource not found'
+        elif modified_code == 401:
+            return False, 'low', 'Authentication required'
+        elif modified_code >= 400:
+            return False, 'low', f'Error response code: {modified_code}'
         
-        # 3. Check for empty or minimal responses
-        if len(modified_response.strip()) < 50:
+        # 4. Проверка на пустые ответы
+        if len(modified_response.strip()) < 20:
             return False, 'low', 'Response too short to be meaningful'
         
-        # 4. Check if responses are identical (no IDOR)
+        # 5. Если ответы идентичны - нет IDOR
         if original_response.strip() == modified_response.strip():
             return False, 'low', 'Responses are identical - no IDOR detected'
         
-        # 5. Check for login page responses (strict check)
-        if IDORDetector._is_login_page(modified_response):
-            return False, 'low', 'Response is a login page - not an IDOR vulnerability'
-            
-        # 6. Enhanced error detection
-        modified_lower = modified_response.lower()
-        error_patterns = [
-            'error', 'not found', 'access denied', 'forbidden', 
-            'login required', 'please log in', 'unauthorized',
-            'permission denied', 'invalid request', 'bad request',
-            'you are not authorized', 'access restricted',
-            'authentication required', 'session expired',
-            'invalid user', 'user not found', 'no such user'
-        ]
+        # 6. Упрощенный анализ различий
+        analysis = IDORDetector._simple_response_analysis(original_response, modified_response)
         
-        if any(pattern in modified_lower for pattern in error_patterns):
-            return False, 'low', 'Response contains error indicators'
-
-        # 7. Compare response characteristics with very strict thresholds
-        analysis = IDORDetector._analyze_response_differences(
-            original_response, modified_response, original_headers, modified_headers
-        )
-        
-        # 8. Determine vulnerability based on analysis with much stricter thresholds
-        if analysis['different_content'] and analysis['confidence'] > 0.7 and analysis['meaningful_difference']:
-            evidence = IDORDetector._build_evidence(analysis)
-            confidence = 'high' if analysis['confidence'] > 0.9 else 'medium'
+        if analysis['is_different'] and analysis['confidence'] > 0.3:
+            evidence = f"Response analysis: {analysis['evidence']}"
+            confidence = 'high' if analysis['confidence'] > 0.7 else 'medium'
             return True, confidence, evidence
         
-        return False, 'low', 'Responses are too similar or indicate no IDOR'
+        return False, 'low', 'No significant differences detected'
 
     @staticmethod
-    def _analyze_response_differences(original_response: str, modified_response: str,
-                                    original_headers: Dict[str, str], 
-                                    modified_headers: Dict[str, str]) -> Dict[str, Any]:
-        """Analyze differences between original and modified responses"""
+    def _simple_response_analysis(original_response: str, modified_response: str) -> Dict[str, Any]:
+        """Simplified response analysis for IDOR detection"""
         analysis = {
-            'different_content': False,
+            'is_different': False,
             'confidence': 0.0,
-            'size_difference': 0,
-            'title_different': False,
-            'personal_data_found': False,
-            'structure_different': False,
-            'content_type_same': True,
-            'meaningful_difference': False
+            'evidence': ''
         }
         
-        # Compare content types
-        orig_ct = original_headers.get('Content-Type', '').lower()
-        mod_ct = modified_headers.get('Content-Type', '').lower()
-        if orig_ct != mod_ct:
-            analysis['content_type_same'] = False
-            analysis['confidence'] += 0.1
-        
-        # Compare response sizes with more strict thresholds
+        # Базовая проверка размера
         size_diff = abs(len(original_response) - len(modified_response))
-        analysis['size_difference'] = size_diff
-        if size_diff > 500:  # More significant size difference required
-            analysis['different_content'] = True
-            analysis['confidence'] += 0.2
-            analysis['meaningful_difference'] = True
+        if size_diff > 50:
+            analysis['is_different'] = True
+            analysis['confidence'] += 0.3
+            analysis['evidence'] += f'Size difference: {size_diff} bytes. '
         
-        # Compare titles (but be more careful about generic titles)
+        # Проверка заголовков страниц
         orig_title = IDORDetector._extract_title(original_response)
         mod_title = IDORDetector._extract_title(modified_response)
-        if orig_title != mod_title and mod_title and not IDORDetector._is_generic_title(mod_title):
-            analysis['title_different'] = True
-            analysis['different_content'] = True
-            analysis['confidence'] += 0.3
-            analysis['meaningful_difference'] = True
-        
-        # Check for personal data patterns in modified response (but not in original)
-        mod_has_personal = IDORDetector._contains_personal_data(modified_response)
-        orig_has_personal = IDORDetector._contains_personal_data(original_response)
-        
-        if mod_has_personal and not orig_has_personal:
-            analysis['personal_data_found'] = True
-            analysis['different_content'] = True
+        if orig_title != mod_title and mod_title:
+            analysis['is_different'] = True
             analysis['confidence'] += 0.4
-            analysis['meaningful_difference'] = True
+            analysis['evidence'] += f'Different titles: "{orig_title}" vs "{mod_title}". '
         
-        # Compare HTML structure with better detection
+        # Проверка на персональные данные
+        if IDORDetector._contains_personal_data(modified_response):
+            analysis['is_different'] = True
+            analysis['confidence'] += 0.5
+            analysis['evidence'] += 'Personal data found in response. '
+        
+        # Проверка на пользовательский контент
+        user_indicators = ['user:', 'name:', 'email:', 'profile', 'account', 'welcome']
+        mod_lower = modified_response.lower()
+        orig_lower = original_response.lower()
+        
+        mod_user_content = sum(1 for indicator in user_indicators if indicator in mod_lower)
+        orig_user_content = sum(1 for indicator in user_indicators if indicator in orig_lower)
+        
+        if mod_user_content > orig_user_content:
+            analysis['is_different'] = True
+            analysis['confidence'] += 0.3
+            analysis['evidence'] += 'More user-specific content in modified response. '
+        
+        # Проверка на различия в HTML структуре
         if IDORDetector._compare_html_structure(original_response, modified_response):
-            analysis['structure_different'] = True
-            analysis['different_content'] = True
+            analysis['is_different'] = True
             analysis['confidence'] += 0.2
-        
-        # Compare content fingerprints
-        orig_fingerprint = IDORDetector._get_response_fingerprint(original_response)
-        mod_fingerprint = IDORDetector._get_response_fingerprint(modified_response)
-        if orig_fingerprint != mod_fingerprint:
-            analysis['different_content'] = True
-            analysis['confidence'] += 0.1
-        
-        # Reduce confidence if no meaningful differences found
-        if not analysis['meaningful_difference']:
-            analysis['confidence'] *= 0.5
+            analysis['evidence'] += 'Different HTML structure. '
         
         return analysis
+    
+    @staticmethod
+    def _is_error_response(response: str) -> bool:
+        """Check if response is an error page"""
+        error_indicators = [
+            'error', 'not found', '404', 'forbidden', '403',
+            'unauthorized', '401', 'bad request', '400',
+            'internal server error', '500'
+        ]
+        
+        response_lower = response.lower()
+        error_count = sum(1 for indicator in error_indicators if indicator in response_lower)
+        
+        # Если много индикаторов ошибки, это скорее всего страница ошибки
+        return error_count >= 2
 
     @staticmethod
     def _is_generic_title(title: str) -> bool:
