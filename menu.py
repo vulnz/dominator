@@ -69,7 +69,7 @@ Usage examples:
                        help='Page limit for scanning')
     parser.add_argument('--delay', type=float, default=0,
                        help='Delay between requests in seconds (default: 0)')
-    parser.add_argument('--request-limit', type=int, default=10000,
+    parser.add_argument('--request-limit', type=int, default=10000, dest='limit',
                        help='Maximum number of requests to make (default: 10000)')
     parser.add_argument('--payload-limit', type=int, default=0,
                        help='Limit number of payloads per module (0 = no limit, default: 0)')
@@ -178,8 +178,8 @@ def process_args(args):
         args.cookies = None
     if not hasattr(args, 'proxy'):
         args.proxy = None
-    if not hasattr(args, 'request_limit'):
-        args.request_limit = args.request_limit
+    if not hasattr(args, 'limit'):
+        args.limit = 10000
     if not hasattr(args, 'use_all'):
         args.use_all = False
     if not hasattr(args, 'auth'):
