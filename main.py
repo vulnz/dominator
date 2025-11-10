@@ -208,7 +208,13 @@ def main():
         if args.auto_report:
             import datetime
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            target_name = args.target.replace(':', '_').replace('/', '_').replace('\\', '_').replace('?', '_').replace('=', '_').replace('&', '_')
+            
+            # Handle multiple targets for filename
+            if isinstance(args.target, list):
+                target_name = "_".join([t.replace(':', '_').replace('/', '_').replace('\\', '_').replace('?', '_').replace('=', '_').replace('&', '_') for t in args.target])
+            else:
+                target_name = args.target.replace(':', '_').replace('/', '_').replace('\\', '_').replace('?', '_').replace('=', '_').replace('&', '_')
+            
             # Limit filename length to avoid errors
             if len(target_name) > 150:
                 target_name = target_name[:150]
