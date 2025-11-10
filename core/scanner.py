@@ -5298,7 +5298,7 @@ class VulnScanner:
                             original_response.text, modified_response.text,
                             original_response.status_code, modified_response.status_code
                         ):
-                            evidence = IDORDetector.get_evidence(original_response.text, modified_response.text)
+                            evidence = f"The parameter '{param}' appears to be vulnerable. Accessing the resource with ID '{payload}' was successful, while the original ID was '{original_value}'."
                             response_snippet = IDORDetector.get_response_snippet(modified_response.text)
                             remediation = IDORDetector.get_remediation_advice()
                             print(f"    [IDOR] VULNERABILITY FOUND! Parameter: {param}")
@@ -5321,7 +5321,8 @@ class VulnScanner:
                                 'detector': 'IDORDetector.detect_idor',
                                 'response_snippet': response_snippet,
                                 'remediation': remediation,
-                                'method': 'GET'
+                                'method': 'GET',
+                                'icon': 'fas fa-key'  # Font Awesome icon for reports
                             })
                             break  # Found IDOR, no need to test more payloads for this param
                             
@@ -8176,7 +8177,11 @@ class VulnScanner:
                 print(safe_text)
         
         analysis_type = "[PASSIVE]" if is_passive else "[ACTIVE]"
-        icon = '🛡️' if result.get('module') == 'wafdetect' else ''
+        icon = ''
+        if result.get('module') == 'wafdetect':
+            icon = '🛡️'
+        elif result.get('module') == 'idor':
+            icon = '🔑'
         
         safe_print(f"\n  {index}. {icon} {analysis_type} {result.get('vulnerability', 'Unknown')}".strip())
         safe_print(f"     Target: {result.get('target', '')}")
@@ -8191,7 +8196,7 @@ class VulnScanner:
         safe_print(f"     Payload: {payload_display}")
         safe_print(f"     Request: {result.get('request_url', '')}")
         
-        if result.get('icon') and 'waf' in result.get('module', ''):
+        if result.get('icon') and ('waf' in result.get('module', '') or 'idor' in result.get('module', '')):
             safe_print(f"     Report Icon: <i class=\"{result.get('icon')}\"></i> (example for HTML report)")
         
         # Show response snippet if available
