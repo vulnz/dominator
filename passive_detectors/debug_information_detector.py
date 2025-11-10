@@ -101,31 +101,39 @@ class DebugInformationDetector:
                     'recommendation': 'Remove debug output from production code'
                 })
         
-        # Development comments
+        # Development comments - more specific patterns to reduce false positives
         comment_patterns = [
-            (r'<!--.*TODO.*-->', 'TODO Comment'),
-            (r'<!--.*FIXME.*-->', 'FIXME Comment'),
-            (r'<!--.*DEBUG.*-->', 'Debug Comment'),
-            (r'<!--.*TEST.*-->', 'Test Comment'),
-            (r'<!--.*HACK.*-->', 'Hack Comment'),
-            (r'/\*.*TODO.*\*/', 'TODO Comment'),
-            (r'/\*.*FIXME.*\*/', 'FIXME Comment'),
-            (r'//.*TODO.*', 'TODO Comment'),
-            (r'//.*FIXME.*', 'FIXME Comment'),
+            (r'<!--\s*TODO[:\s].*-->', 'TODO Comment'),
+            (r'<!--\s*FIXME[:\s].*-->', 'FIXME Comment'),
+            (r'<!--\s*DEBUG[:\s].*-->', 'Debug Comment'),
+            (r'<!--\s*TEST[:\s].*-->', 'Test Comment'),
+            (r'<!--\s*HACK[:\s].*-->', 'Hack Comment'),
+            (r'/\*\s*TODO[:\s].*\*/', 'TODO Comment'),
+            (r'/\*\s*FIXME[:\s].*\*/', 'FIXME Comment'),
+            (r'//\s*TODO[:\s].*', 'TODO Comment'),
+            (r'//\s*FIXME[:\s].*', 'FIXME Comment'),
         ]
         
         for pattern, comment_type in comment_patterns:
             matches = re.findall(pattern, response_text, re.IGNORECASE | re.DOTALL)
             if matches:
-                findings.append({
-                    'type': 'development_comment',
-                    'severity': 'Low',
-                    'url': url,
-                    'comment_type': comment_type,
-                    'occurrences': len(matches),
-                    'description': f'{comment_type} found in response',
-                    'recommendation': 'Remove development comments from production code'
-                })
+                # Filter out false positives - check if it's actually a development comment
+                valid_matches = []
+                for match in matches:
+                    if DebugInformationDetector._is_valid_dev_comment(match, comment_type):
+                        valid_matches.append(match)
+                
+                if valid_matches:
+                    findings.append({
+                        'type': 'development_comment',
+                        'severity': 'Low',
+                        'url': url,
+                        'comment_type': comment_type,
+                        'occurrences': len(valid_matches),
+                        'description': f'{comment_type} found in response',
+                        'recommendation': 'Remove development comments from production code',
+                        'evidence': valid_matches[:3]  # Show first 3 matches as evidence
+                    })
         
         # Database connection strings
         db_patterns = [
@@ -213,3 +221,46 @@ class DebugInformationDetector:
                 })
         
         return len(findings) > 0, findings
+    
+    @staticmethod
+    def _is_valid_dev_comment(comment_text: str, comment_type: str) -> bool:
+        """
+        Check if a comment is actually a development comment and not a false positive
+        """
+        comment_lower = comment_text.lower()
+        
+        # Exclude common false positives
+        false_positive_patterns = [
+            # Generic test-related content that's not development comments
+            r'test\s+(case|suite|data|file|image|example)',
+            r'(unit|integration|acceptance)\s+test',
+            r'test\s+(your|our|this|the)\s+',
+            r'test\s+(page|site|website|application)',
+            # Generic TODO that might be user-facing
+            r'todo\s+(list|item|task)(?!\s*:)',
+            # Common words that might appear in regular content
+            r'(customer|user|client)\s+(test|todo)',
+        ]
+        
+        for fp_pattern in false_positive_patterns:
+            if re.search(fp_pattern, comment_lower):
+                return False
+        
+        # For development comments, look for specific indicators
+        dev_indicators = [
+            r'(todo|fixme|hack|debug|test)\s*[:]\s*\w+',  # TODO: something, FIXME: issue
+            r'(remove|delete|fix|update|change)\s+(this|before|after)',
+            r'(temporary|temp|placeholder|stub)',
+            r'(author|developer|programmer|coder)\s*:',
+            r'(bug|issue|problem|error)\s*[:#]',
+        ]
+        
+        for dev_pattern in dev_indicators:
+            if re.search(dev_pattern, comment_lower):
+                return True
+        
+        # If comment is very short and just contains the keyword, likely false positive
+        if len(comment_text.strip()) < 10:
+            return False
+        
+        return True

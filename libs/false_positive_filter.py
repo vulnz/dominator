@@ -46,6 +46,8 @@ class FalsePositiveFilter:
             return self._filter_git_false_positive(vuln)
         elif module == 'csrf':
             return self._filter_csrf_false_positive(vuln)
+        elif module == 'passive_debug':
+            return self._filter_debug_false_positive(vuln)
         
         return True, "No false positive detected"
     
@@ -247,3 +249,41 @@ class FalsePositiveFilter:
         
         final_confidence = max(0.0, min(1.0, base_confidence + confidence_adjustments))
         return final_confidence
+    
+    def _filter_debug_false_positive(self, vuln: Dict[str, Any]) -> Tuple[bool, str]:
+        """Filter debug information false positives"""
+        evidence = vuln.get('evidence', [])
+        vuln_type = vuln.get('type', '')
+        
+        if vuln_type == 'development_comment':
+            comment_type = vuln.get('comment_type', '').lower()
+            
+            # Check evidence for false positive patterns
+            if isinstance(evidence, list):
+                for comment in evidence:
+                    comment_lower = str(comment).lower()
+                    
+                    # Common false positives for test comments
+                    if 'test' in comment_type:
+                        fp_patterns = [
+                            'test case', 'test suite', 'test data', 'test file',
+                            'test your', 'test our', 'test this', 'test the',
+                            'unit test', 'integration test', 'test page'
+                        ]
+                        if any(pattern in comment_lower for pattern in fp_patterns):
+                            return False, f"Generic test-related content, not development comment"
+                    
+                    # Common false positives for TODO comments
+                    if 'todo' in comment_type:
+                        fp_patterns = [
+                            'todo list', 'todo item', 'todo task',
+                            'customer todo', 'user todo'
+                        ]
+                        if any(pattern in comment_lower for pattern in fp_patterns):
+                            return False, f"User-facing TODO, not development comment"
+                    
+                    # Very short comments are likely false positives
+                    if len(str(comment).strip()) < 10:
+                        return False, f"Comment too short to be meaningful development comment"
+        
+        return True, "Valid debug information finding"
