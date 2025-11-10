@@ -15,61 +15,102 @@ class IDORDetector:
     @staticmethod
     def get_idor_test_values(original_value: str, parameter_name: str = "") -> List[str]:
         """
-        Generate test values for IDOR testing based on original value
+        Generate intelligent test values for IDOR testing based on original value analysis
         Returns specific test values to check if IDOR vulnerability exists
         """
         test_values = []
         
-        # Try to parse original value as integer
-        try:
-            orig_int = int(original_value)
+        # Analyze original value to determine best test strategy
+        value_analysis = IDORDetector._analyze_parameter_value(original_value, parameter_name)
+        
+        if value_analysis['type'] == 'numeric':
+            orig_int = value_analysis['numeric_value']
             
-            # For numeric values, test adjacent and systematic values
-            test_values = [
-                str(max(0, orig_int - 2)),   # Two back
-                str(max(0, orig_int - 1)),   # Previous ID
-                str(orig_int + 1),           # Next ID
-                str(orig_int + 2),           # Two ahead
-                str(orig_int + 10),          # Jump ahead
-                '0',                         # Zero (often admin/system)
-                '1',                         # First ID
-                '2',                         # Second ID
-                '3',                         # Third ID
-                '10',                        # Common ID
-                '100',                       # Higher ID
-                '999',                       # High ID
-                str(orig_int * 2),           # Double original
-                str(int(orig_int / 2)) if orig_int > 1 else '1',  # Half original
-            ]
-                
-        except ValueError:
-            # Non-numeric original value
-            if original_value.isalnum() and len(original_value) <= 10:
-                # Try to extract numbers and modify them
-                import re
-                numbers = re.findall(r'\d+', original_value)
-                if numbers:
-                    # Modify the numeric part
-                    base_num = int(numbers[0])
-                    test_values = [
-                        original_value.replace(numbers[0], str(base_num - 1)),
-                        original_value.replace(numbers[0], str(base_num + 1)),
-                        original_value.replace(numbers[0], '1'),
-                        original_value.replace(numbers[0], '2'),
-                        original_value.replace(numbers[0], '10'),
-                    ]
-                else:
-                    # Try common patterns for non-numeric values
-                    test_values = ['1', '2', '3', '10', '100', 'admin', 'test', 'user', '0']
+            # Smart numeric testing based on value range
+            if orig_int <= 10:
+                # Small numbers - test adjacent and common values
+                test_values = [
+                    str(max(1, orig_int - 1)),   # Previous
+                    str(orig_int + 1),           # Next
+                    '1', '2', '3', '0'           # Common small values
+                ]
+            elif orig_int <= 100:
+                # Medium numbers - test strategic values
+                test_values = [
+                    str(max(1, orig_int - 1)),   # Previous
+                    str(orig_int + 1),           # Next
+                    str(max(1, orig_int - 10)),  # Jump back
+                    str(orig_int + 10),          # Jump forward
+                    '1', '2', '10', '0'          # Common values
+                ]
             else:
-                # Fallback for complex values
-                test_values = ['1', '2', '3', '10', '100', '0']
+                # Large numbers - test wider range
+                test_values = [
+                    str(max(1, orig_int - 1)),           # Previous
+                    str(orig_int + 1),                   # Next
+                    str(max(1, orig_int - 100)),         # Jump back
+                    str(orig_int + 100),                 # Jump forward
+                    str(int(orig_int / 2)),              # Half
+                    str(orig_int * 2),                   # Double
+                    '1', '10', '100', '0'                # Common values
+                ]
+                
+        elif value_analysis['type'] == 'alphanumeric':
+            # Handle mixed alphanumeric values like "item123", "user456"
+            base_text = value_analysis['text_part']
+            base_num = value_analysis['numeric_part']
+            
+            if base_num is not None:
+                test_values = [
+                    f"{base_text}{max(1, base_num - 1)}",
+                    f"{base_text}{base_num + 1}",
+                    f"{base_text}1",
+                    f"{base_text}2",
+                    f"{base_text}10",
+                    f"{base_text}0"
+                ]
+            else:
+                # Pure text - try common variations
+                test_values = ['1', '2', '3', '10', 'admin', 'test', '0']
+                
+        elif value_analysis['type'] == 'file_path':
+            # Handle file paths like "./pictures/7.jpg"
+            path_parts = value_analysis['path_parts']
+            if path_parts['number']:
+                base_path = path_parts['base_path']
+                extension = path_parts['extension']
+                orig_num = path_parts['number']
+                
+                test_values = [
+                    f"{base_path}{max(1, orig_num - 1)}{extension}",
+                    f"{base_path}{orig_num + 1}{extension}",
+                    f"{base_path}1{extension}",
+                    f"{base_path}2{extension}",
+                    f"{base_path}10{extension}",
+                    # Also test without path structure
+                    str(orig_num - 1) if orig_num > 1 else '1',
+                    str(orig_num + 1),
+                    '1', '2', '10'
+                ]
+        else:
+            # Fallback for unknown types
+            test_values = ['1', '2', '3', '10', '100', '0']
         
-        # Remove duplicates and original value, keep empty string for testing
-        test_values = [v for v in test_values if v != original_value and v is not None]
-        test_values.append('')  # Add empty value test
+        # Remove duplicates and original value
+        test_values = [v for v in test_values if v != original_value and v is not None and v != '']
         
-        return list(dict.fromkeys(test_values))[:12]  # Remove duplicates, keep order, limit to 12
+        # Add strategic empty/null tests
+        test_values.extend(['', '0'])
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_values = []
+        for val in test_values:
+            if val not in seen:
+                seen.add(val)
+                unique_values.append(val)
+        
+        return unique_values[:15]  # Limit to 15 most strategic values
 
     @staticmethod
     def get_excluded_parameters() -> List[str]:
@@ -108,54 +149,76 @@ class IDORDetector:
 
     @staticmethod
     def is_parameter_testable(param_name: str, url: str = "", form_context: str = "", param_value: str = "") -> bool:
-        """Check if parameter should be tested for IDOR based on context and value"""
-        param_lower = param_name.lower()
-        url_lower = url.lower()
-        context_lower = form_context.lower()
-        
-        # Exclude obvious non-IDOR parameters - расширенный список
-        excluded = [
-            'username', 'password', 'email', 'csrf_token', '_token', 'submit', 
-            'search', 'q', 'query', 'text', 'message', 'comment', 'content',
-            'description', 'body', 'title', 'subject', 'name', 'firstname', 
-            'lastname', 'phone', 'address', 'city', 'country', 'zip'
-        ]
-        if param_lower in excluded:
+        """
+        Intelligent parameter analysis to determine if it should be tested for IDOR
+        Uses dynamic analysis of parameter name, value, and context
+        """
+        if not param_name or not param_value:
             return False
-        
-        # Exclude guestbook and comment forms
-        if any(indicator in url_lower for indicator in ['guestbook', 'comment', 'feedback', 'contact']):
-            return False
-        
-        # Exclude obvious auth/registration contexts
-        if any(indicator in url_lower for indicator in ['login', 'register', 'signup', 'newuser']):
-            return False
-        
-        # MAIN LOGIC: Only test parameters that actually look like IDs
-        if param_value:
-            # Test if value is numeric (main IDOR indicator)
-            if param_value.isdigit() and len(param_value) <= 10:
-                # Additional check: parameter name should suggest it's an ID
-                id_indicators = ['id', 'user', 'item', 'product', 'file', 'doc', 'page', 'order', 'account']
-                if any(indicator in param_lower for indicator in id_indicators):
-                    return True
-                # Or if parameter name ends with 'id'
-                if param_lower.endswith('id'):
-                    return True
-                # Or if it's a common ID parameter name
-                if param_lower in ['artist', 'author', 'member', 'player', 'category', 'section']:
-                    return True
             
-            # Test if value is alphanumeric ID-like (e.g., "abc123", "user_456")
-            if len(param_value) <= 20 and any(c.isdigit() for c in param_value):
-                # Must have ID-like parameter name
-                id_indicators = ['id', 'key', 'ref', 'code']
-                if any(indicator in param_lower for indicator in id_indicators):
+        param_lower = param_name.lower().strip()
+        url_lower = url.lower()
+        value_analysis = IDORDetector._analyze_parameter_value(param_value, param_name)
+        
+        # Exclude obvious non-IDOR parameters
+        excluded_params = {
+            'username', 'password', 'email', 'login', 'passwd', 'pass', 'pwd',
+            'csrf_token', 'token', '_token', 'submit', 'search', 'q', 'query',
+            'text', 'message', 'comment', 'content', 'description', 'body',
+            'title', 'subject', 'name', 'firstname', 'lastname', 'fullname',
+            'phone', 'address', 'city', 'country', 'zip', 'state'
+        }
+        
+        if param_lower in excluded_params:
+            return False
+        
+        # Exclude based on URL context
+        excluded_contexts = ['login', 'register', 'signup', 'newuser', 'auth', 'guestbook', 'comment', 'feedback']
+        if any(context in url_lower for context in excluded_contexts):
+            return False
+        
+        # MAIN IDOR DETECTION LOGIC - Dynamic analysis
+        
+        # 1. Direct ID parameters (highest priority)
+        direct_id_patterns = ['id', 'userid', 'user_id', 'itemid', 'item_id', 'productid', 'product_id']
+        if param_lower in direct_id_patterns or param_lower.endswith('id'):
+            if value_analysis['type'] in ['numeric', 'alphanumeric']:
+                return True
+        
+        # 2. Resource reference parameters
+        resource_indicators = ['item', 'product', 'file', 'doc', 'page', 'order', 'account', 'profile']
+        if any(indicator in param_lower for indicator in resource_indicators):
+            if value_analysis['type'] in ['numeric', 'alphanumeric', 'file_path']:
+                return True
+        
+        # 3. Category/classification parameters
+        category_indicators = ['cat', 'category', 'artist', 'author', 'type', 'kind', 'class']
+        if param_lower in category_indicators:
+            if value_analysis['type'] == 'numeric':
+                return True
+        
+        # 4. File/media parameters
+        file_indicators = ['pic', 'image', 'img', 'photo', 'file', 'document', 'media']
+        if any(indicator in param_lower for indicator in file_indicators):
+            if value_analysis['type'] in ['numeric', 'file_path', 'alphanumeric']:
+                return True
+        
+        # 5. Generic numeric parameters that could be IDs
+        if value_analysis['type'] == 'numeric':
+            # If parameter name suggests it could be an identifier
+            generic_id_hints = ['code', 'num', 'ref', 'key', 'index', 'pos', 'seq']
+            if any(hint in param_lower for hint in generic_id_hints):
+                return True
+            
+            # If numeric value is in typical ID range (1-999999)
+            if 1 <= value_analysis['numeric_value'] <= 999999:
+                # And parameter name is short (likely an ID)
+                if len(param_lower) <= 10 and param_lower.isalpha():
                     return True
         
-        # Don't test parameters without values or with empty values
-        if not param_value or param_value.strip() == '':
-            return False
+        # 6. File path parameters
+        if value_analysis['type'] == 'file_path':
+            return True
         
         return False
 
@@ -168,7 +231,7 @@ class IDORDetector:
                     url: str = "",
                     http_method: str = "GET") -> Tuple[bool, str, str]:
         """
-        Simplified IDOR detection by comparing original and modified responses.
+        Enhanced IDOR detection with intelligent response analysis
         Returns (is_vulnerable, confidence_level, evidence)
         """
         if original_headers is None:
@@ -176,154 +239,226 @@ class IDORDetector:
         if modified_headers is None:
             modified_headers = {}
         
-        # Расширенная проверка: исключить параметры форм регистрации и аутентификации
-        if parameter_name:
-            param_lower = parameter_name.lower().strip()
-            
-            # Расширенный список исключений
-            forbidden_params = {
-                'username', 'password', 'email', 'login', 'passwd', 'pass', 'pwd',
-                'csrf_token', 'token', '_token', 'submit', 'uname', 'fname', 'lname',
-                'phone', 'uphone', 'telephone', 'mobile', 'address', 'city', 'state',
-                'fullname', 'name', 'first_name', 'last_name', 'age', 'gender',
-                'text', 'message', 'comment', 'content', 'description', 'body',
-                'title', 'subject', 'feedback', 'review', 'note', 'memo'
-            }
-            
-            # Исключить параметры форм регистрации/аутентификации
-            if param_lower in forbidden_params:
-                return False, 'excluded', f'Form field parameter "{parameter_name}" excluded from IDOR testing'
-            
-            # Исключить если URL содержит индикаторы форм регистрации/аутентификации
-            form_urls = ['login', 'signin', 'auth', 'signup', 'register', 'newuser', 'adduser', 'secured/newuser']
-            if any(form_url in url.lower() for form_url in form_urls):
-                return False, 'excluded', f'Form URL detected - parameter excluded from IDOR testing'
-            
-            # Дополнительная проверка: исключить если ответ содержит индикаторы форм регистрации
-            registration_indicators = ['add new user', 'create user', 'registration', 'sign up', 'new account']
-            if any(indicator in original_response.lower() for indicator in registration_indicators):
-                return False, 'excluded', f'Registration form detected in response - parameter excluded from IDOR testing'
-            
-        # 1. Проверка успешных ответов - если оба ответа успешные, это хороший знак
-        if original_code == 200 and modified_code == 200:
-            # Если ответы разные по содержанию, это может быть IDOR
-            if original_response != modified_response:
-                # Проверим, что это не просто ошибка
-                if not IDORDetector._is_error_response(modified_response):
-                    # Проверим размер ответов
-                    size_diff = abs(len(original_response) - len(modified_response))
-                    if size_diff > 100:  # Значительная разница в размере
-                        return True, 'high', f'Different responses with size difference: {size_diff} bytes'
-                    elif size_diff > 10:  # Небольшая разница
-                        return True, 'medium', f'Different responses with size difference: {size_diff} bytes'
+        # Pre-filter: Exclude non-IDOR parameters using intelligent analysis
+        if parameter_name and not IDORDetector.is_parameter_testable(parameter_name, url, "", ""):
+            return False, 'excluded', f'Parameter "{parameter_name}" excluded from IDOR testing based on context analysis'
         
-        # 2. Обработка редиректов
-        if modified_code in [301, 302, 303, 307, 308]:
-            location = modified_headers.get('Location', '')
-            if 'login' in location.lower() or 'auth' in location.lower():
-                return False, 'low', 'Redirected to authentication page'
-            # Редирект на другой ресурс может указывать на IDOR
-            return True, 'medium', f'Redirected to different resource: {location}'
+        # Enhanced response analysis
+        analysis_result = IDORDetector._enhanced_response_analysis(
+            original_response, modified_response, 
+            original_code, modified_code,
+            original_headers, modified_headers,
+            parameter_name, url
+        )
         
-        # 3. Проверка кодов ошибок
-        if modified_code == 403:
-            return False, 'low', 'Access forbidden - proper authorization check'
-        elif modified_code == 404:
-            return False, 'low', 'Resource not found'
-        elif modified_code == 401:
-            return False, 'low', 'Authentication required'
-        elif modified_code >= 400:
-            return False, 'low', f'Error response code: {modified_code}'
+        # Decision logic based on enhanced analysis
+        if analysis_result['vulnerability_score'] >= 0.7:
+            confidence = 'high'
+        elif analysis_result['vulnerability_score'] >= 0.4:
+            confidence = 'medium'
+        else:
+            confidence = 'low'
         
-        # 4. Проверка на пустые ответы
-        if len(modified_response.strip()) < 20:
-            return False, 'low', 'Response too short to be meaningful'
+        is_vulnerable = analysis_result['vulnerability_score'] >= 0.4
         
-        # 5. Если ответы идентичны - нет IDOR
-        if original_response.strip() == modified_response.strip():
-            return False, 'low', 'Responses are identical - no IDOR detected'
+        if is_vulnerable:
+            # Generate comprehensive evidence
+            evidence = IDORDetector._build_comprehensive_evidence(
+                analysis_result, parameter_name, url, 
+                original_response, modified_response
+            )
+        else:
+            evidence = analysis_result.get('reason', 'No significant differences detected')
         
-        # 6. Упрощенный анализ различий
-        analysis = IDORDetector._simple_response_analysis(original_response, modified_response)
-        
-        if analysis['is_different'] and analysis['confidence'] > 0.3:
-            # Generate detailed test examples with concrete proof
-            test_examples = IDORDetector._generate_test_examples(url, parameter_name, original_response, modified_response)
-            
-            # Extract concrete evidence of different data
-            orig_data = IDORDetector._extract_meaningful_content(original_response)
-            mod_data = IDORDetector._extract_meaningful_content(modified_response)
-            
-            # Create comprehensive evidence with real proof
-            evidence_parts = [
-                f"IDOR VULNERABILITY CONFIRMED: Parameter '{parameter_name}' exposes different objects.",
-                f"CONCRETE PROOF: Original data: '{orig_data}' vs Modified data: '{mod_data}'",
-                f"Response size difference: {abs(len(original_response) - len(modified_response))} bytes",
-                test_examples
-            ]
-            
-            evidence = " ".join(evidence_parts)
-            confidence = 'high' if analysis['confidence'] > 0.7 else 'medium'
-            return True, confidence, evidence
-        
-        return False, 'low', 'No significant differences detected'
+        return is_vulnerable, confidence, evidence
 
     @staticmethod
-    def _simple_response_analysis(original_response: str, modified_response: str) -> Dict[str, Any]:
-        """Simplified response analysis for IDOR detection"""
+    def _enhanced_response_analysis(original_response: str, modified_response: str,
+                                  original_code: int, modified_code: int,
+                                  original_headers: Dict[str, str], modified_headers: Dict[str, str],
+                                  parameter_name: str, url: str) -> Dict[str, Any]:
+        """
+        Enhanced response analysis for IDOR detection with intelligent scoring
+        """
         analysis = {
-            'is_different': False,
-            'confidence': 0.0,
-            'evidence': ''
+            'vulnerability_score': 0.0,
+            'indicators': [],
+            'reason': '',
+            'evidence_details': {}
         }
         
-        # Базовая проверка размера
-        size_diff = abs(len(original_response) - len(modified_response))
-        if size_diff > 50:
-            analysis['is_different'] = True
-            analysis['confidence'] += 0.3
-            analysis['evidence'] += f'Size difference: {size_diff} bytes. '
+        # 1. Response code analysis
+        if original_code == 200 and modified_code == 200:
+            analysis['vulnerability_score'] += 0.2
+            analysis['indicators'].append('both_responses_successful')
+        elif modified_code in [301, 302, 303, 307, 308]:
+            location = modified_headers.get('Location', '')
+            if 'login' in location.lower() or 'auth' in location.lower():
+                analysis['reason'] = 'Redirected to authentication page'
+                return analysis
+            else:
+                analysis['vulnerability_score'] += 0.3
+                analysis['indicators'].append('redirect_to_different_resource')
+        elif modified_code >= 400:
+            analysis['reason'] = f'Error response code: {modified_code}'
+            return analysis
         
-        # Проверка заголовков страниц
+        # 2. Content similarity analysis
+        if original_response.strip() == modified_response.strip():
+            analysis['reason'] = 'Responses are identical'
+            return analysis
+        
+        # 3. Size difference analysis
+        size_diff = abs(len(original_response) - len(modified_response))
+        if size_diff > 500:
+            analysis['vulnerability_score'] += 0.4
+            analysis['indicators'].append('significant_size_difference')
+        elif size_diff > 100:
+            analysis['vulnerability_score'] += 0.2
+            analysis['indicators'].append('moderate_size_difference')
+        
+        analysis['evidence_details']['size_difference'] = size_diff
+        
+        # 4. Content type analysis
+        orig_content = IDORDetector._analyze_content_type(original_response)
+        mod_content = IDORDetector._analyze_content_type(modified_response)
+        
+        if orig_content != mod_content:
+            analysis['vulnerability_score'] += 0.3
+            analysis['indicators'].append('different_content_types')
+        
+        # 5. Title analysis
         orig_title = IDORDetector._extract_title(original_response)
         mod_title = IDORDetector._extract_title(modified_response)
-        if orig_title != mod_title and mod_title:
-            analysis['is_different'] = True
-            analysis['confidence'] += 0.4
-            analysis['evidence'] += f'Different titles: "{orig_title}" vs "{mod_title}". '
         
-        # Проверка на персональные данные и данные товаров
-        if IDORDetector._contains_personal_data(modified_response):
-            analysis['is_different'] = True
-            analysis['confidence'] += 0.5
-            analysis['evidence'] += 'Personal data found in response. '
+        if orig_title != mod_title and mod_title and not IDORDetector._is_generic_title(mod_title):
+            analysis['vulnerability_score'] += 0.3
+            analysis['indicators'].append('different_meaningful_titles')
+            analysis['evidence_details']['title_change'] = f'"{orig_title}" -> "{mod_title}"'
         
-        # Проверка на данные товаров/продуктов
-        if IDORDetector._contains_item_data(modified_response):
-            analysis['is_different'] = True
-            analysis['confidence'] += 0.4
-            analysis['evidence'] += 'Item/product data found in response. '
+        # 6. Data pattern analysis
+        orig_patterns = IDORDetector._extract_data_patterns(original_response)
+        mod_patterns = IDORDetector._extract_data_patterns(modified_response)
         
-        # Проверка на пользовательский контент
-        user_indicators = ['user:', 'name:', 'email:', 'profile', 'account', 'welcome']
-        mod_lower = modified_response.lower()
-        orig_lower = original_response.lower()
+        pattern_score = IDORDetector._compare_data_patterns(orig_patterns, mod_patterns)
+        analysis['vulnerability_score'] += pattern_score
         
-        mod_user_content = sum(1 for indicator in user_indicators if indicator in mod_lower)
-        orig_user_content = sum(1 for indicator in user_indicators if indicator in orig_lower)
+        if pattern_score > 0.2:
+            analysis['indicators'].append('different_data_patterns')
+            analysis['evidence_details']['data_patterns'] = {
+                'original': orig_patterns,
+                'modified': mod_patterns
+            }
         
-        if mod_user_content > orig_user_content:
-            analysis['is_different'] = True
-            analysis['confidence'] += 0.3
-            analysis['evidence'] += 'More user-specific content in modified response. '
+        # 7. Error response filtering
+        if IDORDetector._is_error_response(modified_response):
+            analysis['vulnerability_score'] *= 0.3  # Reduce score for error responses
+            analysis['indicators'].append('modified_response_is_error')
         
-        # Проверка на различия в HTML структуре
-        if IDORDetector._compare_html_structure(original_response, modified_response):
-            analysis['is_different'] = True
-            analysis['confidence'] += 0.2
-            analysis['evidence'] += 'Different HTML structure. '
+        # 8. Login page filtering
+        if IDORDetector._is_login_page(modified_response):
+            analysis['reason'] = 'Modified response is a login page'
+            analysis['vulnerability_score'] = 0.0
+            return analysis
         
         return analysis
+
+    @staticmethod
+    def _analyze_content_type(response: str) -> str:
+        """Analyze the type of content in response"""
+        response_lower = response.lower()
+        
+        if 'error' in response_lower and ('404' in response_lower or 'not found' in response_lower):
+            return 'error_404'
+        elif 'error' in response_lower:
+            return 'error_generic'
+        elif 'login' in response_lower and 'password' in response_lower:
+            return 'login_form'
+        elif IDORDetector._contains_item_data(response):
+            return 'item_data'
+        elif IDORDetector._contains_personal_data(response):
+            return 'personal_data'
+        elif '<table' in response_lower and '<tr' in response_lower:
+            return 'tabular_data'
+        elif '<form' in response_lower:
+            return 'form_page'
+        else:
+            return 'generic_content'
+
+    @staticmethod
+    def _extract_data_patterns(response: str) -> Dict[str, int]:
+        """Extract data patterns from response for comparison"""
+        patterns = {
+            'emails': len(re.findall(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', response)),
+            'phone_numbers': len(re.findall(r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b', response)),
+            'item_codes': len(re.findall(r'\bitem\s*(?:code|id)\s*:\s*\w+', response, re.IGNORECASE)),
+            'prices': len(re.findall(r'\$\d+\.?\d*|\d+\.?\d*\s*\$', response)),
+            'dates': len(re.findall(r'\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b', response)),
+            'ids': len(re.findall(r'\bid\s*[:=]\s*\d+', response, re.IGNORECASE)),
+            'names': len(re.findall(r'\bname\s*[:=]\s*[A-Za-z\s]+', response, re.IGNORECASE)),
+            'table_rows': len(re.findall(r'<tr[^>]*>', response, re.IGNORECASE)),
+            'form_inputs': len(re.findall(r'<input[^>]*>', response, re.IGNORECASE)),
+            'images': len(re.findall(r'<img[^>]*>', response, re.IGNORECASE))
+        }
+        
+        return patterns
+
+    @staticmethod
+    def _compare_data_patterns(orig_patterns: Dict[str, int], mod_patterns: Dict[str, int]) -> float:
+        """Compare data patterns and return vulnerability score contribution"""
+        score = 0.0
+        
+        for pattern_type, orig_count in orig_patterns.items():
+            mod_count = mod_patterns.get(pattern_type, 0)
+            
+            if pattern_type in ['item_codes', 'prices', 'ids', 'names'] and mod_count > orig_count:
+                score += 0.2  # High value patterns
+            elif pattern_type in ['emails', 'phone_numbers'] and mod_count > orig_count:
+                score += 0.3  # Personal data patterns
+            elif pattern_type in ['table_rows', 'images'] and abs(mod_count - orig_count) > 2:
+                score += 0.1  # Structural differences
+        
+        return min(score, 0.5)  # Cap at 0.5
+
+    @staticmethod
+    def _build_comprehensive_evidence(analysis_result: Dict[str, Any], parameter_name: str, 
+                                    url: str, original_response: str, modified_response: str) -> str:
+        """Build comprehensive evidence string from analysis results"""
+        evidence_parts = []
+        
+        # Main vulnerability statement
+        evidence_parts.append(f"IDOR VULNERABILITY DETECTED: Parameter '{parameter_name}' allows unauthorized access to different objects.")
+        
+        # Score and confidence
+        score = analysis_result['vulnerability_score']
+        evidence_parts.append(f"Vulnerability Score: {score:.2f}/1.0")
+        
+        # Specific indicators
+        indicators = analysis_result.get('indicators', [])
+        if indicators:
+            evidence_parts.append(f"Detection Indicators: {', '.join(indicators)}")
+        
+        # Evidence details
+        details = analysis_result.get('evidence_details', {})
+        
+        if 'size_difference' in details:
+            evidence_parts.append(f"Response Size Difference: {details['size_difference']} bytes")
+        
+        if 'title_change' in details:
+            evidence_parts.append(f"Page Title Changed: {details['title_change']}")
+        
+        # Content analysis
+        orig_content = IDORDetector._extract_meaningful_content(original_response)
+        mod_content = IDORDetector._extract_meaningful_content(modified_response)
+        
+        if orig_content != mod_content:
+            evidence_parts.append(f"Content Difference: Original='{orig_content[:100]}...' vs Modified='{mod_content[:100]}...'")
+        
+        # Test examples
+        test_examples = IDORDetector._generate_test_examples(url, parameter_name, original_response, modified_response)
+        evidence_parts.append(test_examples)
+        
+        return " | ".join(evidence_parts)
     
     @staticmethod
     def _is_error_response(response: str) -> bool:
@@ -623,6 +758,69 @@ class IDORDetector:
         # If no specific patterns, return first meaningful text
         return text_content[:200] if text_content else "No meaningful content"
     
+    @staticmethod
+    def _analyze_parameter_value(value: str, param_name: str = "") -> Dict[str, Any]:
+        """
+        Analyze parameter value to determine its type and characteristics
+        Returns analysis that helps generate better test values
+        """
+        analysis = {
+            'type': 'unknown',
+            'numeric_value': None,
+            'text_part': None,
+            'numeric_part': None,
+            'path_parts': None
+        }
+        
+        if not value:
+            return analysis
+        
+        # Check if purely numeric
+        if value.isdigit():
+            analysis['type'] = 'numeric'
+            analysis['numeric_value'] = int(value)
+            return analysis
+        
+        # Check if file path
+        if ('/' in value or '\\' in value) and ('.' in value):
+            analysis['type'] = 'file_path'
+            
+            # Extract path components
+            import re
+            path_match = re.match(r'(.*/)?([^/]*?)(\d+)(\.[^.]+)?$', value)
+            if path_match:
+                base_path = path_match.group(1) or ''
+                name_part = path_match.group(2) or ''
+                number_part = int(path_match.group(3))
+                extension = path_match.group(4) or ''
+                
+                analysis['path_parts'] = {
+                    'base_path': base_path + name_part,
+                    'number': number_part,
+                    'extension': extension
+                }
+            return analysis
+        
+        # Check if alphanumeric (text + numbers)
+        import re
+        alphanumeric_match = re.match(r'([a-zA-Z_]+)(\d+)$', value)
+        if alphanumeric_match:
+            analysis['type'] = 'alphanumeric'
+            analysis['text_part'] = alphanumeric_match.group(1)
+            analysis['numeric_part'] = int(alphanumeric_match.group(2))
+            return analysis
+        
+        # Check if contains numbers
+        numbers = re.findall(r'\d+', value)
+        if numbers:
+            analysis['type'] = 'mixed'
+            analysis['numeric_part'] = int(numbers[0])  # First number found
+            return analysis
+        
+        # Pure text
+        analysis['type'] = 'text'
+        return analysis
+
     @staticmethod
     def get_remediation_advice() -> str:
         """Get remediation advice for IDOR vulnerabilities"""
