@@ -5289,6 +5289,7 @@ class VulnScanner:
                         
                         if is_vulnerable:
                             evidence = f"The GET parameter '{param}' appears to be vulnerable. Accessing with ID '{test_value}' was successful (original was '{original_value}')."
+                            print(f"    [IDOR] *** VULNERABILITY CONFIRMED: {param}={test_value} (was {original_value}) ***")
                             results.append(self._create_idor_vulnerability(base_url, 'GET', param, test_value, evidence, test_url, modified_response.text))
                             self.found_vulnerabilities.add(param_key)
                             self.scan_stats['payload_stats']['idor']['successful_payloads'] += 1
@@ -5362,6 +5363,7 @@ class VulnScanner:
                             
                             if is_vulnerable:
                                 evidence = f"The form parameter '{param}' appears to be vulnerable. Accessing with ID '{test_value}' was successful (original was '{original_value}')."
+                                print(f"    [IDOR] *** FORM VULNERABILITY CONFIRMED: {param}={test_value} (was {original_value}) ***")
                                 results.append(self._create_idor_vulnerability(base_url, form_method, param, test_value, evidence, test_url, modified_response.text))
                                 self.found_vulnerabilities.add(param_key)
                                 self.scan_stats['payload_stats']['idor']['successful_payloads'] += 1
@@ -7993,14 +7995,18 @@ class VulnScanner:
     
     def print_results(self, results: List[Dict[str, Any]]):
         """Print results to console with safe encoding"""
+        import sys
+        
         try:
             print("\n" + "="*80)
             print("SCAN RESULTS SUMMARY".center(80))
             print("="*80)
+            sys.stdout.flush()  # Force flush output buffer
         except UnicodeEncodeError:
             print("\n" + "="*80)
             print("SCAN RESULTS SUMMARY".center(80))
             print("="*80)
+            sys.stdout.flush()
         
         
         # Print scan statistics
@@ -8129,26 +8135,38 @@ class VulnScanner:
         if total_active > 0:
             print(f"\nACTIVE VULNERABILITIES ({total_active} found):")
             print("="*60)
+            sys.stdout.flush()
             
+            vuln_counter = 1
             for severity, vulns in active_vulns.items():
                 if vulns:
                     print(f"\n{severity.upper()} SEVERITY ({len(vulns)} found):")
                     print("-" * 50)
-                    for i, result in enumerate(vulns, 1):
-                        self._print_vulnerability(i, result)
+                    sys.stdout.flush()
+                    
+                    for result in vulns:
+                        self._print_vulnerability(vuln_counter, result)
+                        vuln_counter += 1
+                        sys.stdout.flush()  # Flush after each vulnerability
         
         # Print passive vulnerabilities
         total_passive = sum(len(vulns) for vulns in passive_vulns.values())
         if total_passive > 0:
             print(f"\nPASSIVE VULNERABILITIES ({total_passive} found):")
             print("="*60)
+            sys.stdout.flush()
             
             for severity, vulns in passive_vulns.items():
                 if vulns:
                     print(f"\n{severity.upper()} SEVERITY ({len(vulns)} found):")
                     print("-" * 50)
+                    sys.stdout.flush()
+                    
                     for i, result in enumerate(vulns, 1):
-                        self._print_vulnerability(i, result, is_passive=True)
+                        self._print_vulnerability(vuln_counter + i, result, is_passive=True)
+                        sys.stdout.flush()  # Flush after each vulnerability
+            
+            vuln_counter += len([v for vulns in passive_vulns.values() for v in vulns])
         
         # Print found resources summary
         found_resources = self.scan_stats.get('found_resources', {})
@@ -8220,8 +8238,17 @@ class VulnScanner:
         # Print general vulnerability summary
         if vulnerabilities:
             print(f"\nScan found {len(vulnerabilities)} vulnerabilities")
+            sys.stdout.flush()
         
         print("="*80)
+        sys.stdout.flush()
+        
+        # Ensure all output is written
+        try:
+            sys.stdout.flush()
+            sys.stderr.flush()
+        except:
+            pass
     
     def _is_directory_listing_page(self, url: str) -> bool:
         """Check if URL appears to be a directory listing page"""
@@ -8286,6 +8313,8 @@ class VulnScanner:
     
     def _print_vulnerability(self, index: int, result: Dict[str, Any], is_passive: bool = False):
         """Print single vulnerability details with safe encoding and enhanced metadata"""
+        import sys
+        
         def safe_print(text):
             """Safely print text, handling encoding issues"""
             try:
@@ -8294,10 +8323,12 @@ class VulnScanner:
                     print(text.encode('utf-8', 'replace').decode('utf-8', 'replace'))
                 else:
                     print(str(text))
+                sys.stdout.flush()  # Force flush after each line
             except (UnicodeEncodeError, UnicodeDecodeError):
                 # Replace problematic characters with safe alternatives
                 safe_text = str(text).encode('ascii', 'replace').decode('ascii')
                 print(safe_text)
+                sys.stdout.flush()
         
         analysis_type = "[PASSIVE]" if is_passive else "[ACTIVE]"
         icon = ''
