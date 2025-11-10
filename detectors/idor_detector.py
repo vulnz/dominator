@@ -110,12 +110,16 @@ class IDORDetector:
         
         # 0. Pre-check: Skip if parameter shouldn't be tested for IDOR
         if parameter_name:
+            param_lower = parameter_name.lower()
+            
+            # Hard exclusion for authentication-related parameters
+            auth_params = ['username', 'password', 'email', 'login', 'passwd', 'pass']
+            if param_lower in auth_params:
+                return False, 'low', f'Parameter "{parameter_name}" is excluded from IDOR testing (authentication parameter)'
+            
+            # General testability check
             if not IDORDetector.is_parameter_testable(parameter_name, url, original_response):
                 return False, 'low', f'Parameter "{parameter_name}" excluded from IDOR testing (likely login/auth context)'
-            
-            # Additional check for username parameter specifically
-            if parameter_name.lower() == 'username':
-                return False, 'low', 'Parameter "username" is excluded from IDOR testing (login credential)'
             
         # 1. Handle redirect responses
         if modified_code in [301, 302, 303, 307, 308]:
