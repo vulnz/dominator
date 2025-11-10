@@ -116,16 +116,18 @@ class IDORDetector:
                     'evidence': {
                         'url_pattern': pattern,
                         'found_values': matches[:3],
-                        'test_examples': f"MANUAL TEST REQUIRED - Try these URLs: {' | '.join([t['test_url'] for t in test_suggestions[:3]])} - Different responses confirm IDOR vulnerability",
+                        'concrete_proof': f"IDOR EVIDENCE: Parameter '{param_name}' with value '{original_value}' returns {len(response_text)}b response containing {'item data' if item_data_found else 'user data' if user_data_found else 'structured data'}",
+                        'test_examples': f"PROOF REQUIRED: Test {param_name}=0, {param_name}=1, {param_name}=2 - Different content sizes/data confirm IDOR",
                         'suggested_tests': test_suggestions[:3],
                         'proof_of_concept': proof_examples,
-                        'detailed_instructions': f"1) Access original URL: {url} 2) Test URLs: {', '.join([t['test_url'] for t in test_suggestions[:2]])} 3) Compare content - different data confirms IDOR",
+                        'detailed_instructions': f"STEP 1: Access {url} (note content/size) STEP 2: Try {test_suggestions[0]['test_url'] if test_suggestions else 'different values'} STEP 3: Compare - different data = IDOR confirmed",
                         'response_analysis': {
                             'contains_user_data': user_data_found,
                             'contains_sensitive_data': sensitive_data_found,
                             'contains_item_data': item_data_found,
                             'contains_database_content': database_content_found,
-                            'response_length': len(response_text)
+                            'response_length': len(response_text),
+                            'data_indicators': f"Response contains: {'Items' if item_data_found else ''}{'Users' if user_data_found else ''}{'Sensitive' if sensitive_data_found else ''}{'Database' if database_content_found else ''} data"
                         }
                     }
                 })

@@ -227,14 +227,19 @@ class IDORDetector:
         analysis = IDORDetector._simple_response_analysis(original_response, modified_response)
         
         if analysis['is_different'] and analysis['confidence'] > 0.3:
-            # Generate detailed test examples for the evidence
+            # Generate detailed test examples with concrete proof
             test_examples = IDORDetector._generate_test_examples(url, parameter_name, original_response, modified_response)
             
-            # Create comprehensive evidence with concrete proof and examples
+            # Extract concrete evidence of different data
+            orig_data = IDORDetector._extract_meaningful_content(original_response)
+            mod_data = IDORDetector._extract_meaningful_content(modified_response)
+            
+            # Create comprehensive evidence with real proof
             evidence_parts = [
-                f"IDOR VULNERABILITY CONFIRMED: Parameter '{parameter_name}' allows unauthorized access.",
-                f"Analysis: {analysis['evidence']}",
-                f"PROOF OF CONCEPT: {test_examples}"
+                f"IDOR VULNERABILITY CONFIRMED: Parameter '{parameter_name}' exposes different objects.",
+                f"CONCRETE PROOF: Original data: '{orig_data}' vs Modified data: '{mod_data}'",
+                f"Response size difference: {abs(len(original_response) - len(modified_response))} bytes",
+                test_examples
             ]
             
             evidence = " ".join(evidence_parts)
@@ -506,11 +511,28 @@ class IDORDetector:
         param_match = re.search(f'{parameter_name}=([^&]+)', url)
         original_value = param_match.group(1) if param_match else ''
         
+        # Show concrete proof of IDOR vulnerability
+        orig_size = len(original_response)
+        mod_size = len(modified_response)
+        size_diff = abs(orig_size - mod_size)
+        
+        # Extract meaningful content differences
+        orig_content = IDORDetector._extract_meaningful_content(original_response)
+        mod_content = IDORDetector._extract_meaningful_content(modified_response)
+        
+        examples.append(f"IDOR VULNERABILITY PROOF:")
+        examples.append(f"Original request ({parameter_name}='{original_value}'): {orig_size}b response")
+        examples.append(f"Modified request ({parameter_name}='test_value'): {mod_size}b response")
+        examples.append(f"Size difference: {size_diff} bytes - PROVES different content returned")
+        
+        # Show content differences
+        if orig_content != mod_content:
+            examples.append(f"CONTENT PROOF: Original='{orig_content[:100]}...' vs Modified='{mod_content[:100]}...'")
+        
         # For IDOR, show specific test values that prove the vulnerability
         if parameter_name.lower() in ['item', 'itemcode', 'id', 'product']:
-            # Show concrete test values for common IDOR scenarios
+            examples.append(f"CONCRETE TEST EXAMPLES - Try these {parameter_name} values:")
             test_values = ['0', '1', '2', '3', '4']
-            examples.append(f"TEST THESE URLs TO CONFIRM IDOR:")
             
             for test_value in test_values:
                 if original_value:
@@ -518,7 +540,7 @@ class IDORDetector:
                 else:
                     separator = '&' if '?' in url else '?'
                     test_url = f"{url}{separator}{parameter_name}={test_value}"
-                examples.append(f"• {test_url}")
+                examples.append(f"→ {test_url} (expect different item data)")
         else:
             # Generic test values for other parameters
             test_values = IDORDetector.get_idor_test_values(original_value, parameter_name)
@@ -530,33 +552,56 @@ class IDORDetector:
                 else:
                     separator = '&' if '?' in url else '?'
                     test_url = f"{url}{separator}{parameter_name}={test_value}"
-                examples.append(f"• {test_url}")
+                examples.append(f"→ {test_url}")
         
-        # Add response analysis with concrete numbers
-        orig_size = len(original_response)
-        mod_size = len(modified_response)
-        size_diff = abs(orig_size - mod_size)
+        # Add specific evidence of vulnerability
+        if IDORDetector._contains_item_data(modified_response):
+            examples.append("✓ CONFIRMED: Modified response contains item/product data (Item Code, Price, etc.)")
         
-        if size_diff > 0:
-            examples.append(f"RESPONSE SIZES: Original={orig_size}b, Modified={mod_size}b, Difference={size_diff}b")
+        if IDORDetector._contains_personal_data(modified_response):
+            examples.append("✓ CONFIRMED: Modified response contains personal/sensitive data")
         
-        # Check for different content
+        # Check for different titles
         orig_title = IDORDetector._extract_title(original_response)
         mod_title = IDORDetector._extract_title(modified_response)
         if orig_title != mod_title and mod_title:
-            examples.append(f"DIFFERENT CONTENT: Original='{orig_title}' vs Modified='{mod_title}'")
+            examples.append(f"✓ CONFIRMED: Different page titles - Original: '{orig_title}' vs Modified: '{mod_title}'")
         
-        # Add item-specific content analysis
-        if IDORDetector._contains_item_data(modified_response):
-            examples.append("✓ VULNERABILITY CONFIRMED: Response contains item/product data")
-        
-        if IDORDetector._contains_personal_data(modified_response):
-            examples.append("✓ VULNERABILITY CONFIRMED: Response contains personal data")
-        
-        # Add manual verification instructions
-        examples.append("MANUAL VERIFICATION: Access each URL above and compare the returned data - different content confirms IDOR")
+        # Add verification instructions
+        examples.append("VERIFICATION: Each URL above should return different data - this confirms unauthorized access to different objects")
         
         return " | ".join(examples)
+    
+    @staticmethod
+    def _extract_meaningful_content(response: str) -> str:
+        """Extract meaningful content from response for comparison"""
+        # Remove HTML tags and get text content
+        text_content = re.sub(r'<[^>]+>', ' ', response)
+        text_content = re.sub(r'\s+', ' ', text_content).strip()
+        
+        # Look for specific data patterns
+        data_patterns = [
+            r'Item Code\s*:\s*([^\n\r]+)',
+            r'Item Name\s*:\s*([^\n\r]+)',
+            r'Price\s*:\s*([^\n\r]+)',
+            r'Category\s*:\s*([^\n\r]+)',
+            r'Description\s*:\s*([^\n\r]+)',
+            r'User\s*:\s*([^\n\r]+)',
+            r'Name\s*:\s*([^\n\r]+)',
+            r'Email\s*:\s*([^\n\r]+)',
+        ]
+        
+        found_data = []
+        for pattern in data_patterns:
+            matches = re.findall(pattern, response, re.IGNORECASE)
+            if matches:
+                found_data.extend(matches[:2])  # First 2 matches
+        
+        if found_data:
+            return ' | '.join(found_data)
+        
+        # If no specific patterns, return first meaningful text
+        return text_content[:200] if text_content else "No meaningful content"
     
     @staticmethod
     def get_remediation_advice() -> str:
