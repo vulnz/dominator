@@ -108,18 +108,31 @@ class IDORDetector:
         if modified_headers is None:
             modified_headers = {}
         
-        # 0. Pre-check: Skip if parameter shouldn't be tested for IDOR
+        # 0. ABSOLUTE EXCLUSION: Never test these parameters for IDOR
         if parameter_name:
             param_lower = parameter_name.lower()
             
-            # Hard exclusion for authentication-related parameters
-            auth_params = ['username', 'password', 'email', 'login', 'passwd', 'pass']
-            if param_lower in auth_params:
-                return False, 'low', f'Parameter "{parameter_name}" is excluded from IDOR testing (authentication parameter)'
+            # Absolute exclusion list - these should NEVER be tested for IDOR
+            never_test_params = [
+                'username', 'password', 'email', 'login', 'passwd', 'pass', 'pwd',
+                'user_name', 'user_email', 'user_password', 'confirm_password',
+                'first_name', 'last_name', 'full_name', 'name', 'search', 'query',
+                'csrf_token', 'token', '_token', 'submit', 'action', 'method'
+            ]
             
-            # General testability check
-            if not IDORDetector.is_parameter_testable(parameter_name, url, original_response):
-                return False, 'low', f'Parameter "{parameter_name}" excluded from IDOR testing (likely login/auth context)'
+            if param_lower in never_test_params:
+                return False, 'excluded', f'Parameter "{parameter_name}" is permanently excluded from IDOR testing'
+            
+            # Additional context-based exclusions
+            if 'login' in url.lower() or 'auth' in url.lower():
+                return False, 'excluded', f'Parameter "{parameter_name}" excluded - authentication context detected'
+            
+            # Check if parameter looks like an ID parameter
+            id_patterns = ['id', '_id', 'key', 'ref', 'reference']
+            is_id_like = any(pattern in param_lower for pattern in id_patterns)
+            
+            if not is_id_like:
+                return False, 'excluded', f'Parameter "{parameter_name}" does not appear to be an ID parameter'
             
         # 1. Handle redirect responses
         if modified_code in [301, 302, 303, 307, 308]:
@@ -147,8 +160,12 @@ class IDORDetector:
         # 4. Check if responses are identical (no IDOR)
         if original_response.strip() == modified_response.strip():
             return False, 'low', 'Responses are identical - no IDOR detected'
+        
+        # 5. Check for login page responses (strict check)
+        if IDORDetector._is_login_page(modified_response):
+            return False, 'low', 'Response is a login page - not an IDOR vulnerability'
             
-        # 5. Enhanced error detection
+        # 6. Enhanced error detection
         modified_lower = modified_response.lower()
         error_patterns = [
             'error', 'not found', 'access denied', 'forbidden', 
@@ -161,26 +178,16 @@ class IDORDetector:
         
         if any(pattern in modified_lower for pattern in error_patterns):
             return False, 'low', 'Response contains error indicators'
-        
-        # 6. Check for login form responses (common false positive)
-        login_indicators = [
-            '<input[^>]*type=["\']password["\']',
-            'login', 'sign in', 'authentication',
-            'username.*password', 'email.*password'
-        ]
-        
-        if any(re.search(pattern, modified_lower, re.IGNORECASE) for pattern in login_indicators):
-            return False, 'low', 'Response appears to be a login form'
 
-        # 7. Compare response characteristics
+        # 7. Compare response characteristics with very strict thresholds
         analysis = IDORDetector._analyze_response_differences(
             original_response, modified_response, original_headers, modified_headers
         )
         
-        # 8. Determine vulnerability based on analysis with stricter thresholds
-        if analysis['different_content'] and analysis['confidence'] > 0.5:
+        # 8. Determine vulnerability based on analysis with much stricter thresholds
+        if analysis['different_content'] and analysis['confidence'] > 0.7 and analysis['meaningful_difference']:
             evidence = IDORDetector._build_evidence(analysis)
-            confidence = 'high' if analysis['confidence'] > 0.8 else 'medium'
+            confidence = 'high' if analysis['confidence'] > 0.9 else 'medium'
             return True, confidence, evidence
         
         return False, 'low', 'Responses are too similar or indicate no IDOR'
@@ -266,6 +273,29 @@ class IDORDetector:
         
         title_lower = title.lower().strip()
         return any(generic in title_lower for generic in generic_titles)
+
+    @staticmethod
+    def _is_login_page(response: str) -> bool:
+        """Check if response is a login page"""
+        response_lower = response.lower()
+        
+        # Strong indicators of login page
+        login_indicators = [
+            'type="password"',
+            'name="password"',
+            'name="username"',
+            'login form',
+            'sign in',
+            'authentication',
+            'please log in',
+            'enter your credentials'
+        ]
+        
+        # Count how many indicators are present
+        indicator_count = sum(1 for indicator in login_indicators if indicator in response_lower)
+        
+        # If multiple indicators present, it's likely a login page
+        return indicator_count >= 2
 
     @staticmethod
     def _extract_title(response: str) -> str:
