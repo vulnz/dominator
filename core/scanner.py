@@ -8156,17 +8156,18 @@ class VulnScanner:
             print("="*60)
             sys.stdout.flush()
             
+            passive_counter = vuln_counter if total_active > 0 else 1
+            
             for severity, vulns in passive_vulns.items():
                 if vulns:
                     print(f"\n{severity.upper()} SEVERITY ({len(vulns)} found):")
                     print("-" * 50)
                     sys.stdout.flush()
                     
-                    for i, result in enumerate(vulns, 1):
-                        self._print_vulnerability(vuln_counter + i, result, is_passive=True)
+                    for result in vulns:
+                        self._print_vulnerability(passive_counter, result, is_passive=True)
+                        passive_counter += 1
                         sys.stdout.flush()  # Flush after each vulnerability
-            
-            vuln_counter += len([v for vulns in passive_vulns.values() for v in vulns])
         
         # Print found resources summary
         found_resources = self.scan_stats.get('found_resources', {})
