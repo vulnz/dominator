@@ -8207,6 +8207,21 @@ class VulnScanner:
         print(f"Info:                 {len(info_vulns)}")
         print("="*80)
         
+        # WAF summary
+        detected_wafs = set()
+        for v in vulnerabilities:
+            if v.get('module') == 'wafdetect' or 'WAF Detected' in v.get('vulnerability', ''):
+                waf_name = v.get('waf_name')
+                if waf_name:
+                    detected_wafs.add(waf_name)
+        
+        if detected_wafs:
+            print("\n" + "WAF DETECTION SUMMARY".center(60))
+            print("-" * 60)
+            for waf_name in sorted(list(detected_wafs)):
+                print(f"  🛡️  {waf_name} was detected.")
+            print("-" * 60)
+        
         # Separate active and passive vulnerabilities
         active_vulns = {'critical': [], 'high': [], 'medium': [], 'low': [], 'info': []}
         passive_vulns = {'critical': [], 'high': [], 'medium': [], 'low': [], 'info': []}
@@ -8342,6 +8357,9 @@ class VulnScanner:
         payload_display = payload[:100] + ('...' if len(payload) > 100 else '')
         safe_print(f"     Payload: {payload_display}")
         safe_print(f"     Request: {result.get('request_url', '')}")
+        
+        if result.get('icon') and 'waf' in result.get('module', ''):
+            safe_print(f"     Report Icon: <i class=\"{result.get('icon')}\"></i> (example for HTML report)")
         
         # Show response snippet if available
         response_snippet = result.get('response_snippet', '')
