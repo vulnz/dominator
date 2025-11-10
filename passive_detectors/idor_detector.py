@@ -116,9 +116,10 @@ class IDORDetector:
                     'evidence': {
                         'url_pattern': pattern,
                         'found_values': matches[:3],
-                        'test_examples': f"TEST URLS: {' | '.join([t['test_url'] for t in test_suggestions[:3]])}",
+                        'test_examples': f"MANUAL TEST REQUIRED - Try these URLs: {' | '.join([t['test_url'] for t in test_suggestions[:3]])} - Different responses confirm IDOR vulnerability",
                         'suggested_tests': test_suggestions[:3],
                         'proof_of_concept': proof_examples,
+                        'detailed_instructions': f"1) Access original URL: {url} 2) Test URLs: {', '.join([t['test_url'] for t in test_suggestions[:2]])} 3) Compare content - different data confirms IDOR",
                         'response_analysis': {
                             'contains_user_data': user_data_found,
                             'contains_sensitive_data': sensitive_data_found,

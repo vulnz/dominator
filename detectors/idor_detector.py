@@ -230,11 +230,11 @@ class IDORDetector:
             # Generate detailed test examples for the evidence
             test_examples = IDORDetector._generate_test_examples(url, parameter_name, original_response, modified_response)
             
-            # Create comprehensive evidence with concrete proof
+            # Create comprehensive evidence with concrete proof and examples
             evidence_parts = [
                 f"IDOR VULNERABILITY CONFIRMED: Parameter '{parameter_name}' allows unauthorized access.",
-                f"Response analysis: {analysis['evidence']}",
-                test_examples
+                f"Analysis: {analysis['evidence']}",
+                f"PROOF OF CONCEPT: {test_examples}"
             ]
             
             evidence = " ".join(evidence_parts)
@@ -532,30 +532,31 @@ class IDORDetector:
                     test_url = f"{url}{separator}{parameter_name}={test_value}"
                 examples.append(f"• {test_url}")
         
-        # Add response analysis
+        # Add response analysis with concrete numbers
         orig_size = len(original_response)
         mod_size = len(modified_response)
         size_diff = abs(orig_size - mod_size)
         
         if size_diff > 0:
-            examples.append(f"RESPONSE ANALYSIS: Original={orig_size}b vs Modified={mod_size}b (difference: {size_diff}b)")
+            examples.append(f"RESPONSE SIZES: Original={orig_size}b, Modified={mod_size}b, Difference={size_diff}b")
         
         # Check for different content
         orig_title = IDORDetector._extract_title(original_response)
         mod_title = IDORDetector._extract_title(modified_response)
         if orig_title != mod_title and mod_title:
-            examples.append(f"CONTENT DIFFERS: '{orig_title}' vs '{mod_title}'")
+            examples.append(f"DIFFERENT CONTENT: Original='{orig_title}' vs Modified='{mod_title}'")
         
         # Add item-specific content analysis
         if IDORDetector._contains_item_data(modified_response):
-            examples.append("✓ CONFIRMED: Response contains item/product data proving IDOR vulnerability")
+            examples.append("✓ VULNERABILITY CONFIRMED: Response contains item/product data")
         
         if IDORDetector._contains_personal_data(modified_response):
-            examples.append("✓ CONFIRMED: Response contains personal data proving IDOR vulnerability")
+            examples.append("✓ VULNERABILITY CONFIRMED: Response contains personal data")
         
-        if examples:
-            return " | ".join(examples)
-        return "IDOR CONFIRMED: Different responses for different parameter values"
+        # Add manual verification instructions
+        examples.append("MANUAL VERIFICATION: Access each URL above and compare the returned data - different content confirms IDOR")
+        
+        return " | ".join(examples)
     
     @staticmethod
     def get_remediation_advice() -> str:
