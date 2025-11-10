@@ -30,6 +30,55 @@ class IDORDetector:
             'record', 'entry', 'data', 'info', 'details', 'product',
             'product_code', 'sku', 'catalog', 'inventory'
         ]
+    
+    @staticmethod
+    def get_idor_test_values(original_value: str, parameter_name: str = "") -> List[str]:
+        """
+        Generate test values for IDOR testing based on original value
+        Returns 2-3 test values to check if IDOR vulnerability exists
+        """
+        test_values = []
+        param_lower = parameter_name.lower()
+        
+        # Try to parse original value as integer
+        try:
+            orig_int = int(original_value)
+            
+            # For numeric IDs, test adjacent values and common patterns
+            test_values.extend([
+                str(orig_int + 1),  # Next ID
+                str(orig_int - 1),  # Previous ID
+                str(orig_int + 10), # Skip ahead
+            ])
+            
+            # Add some common test values for specific parameter types
+            if 'user' in param_lower:
+                test_values.extend(['1', '2', '999'])  # Common user IDs
+            elif 'item' in param_lower or 'product' in param_lower:
+                test_values.extend(['1', '2', '100'])  # Common item IDs
+            elif 'account' in param_lower:
+                test_values.extend(['1', '10', '100'])  # Common account IDs
+            else:
+                test_values.extend(['1', '2', '999'])  # Generic test values
+                
+        except ValueError:
+            # Non-numeric original value
+            if original_value.isalpha():
+                # For alphabetic codes, try common variations
+                if len(original_value) <= 3:
+                    test_values.extend(['A', 'B', 'C'])
+                else:
+                    test_values.extend(['admin', 'test', 'user'])
+            elif original_value.isalnum():
+                # For alphanumeric codes
+                test_values.extend(['A1', 'B2', 'C3'])
+            else:
+                # For other formats, try common patterns
+                test_values.extend(['1', '2', '3'])
+        
+        # Remove duplicates and original value, keep only first 3
+        test_values = [v for v in test_values if v != original_value]
+        return list(dict.fromkeys(test_values))[:3]  # Remove duplicates, keep order, limit to 3
 
     @staticmethod
     def get_excluded_parameters() -> List[str]:
@@ -384,6 +433,53 @@ class IDORDetector:
             
         return snippet
 
+    @staticmethod
+    def generate_idor_test_urls(base_url: str, parameter_name: str, original_value: str) -> List[Dict[str, str]]:
+        """
+        Generate test URLs for IDOR testing
+        Returns list of test URLs with different parameter values
+        """
+        test_urls = []
+        test_values = IDORDetector.get_idor_test_values(original_value, parameter_name)
+        
+        for test_value in test_values:
+            # Replace parameter value in URL
+            if f'{parameter_name}={original_value}' in base_url:
+                test_url = base_url.replace(f'{parameter_name}={original_value}', f'{parameter_name}={test_value}')
+            else:
+                # If parameter not found in URL, append it
+                separator = '&' if '?' in base_url else '?'
+                test_url = f"{base_url}{separator}{parameter_name}={test_value}"
+            
+            test_urls.append({
+                'url': test_url,
+                'parameter': parameter_name,
+                'original_value': original_value,
+                'test_value': test_value,
+                'description': f'Test IDOR with {parameter_name}={test_value}'
+            })
+        
+        return test_urls
+    
+    @staticmethod
+    def get_common_idor_test_cases() -> Dict[str, List[str]]:
+        """
+        Get common test cases for different types of IDOR parameters
+        """
+        return {
+            'user_id': ['1', '2', '999', '1000'],
+            'id': ['1', '2', '10', '100'],
+            'item': ['1', '2', '3', '100'],
+            'itemcode': ['ITEM001', 'ITEM002', 'ITEM003'],
+            'code': ['A', 'B', 'C', '001', '002'],
+            'account_id': ['1', '10', '100', '999'],
+            'profile_id': ['1', '2', '999'],
+            'product_id': ['1', '2', '100'],
+            'order_id': ['1', '2', '999'],
+            'file_id': ['1', '2', '10'],
+            'doc_id': ['1', '2', '100'],
+        }
+    
     @staticmethod
     def get_remediation_advice() -> str:
         """Get remediation advice for IDOR vulnerabilities"""

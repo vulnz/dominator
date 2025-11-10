@@ -65,6 +65,21 @@ class IDORDetector:
                 elif database_content_found or len(response_text) > 500:  # Значительный контент
                     severity = 'Medium'
                 
+                # Generate test values for manual testing
+                test_suggestions = []
+                if matches:
+                    original_value = matches[0]
+                    param_name = IDORDetector._extract_parameter_name(pattern)
+                    test_values = IDORDetector._generate_test_values(original_value, param_name)
+                    
+                    for test_value in test_values:
+                        test_url = url.replace(f'{param_name}={original_value}', f'{param_name}={test_value}')
+                        test_suggestions.append({
+                            'test_value': test_value,
+                            'test_url': test_url,
+                            'description': f'Test with {param_name}={test_value}'
+                        })
+                
                 findings.append({
                     'type': 'idor_potential',
                     'severity': severity,
@@ -76,11 +91,13 @@ class IDORDetector:
                     'has_item_data': item_data_found,
                     'has_database_content': database_content_found,
                     'response_size': len(response_text),
+                    'test_suggestions': test_suggestions[:3],  # First 3 test suggestions
                     'description': f'Potential IDOR vulnerability: {param_type} found in URL',
-                    'recommendation': 'Implement proper authorization checks for object access',
+                    'recommendation': 'Implement proper authorization checks for object access. Test manually with suggested values.',
                     'evidence': {
                         'url_pattern': pattern,
                         'found_values': matches[:3],
+                        'suggested_tests': test_suggestions[:3],
                         'response_analysis': {
                             'contains_user_data': user_data_found,
                             'contains_sensitive_data': sensitive_data_found,
@@ -137,6 +154,60 @@ class IDORDetector:
                 return True
         
         return False
+    
+    @staticmethod
+    def _extract_parameter_name(pattern: str) -> str:
+        """Extract parameter name from regex pattern"""
+        # Extract parameter name from patterns like r'[?&]item=([^&]+)'
+        if 'item=' in pattern:
+            return 'item'
+        elif 'itemcode=' in pattern:
+            return 'itemcode'
+        elif 'user_id=' in pattern:
+            return 'user_id'
+        elif 'id=' in pattern:
+            return 'id'
+        elif 'code=' in pattern:
+            return 'code'
+        elif 'product=' in pattern:
+            return 'product'
+        elif 'account_id=' in pattern:
+            return 'account_id'
+        elif 'profile_id=' in pattern:
+            return 'profile_id'
+        else:
+            return 'id'  # Default
+    
+    @staticmethod
+    def _generate_test_values(original_value: str, parameter_name: str) -> List[str]:
+        """Generate 2-3 test values for IDOR testing"""
+        test_values = []
+        param_lower = parameter_name.lower()
+        
+        try:
+            # Try numeric values
+            orig_int = int(original_value)
+            test_values = [
+                str(orig_int + 1),
+                str(orig_int - 1),
+                str(orig_int + 10)
+            ]
+        except ValueError:
+            # Non-numeric values
+            if 'item' in param_lower:
+                if original_value.startswith('ITEM'):
+                    test_values = ['ITEM001', 'ITEM002', 'ITEM999']
+                else:
+                    test_values = ['1', '2', '100']
+            elif 'code' in param_lower:
+                test_values = ['A', 'B', 'C']
+            elif 'user' in param_lower:
+                test_values = ['1', '2', '999']
+            else:
+                test_values = ['1', '2', '3']
+        
+        # Remove original value and limit to 3
+        return [v for v in test_values if v != original_value][:3]
     
     @staticmethod
     def _check_sensitive_data(response_text: str) -> bool:
