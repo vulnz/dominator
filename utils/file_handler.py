@@ -152,7 +152,8 @@ class FileHandler:
             'scan_stats': scan_stats,
             'filetree_enabled': bool(scan_stats.get('file_tree_paths')),
             'benchmark_analysis': benchmark_analysis,
-            'site_structure': self._build_site_structure(vulnerabilities, scan_stats)
+            'site_structure': self._build_site_structure(vulnerabilities, scan_stats),
+            'found_resources': scan_stats.get('found_resources', {})
         }
         
         print(f"[DEBUG] Final report_data: {len(vulnerabilities)} vulnerabilities")
@@ -922,6 +923,178 @@ class FileHandler:
             margin-left: 5px;
         }
         
+        /* Found Resources Styles */
+        .found-resources {
+            padding: 20px;
+        }
+        
+        .resources-summary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .resources-summary h3 {
+            margin-bottom: 15px;
+            font-size: 1.3rem;
+        }
+        
+        .summary-stats {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+        }
+        
+        .summary-stats span {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-weight: 500;
+        }
+        
+        .resources-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+        }
+        
+        .resource-category {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .category-header {
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+        }
+        
+        .category-header.severity-critical {
+            background: linear-gradient(135deg, #8b0000, #a00000);
+            color: white;
+        }
+        
+        .category-header.severity-high {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: white;
+        }
+        
+        .category-header.severity-medium {
+            background: linear-gradient(135deg, #f39c12, #e67e22);
+            color: white;
+        }
+        
+        .category-header.severity-low {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+        }
+        
+        .category-header.severity-info {
+            background: linear-gradient(135deg, #2ecc71, #27ae60);
+            color: white;
+        }
+        
+        .resource-count {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 0.9rem;
+        }
+        
+        .category-resources {
+            padding: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .resource-item {
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            border-left: 4px solid #ddd;
+            background: #f8f9fa;
+            transition: all 0.3s ease;
+        }
+        
+        .resource-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .resource-item.severity-critical {
+            border-left-color: #8b0000;
+            background: #fff5f5;
+        }
+        
+        .resource-item.severity-high {
+            border-left-color: #e74c3c;
+            background: #fef5f5;
+        }
+        
+        .resource-item.severity-medium {
+            border-left-color: #f39c12;
+            background: #fffbf0;
+        }
+        
+        .resource-item.severity-low {
+            border-left-color: #3498db;
+            background: #f0f8ff;
+        }
+        
+        .resource-item.severity-info {
+            border-left-color: #2ecc71;
+            background: #f0fff4;
+        }
+        
+        .resource-item.show-more {
+            border-left-color: #95a5a6;
+            background: #ecf0f1;
+            font-style: italic;
+            text-align: center;
+        }
+        
+        .resource-value {
+            font-family: 'Courier New', monospace;
+            font-weight: 600;
+            margin-bottom: 8px;
+            word-break: break-all;
+        }
+        
+        .resource-details {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        
+        .resource-type {
+            font-weight: 500;
+            color: #555;
+        }
+        
+        .resource-severity {
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .resource-context {
+            font-size: 0.85rem;
+            color: #666;
+            font-style: italic;
+            margin-top: 5px;
+        }
+        
         /* Screenshot Thumbnail Styles */
         .screenshot-thumbnail {
             max-width: 200px;
@@ -1124,6 +1297,17 @@ class FileHandler:
             </div>
         </div>
         
+        <!-- Found Resources Section -->
+        <div id="found-resources-section" class="vulnerabilities" style="margin-bottom: 20px;">
+            <div class="vuln-header">
+                <h2><i class="fas fa-search"></i> Found Resources</h2>
+                <p>Sensitive information and resources discovered during passive analysis</p>
+            </div>
+            <div id="found-resources-content">
+                <!-- Found resources will be populated here -->
+            </div>
+        </div>
+        
         <!-- Active Vulnerabilities List -->
         <div class="vulnerabilities" id="active-vulnerabilities">
             <div class="vuln-header">
@@ -1200,6 +1384,7 @@ class FileHandler:
                 populateTechnologies();
                 populateVulnerabilities();
                 populateSiteStructure();
+                populateFoundResources();
                 setupFilters();
                 setupEventListeners();
             
@@ -1960,6 +2145,188 @@ class FileHandler:
             
             structureHtml += '</div></div>';
             container.innerHTML = structureHtml;
+        }
+        
+        function populateFoundResources() {
+            console.log('Populating found resources...');
+            const foundResources = reportData.found_resources || {};
+            const container = document.getElementById('found-resources-content');
+            
+            if (!container) {
+                console.error('Found resources container not found');
+                return;
+            }
+            
+            if (Object.keys(foundResources).length === 0) {
+                container.innerHTML = '<div class="no-results"><p>No sensitive resources found during passive analysis</p></div>';
+                return;
+            }
+            
+            let resourcesHtml = '<div class="found-resources">';
+            
+            // Calculate totals
+            let totalResources = 0;
+            let criticalCount = 0;
+            let highCount = 0;
+            let mediumCount = 0;
+            let lowCount = 0;
+            let infoCount = 0;
+            
+            for (const resources of Object.values(foundResources)) {
+                totalResources += resources.length;
+                resources.forEach(resource => {
+                    switch (resource.severity) {
+                        case 'Critical': criticalCount++; break;
+                        case 'High': highCount++; break;
+                        case 'Medium': mediumCount++; break;
+                        case 'Low': lowCount++; break;
+                        default: infoCount++; break;
+                    }
+                });
+            }
+            
+            // Summary stats
+            resourcesHtml += `
+                <div class="resources-summary">
+                    <h3>Resources Discovery Summary</h3>
+                    <div class="summary-stats">
+                        <span><strong>Total Resources:</strong> ${totalResources}</span>
+                        <span><strong>Categories:</strong> ${Object.keys(foundResources).length}</span>
+                        <span class="severity-critical"><strong>Critical:</strong> ${criticalCount}</span>
+                        <span class="severity-high"><strong>High:</strong> ${highCount}</span>
+                        <span class="severity-medium"><strong>Medium:</strong> ${mediumCount}</span>
+                        <span class="severity-low"><strong>Low:</strong> ${lowCount}</span>
+                        <span class="severity-info"><strong>Info:</strong> ${infoCount}</span>
+                    </div>
+                </div>
+            `;
+            
+            // Resources by category
+            resourcesHtml += '<div class="resources-grid">';
+            
+            // Sort categories by severity (critical first)
+            const sortedCategories = Object.entries(foundResources).sort((a, b) => {
+                const getSeverityWeight = (resources) => {
+                    let weight = 0;
+                    resources.forEach(r => {
+                        switch (r.severity) {
+                            case 'Critical': weight += 10; break;
+                            case 'High': weight += 7; break;
+                            case 'Medium': weight += 4; break;
+                            case 'Low': weight += 2; break;
+                            default: weight += 1; break;
+                        }
+                    });
+                    return weight;
+                };
+                return getSeverityWeight(b[1]) - getSeverityWeight(a[1]);
+            });
+            
+            for (const [category, resources] of sortedCategories) {
+                if (resources.length === 0) continue;
+                
+                // Get category icon
+                const categoryIcon = getCategoryIcon(category);
+                const categoryName = category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                
+                // Get highest severity in category
+                const severities = resources.map(r => r.severity);
+                let highestSeverity = 'Info';
+                if (severities.includes('Critical')) highestSeverity = 'Critical';
+                else if (severities.includes('High')) highestSeverity = 'High';
+                else if (severities.includes('Medium')) highestSeverity = 'Medium';
+                else if (severities.includes('Low')) highestSeverity = 'Low';
+                
+                resourcesHtml += `
+                    <div class="resource-category">
+                        <div class="category-header severity-${highestSeverity.toLowerCase()}">
+                            <h4><i class="${categoryIcon}"></i> ${categoryName}</h4>
+                            <span class="resource-count">${resources.length} found</span>
+                        </div>
+                        <div class="category-resources">
+                `;
+                
+                // Show first 10 resources, with option to expand
+                const displayResources = resources.slice(0, 10);
+                const hasMore = resources.length > 10;
+                
+                displayResources.forEach(resource => {
+                    const severityClass = resource.severity.toLowerCase();
+                    let displayValue = resource.value;
+                    
+                    // Special handling for sensitive data
+                    if (resource.masked_value) {
+                        displayValue = resource.masked_value;
+                    } else if (resource.formatted_value) {
+                        displayValue = resource.formatted_value;
+                    } else if (displayValue.length > 50) {
+                        displayValue = displayValue.substring(0, 50) + '...';
+                    }
+                    
+                    resourcesHtml += `
+                        <div class="resource-item severity-${severityClass}">
+                            <div class="resource-value">${displayValue}</div>
+                            <div class="resource-details">
+                                <span class="resource-type">${resource.name}</span>
+                                <span class="resource-severity severity-${severityClass}">${resource.severity}</span>
+                            </div>
+                            <div class="resource-context">${resource.context}</div>
+                        </div>
+                    `;
+                });
+                
+                if (hasMore) {
+                    resourcesHtml += `
+                        <div class="resource-item show-more">
+                            <div class="resource-value">... and ${resources.length - 10} more ${categoryName.toLowerCase()}</div>
+                        </div>
+                    `;
+                }
+                
+                resourcesHtml += `
+                        </div>
+                    </div>
+                `;
+            }
+            
+            resourcesHtml += '</div></div>';
+            container.innerHTML = resourcesHtml;
+        }
+        
+        function getCategoryIcon(category) {
+            const icons = {
+                'credit_cards': 'fas fa-credit-card',
+                'phone_numbers': 'fas fa-phone',
+                'email_addresses': 'fas fa-envelope',
+                'social_networks': 'fab fa-facebook',
+                'subdomains': 'fas fa-sitemap',
+                'ip_addresses': 'fas fa-network-wired',
+                'urls': 'fas fa-link',
+                'api_keys': 'fas fa-key',
+                'crypto_addresses': 'fab fa-bitcoin',
+                'documents': 'fas fa-file-pdf',
+                'images': 'fas fa-image',
+                'databases': 'fas fa-database',
+                'cloud_services': 'fas fa-cloud',
+                'development': 'fas fa-code',
+                'network_info': 'fas fa-network-wired',
+                'geographic': 'fas fa-map-marker-alt',
+                'financial': 'fas fa-dollar-sign',
+                'personal_data': 'fas fa-user-shield',
+                'technical': 'fas fa-cogs',
+                'business': 'fas fa-building',
+                'security': 'fas fa-shield-alt',
+                'media': 'fas fa-play-circle',
+                'infrastructure': 'fas fa-server',
+                'compliance': 'fas fa-balance-scale',
+                'analytics': 'fas fa-chart-line',
+                'communication': 'fas fa-comments',
+                'backup_storage': 'fas fa-archive',
+                'monitoring': 'fas fa-eye',
+                'certificates': 'fas fa-certificate',
+                'version_control': 'fab fa-git-alt'
+            };
+            return icons[category] || 'fas fa-search';
         }
         
         function populateVulnerabilities() {

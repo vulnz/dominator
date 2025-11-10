@@ -8117,6 +8117,73 @@ class VulnScanner:
                     for i, result in enumerate(vulns, 1):
                         self._print_vulnerability(i, result, is_passive=True)
         
+        # Print found resources summary
+        found_resources = self.scan_stats.get('found_resources', {})
+        if found_resources:
+            total_resources = sum(len(resources) for resources in found_resources.values())
+            print(f"\nFOUND RESOURCES ({total_resources} items across {len(found_resources)} categories):")
+            print("="*60)
+            
+            # Sort categories by severity
+            def get_category_severity_weight(resources):
+                weight = 0
+                for resource in resources:
+                    severity = resource.get('severity', 'Info')
+                    if severity == 'Critical':
+                        weight += 10
+                    elif severity == 'High':
+                        weight += 7
+                    elif severity == 'Medium':
+                        weight += 4
+                    elif severity == 'Low':
+                        weight += 2
+                    else:
+                        weight += 1
+                return weight
+            
+            sorted_categories = sorted(found_resources.items(), 
+                                     key=lambda x: get_category_severity_weight(x[1]), 
+                                     reverse=True)
+            
+            for category, resources in sorted_categories:
+                if not resources:
+                    continue
+                    
+                category_name = category.replace('_', ' ').title()
+                print(f"\n{category_name} ({len(resources)} found):")
+                print("-" * 40)
+                
+                # Group by severity
+                by_severity = {}
+                for resource in resources:
+                    severity = resource.get('severity', 'Info')
+                    if severity not in by_severity:
+                        by_severity[severity] = []
+                    by_severity[severity].append(resource)
+                
+                # Print by severity
+                for severity in ['Critical', 'High', 'Medium', 'Low', 'Info']:
+                    if severity in by_severity:
+                        severity_resources = by_severity[severity]
+                        print(f"  {severity} ({len(severity_resources)}):")
+                        
+                        # Show first 5 resources of each severity
+                        for i, resource in enumerate(severity_resources[:5]):
+                            value = resource.get('value', '')
+                            
+                            # Use masked/formatted value if available
+                            if resource.get('masked_value'):
+                                display_value = resource['masked_value']
+                            elif resource.get('formatted_value'):
+                                display_value = resource['formatted_value']
+                            else:
+                                display_value = value[:60] + ('...' if len(value) > 60 else '')
+                            
+                            print(f"    • {resource.get('name', 'Unknown')}: {display_value}")
+                        
+                        if len(severity_resources) > 5:
+                            print(f"    ... and {len(severity_resources) - 5} more")
+        
         # Print general vulnerability summary
         if vulnerabilities:
             print(f"\nScan found {len(vulnerabilities)} vulnerabilities")
