@@ -5225,14 +5225,19 @@ class VulnScanner:
         """Test for IDOR vulnerabilities"""
         results = []
         base_url = parsed_data['url']
-        
-        # Get IDOR payloads
-        idor_payloads = IDORPayloads.get_all_payloads()
-        
+
+        # Update payload stats
+        if 'idor' not in self.scan_stats['payload_stats']:
+            self.scan_stats['payload_stats']['idor'] = {'payloads_used': 0, 'requests_made': 0, 'successful_payloads': 0}
+
         # Test GET parameters that look like IDs
         id_params = [param for param in parsed_data['query_params'].keys() 
                     if any(id_word in param.lower() for id_word in IDORDetector.get_idor_parameters())]
         
+        if not id_params:
+            print(f"    [IDOR] No ID-like parameters found, skipping IDOR test")
+            return results
+
         for param in id_params:
             print(f"    [IDOR] Testing parameter: {param}")
             
@@ -5244,34 +5249,38 @@ class VulnScanner:
             
             try:
                 # Get original response
+                print(f"    [IDOR] Getting original response for: {parsed_data['url']}")
                 original_response = requests.get(
                     parsed_data['url'],
                     timeout=self.config.timeout,
                     headers=self.config.headers,
                     verify=False
                 )
+                self.request_count += 1
+                self.scan_stats['payload_stats']['idor']['requests_made'] += 1
                 
                 original_value = parsed_data['query_params'][param][0]
                 
-                # Generate sequential payloads based on original value
+                # Generate sequential payloads and combine with generic ones
                 sequential_payloads = IDORPayloads.get_sequential_payloads(original_value)
-                test_payloads = sequential_payloads + idor_payloads[:10]
+                generic_payloads = IDORPayloads.get_all_payloads()
+                test_payloads = list(set(sequential_payloads + generic_payloads))
                 
-                for payload in test_payloads:
+                print(f"    [IDOR] Generated {len(test_payloads)} payloads to test for param '{param}'")
+                
+                payload_count = self.payload_limit if self.payload_limit > 0 else 10
+                for payload in test_payloads[:payload_count]:
+                    # Skip testing with the original value
+                    if str(payload) == str(original_value):
+                        continue
+
                     try:
                         print(f"    [IDOR] Trying payload: {payload}")
                         
                         # Create test URL
                         test_params = parsed_data['query_params'].copy()
                         test_params[param] = [payload]
-                        
-                        # Build query string
-                        query_parts = []
-                        for k, v_list in test_params.items():
-                            for v in v_list:
-                                query_parts.append(f"{k}={v}")
-                        
-                        test_url = f"{base_url.split('?')[0]}?{'&'.join(query_parts)}"
+                        test_url = self._build_test_url(base_url, test_params)
                         
                         modified_response = requests.get(
                             test_url,
@@ -5279,6 +5288,8 @@ class VulnScanner:
                             headers=self.config.headers,
                             verify=False
                         )
+                        self.request_count += 1
+                        self.scan_stats['payload_stats']['idor']['requests_made'] += 1
                         
                         print(f"    [IDOR] Response code: {modified_response.status_code}")
                         
@@ -5295,6 +5306,9 @@ class VulnScanner:
                             # Mark as found to prevent duplicates
                             self.found_vulnerabilities.add(param_key)
                             
+                            self.scan_stats['payload_stats']['idor']['successful_payloads'] += 1
+                            self.scan_stats['total_payloads_used'] += 1
+
                             results.append({
                                 'module': 'idor',
                                 'target': base_url,

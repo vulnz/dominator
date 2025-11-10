@@ -1,60 +1,31 @@
-"""
-IDOR (Insecure Direct Object Reference) payload collection
-"""
-
 from typing import List
+from utils.payload_loader import PayloadLoader
 
 class IDORPayloads:
     """IDOR payload collection"""
-    
-    @staticmethod
-    def get_numeric_payloads() -> List[str]:
-        """Get numeric IDOR payloads"""
-        return [
-            '1', '2', '3', '0', '-1',
-            '100', '999', '1000',
-            '9999', '99999',
-            '2147483647',  # Max int
-            '-2147483648'  # Min int
-        ]
-    
-    @staticmethod
-    def get_sequential_payloads(original_id: str) -> List[str]:
-        """Get sequential IDOR payloads based on original ID"""
-        payloads = []
-        
-        try:
-            # If original ID is numeric, try adjacent numbers
-            if original_id.isdigit():
-                num = int(original_id)
-                payloads.extend([
-                    str(num - 1),
-                    str(num + 1),
-                    str(num - 10),
-                    str(num + 10),
-                    str(num * 2),
-                    str(num // 2) if num > 1 else '1'
-                ])
-        except:
-            pass
-        
-        return payloads
-    
-    @staticmethod
-    def get_common_ids() -> List[str]:
-        """Get common ID values to test"""
-        return [
-            'admin', 'administrator', 'root', 'user',
-            'test', 'guest', 'demo', 'default',
-            'system', 'public', 'anonymous',
-            '00000000-0000-0000-0000-000000000000',  # Empty GUID
-            'ffffffff-ffff-ffff-ffff-ffffffffffff'   # Max GUID
-        ]
-    
+
     @staticmethod
     def get_all_payloads() -> List[str]:
-        """Get all IDOR payloads"""
+        """Get all IDOR payloads from text file"""
+        return PayloadLoader.load_payloads('idor')
+
+    @staticmethod
+    def get_sequential_payloads(original_value: str) -> List[str]:
+        """Generate sequential payloads based on an original value."""
         payloads = []
-        payloads.extend(IDORPayloads.get_numeric_payloads())
-        payloads.extend(IDORPayloads.get_common_ids())
-        return payloads
+        
+        # Try to treat as integer
+        try:
+            original_int = int(original_value)
+            # Generate a few sequential and edge-case numbers
+            for i in range(1, 4):
+                payloads.append(str(original_int + i))
+                if original_int - i > 0:
+                    payloads.append(str(original_int - i))
+            
+            # Common privileged IDs
+            payloads.extend(['1', '0', '100'])
+            return list(set(payloads))
+        except (ValueError, TypeError):
+            # Not an integer, return empty. String manipulation is too complex for generic payloads.
+            return []
