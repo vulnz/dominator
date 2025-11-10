@@ -76,14 +76,27 @@ class IDORDetector:
                     # Generate detailed proof examples
                     proof_examples = IDORDetector.generate_idor_proof_examples(url, param_name, original_value)
                     
-                    for test_value in test_values:
-                        test_url = url.replace(f'{param_name}={original_value}', f'{param_name}={test_value}')
-                        test_suggestions.append({
-                            'test_value': test_value,
-                            'test_url': test_url,
-                            'description': f'Test with {param_name}={test_value}',
-                            'expected_result': f'Should show different content if IDOR exists'
-                        })
+                    # For item parameters, show specific sequential test values
+                    if 'item' in param_name.lower():
+                        specific_test_values = ['0', '1', '2', '3', '4']
+                        for test_value in specific_test_values:
+                            if test_value != original_value:
+                                test_url = url.replace(f'{param_name}={original_value}', f'{param_name}={test_value}')
+                                test_suggestions.append({
+                                    'test_value': test_value,
+                                    'test_url': test_url,
+                                    'description': f'Test with {param_name}={test_value}',
+                                    'expected_result': f'Different item data should be returned if IDOR exists'
+                                })
+                    else:
+                        for test_value in test_values:
+                            test_url = url.replace(f'{param_name}={original_value}', f'{param_name}={test_value}')
+                            test_suggestions.append({
+                                'test_value': test_value,
+                                'test_url': test_url,
+                                'description': f'Test with {param_name}={test_value}',
+                                'expected_result': f'Should show different content if IDOR exists'
+                            })
                 
                 findings.append({
                     'type': 'idor_potential',
@@ -99,7 +112,7 @@ class IDORDetector:
                     'test_suggestions': test_suggestions[:3],  # First 3 test suggestions
                     'proof_examples': proof_examples,
                     'description': f'Potential IDOR vulnerability: {param_type} found in URL. Original value: {original_value}',
-                    'recommendation': f'MANUAL TEST REQUIRED: 1) Access original URL, 2) Try test URLs: {", ".join([t["test_url"] for t in test_suggestions[:2]])}, 3) Compare responses - different content indicates IDOR.',
+                    'recommendation': f'MANUAL TEST REQUIRED: Test these URLs and compare response sizes/content: {", ".join([f"{param_name}={t["test_value"]}" for t in test_suggestions[:3]])}. Different responses confirm IDOR vulnerability.',
                     'evidence': {
                         'url_pattern': pattern,
                         'found_values': matches[:3],

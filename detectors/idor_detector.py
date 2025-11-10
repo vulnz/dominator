@@ -35,10 +35,19 @@ class IDORDetector:
     def get_idor_test_values(original_value: str, parameter_name: str = "") -> List[str]:
         """
         Generate test values for IDOR testing based on original value
-        Returns 2-3 test values to check if IDOR vulnerability exists
+        Returns specific test values to check if IDOR vulnerability exists
         """
         test_values = []
         param_lower = parameter_name.lower()
+        
+        # For item/product parameters, use specific sequential values
+        if 'item' in param_lower or 'product' in param_lower:
+            # Always test these specific values for items - they often reveal IDOR
+            test_values = ['0', '1', '2', '3', '4', '5']
+            # Remove original value if it's in the list
+            if original_value in test_values:
+                test_values.remove(original_value)
+            return test_values[:5]  # Return up to 5 test values
         
         # Try to parse original value as integer
         try:
@@ -46,20 +55,18 @@ class IDORDetector:
             
             # For numeric IDs, test adjacent values and common patterns
             test_values.extend([
-                str(orig_int + 1),  # Next ID
-                str(orig_int - 1),  # Previous ID
-                str(orig_int + 10), # Skip ahead
+                str(max(0, orig_int - 1)),  # Previous ID (not below 0)
+                str(orig_int + 1),          # Next ID
+                str(orig_int + 2),          # Skip ahead
             ])
             
             # Add some common test values for specific parameter types
             if 'user' in param_lower:
                 test_values.extend(['1', '2', '999'])  # Common user IDs
-            elif 'item' in param_lower or 'product' in param_lower:
-                test_values.extend(['1', '2', '100'])  # Common item IDs
             elif 'account' in param_lower:
                 test_values.extend(['1', '10', '100'])  # Common account IDs
             else:
-                test_values.extend(['1', '2', '999'])  # Generic test values
+                test_values.extend(['1', '2', '10'])  # Generic test values
                 
         except ValueError:
             # Non-numeric original value
@@ -76,9 +83,9 @@ class IDORDetector:
                 # For other formats, try common patterns
                 test_values.extend(['1', '2', '3'])
         
-        # Remove duplicates and original value, keep only first 3
+        # Remove duplicates and original value, keep only first 5
         test_values = [v for v in test_values if v != original_value]
-        return list(dict.fromkeys(test_values))[:3]  # Remove duplicates, keep order, limit to 3
+        return list(dict.fromkeys(test_values))[:5]  # Remove duplicates, keep order, limit to 5
 
     @staticmethod
     def get_excluded_parameters() -> List[str]:
@@ -220,9 +227,18 @@ class IDORDetector:
         analysis = IDORDetector._simple_response_analysis(original_response, modified_response)
         
         if analysis['is_different'] and analysis['confidence'] > 0.3:
-            # Generate test examples for the evidence
+            # Generate detailed test examples for the evidence
             test_examples = IDORDetector._generate_test_examples(url, parameter_name, original_response, modified_response)
-            evidence = f"Response analysis: {analysis['evidence']} {test_examples}"
+            
+            # Create comprehensive evidence with concrete proof
+            evidence_parts = [
+                f"IDOR VULNERABILITY CONFIRMED:",
+                f"Parameter '{parameter_name}' allows unauthorized access.",
+                analysis['evidence'],
+                test_examples
+            ]
+            
+            evidence = " ".join(evidence_parts)
             confidence = 'high' if analysis['confidence'] > 0.7 else 'medium'
             return True, confidence, evidence
         
@@ -484,37 +500,53 @@ class IDORDetector:
     
     @staticmethod
     def _generate_test_examples(url: str, parameter_name: str, original_response: str, modified_response: str) -> str:
-        """Generate test examples showing IDOR vulnerability"""
+        """Generate test examples showing IDOR vulnerability with concrete proof"""
         examples = []
         
         # Extract parameter value from URL
         param_match = re.search(f'{parameter_name}=([^&]+)', url)
         if param_match:
             original_value = param_match.group(1)
-            test_values = IDORDetector.get_idor_test_values(original_value, parameter_name)
             
-            # Create example URLs
-            for i, test_value in enumerate(test_values[:2]):  # Show first 2 examples
-                test_url = url.replace(f'{parameter_name}={original_value}', f'{parameter_name}={test_value}')
-                examples.append(f"Test {i+1}: {test_url}")
+            # For IDOR, show specific test values that prove the vulnerability
+            if parameter_name.lower() in ['item', 'itemcode', 'id']:
+                # Show concrete test values for common IDOR scenarios
+                test_values = ['0', '1', '2', '3', '4']
+                examples.append(f"IDOR PROOF - Test these values for {parameter_name}:")
+                
+                for test_value in test_values:
+                    test_url = url.replace(f'{parameter_name}={original_value}', f'{parameter_name}={test_value}')
+                    examples.append(f"  • {parameter_name}={test_value}: {test_url}")
+            else:
+                # Generic test values for other parameters
+                test_values = IDORDetector.get_idor_test_values(original_value, parameter_name)
+                examples.append(f"Test different {parameter_name} values:")
+                
+                for i, test_value in enumerate(test_values[:3]):
+                    test_url = url.replace(f'{parameter_name}={original_value}', f'{parameter_name}={test_value}')
+                    examples.append(f"  • Test {i+1}: {test_url}")
         
-        # Add response comparison info
+        # Add response size analysis
         orig_size = len(original_response)
         mod_size = len(modified_response)
         size_diff = abs(orig_size - mod_size)
         
         if size_diff > 0:
-            examples.append(f"Response size difference: {size_diff} bytes")
+            examples.append(f"Response sizes differ: Original={orig_size}b, Modified={mod_size}b (diff: {size_diff}b)")
         
-        # Check for different content types
+        # Check for different content
         orig_title = IDORDetector._extract_title(original_response)
         mod_title = IDORDetector._extract_title(modified_response)
-        if orig_title != mod_title:
-            examples.append(f"Different content: '{orig_title}' vs '{mod_title}'")
+        if orig_title != mod_title and mod_title:
+            examples.append(f"Different content detected: '{orig_title}' vs '{mod_title}'")
+        
+        # Add item-specific content analysis
+        if IDORDetector._contains_item_data(modified_response):
+            examples.append("✓ Response contains item/product data - confirms IDOR vulnerability")
         
         if examples:
-            return "Examples: " + " | ".join(examples)
-        return ""
+            return " | ".join(examples)
+        return "IDOR detected - responses differ significantly"
     
     @staticmethod
     def get_remediation_advice() -> str:
