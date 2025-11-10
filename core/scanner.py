@@ -7620,7 +7620,7 @@ class VulnScanner:
                     if isinstance(value, (list, dict, set)):
                         try:
                             clean_result[key] = self._clean_data_structure(value)
-                        except:
+                        except Exception:
                             clean_result[key] = str(value)
                     else:
                         clean_result[key] = str(value)

@@ -18,9 +18,11 @@ shutdown_requested = False
 if sys.platform.startswith('win'):
     try:
         import codecs
-        sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
-        sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
-    except:
+        sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'replace')
+        sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'replace')
+        # Set console code page to UTF-8 if possible
+        os.system('chcp 65001 >nul 2>&1')
+    except Exception:
         pass
 
 from core.scanner import VulnScanner
@@ -210,10 +212,16 @@ def main():
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             
             # Handle multiple targets for filename
-            if isinstance(args.target, list):
-                target_name = "_".join([t.replace(':', '_').replace('/', '_').replace('\\', '_').replace('?', '_').replace('=', '_').replace('&', '_') for t in args.target])
+            targets = config.get_targets()
+            if targets:
+                if len(targets) > 1:
+                    target_name = "_".join([t.replace(':', '_').replace('/', '_').replace('\\', '_').replace('?', '_').replace('=', '_').replace('&', '_') for t in targets[:3]])
+                    if len(targets) > 3:
+                        target_name += f"_and_{len(targets)-3}_more"
+                else:
+                    target_name = targets[0].replace(':', '_').replace('/', '_').replace('\\', '_').replace('?', '_').replace('=', '_').replace('&', '_')
             else:
-                target_name = args.target.replace(':', '_').replace('/', '_').replace('\\', '_').replace('?', '_').replace('=', '_').replace('&', '_')
+                target_name = "unknown_target"
             
             # Limit filename length to avoid errors
             if len(target_name) > 150:

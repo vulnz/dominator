@@ -118,11 +118,14 @@ class Config:
         
         # From file
         if self.target_file and os.path.exists(self.target_file):
-            with open(self.target_file, 'r', encoding='utf-8') as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith('#'):
-                        targets.append(line)
+            try:
+                with open(self.target_file, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith('#'):
+                            targets.append(line)
+            except (IOError, UnicodeDecodeError) as e:
+                print(f"Warning: Error reading targets file {self.target_file}: {e}")
         
         return targets
     
