@@ -796,49 +796,18 @@ class VulnScanner:
             # Простой краулинг через URL parser
             print(f"  [CRAWLER] Starting page discovery...")
             crawled_urls = self._discover_pages(parsed_data['url'])
-                
-                # Check for detected WAF and prompt user if --wafiffound is set
-                if self.crawler.detected_wafs and self.waf_if_found and not self.waf:
-                    waf_names = ', '.join(self.crawler.detected_wafs)
-                    try:
-                        prompt = input(f"  [WAF] WAFs detected: {waf_names}. Enable WAF bypass payloads? [y/N]: ")
-                        if prompt.lower() == 'y':
-                            self.waf = True
-                            print("  [WAF] WAF bypass mode enabled for active scanning.")
-                        else:
-                            print("  [WAF] Continuing without WAF bypass payloads.")
-                    except (EOFError, KeyboardInterrupt):
-                        print("\n  [WAF] User cancelled prompt. Continuing without WAF bypass payloads.")
             
-                # Update crawler stats
-                self.scan_stats['total_ajax_endpoints'] = len(self.crawler.get_ajax_endpoints())
-                self.scan_stats['total_js_files'] = len(self.crawler.js_urls)
-            
-                if crawled_urls:
-                    if self.debug:
-                        print(f"  [DEBUG] Crawler found {len(crawled_urls)} additional pages")
-                    for url in crawled_urls:
-                        crawled_data = self.url_parser.parse(url)
-                        all_found_pages.append(crawled_data)
+            if crawled_urls:
+                print(f"  [CRAWLER] Found {len(crawled_urls)} additional pages")
+                for url in crawled_urls:
+                    crawled_data = self.url_parser.parse(url)
+                    all_found_pages.append(crawled_data)
                     
-                        # Update stats
-                        self.scan_stats['total_urls'] += 1
-                        self.scan_stats['total_params'] += len(crawled_data['query_params'])
-                else:
-                    if self.debug:
-                        print(f"  [DEBUG] No additional pages found by crawler")
-            
-                # Only test pages that were actually discovered by the crawler
-                if self.debug:
-                    print(f"  [DEBUG] Using only crawler-discovered pages")
+                    # Update stats
+                    self.scan_stats['total_urls'] += 1
+                    self.scan_stats['total_params'] += len(crawled_data['query_params'])
             else:
-                if self.debug:
-                    if getattr(self.config, 'single_url', False):
-                        print(f"  [DEBUG] Single URL mode enabled - skipping crawler")
-                    elif getattr(self.config, 'nocrawl', False):
-                        print(f"  [DEBUG] No-crawl mode enabled - skipping crawler")
-                    else:
-                        print(f"  [DEBUG] Crawling disabled by configuration")
+                print(f"  [CRAWLER] No additional pages found")
         
             # Run passive analysis on all discovered pages
             print(f"  [PASSIVE] Running passive analysis on {len(all_found_pages)} pages...")
