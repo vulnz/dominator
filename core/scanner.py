@@ -724,6 +724,17 @@ class VulnScanner:
         
         return self.results
     
+    def _discover_pages(self, base_url: str) -> List[str]:
+        """Простое обнаружение страниц через URL parser"""
+        try:
+            response = requests.get(base_url, timeout=self.config.timeout, headers=self.config.headers, verify=False)
+            if response.status_code == 200:
+                discovered_urls = self.url_parser.extract_urls_from_response(response.text, base_url)
+                print(f"  [CRAWLER] Discovered {len(discovered_urls)} URLs")
+                return discovered_urls
+        except Exception as e:
+            print(f"  [CRAWLER] Error: {e}")
+        return []
     
     def cleanup(self):
         """Cleanup resources"""
