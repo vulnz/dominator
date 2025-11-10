@@ -109,7 +109,12 @@ class Config:
         
         # From -t parameter
         if self.target:
-            targets.append(self.target)
+            if isinstance(self.target, list):
+                # Multiple targets passed as list
+                targets.extend(self.target)
+            else:
+                # Single target passed as string
+                targets.append(self.target)
         
         # From file
         if self.target_file and os.path.exists(self.target_file):
