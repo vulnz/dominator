@@ -112,10 +112,11 @@ class IDORDetector:
                     'test_suggestions': test_suggestions[:3],  # First 3 test suggestions
                     'proof_examples': proof_examples,
                     'description': f'Potential IDOR vulnerability: {param_type} found in URL. Original value: {original_value}',
-                    'recommendation': f'MANUAL TEST REQUIRED: Test these URLs and compare response sizes/content: {", ".join([f"{param_name}={t["test_value"]}" for t in test_suggestions[:3]])}. Different responses confirm IDOR vulnerability.',
+                    'recommendation': f'MANUAL TEST REQUIRED: 1) Access original URL and note content. 2) Test these URLs: {" | ".join([t["test_url"] for t in test_suggestions[:3]])} 3) Compare responses - different content/sizes confirm IDOR vulnerability.',
                     'evidence': {
                         'url_pattern': pattern,
                         'found_values': matches[:3],
+                        'test_examples': f"TEST URLS: {' | '.join([t['test_url'] for t in test_suggestions[:3]])}",
                         'suggested_tests': test_suggestions[:3],
                         'proof_of_concept': proof_examples,
                         'response_analysis': {

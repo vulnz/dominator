@@ -232,9 +232,8 @@ class IDORDetector:
             
             # Create comprehensive evidence with concrete proof
             evidence_parts = [
-                f"IDOR VULNERABILITY CONFIRMED:",
-                f"Parameter '{parameter_name}' allows unauthorized access.",
-                analysis['evidence'],
+                f"IDOR VULNERABILITY CONFIRMED: Parameter '{parameter_name}' allows unauthorized access.",
+                f"Response analysis: {analysis['evidence']}",
                 test_examples
             ]
             
@@ -505,48 +504,58 @@ class IDORDetector:
         
         # Extract parameter value from URL
         param_match = re.search(f'{parameter_name}=([^&]+)', url)
-        if param_match:
-            original_value = param_match.group(1)
-            
-            # For IDOR, show specific test values that prove the vulnerability
-            if parameter_name.lower() in ['item', 'itemcode', 'id']:
-                # Show concrete test values for common IDOR scenarios
-                test_values = ['0', '1', '2', '3', '4']
-                examples.append(f"IDOR PROOF - Test these values for {parameter_name}:")
-                
-                for test_value in test_values:
-                    test_url = url.replace(f'{parameter_name}={original_value}', f'{parameter_name}={test_value}')
-                    examples.append(f"  • {parameter_name}={test_value}: {test_url}")
-            else:
-                # Generic test values for other parameters
-                test_values = IDORDetector.get_idor_test_values(original_value, parameter_name)
-                examples.append(f"Test different {parameter_name} values:")
-                
-                for i, test_value in enumerate(test_values[:3]):
-                    test_url = url.replace(f'{parameter_name}={original_value}', f'{parameter_name}={test_value}')
-                    examples.append(f"  • Test {i+1}: {test_url}")
+        original_value = param_match.group(1) if param_match else ''
         
-        # Add response size analysis
+        # For IDOR, show specific test values that prove the vulnerability
+        if parameter_name.lower() in ['item', 'itemcode', 'id', 'product']:
+            # Show concrete test values for common IDOR scenarios
+            test_values = ['0', '1', '2', '3', '4']
+            examples.append(f"TEST THESE URLs TO CONFIRM IDOR:")
+            
+            for test_value in test_values:
+                if original_value:
+                    test_url = url.replace(f'{parameter_name}={original_value}', f'{parameter_name}={test_value}')
+                else:
+                    separator = '&' if '?' in url else '?'
+                    test_url = f"{url}{separator}{parameter_name}={test_value}"
+                examples.append(f"• {test_url}")
+        else:
+            # Generic test values for other parameters
+            test_values = IDORDetector.get_idor_test_values(original_value, parameter_name)
+            examples.append(f"TEST DIFFERENT {parameter_name.upper()} VALUES:")
+            
+            for test_value in test_values[:3]:
+                if original_value:
+                    test_url = url.replace(f'{parameter_name}={original_value}', f'{parameter_name}={test_value}')
+                else:
+                    separator = '&' if '?' in url else '?'
+                    test_url = f"{url}{separator}{parameter_name}={test_value}"
+                examples.append(f"• {test_url}")
+        
+        # Add response analysis
         orig_size = len(original_response)
         mod_size = len(modified_response)
         size_diff = abs(orig_size - mod_size)
         
         if size_diff > 0:
-            examples.append(f"Response sizes differ: Original={orig_size}b, Modified={mod_size}b (diff: {size_diff}b)")
+            examples.append(f"RESPONSE ANALYSIS: Original={orig_size}b vs Modified={mod_size}b (difference: {size_diff}b)")
         
         # Check for different content
         orig_title = IDORDetector._extract_title(original_response)
         mod_title = IDORDetector._extract_title(modified_response)
         if orig_title != mod_title and mod_title:
-            examples.append(f"Different content detected: '{orig_title}' vs '{mod_title}'")
+            examples.append(f"CONTENT DIFFERS: '{orig_title}' vs '{mod_title}'")
         
         # Add item-specific content analysis
         if IDORDetector._contains_item_data(modified_response):
-            examples.append("✓ Response contains item/product data - confirms IDOR vulnerability")
+            examples.append("✓ CONFIRMED: Response contains item/product data proving IDOR vulnerability")
+        
+        if IDORDetector._contains_personal_data(modified_response):
+            examples.append("✓ CONFIRMED: Response contains personal data proving IDOR vulnerability")
         
         if examples:
             return " | ".join(examples)
-        return "IDOR detected - responses differ significantly"
+        return "IDOR CONFIRMED: Different responses for different parameter values"
     
     @staticmethod
     def get_remediation_advice() -> str:
