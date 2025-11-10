@@ -7,9 +7,6 @@
 .gif
 .svg
 .ico
-.pdf
-.zip
-.rar
 .mp3
 .mp4
 .avi

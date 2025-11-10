@@ -344,7 +344,7 @@ class WebCrawler:
             print("    [CRAWLER] Warning: Skip extensions not loaded, using fallback.")
             skip_extensions = [
                 '.css', '.js', '.jpg', '.jpeg', '.png', '.gif', '.svg', '.ico',
-                '.pdf', '.zip', '.rar', '.mp3', '.mp4', '.avi', '.mov', '.wmv', '.flv'
+                '.mp3', '.mp4', '.avi', '.mov', '.wmv', '.flv'
             ]
         
         parsed = urlparse(url)
