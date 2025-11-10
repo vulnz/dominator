@@ -19,14 +19,14 @@ class IDORDetector:
             'productid', 'customer_id', 'customerid', 'client_id', 'clientid',
             
             # Additional common patterns
-            'key', 'ref', 'reference', 'token', 'session_id', 'sessionid',
+            'key', 'ref', 'reference', 'session_id', 'sessionid',
             'transaction_id', 'transactionid', 'payment_id', 'paymentid',
             'report_id', 'reportid', 'document_id', 'documentid',
             'folder_id', 'folderid', 'category_id', 'categoryid',
             'group_id', 'groupid', 'team_id', 'teamid', 'project_id', 'projectid',
             
-            # XVWA specific patterns (excluding login-related parameters)
-            'user', 'phone', 'number', 'code',
+            # XVWA IDOR specific patterns (itemcode is the real IDOR parameter)
+            'itemcode', 'item_code', 'code', 'number', 'phone',
             'record', 'entry', 'data', 'info', 'details'
         ]
 
@@ -108,31 +108,39 @@ class IDORDetector:
         if modified_headers is None:
             modified_headers = {}
         
-        # 0. ABSOLUTE EXCLUSION: Never test these parameters for IDOR
+        # 0. ЖЕСТКОЕ ИСКЛЮЧЕНИЕ: Эти параметры НИКОГДА не тестируются на IDOR
         if parameter_name:
-            param_lower = parameter_name.lower()
+            param_lower = parameter_name.lower().strip()
             
-            # Absolute exclusion list - these should NEVER be tested for IDOR
-            never_test_params = [
+            # Абсолютный список исключений - эти параметры НИКОГДА не должны тестироваться
+            forbidden_params = {
                 'username', 'password', 'email', 'login', 'passwd', 'pass', 'pwd',
                 'user_name', 'user_email', 'user_password', 'confirm_password',
                 'first_name', 'last_name', 'full_name', 'name', 'search', 'query',
-                'csrf_token', 'token', '_token', 'submit', 'action', 'method'
+                'csrf_token', 'token', '_token', 'submit', 'action', 'method',
+                'captcha', 'recaptcha', 'remember_me', 'terms', 'agree'
+            }
+            
+            # Прямая проверка на исключенные параметры
+            if param_lower in forbidden_params:
+                return False, 'excluded', f'Parameter "{parameter_name}" is in forbidden list - never tested for IDOR'
+            
+            # Проверка контекста аутентификации в URL
+            auth_urls = ['login', 'auth', 'signin', 'register', 'signup', 'forgot', 'reset']
+            if any(auth_url in url.lower() for auth_url in auth_urls):
+                return False, 'excluded', f'Authentication context detected in URL - parameter excluded'
+            
+            # Только ID-подобные параметры могут быть уязвимы к IDOR
+            valid_idor_patterns = [
+                'id', '_id', 'itemcode', 'item_code', 'code', 'key', 'ref', 'reference',
+                'user_id', 'userid', 'account_id', 'profile_id', 'doc_id', 'file_id',
+                'order_id', 'product_id', 'item_id', 'message_id', 'post_id'
             ]
             
-            if param_lower in never_test_params:
-                return False, 'excluded', f'Parameter "{parameter_name}" is permanently excluded from IDOR testing'
+            is_valid_idor_param = any(pattern in param_lower for pattern in valid_idor_patterns)
             
-            # Additional context-based exclusions
-            if 'login' in url.lower() or 'auth' in url.lower():
-                return False, 'excluded', f'Parameter "{parameter_name}" excluded - authentication context detected'
-            
-            # Check if parameter looks like an ID parameter
-            id_patterns = ['id', '_id', 'key', 'ref', 'reference']
-            is_id_like = any(pattern in param_lower for pattern in id_patterns)
-            
-            if not is_id_like:
-                return False, 'excluded', f'Parameter "{parameter_name}" does not appear to be an ID parameter'
+            if not is_valid_idor_param:
+                return False, 'excluded', f'Parameter "{parameter_name}" is not an ID-like parameter suitable for IDOR testing'
             
         # 1. Handle redirect responses
         if modified_code in [301, 302, 303, 307, 308]:

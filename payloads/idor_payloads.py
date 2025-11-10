@@ -62,8 +62,18 @@ class IDORPayloads:
         payloads = []
         param_lower = parameter_name.lower()
         
+        # XVWA IDOR specific - itemcode parameter
+        if 'itemcode' in param_lower or 'item_code' in param_lower:
+            payloads.extend([
+                '1', '2', '3', '4', '5', '10', '100',
+                'IV001', 'IV002', 'IV003', 'IV004', 'IV005',
+                'ITEM001', 'ITEM002', 'ITEM003',
+                'A001', 'A002', 'B001', 'B002',
+                '001', '002', '003', '004', '005'
+            ])
+        
         # User-related parameters
-        if any(keyword in param_lower for keyword in ['user', 'account', 'profile', 'member']):
+        elif any(keyword in param_lower for keyword in ['user', 'account', 'profile', 'member']):
             payloads.extend(['1', '2', 'admin', 'administrator', 'root', 'test'])
         
         # Document/File related parameters
@@ -77,6 +87,10 @@ class IDORPayloads:
         # Message/Post related parameters
         elif any(keyword in param_lower for keyword in ['message', 'post', 'comment', 'ticket']):
             payloads.extend(['1', '2', '10', '100'])
+        
+        # Code/Number parameters (generic)
+        elif any(keyword in param_lower for keyword in ['code', 'number', 'ref', 'reference']):
+            payloads.extend(['1', '2', '3', '001', '002', '003', 'A001', 'B001'])
         
         # Add sequential payloads based on original value
         payloads.extend(IDORPayloads.get_sequential_payloads(original_value))
