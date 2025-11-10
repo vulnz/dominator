@@ -51,7 +51,11 @@ class IDORDetector:
             'nonce', '_nonce', 'security_token',
             
             # Form control parameters
-            'submit', 'action', 'method', 'redirect', 'return_url'
+            'submit', 'action', 'method', 'redirect', 'return_url',
+            
+            # Additional common form fields that are not IDOR candidates
+            'captcha', 'recaptcha', 'remember_me', 'remember',
+            'terms', 'agree', 'accept', 'newsletter'
         ]
 
     @staticmethod
@@ -61,23 +65,32 @@ class IDORDetector:
         url_lower = url.lower()
         context_lower = form_context.lower()
         
-        # Exclude parameters that are clearly not IDOR candidates
+        # First check: Exclude parameters that are clearly not IDOR candidates
         excluded = IDORDetector.get_excluded_parameters()
         if param_lower in excluded:
             return False
         
-        # Exclude if URL suggests login/auth context
+        # Second check: Exclude if URL suggests login/auth context
         auth_indicators = ['login', 'auth', 'signin', 'register', 'signup', 'forgot', 'reset']
         if any(indicator in url_lower for indicator in auth_indicators):
             return False
         
-        # Exclude if form context suggests login/auth
-        if any(indicator in context_lower for indicator in ['login', 'sign in', 'authentication']):
+        # Third check: Exclude if form context suggests login/auth
+        login_context_indicators = [
+            'login', 'sign in', 'authentication', 'log in',
+            'username', 'password', 'email', 'signin'
+        ]
+        if any(indicator in context_lower for indicator in login_context_indicators):
             return False
         
-        # Only test parameters that look like IDs or references
+        # Fourth check: Only test parameters that look like IDs or references
         idor_params = IDORDetector.get_idor_parameters()
-        return param_lower in idor_params or param_lower.endswith('_id') or param_lower.endswith('id')
+        is_id_like = (param_lower in idor_params or 
+                     param_lower.endswith('_id') or 
+                     param_lower.endswith('id') or
+                     param_lower in ['key', 'ref', 'reference'])
+        
+        return is_id_like
 
     @staticmethod
     def detect_idor(original_response: str, modified_response: str,
@@ -96,8 +109,13 @@ class IDORDetector:
             modified_headers = {}
         
         # 0. Pre-check: Skip if parameter shouldn't be tested for IDOR
-        if parameter_name and not IDORDetector.is_parameter_testable(parameter_name, url, original_response):
-            return False, 'low', f'Parameter "{parameter_name}" excluded from IDOR testing (likely login/auth context)'
+        if parameter_name:
+            if not IDORDetector.is_parameter_testable(parameter_name, url, original_response):
+                return False, 'low', f'Parameter "{parameter_name}" excluded from IDOR testing (likely login/auth context)'
+            
+            # Additional check for username parameter specifically
+            if parameter_name.lower() == 'username':
+                return False, 'low', 'Parameter "username" is excluded from IDOR testing (login credential)'
             
         # 1. Handle redirect responses
         if modified_code in [301, 302, 303, 307, 308]:
