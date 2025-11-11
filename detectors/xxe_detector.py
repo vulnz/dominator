@@ -62,7 +62,7 @@ class XXEDetector:
                 'owasp': 'A05:2021 – Security Misconfiguration',
                 'recommendation': 'Disable external entity processing in XML parsers and implement proper input validation.'
             }
-        elif matches >= 1 and any('fonts' in p or 'extensions' in p or 'boot loader' in p for p in matched_patterns):
+        elif matches >= 2 and any('fonts' in p or 'extensions' in p or 'boot loader' in p for p in matched_patterns):
             return True, "XXE vulnerability detected - Windows system file content found", "Critical", {
                 'cwe': 'CWE-611',
                 'cvss': '9.8',

@@ -102,10 +102,12 @@ class SSTIDetector:
         }
         
         for expr, result in math_checks.items():
-            if expr in payload and result in response_text:
-                # Make sure it's not just coincidental
-                if len(response_text) > 100:  # Avoid false positives on short responses
-                    return True
+            if expr in payload:
+                # Use regex to find result as a whole word to avoid matching parts of other numbers
+                if re.search(r'\b' + re.escape(result) + r'\b', response_text):
+                    # Make sure it's not just coincidental
+                    if len(response_text) > 100:  # Avoid false positives on short responses
+                        return True
         
         return False
     
@@ -180,31 +182,3 @@ class SSTIDetector:
         7. Regular security audits of template usage
         """
     
-    @staticmethod
-    def get_evidence(payload: str, response_text: str) -> str:
-        """Get evidence for SSTI"""
-        evidence_parts = []
-        
-        # Check for template evaluation
-        if '49' in response_text and '7*7' in payload:
-            evidence_parts.append("Mathematical expression evaluated (7*7=49)")
-        elif '14' in response_text and '7+7' in payload:
-            evidence_parts.append("Mathematical expression evaluated (7+7=14)")
-        
-        # Check for template engine errors
-        if 'template' in response_text.lower():
-            evidence_parts.append("Template engine error detected")
-        if 'jinja' in response_text.lower():
-            evidence_parts.append("Jinja2 template engine detected")
-        
-        if evidence_parts:
-            return f"SSTI detected: {'; '.join(evidence_parts)}"
-        else:
-            return f"Potential SSTI with payload: {payload}"
-    
-    @staticmethod
-    def get_response_snippet(payload: str, response_text: str) -> str:
-        """Get response snippet for SSTI"""
-        if len(response_text) > 300:
-            return response_text[:300] + "..."
-        return response_text

@@ -937,6 +937,10 @@ class VulnScanner:
         """Run passive analysis on discovered pages"""
         passive_results = []
         
+        # Initialize found_resources in scan_stats
+        if 'found_resources' not in self.scan_stats:
+            self.scan_stats['found_resources'] = {}
+
         # Check if passive analysis is disabled
         if getattr(self.config, 'nopassive', False):
             print(f"    [PASSIVE] Passive analysis disabled by --nopassive flag")
@@ -1159,6 +1163,21 @@ class VulnScanner:
             
             if passive_results:
                 print(f"    [PASSIVE] Found {len(passive_results)} passive vulnerabilities")
+                # Populate found_resources for the report
+                if 'found_resources' not in self.scan_stats:
+                    self.scan_stats['found_resources'] = {}
+                
+                for res in passive_results:
+                    if res.get('module') == 'passive_sensitive':
+                        category = res.get('vulnerability', 'Sensitive Data Exposure').replace('Sensitive Data Exposure: ', '')
+                        if category not in self.scan_stats['found_resources']:
+                            self.scan_stats['found_resources'][category] = []
+                        
+                        self.scan_stats['found_resources'][category].append({
+                            'name': 'Finding',
+                            'value': res.get('response_snippet', ''),
+                            'severity': res.get('severity', 'Low')
+                        })
             else:
                 print(f"    [PASSIVE] No passive vulnerabilities found")
             
@@ -1434,8 +1453,8 @@ class VulnScanner:
                         response_preview = response.text[:200].replace('\n', ' ').replace('\r', ' ')
                         print(f"    [XSS] Response preview: {response_preview}...")
                     
-                    # Простая проверка отражения - если payload в ответе, то XSS
-                    payload_in_response = payload in response.text
+                    # Case-insensitive reflection check
+                    payload_in_response = payload.lower() in response.text.lower()
                     
                     # Используем XSS детектор только как дополнительную проверку
                     xss_detected_by_detector = False
@@ -1454,7 +1473,7 @@ class VulnScanner:
                         print(f"    [XSS] Detector error: {e}")
                     
                     # Окончательное решение: требуем высокую уверенность
-                    xss_detected = payload_in_response and confidence >= 0.8
+                    xss_detected = payload_in_response and confidence >= 0.7
                     
                     if xss_detected:
                         print(f"    [XSS] XSS DETECTED: {xss_type} (method: {detection_method}, confidence: {confidence:.2f})")
@@ -2722,6 +2741,13 @@ class VulnScanner:
                                 is_valid = False
                     
                     if is_valid:
+                        # Deduplication check
+                        dir_key = f"dirbrute_{test_url}"
+                        if dir_key in self.found_vulnerabilities:
+                            print(f"    [DIRBRUTE] Skipping duplicate directory: {directory}/")
+                            continue
+                        self.found_vulnerabilities.add(dir_key)
+
                         print(f"    [DIRBRUTE] DIRECTORY FOUND: {directory}/ - {evidence}")
                         
                         # Add found directory to list for integration with other modules
@@ -2822,6 +2848,13 @@ class VulnScanner:
                                 is_valid = False
                     
                     if is_valid:
+                        # Deduplication check
+                        file_key = f"dirbrute_{test_url}"
+                        if file_key in self.found_vulnerabilities:
+                            print(f"    [DIRBRUTE] Skipping duplicate file: {file}")
+                            continue
+                        self.found_vulnerabilities.add(file_key)
+
                         print(f"    [DIRBRUTE] FILE FOUND: {file} - {evidence}")
                         
                         # Check for sensitive content
@@ -2953,6 +2986,14 @@ class VulnScanner:
     
     def _test_git_exposed(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Test for exposed .git repository using specialized Git scanner"""
+        # Create deduplication key for this host
+        host_key = f"git_{parsed_data['host']}"
+        if host_key in self.found_vulnerabilities:
+            print(f"    [GIT] Skipping Git exposure test for {parsed_data['host']} - already tested")
+            return []
+        
+        self.found_vulnerabilities.add(host_key)
+
         from detectors.git_scanner import GitScanner
         
         # Create request counter wrapper
@@ -4249,9 +4290,18 @@ class VulnScanner:
         results = []
         base_url = parsed_data['url']
         
+        # Create deduplication key for this URL
+        url_key = f"passwordhttp_{base_url}"
+        if url_key in self.found_vulnerabilities:
+            print(f"    [PASSWORDOVERHTTP] Skipping password over HTTP test for {base_url} - already tested")
+            return results
+
         try:
             print(f"    [PASSWORDOVERHTTP] Testing password over HTTP...")
             
+            # Mark URL as tested
+            self.found_vulnerabilities.add(url_key)
+
             # Make request to get page content
             response = requests.get(
                 base_url,
@@ -7556,16 +7606,61 @@ class VulnScanner:
             return True
         return False
     
+    def _generate_txt_report(self, results: List[Dict[str, Any]]) -> str:
+        """Generate a simple text report from results"""
+        report_lines = []
+        report_lines.append("="*80)
+        report_lines.append("Dominator Security Report".center(80))
+        report_lines.append("="*80)
+        
+        vulnerabilities = [v for v in results if v.get('vulnerability')]
+        if not vulnerabilities:
+            report_lines.append("\nNo vulnerabilities found.")
+            return "\n".join(report_lines)
+            
+        report_lines.append(f"\nFound {len(vulnerabilities)} vulnerabilities.\n")
+        
+        # Group by severity
+        vulns_by_severity = {}
+        for v in vulnerabilities:
+            severity = v.get('severity', 'Unknown')
+            if severity not in vulns_by_severity:
+                vulns_by_severity[severity] = []
+            vulns_by_severity[severity].append(v)
+            
+        severity_order = ['Critical', 'High', 'Medium', 'Low', 'Info']
+        for severity in severity_order:
+            if severity in vulns_by_severity:
+                report_lines.append(f"\n--- {severity.upper()} SEVERITY ({len(vulns_by_severity[severity])} found) ---")
+                for v in vulns_by_severity[severity]:
+                    report_lines.append(f"  Vulnerability: {v.get('vulnerability')}")
+                    report_lines.append(f"  Target: {v.get('target')}")
+                    report_lines.append(f"  Parameter: {v.get('parameter', 'N/A')}")
+                    report_lines.append(f"  Payload: {str(v.get('payload', 'N/A'))[:100]}")
+                    report_lines.append(f"  Evidence: {v.get('evidence', '')}")
+                    report_lines.append("-" * 20)
+
+        return "\n".join(report_lines)
+
     def save_report(self, results: List[Dict[str, Any]], filename: str, format_type: str):
-        """Save auto-report (HTML only)"""
+        """Save scan report in the specified format"""
         # Ensure all vulnerabilities have required metadata
         enhanced_results = self._ensure_vulnerability_metadata(results)
         
         if format_type == 'html':
             self.file_handler.save_html(enhanced_results, filename)
+        elif format_type == 'txt':
+            try:
+                txt_content = self._generate_txt_report(enhanced_results)
+                with open(filename, 'w', encoding='utf-8') as f:
+                    f.write(txt_content)
+            except Exception as e:
+                print(f"Error saving TXT report: {e}")
         else:
-            # Force HTML format for all reports
-            self.file_handler.save_html(enhanced_results, filename.replace('.txt', '.html').replace('.json', '.html').replace('.xml', '.html'))
+            print(f"Warning: Unsupported report format '{format_type}'. Saving as HTML instead.")
+            # Fallback to HTML for unknown formats
+            html_filename = filename.rsplit('.', 1)[0] + '.html'
+            self.file_handler.save_html(enhanced_results, html_filename)
         
     
     def _ensure_vulnerability_metadata(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

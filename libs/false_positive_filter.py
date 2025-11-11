@@ -297,13 +297,14 @@ class FalsePositiveFilter:
         payload = vuln.get('payload', '')
         evidence = vuln.get('evidence', '').lower()
         
-        # Check if this is a registration/signup form
-        registration_indicators = [
-            'signup', 'register', 'registration', 'newuser', 'adduser', 'createuser'
+        # Check if this is a registration, guestbook, or comment form
+        form_type_indicators = [
+            'signup', 'register', 'registration', 'newuser', 'adduser', 'createuser',
+            'guestbook', 'comment', 'message', 'feedback'
         ]
         
-        if any(indicator in target for indicator in registration_indicators):
-            return False, "Registration/signup form detected - not IDOR vulnerable"
+        if any(indicator in target for indicator in form_type_indicators):
+            return False, f"Form submission page ({', '.join(form_type_indicators)}) detected - not IDOR vulnerable"
         
         # Check if parameter is a form field (not an ID)
         form_field_params = [

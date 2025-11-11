@@ -152,19 +152,33 @@ class IDORDetector:
     @staticmethod
     def is_parameter_testable(param_name: str, url: str = "", form_context: str = "", param_value: str = "") -> bool:
         """
-        SUPER SIMPLE - test EVERYTHING except passwords!
+        Check if a parameter is a good candidate for IDOR testing.
+        Excludes common non-IDOR parameters like login forms, search queries, etc.
         """
-        if not param_name or not param_value:
+        if not param_name:
             return False
-            
+
         param_lower = param_name.lower().strip()
-        
-        # ONLY exclude passwords and tokens
-        if param_lower in ['username', 'password', 'email', 'login', 'passwd', 'pass', 'pwd', 'csrf_token', 'token', '_token', 'submit']:
+
+        # Exclude parameters from the exclusion list
+        if param_lower in IDORDetector.get_excluded_parameters():
             return False
         
-        # Test EVERYTHING ELSE!
-        return True
+        # Exclude parameters in URLs related to login/registration
+        url_lower = (url + " " + form_context).lower()
+        if any(keyword in url_lower for keyword in ['login', 'register', 'signup', 'auth']):
+            return False
+        
+        # Parameter must have a value to be testable
+        if not param_value:
+            return False
+
+        # Only test parameters that look like IDs (numeric or alphanumeric with numbers)
+        value_analysis = IDORDetector._analyze_parameter_value(param_value)
+        if value_analysis['type'] in ['numeric', 'alphanumeric', 'mixed', 'file_path']:
+            return True
+
+        return False
 
     @staticmethod
     def detect_idor(original_response: str, modified_response: str,
@@ -175,34 +189,39 @@ class IDORDetector:
                     url: str = "",
                     http_method: str = "GET") -> Tuple[bool, str, str]:
         """
-        SUPER SIMPLE IDOR detection - if responses are different, it's IDOR!
+        Detects IDOR vulnerabilities using an enhanced response analysis scoring model.
         Returns (is_vulnerable, confidence_level, evidence)
         """
-        if original_headers is None:
-            original_headers = {}
-        if modified_headers is None:
-            modified_headers = {}
+        if original_headers is None: original_headers = {}
+        if modified_headers is None: modified_headers = {}
+
+        # Run enhanced analysis
+        analysis = IDORDetector._enhanced_response_analysis(
+            original_response, modified_response, original_code, modified_code,
+            original_headers, modified_headers, parameter_name, url
+        )
+
+        score = analysis['vulnerability_score']
         
-        # STEP 1: Both responses must be successful
-        if original_code != 200 or modified_code != 200:
-            return False, 'low', f'One or both responses not HTTP 200 (original: {original_code}, modified: {modified_code})'
+        # Determine vulnerability based on score
+        if score >= 0.7:
+            confidence = 'high'
+            is_vulnerable = True
+        elif score >= 0.5:
+            confidence = 'medium'
+            is_vulnerable = True
+        else:
+            confidence = 'low'
+            is_vulnerable = False
         
-        # STEP 2: Responses must be different
-        if original_response.strip() == modified_response.strip():
-            return False, 'low', 'Responses are identical - no IDOR'
-        
-        # STEP 3: Size difference check - ANY difference is IDOR
-        size_diff = abs(len(original_response) - len(modified_response))
-        if size_diff > 10:  # Even 10 bytes difference = IDOR
-            evidence = f"IDOR DETECTED: Response size difference of {size_diff} bytes indicates different content returned"
-            return True, 'high', evidence
-        
-        # STEP 4: Content difference check - ANY content difference is IDOR
-        if original_response != modified_response:
-            evidence = f"IDOR DETECTED: Response content is different - parameter '{parameter_name}' allows access to different objects"
-            return True, 'high', evidence
-        
-        return False, 'low', 'No differences detected'
+        if is_vulnerable:
+            evidence = IDORDetector._build_comprehensive_evidence(
+                analysis, parameter_name, url, original_response, modified_response
+            )
+        else:
+            evidence = analysis.get('reason', 'No significant differences found')
+
+        return is_vulnerable, confidence, evidence
 
     @staticmethod
     def _enhanced_response_analysis(original_response: str, modified_response: str,
