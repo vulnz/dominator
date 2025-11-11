@@ -670,6 +670,9 @@ class VulnScanner:
             "phpconfig": self._test_php_config,
             "csp": self._test_csp,
             "mixedcontent": self._test_mixed_content,
+            "fileinclusionenhanced": self._test_fileinclusionenhanced,
+            "ssrfenhanced": self._test_ssrfenhanced,
+            "infoleakenhanced": self._test_infoleakenhanced,
         }
         
     def scan(self) -> List[Dict[str, Any]]:
@@ -7529,6 +7532,26 @@ class VulnScanner:
             print(f"    [MIXEDCONTENT] Error during mixed content testing: {e}")
         
         return results
+
+    def _test_fileinclusionenhanced(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Run enhanced file inclusion tests by combining LFI, RFI, and SSRF modules."""
+        print("    [FILE-INCLUSION-ENHANCED] Running combined file inclusion tests (LFI, RFI, SSRF)...")
+        results = []
+        results.extend(self._test_lfi(parsed_data))
+        results.extend(self._test_rfi(parsed_data))
+        results.extend(self._test_ssrf(parsed_data))
+        return results
+
+    def _test_ssrfenhanced(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Wrapper for enhanced SSRF tests. Currently calls the standard SSRF module."""
+        print("    [SSRF-ENHANCED] Running enhanced SSRF tests (currently uses standard SSRF logic)...")
+        # NOTE: To enable full enhanced logic, the SSRFEnhancedDetector needs to be implemented.
+        return self._test_ssrf(parsed_data)
+
+    def _test_infoleakenhanced(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Wrapper for enhanced information leakage tests. Currently calls the standard module."""
+        print("    [INFO-LEAK-ENHANCED] Running enhanced information leakage tests...")
+        return self._test_information_leakage(parsed_data)
     
     
     def _get_success_indicators(self) -> List[str]:

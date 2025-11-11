@@ -51,6 +51,8 @@ Usage examples:
                        help='Scanning modules (comma separated)')
     parser.add_argument('--all', action='store_true',
                        help='Use all available modules')
+    parser.add_argument('--all-enhanced', action='store_true',
+                       help='Use all available modules including enhanced ones for specific targets')
     parser.add_argument('--exclude',
                        help='Exclude paths from scanning (comma separated)')
     parser.add_argument('--exclude-ips',
@@ -159,6 +161,10 @@ def show_modules():
     print("- fileinclusionenhanced: Enhanced File Inclusion Detection (LFI/RFI/SSRF)")
     print("- ssrfenhanced: Enhanced SSRF Detection")
     print("- infoleakenhanced: Enhanced Information Disclosure Detection")
+    print("\nEnhanced modules for testphp.vulnweb.com:")
+    print("- fileinclusionenhanced: Enhanced File Inclusion Detection (LFI/RFI/SSRF)")
+    print("- ssrfenhanced: Enhanced SSRF Detection")
+    print("- infoleakenhanced: Enhanced Information Disclosure Detection")
 
 def process_args(args):
     """Process and validate command line arguments"""
@@ -225,5 +231,22 @@ def process_args(args):
         args.all = False
         args.nocrawl = True  # WAF detection doesn't need crawling
         print("WAF detection mode enabled. Running only the WAF detection module.")
+
+    # Handle --all-enhanced flag
+    if hasattr(args, 'all_enhanced') and args.all_enhanced:
+        args.all = True
+        enhanced_modules = ['fileinclusionenhanced', 'ssrfenhanced', 'infoleakenhanced']
+        
+        if args.modules:
+            existing_modules = [m.strip() for m in args.modules.split(',')]
+        else:
+            existing_modules = []
+            
+        for module in enhanced_modules:
+            if module not in existing_modules:
+                existing_modules.append(module)
+        
+        args.modules = ','.join(existing_modules)
+        print("Enhanced scan mode enabled, including all standard and enhanced modules.")
 
     return args
