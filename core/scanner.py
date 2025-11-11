@@ -2645,6 +2645,13 @@ class VulnScanner:
             base_dir = base_url
             print(f"    [DIRBRUTE] Target is a directory: {base_dir}")
         
+        # Deduplicate dirbrute runs on the same base directory
+        dirbrute_domain_key = f"dirbrute_domain_{base_dir}"
+        if dirbrute_domain_key in self.found_vulnerabilities:
+            print(f"    [DIRBRUTE] Skipping test for {base_dir}, already performed for this domain.")
+            return results
+        self.found_vulnerabilities.add(dirbrute_domain_key)
+        
         try:
             print(f"    [DIRBRUTE] Starting directory and file bruteforce...")
             print(f"    [DIRBRUTE] Base URL: {base_url}")
