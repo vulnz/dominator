@@ -85,7 +85,7 @@ class XSSModule(BaseModule):
                             parameter=param_name,
                             payload=payload,
                             evidence=evidence,
-                            description="Cross-Site Scripting (XSS) vulnerability detected. "
+                            description="Reflected Cross-Site Scripting (XSS) vulnerability detected. "
                                        "User input is reflected in HTML output without proper sanitization.",
                             confidence=confidence
                         )
@@ -94,9 +94,10 @@ class XSSModule(BaseModule):
                         result['cwe'] = self.config.get('cwe', 'CWE-79')
                         result['owasp'] = self.config.get('owasp', 'A03:2021')
                         result['cvss'] = self.config.get('cvss', '7.3')
+                        result['xss_type'] = 'Reflected XSS'  # Specify XSS type
 
                         results.append(result)
-                        logger.info(f"✓ XSS found in {url} (parameter: {param_name}, confidence: {confidence:.2f})")
+                        logger.info(f"✓ Reflected XSS found in {url} (parameter: {param_name}, confidence: {confidence:.2f})")
 
                         # Move to next parameter after finding vuln
                         break
@@ -318,7 +319,7 @@ class XSSModule(BaseModule):
                         result['cwe'] = 'CWE-79'
                         result['owasp'] = 'A03:2021'
                         result['cvss'] = '8.0'  # Higher CVSS for stored XSS
-                        result['xss_type'] = 'stored'
+                        result['xss_type'] = 'Stored XSS'
 
                         results.append(result)
                         logger.info(f"✓ Stored XSS found in {url} (parameter: {param_name}, confidence: {confidence:.2f})")

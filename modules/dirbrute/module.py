@@ -326,6 +326,16 @@ class DirectoryBruteForceModule(BaseModule):
         # .htaccess is Apache-only, .htaccess.php/.asp/.jsp are invalid combinations
         # Same for .htpasswd, web.config (IIS-only), etc.
         if status_code == 403:
+            # CRITICAL FIX: Apache ALWAYS returns 403 for .htaccess and .htpasswd
+            # These are false positives and create spam in reports
+            common_403_files = ['.htaccess', '.htpasswd', 'web.config']
+            for forbidden_file in common_403_files:
+                if path == forbidden_file:  # Exact match only (no extensions)
+                    # Skip reporting - this is a false positive
+                    # Apache returns 403 for these files in EVERY directory
+                    logger.debug(f"[SKIPPED] Common 403 false positive: {path}")
+                    return (0.0, severity, description)  # Return 0 confidence to skip
+
             invalid_combinations = [
                 # Apache files with wrong extensions
                 ('.htaccess', ['.php', '.asp', '.aspx', '.jsp', '.html', '.txt']),

@@ -130,7 +130,7 @@ class DOMXSSModule(BaseModule):
                         result['cwe'] = self.config.get('cwe', 'CWE-79')
                         result['owasp'] = self.config.get('owasp', 'A03:2021')
                         result['cvss'] = self.config.get('cvss', '7.3')
-                        result['xss_type'] = 'dom'
+                        result['xss_type'] = 'DOM-based XSS'
 
                         results.append(result)
                         logger.info(f"✓ DOM XSS found in {url} (confidence: {confidence:.2f})")
@@ -172,7 +172,7 @@ class DOMXSSModule(BaseModule):
                     result['cwe'] = 'CWE-79'
                     result['owasp'] = 'A03:2021'
                     result['cvss'] = '7.3'
-                    result['xss_type'] = 'dom'
+                    result['xss_type'] = 'DOM-based XSS'
 
                     results.append(result)
                     logger.info(f"✓ DOM XSS found in JS file {js_url} (confidence: {confidence:.2f})")
