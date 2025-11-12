@@ -1,0 +1,9 @@
+{
+  "name": "SSRF Scanner",
+  "description": "Detects Server-Side Request Forgery vulnerabilities",
+  "severity": "High",
+  "cwe": "CWE-918",
+  "owasp": "A10:2021",
+  "cvss": "8.6",
+  "max_payloads": 25
+}

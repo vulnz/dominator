@@ -1,0 +1,1 @@
+{"name": "Open Redirect Scanner", "description": "Detects Open Redirect vulnerabilities", "severity": "Medium", "cwe": "CWE-601", "owasp": "A01:2021", "cvss": "6.1", "max_payloads": 30}

@@ -25,9 +25,9 @@ if sys.platform.startswith('win'):
     except Exception:
         pass
 
-from core.scanner import VulnScanner
+from core.clean_scanner import ModularScanner
 from core.config import Config
-from utils.file_handler import FileHandler
+from core.logger import setup_logging
 from menu import create_parser, show_modules, process_args
 
 class ScanTimeout:
@@ -112,15 +112,18 @@ def main():
     """Main function"""
     global shutdown_requested
     shutdown_requested = False
-    
+
     # Set up signal handler for immediate Ctrl+C exit
     signal.signal(signal.SIGINT, signal_handler)
-    
+
     parser = create_parser()
     args = parser.parse_args()
-    
+
     # Print banner
     print_banner()
+
+    # Setup logging
+    setup_logging(level='INFO', verbose=getattr(args, 'verbose', False))
     
     # Show modules and exit
     if args.modules_list:
@@ -159,11 +162,11 @@ def main():
             config.nopassive = True
         
         # Create scanner
-        scanner = VulnScanner(config)
+        scanner = ModularScanner(config)
 
-        # Set WAF flags from arguments
-        scanner.waf = getattr(args, 'waf', False)
-        scanner.waf_if_found = getattr(args, 'wafiffound', False)
+        # Set WAF flags from arguments (if supported by new scanner)
+        # scanner.waf = getattr(args, 'waf', False)
+        # scanner.waf_if_found = getattr(args, 'wafiffound', False)
 
         # If only WAF detection is requested, adjust config
         if getattr(args, 'waf_detect', False):

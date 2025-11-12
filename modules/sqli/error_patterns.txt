@@ -1,0 +1,54 @@
+# MySQL error patterns
+mysql_fetch
+mysql_query
+mysql_num_rows
+mysql_error
+mysqli_sql_exception
+mysqli_query
+Fatal error: Uncaught exception 'mysqli
+You have an error in your SQL syntax
+check the manual that corresponds to your MySQL server version
+Warning: mysql
+mysql_fetch_array()
+mysql_fetch_assoc()
+mysql_fetch_row()
+mysql_result()
+mysql_connect()
+mysql_errno()
+Table doesn't exist
+Unknown column
+Duplicate entry
+Data too long for column
+Out of range value
+Division by zero in
+Incorrect integer value
+Incorrect datetime value
+Access denied for user
+Can't connect to MySQL server
+MySQL server has gone away
+
+# PostgreSQL errors
+pg_query
+pg_exec
+PostgreSQL query failed
+supplied argument is not a valid PostgreSQL
+ERROR: syntax error at or near
+
+# MSSQL errors
+mssql_query
+Microsoft OLE DB Provider for SQL Server
+ODBC SQL Server Driver
+SQLServer JDBC Driver
+com.microsoft.sqlserver.jdbc
+
+# Oracle errors
+ORA-
+Oracle error
+oracle.jdbc.driver
+
+# Generic SQL errors
+SQL syntax
+syntax error
+unclosed quotation mark
+unterminated string
+invalid SQL statement

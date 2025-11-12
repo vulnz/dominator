@@ -1,0 +1,32 @@
+# XPath error patterns
+# Generic XPath errors
+xpath error
+XPath syntax error
+Invalid predicate
+Invalid expression
+XPATH_INVALID_PREDICATE
+XPATH_SYNTAX
+
+# PHP XPath errors
+DOMXPath::query()
+SimpleXMLElement::xpath()
+Warning: SimpleXMLElement::xpath()
+Warning: DOMXPath::query()
+Invalid XPath query
+
+# Java XPath errors
+XPathExpressionException
+javax.xml.xpath.XPathException
+
+# .NET XPath errors
+XPathException
+System.Xml.XPath.XPathException
+
+# Python XPath errors
+XPathEvalError
+lxml.etree.XPathEvalError
+
+# Success indicators (returns more data than expected)
+<Coffee
+<Item
+<Record

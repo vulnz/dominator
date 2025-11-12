@@ -1,0 +1,12 @@
+{
+  "name": "PHP Object Injection",
+  "description": "PHP Object Injection (Deserialization) vulnerability scanner",
+  "version": "1.0",
+  "author": "Dominator Scanner",
+  "enabled": true,
+  "confidence_threshold": 0.55,
+  "cwe": "CWE-502",
+  "owasp": "A08:2021",
+  "cvss": "9.8",
+  "severity": "critical"
+}

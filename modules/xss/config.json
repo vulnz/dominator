@@ -1,0 +1,11 @@
+{
+    "name": "XSS Scanner",
+    "description": "Cross-Site Scripting vulnerability detection",
+    "severity": "High",
+    "enabled": true,
+    "max_payloads": 50,
+    "timeout": 20,
+    "cwe": "CWE-79",
+    "owasp": "A03:2021",
+    "cvss": "7.3"
+}

@@ -1,0 +1,12 @@
+{
+  "name": "File Upload",
+  "description": "Unrestricted File Upload vulnerability scanner",
+  "version": "1.0",
+  "author": "Dominator Scanner",
+  "enabled": true,
+  "confidence_threshold": 0.60,
+  "cwe": "CWE-434",
+  "owasp": "A03:2021",
+  "cvss": "9.8",
+  "severity": "critical"
+}

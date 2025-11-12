@@ -1,0 +1,55 @@
+# PHP Object Injection payloads - test for unsafe unserialize()
+# These payloads attempt to trigger deserialization vulnerabilities
+
+# Basic serialized object (detects if unserialize is used)
+O:8:"stdClass":0:{}
+
+# Serialized object with property
+O:8:"stdClass":1:{s:4:"test";s:5:"value";}
+
+# Array serialization
+a:1:{i:0;s:4:"test";}
+
+# Boolean and null values
+b:1;
+N;
+
+# Integer serialization
+i:123456789;
+
+# String with special characters
+s:10:"test<>\"';&";
+
+# Nested object
+O:8:"stdClass":1:{s:4:"obj";O:8:"stdClass":0:{}}
+
+# Object with multiple properties
+O:8:"stdClass":3:{s:4:"prop1";s:5:"val1";s:4:"prop2";i:42;s:4:"prop3";b:1;}
+
+# Common PHP magic methods exploitation patterns
+O:8:"TestClass":0:{}
+O:10:"TestObject":0:{}
+
+# Payload with __wakeup magic method trigger
+O:8:"stdClass":1:{s:8:"__wakeup";s:4:"test";}
+
+# Payload with __destruct magic method trigger
+O:8:"stdClass":1:{s:10:"__destruct";s:4:"test";}
+
+# Payload with __toString magic method trigger
+O:8:"stdClass":1:{s:10:"__toString";s:4:"test";}
+
+# Complex nested structure
+a:2:{i:0;O:8:"stdClass":1:{s:4:"data";s:4:"test";};i:1;a:1:{s:3:"key";s:5:"value";}}
+
+# Reference serialization
+a:2:{i:0;s:4:"test";i:1;R:2;}
+
+# Protected and private property serialization markers
+O:4:"User":2:{s:7:"*name";s:4:"test";s:11:"Userpass";s:4:"1234";}
+
+# Session serialization format
+username|s:5:"admin";
+
+# Large object (stress test)
+O:8:"stdClass":10:{s:1:"a";s:4:"test";s:1:"b";s:4:"test";s:1:"c";s:4:"test";s:1:"d";s:4:"test";s:1:"e";s:4:"test";s:1:"f";s:4:"test";s:1:"g";s:4:"test";s:1:"h";s:4:"test";s:1:"i";s:4:"test";s:1:"j";s:4:"test";}

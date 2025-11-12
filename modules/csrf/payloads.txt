@@ -1,0 +1,3 @@
+# CSRF detection - no payloads needed
+# This module checks for missing CSRF tokens in forms
+test

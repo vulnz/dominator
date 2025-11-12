@@ -1,0 +1,11 @@
+{
+    "name": "SQL Injection Scanner",
+    "description": "SQL Injection vulnerability detection via error-based techniques",
+    "severity": "Critical",
+    "enabled": true,
+    "max_payloads": 50,
+    "timeout": 20,
+    "cwe": "CWE-89",
+    "owasp": "A03:2021",
+    "cvss": "9.8"
+}

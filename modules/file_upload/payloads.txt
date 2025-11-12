@@ -1,0 +1,48 @@
+# File Upload test payloads - filenames that may bypass validation
+# These are just test names - actual file content will be generated dynamically
+
+# PHP shells with different extensions
+shell.php
+shell.php5
+shell.php4
+shell.php3
+shell.phtml
+shell.pht
+shell.phps
+shell.inc
+
+# Double extensions
+shell.php.jpg
+shell.php.png
+shell.php.gif
+shell.jpg.php
+shell.png.php
+
+# Null byte injection (pre-PHP 5.3.4)
+shell.php%00.jpg
+shell.php\x00.jpg
+
+# Case manipulation
+shell.PHP
+shell.PhP
+shell.pHp
+
+# Special characters
+shell.p.h.p
+shell.p_h_p
+
+# Alternate extensions
+shell.asp
+shell.aspx
+shell.jsp
+shell.jspx
+
+# HTAccess bypass
+.htaccess
+
+# Other dangerous extensions
+shell.exe
+shell.bat
+shell.sh
+shell.pl
+shell.cgi

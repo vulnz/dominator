@@ -1,0 +1,9 @@
+{
+  "name": "XPath Injection Scanner",
+  "description": "Detects XPath injection vulnerabilities",
+  "severity": "High",
+  "cwe": "CWE-643",
+  "owasp": "A03:2021",
+  "cvss": "8.5",
+  "max_payloads": 20
+}

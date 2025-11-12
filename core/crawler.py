@@ -17,6 +17,8 @@ from passive_detectors.sensitive_data_detector import SensitiveDataDetector
 from passive_detectors.technology_detector import TechnologyDetector
 from passive_detectors.version_disclosure_detector import VersionDisclosureDetector
 from passive_detectors.waf_detector import WAFDetector
+from passive_detectors.api_endpoint_detector import APIEndpointDetector
+from passive_detectors.js_secrets_detector import JSSecretsDetector
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -413,14 +415,21 @@ class WebCrawler:
                 if response.status_code == 200:
                     # Run passive analysis on each crawled page
                     self._run_passive_analysis(response.headers, response.text, url)
-                    
+
+                    # Extract and store forms from this page
+                    forms = self.url_parser.extract_forms(response.text)
+                    for form in forms:
+                        form['url'] = url  # Add source URL
+                        self.found_forms.append(form)
+                        print(f"    [CRAWLER] Found form: {form['method']} {form.get('action', '(same page)')} with inputs: {list(form['inputs'][:3])}")
+
                     # Check for directory listing on this page
                     if self._detect_directory_listing(response.text):
                         print(f"    [CRAWLER] Directory listing detected on: {url}")
                         # Extract directory listing URLs
                         dir_urls = self._extract_directory_listing_urls(response.text, url)
                         found_urls.extend(dir_urls)
-                    
+
                     # Extract all URLs from this page
                     page_urls = self._extract_all_urls(response.text, url)
                     
@@ -707,6 +716,20 @@ class WebCrawler:
                 tech_names = [tech.get('name', 'Unknown') for tech in technologies]
                 print(f"    [PASSIVE] Detected technologies: {', '.join(tech_names)}")
             
+            # API endpoint detection
+            api_detector = APIEndpointDetector()
+            api_findings = api_detector.detect(url, type('obj', (object,), {'text': response_text, 'headers': headers})(), None)
+            if api_findings:
+                self.passive_findings.extend(api_findings)
+                print(f"    [PASSIVE] Found {len(api_findings)} API-related findings")
+
+            # JavaScript secrets detection
+            js_secrets_detector = JSSecretsDetector()
+            js_secrets_findings = js_secrets_detector.detect(url, type('obj', (object,), {'text': response_text, 'headers': headers})(), soup)
+            if js_secrets_findings:
+                self.passive_findings.extend(js_secrets_findings)
+                print(f"    [PASSIVE] Found {len(js_secrets_findings)} exposed secret(s) in JavaScript!")
+
             # Version disclosure detection
             has_versions, version_disclosures = VersionDisclosureDetector.analyze(headers, response_text, url)
             if has_versions:

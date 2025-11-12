@@ -1,0 +1,9 @@
+{
+  "name": "CSRF Scanner",
+  "description": "Detects Cross-Site Request Forgery vulnerabilities",
+  "severity": "Medium",
+  "cwe": "CWE-352",
+  "owasp": "A01:2021",
+  "cvss": "6.5",
+  "max_payloads": 5
+}

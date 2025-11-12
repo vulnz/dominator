@@ -1,0 +1,12 @@
+{
+  "name": "DOM XSS",
+  "description": "Client-side DOM-based Cross-Site Scripting vulnerability scanner",
+  "version": "1.0",
+  "author": "Dominator Scanner",
+  "enabled": true,
+  "confidence_threshold": 0.50,
+  "cwe": "CWE-79",
+  "owasp": "A03:2021",
+  "cvss": "7.3",
+  "severity": "high"
+}

@@ -1,0 +1,12 @@
+{
+  "name": "Formula Injection",
+  "description": "CSV/Excel Formula Injection vulnerability scanner",
+  "version": "1.0",
+  "author": "Dominator Scanner",
+  "enabled": true,
+  "confidence_threshold": 0.55,
+  "cwe": "CWE-1236",
+  "owasp": "A03:2021",
+  "cvss": "7.8",
+  "severity": "high"
+}

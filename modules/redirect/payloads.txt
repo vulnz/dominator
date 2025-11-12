@@ -1,0 +1,33 @@
+# Open Redirect payloads - external domains
+http://evil.com
+https://evil.com
+//evil.com
+///evil.com
+http://google.com
+https://google.com
+http://example.com
+https://attacker.com
+//attacker.com
+http:///evil.com
+https:///evil.com
+
+# Protocol-relative
+//evil.com/
+///evil.com/
+
+# With path
+http://evil.com/path
+https://evil.com/test.php
+
+# URL encoded
+http%3A%2F%2Fevil.com
+https%3A%2F%2Fevil.com
+
+# Double encoding
+http%253A%252F%252Fevil.com
+
+# Bypass attempts
+@evil.com
+http://localhost@evil.com
+http://evil.com%2F@trusted.com
+evil.com

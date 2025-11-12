@@ -1,0 +1,9 @@
+{
+  "name": "IDOR Scanner",
+  "description": "Detects Insecure Direct Object Reference vulnerabilities",
+  "severity": "High",
+  "cwe": "CWE-639",
+  "owasp": "A01:2021",
+  "cvss": "7.5",
+  "max_payloads": 15
+}

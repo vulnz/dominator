@@ -1,0 +1,9 @@
+{
+  "name": "SSTI Scanner",
+  "description": "Detects Server-Side Template Injection vulnerabilities",
+  "severity": "Critical",
+  "cwe": "CWE-94",
+  "owasp": "A03:2021",
+  "cvss": "9.8",
+  "max_payloads": 25
+}

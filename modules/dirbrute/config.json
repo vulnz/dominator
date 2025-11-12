@@ -1,0 +1,31 @@
+{
+  "enabled": true,
+  "name": "Directory Brute Force",
+  "description": "Discovers hidden directories and files through brute force",
+  "severity": "Medium",
+  "cwe": "CWE-425",
+  "owasp": "A01:2021",
+  "cvss": "5.3",
+  "max_threads": 10,
+  "timeout": 5,
+  "follow_redirects": false,
+  "interesting_status_codes": [200, 301, 302, 401, 403],
+  "interesting_extensions": [
+    "",
+    ".php",
+    ".asp",
+    ".aspx",
+    ".jsp",
+    ".html",
+    ".js",
+    ".txt",
+    ".xml",
+    ".json",
+    ".bak",
+    ".old",
+    ".zip",
+    ".tar.gz",
+    ".sql",
+    ".log"
+  ]
+}

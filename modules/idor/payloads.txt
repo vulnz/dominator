@@ -1,0 +1,21 @@
+# IDOR payloads - numeric ID enumeration
+# Sequential IDs
+1
+2
+3
+5
+10
+100
+999
+1000
+
+# Common test IDs
+0
+-1
+
+# Admin/privileged IDs
+admin
+root
+
+# UUID-like (if app uses)
+00000000-0000-0000-0000-000000000001

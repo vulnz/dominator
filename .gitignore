@@ -1,0 +1,40 @@
+.aider*
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.claude/
+
+# Scan reports and logs
+scan_report_*.html
+scan_report_*.txt
+scan_report_*.json
+scan_report_*.xml
+*.log
+nul
+
+# Test files
+test_*.py
+debug_*.py
+*_test.txt
+*_scan.txt
+*_benchmark*.txt
+
+# Temporary files
+*.tmp
+*.bak
+*.old

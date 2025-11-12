@@ -1,0 +1,11 @@
+{
+    "name": "LFI Scanner",
+    "description": "Local File Inclusion vulnerability detection with multi-stage validation",
+    "severity": "High",
+    "enabled": true,
+    "max_payloads": 50,
+    "timeout": 20,
+    "cwe": "CWE-22",
+    "owasp": "A03:2021",
+    "cvss": "7.5"
+}
