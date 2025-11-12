@@ -101,6 +101,29 @@ class ResultManager:
         Returns:
             Tuple signature
         """
+        # Passive findings (missing headers, cookies, etc.) should deduplicate by type only
+        # e.g., "Missing X-Frame-Options" should appear once, not for every URL
+        passive_types = {
+            'missing_security_header',
+            'insecure_cookie',
+            'accessible_cookie',
+            'information_disclosure',
+            'version_disclosure',
+            'technology_detected'
+        }
+
+        result_type = result.get('type', '')
+
+        # For passive findings: signature by type + specific detail (header/cookie name)
+        if result_type in passive_types:
+            return (
+                result_type,
+                result.get('header', ''),
+                result.get('cookie', ''),
+                result.get('value', '')  # For information disclosure values
+            )
+
+        # For active findings: signature includes URL, parameter, payload
         return (
             result.get('url', ''),
             result.get('type', ''),
