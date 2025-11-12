@@ -159,6 +159,56 @@ class BaseModule(ABC):
         """Get default severity level"""
         return self.config.get("severity", "Medium")
 
+    def extract_response_context(self, response_text: str, trigger: str,
+                                 chars_before: int = 100, chars_after: int = 50) -> str:
+        """
+        Extract response context around trigger with highlighting
+
+        Args:
+            response_text: Full response text
+            trigger: The trigger/payload to find
+            chars_before: Characters to show before trigger (default 100)
+            chars_after: Characters to show after trigger (default 50)
+
+        Returns:
+            Context string with **trigger** highlighted
+        """
+        try:
+            if not trigger or not response_text:
+                return ""
+
+            # Find trigger position (case insensitive)
+            trigger_lower = trigger.lower()
+            response_lower = response_text.lower()
+
+            pos = response_lower.find(trigger_lower)
+            if pos == -1:
+                return ""
+
+            # Extract context
+            start = max(0, pos - chars_before)
+            end = min(len(response_text), pos + len(trigger) + chars_after)
+
+            context = response_text[start:end]
+
+            # Highlight the trigger by wrapping it with **
+            # Find trigger in context (case insensitive)
+            context_lower = context.lower()
+            trigger_pos = context_lower.find(trigger_lower)
+
+            if trigger_pos != -1:
+                # Preserve original case of trigger in context
+                actual_trigger = context[trigger_pos:trigger_pos + len(trigger)]
+                context = (context[:trigger_pos] +
+                          f"**{actual_trigger}**" +
+                          context[trigger_pos + len(trigger):])
+
+            return context
+
+        except Exception as e:
+            logger.debug(f"Error extracting response context: {e}")
+            return ""
+
     def create_result(self, vulnerable: bool = False, url: str = "", parameter: str = "",
                      payload: str = "", evidence: str = "", description: str = "",
                      **kwargs) -> Dict[str, Any]:
