@@ -64,10 +64,23 @@ class DirectoryBruteForceModule(BaseModule):
             base_url = f"{parsed.scheme}://{parsed.netloc}/"
             base_urls.add(base_url)
 
-            # Also add directory paths
-            path_parts = parsed.path.rstrip('/').split('/')
-            for i in range(1, len(path_parts)):
-                dir_path = '/'.join(path_parts[:i+1]) + '/'
+            # Also add directory paths (but skip files)
+            path = parsed.path.rstrip('/')
+            if not path:
+                continue
+
+            path_parts = path.split('/')
+
+            # Check if last part is a file (has extension like .php, .html, etc.)
+            last_part = path_parts[-1] if path_parts else ''
+            is_file = '.' in last_part and not last_part.startswith('.')
+
+            # If it's a file, only add parent directories
+            # If it's a directory, add it and all parent directories
+            max_depth = len(path_parts) - 1 if is_file else len(path_parts)
+
+            for i in range(1, max_depth + 1):
+                dir_path = '/'.join(path_parts[:i]) + '/'
                 dir_url = f"{parsed.scheme}://{parsed.netloc}{dir_path}"
                 base_urls.add(dir_url)
 
