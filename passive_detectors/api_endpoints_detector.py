@@ -14,22 +14,41 @@ class APIEndpointsDetector:
     def analyze(response_text: str, url: str, headers: Dict[str, str]) -> Tuple[bool, List[Dict[str, Any]]]:
         """
         Passive API endpoints analysis
-        
+
         How it works:
         1. Scans response content for API endpoint patterns
         2. Looks for REST API paths, GraphQL endpoints, SOAP services
         3. Identifies API documentation links
         4. Detects API keys and tokens in responses
         5. Finds version information in API responses
-        
+
         Args:
             response_text: HTTP response body
             url: Current URL being analyzed
             headers: HTTP response headers
-            
+
         Returns:
             Tuple[bool, List[Dict]]: (has_findings, list_of_findings)
         """
+        # ANTI-FALSE-POSITIVE: Skip common JS libraries and minified files
+        url_lower = url.lower()
+        skip_patterns = [
+            'jquery.js', 'jquery.min.js', 'jquery-',
+            'bootstrap.js', 'bootstrap.min.js',
+            'angular.js', 'angular.min.js',
+            'react.js', 'react.min.js', 'react-dom',
+            'vue.js', 'vue.min.js',
+            'lodash.js', 'lodash.min.js', 'underscore',
+            'moment.js', 'moment.min.js',
+            'axios.js', 'axios.min.js',
+            'd3.js', 'd3.min.js',
+            '.min.js', '-min.js',
+            'vendor.js', 'bundle.js', 'chunk.js'
+        ]
+
+        if any(pattern in url_lower for pattern in skip_patterns):
+            return False, []
+
         findings = []
         
         # API endpoint patterns

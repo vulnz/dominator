@@ -13,22 +13,42 @@ class SensitiveDataDetector:
     def analyze(response_text: str, url: str, headers: Dict[str, str] = None) -> Tuple[bool, List[Dict[str, Any]]]:
         """
         Passive sensitive data detection
-        
+
         How it works:
         1. Scans response content for sensitive patterns during crawling
         2. Searches for API keys, passwords, tokens, personal data
         3. Analyzes HTML comments and hidden fields
         4. Checks headers for information leaks
         5. No additional requests sent
-        
+
         Args:
             response_text: HTTP response content
             url: URL being analyzed
             headers: HTTP headers (optional)
-            
+
         Returns:
             Tuple[bool, List[Dict]]: (found_data, list_of_leaks)
         """
+        # ANTI-FALSE-POSITIVE: Skip common JS libraries and minified files
+        # These often contain test data, examples, or obfuscated code that triggers false positives
+        url_lower = url.lower()
+        skip_patterns = [
+            'jquery.js', 'jquery.min.js', 'jquery-',
+            'bootstrap.js', 'bootstrap.min.js',
+            'angular.js', 'angular.min.js',
+            'react.js', 'react.min.js', 'react-dom',
+            'vue.js', 'vue.min.js',
+            'lodash.js', 'lodash.min.js', 'underscore',
+            'moment.js', 'moment.min.js',
+            'axios.js', 'axios.min.js',
+            'd3.js', 'd3.min.js',
+            '.min.js', '-min.js',  # Any minified JS
+            'vendor.js', 'bundle.js', 'chunk.js'  # Bundled files
+        ]
+
+        if any(pattern in url_lower for pattern in skip_patterns):
+            return False, []
+
         leaks = []
         
         # Content analysis

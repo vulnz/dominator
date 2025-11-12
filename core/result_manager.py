@@ -113,6 +113,7 @@ class ResultManager:
         }
 
         result_type = result.get('type', '')
+        module_name = result.get('module', '')
 
         # For passive findings: signature by type + specific detail (header/cookie name)
         if result_type in passive_types:
@@ -121,6 +122,16 @@ class ResultManager:
                 result.get('header', ''),
                 result.get('cookie', ''),
                 result.get('value', '')  # For information disclosure values
+            )
+
+        # For Directory Brute Force findings: Each finding should be unique
+        # We want to show ALL discovered paths, not deduplicate them
+        # So we include the full URL and payload to make each finding unique
+        if module_name == 'Directory Brute Force':
+            return (
+                result.get('url', ''),  # Full URL including path
+                result.get('payload', ''),  # Path tested (.htaccess, admin/, etc.)
+                result.get('status_code', 0)  # HTTP status code
             )
 
         # For active findings: signature includes URL, parameter, payload
