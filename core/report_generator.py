@@ -101,16 +101,101 @@ class ReportGenerator:
                     f.write("-"*80 + "\n\n")
 
                     for i, result in enumerate(severity_results, 1):
-                        f.write(f"{i}. {result.get('type', 'Unknown')}\n")
+                        f.write(f"{i}. [{result.get('module', result.get('type', 'Unknown'))}]\n")
+
+                        # Basic info
                         f.write(f"   URL: {result.get('url', 'N/A')}\n")
+
+                        # Method and clickable link / curl command
+                        method = result.get('method', 'GET').upper()
+                        url = result.get('url', '')
+
+                        if method == 'GET':
+                            # For GET requests, add clickable link
+                            if result.get('parameter') and result.get('payload'):
+                                param = result.get('parameter')
+                                payload = result.get('payload')
+                                if '?' in url:
+                                    test_url = f"{url}&{param}={payload}"
+                                else:
+                                    test_url = f"{url}?{param}={payload}"
+                                f.write(f"   Test Link: {test_url}\n")
+                            else:
+                                f.write(f"   Test Link: {url}\n")
+
+                        elif method == 'POST':
+                            # For POST requests, generate curl command
+                            f.write(f"   Method: POST\n")
+                            if result.get('parameter') and result.get('payload'):
+                                param = result.get('parameter')
+                                payload = result.get('payload', '').replace("'", "'\\''")  # Escape single quotes
+                                f.write(f"   cURL Command:\n")
+                                f.write(f"     curl -X POST '{url}' -d '{param}={payload}'\n")
+
+                        # Parameters and payload
                         if result.get('parameter'):
                             f.write(f"   Parameter: {result.get('parameter')}\n")
                         if result.get('payload'):
                             f.write(f"   Payload: {result.get('payload')}\n")
+
+                        # OWASP / CWE / CVSS metadata
+                        if result.get('owasp'):
+                            f.write(f"   OWASP: {result.get('owasp')}")
+                            if result.get('owasp_name'):
+                                f.write(f" - {result.get('owasp_name')}")
+                            f.write("\n")
+
+                        if result.get('cwe'):
+                            f.write(f"   CWE: {result.get('cwe')}")
+                            if result.get('cwe_name'):
+                                f.write(f" - {result.get('cwe_name')}")
+                            f.write("\n")
+
+                        if result.get('cvss'):
+                            f.write(f"   CVSS Score: {result.get('cvss')}")
+                            if result.get('cvss_vector'):
+                                f.write(f" ({result.get('cvss_vector')})")
+                            f.write("\n")
+
+                        # Evidence with context highlighting
                         if result.get('evidence'):
-                            f.write(f"   Evidence: {result.get('evidence')}\n")
+                            evidence = result.get('evidence')
+                            f.write(f"   Evidence: {evidence}\n")
+
+                        # Request/Response context
+                        if result.get('request'):
+                            f.write(f"   Request:\n")
+                            request_lines = result.get('request', '').split('\n')[:10]  # First 10 lines
+                            for line in request_lines:
+                                f.write(f"     {line}\n")
+
+                        if result.get('response_context'):
+                            # Show 100 chars before trigger + trigger + 50 chars after
+                            context = result.get('response_context')
+                            f.write(f"   Response Context:\n")
+                            f.write(f"     ...{context}...\n")
+
+                        # Description
                         if result.get('description'):
-                            f.write(f"   Description: {result.get('description')}\n")
+                            desc = result.get('description')
+                            # Wrap description to 70 chars
+                            words = desc.split()
+                            line = "   Description: "
+                            for word in words:
+                                if len(line) + len(word) + 1 > 70:
+                                    f.write(line + "\n")
+                                    line = "                "
+                                line += word + " "
+                            f.write(line.strip() + "\n")
+
+                        # Remediation
+                        if result.get('remediation'):
+                            f.write(f"   Remediation:\n")
+                            remediation_lines = result.get('remediation', '').split('\n')
+                            for line in remediation_lines:
+                                if line.strip():
+                                    f.write(f"     {line}\n")
+
                         f.write("\n")
 
             f.write("="*80 + "\n")
