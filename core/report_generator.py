@@ -16,7 +16,7 @@ class ReportGenerator:
 
     def __init__(self):
         """Initialize report generator"""
-        self.supported_formats = ['html', 'json', 'xml', 'txt']
+        self.supported_formats = ['html', 'html-advanced', 'json', 'xml', 'txt']
 
     def generate(self, results: List[Dict[str, Any]], output_file: str,
                  format: str = 'html', scan_info: Dict[str, Any] = None) -> bool:
@@ -40,7 +40,9 @@ class ReportGenerator:
 
         try:
             if format == 'html':
-                return self._generate_html(results, output_file, scan_info)
+                return self._generate_html(results, output_file, scan_info, simple=True)
+            elif format == 'html-advanced':
+                return self._generate_html(results, output_file, scan_info, simple=False)
             elif format == 'json':
                 return self._generate_json(results, output_file, scan_info)
             elif format == 'xml':
@@ -155,8 +157,19 @@ class ReportGenerator:
         return True
 
     def _generate_html(self, results: List[Dict[str, Any]], output_file: str,
-                      scan_info: Dict[str, Any] = None) -> bool:
-        """Generate HTML report"""
+                      scan_info: Dict[str, Any] = None, simple: bool = True) -> bool:
+        """Generate HTML report
+
+        Args:
+            results: Scan results
+            output_file: Output file path
+            scan_info: Scan information
+            simple: True for simple English report, False for advanced Russian template
+        """
+        if not simple:
+            return self._generate_html_advanced(results, output_file, scan_info)
+
+        # Simple HTML report (current English style)
         vulnerabilities = [r for r in results if r.get('vulnerability')]
 
         # Count by severity
@@ -322,4 +335,78 @@ class ReportGenerator:
             f.write(html_content)
 
         logger.info(f"HTML report saved to {output_file}")
+        return True
+
+    def _generate_html_advanced(self, results: List[Dict[str, Any]], output_file: str,
+                               scan_info: Dict[str, Any] = None) -> bool:
+        """Generate advanced HTML report using Russian template"""
+        import os
+
+        # Load template
+        template_path = os.path.join(os.path.dirname(__file__), '..', 'report', 'templates', 'html_template.html')
+
+        try:
+            with open(template_path, 'r', encoding='utf-8') as f:
+                template = f.read()
+        except Exception as e:
+            logger.error(f"Error loading template: {e}")
+            return False
+
+        vulnerabilities = [r for r in results if r.get('vulnerability')]
+
+        # Count by severity
+        severity_counts = {
+            'Critical': len([r for r in vulnerabilities if r.get('severity') == 'Critical']),
+            'High': len([r for r in vulnerabilities if r.get('severity') == 'High']),
+            'Medium': len([r for r in vulnerabilities if r.get('severity') == 'Medium']),
+            'Low': len([r for r in vulnerabilities if r.get('severity') == 'Low']),
+            'Info': len([r for r in vulnerabilities if r.get('severity') == 'Info']),
+        }
+
+        # Build vulnerability sections HTML
+        sections_html = ""
+        severity_order = ['Critical', 'High', 'Medium', 'Low', 'Info']
+
+        for severity in severity_order:
+            severity_results = [r for r in vulnerabilities if r.get('severity') == severity]
+            if not severity_results:
+                continue
+
+            sections_html += f'<h3>{severity} ({len(severity_results)})</h3>\n'
+
+            for result in severity_results:
+                vuln_class = severity.lower()
+                sections_html += f'<div class="vulnerability {vuln_class}">\n'
+                sections_html += f'  <h3>{html.escape(result.get("module", "Unknown"))}</h3>\n'
+                sections_html += f'  <div class="detail"><span class="label">URL:</span> {html.escape(result.get("url", ""))}</div>\n'
+
+                if result.get('parameter'):
+                    sections_html += f'  <div class="detail"><span class="label">Parameter:</span> {html.escape(result.get("parameter", ""))}</div>\n'
+                if result.get('payload'):
+                    sections_html += f'  <div class="detail"><span class="label">Payload:</span> <code>{html.escape(result.get("payload", ""))}</code></div>\n'
+
+                sections_html += f'  <div class="detail"><span class="label">Description:</span> {html.escape(result.get("description", ""))}</div>\n'
+
+                if result.get('evidence'):
+                    sections_html += f'  <div class="detail"><span class="label">Evidence:</span></div>\n'
+                    sections_html += f'  <div class="evidence">{html.escape(result.get("evidence", ""))}</div>\n'
+
+                sections_html += '</div>\n'
+
+        # Replace template placeholders
+        html_content = template.format(
+            timestamp=datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            critical_count=severity_counts['Critical'],
+            high_count=severity_counts['High'],
+            medium_count=severity_counts['Medium'],
+            low_count=severity_counts['Low'],
+            info_count=severity_counts['Info'],
+            total_vulns=len(vulnerabilities),
+            vulnerability_sections=sections_html
+        )
+
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+
+        logger.info(f"Advanced HTML report saved to {output_file}")
         return True

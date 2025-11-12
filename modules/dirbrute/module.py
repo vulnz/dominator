@@ -338,13 +338,15 @@ class DirectoryBruteForceModule(BaseModule):
             ]
 
             for base_file, invalid_exts in invalid_combinations:
-                if base_file in path_lower:
-                    for invalid_ext in invalid_exts:
-                        if path_lower.endswith(invalid_ext):
-                            # This is likely a false positive - Apache returns 403 for ANY .htaccess* request
-                            confidence = 0.3  # Very low confidence
-                            logger.debug(f"[FALSE POSITIVE] Invalid combination: {base_file}{invalid_ext} (HTTP 403)")
-                            break
+                # Check if path matches the pattern: base_file + invalid_extension
+                # E.g., ".htaccess.php", ".htpasswd.asp", "web.config.php"
+                for invalid_ext in invalid_exts:
+                    invalid_combo = base_file + invalid_ext
+                    if invalid_combo in path_lower:
+                        # This is likely a false positive - Apache returns 403 for ANY .htaccess* request
+                        confidence = 0.3  # Very low confidence
+                        logger.debug(f"[FALSE POSITIVE] Invalid combination: {invalid_combo} (HTTP 403)")
+                        break
 
         # HIGH RISK PATHS
         high_risk_patterns = [
