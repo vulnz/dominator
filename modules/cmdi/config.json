@@ -6,7 +6,9 @@
   "max_payloads": 40,
   "timeout": 20,
   "cwe": "CWE-78",
+  "cwe_name": "Improper Neutralization of Special Elements used in an OS Command",
   "owasp": "A03:2021",
+  "owasp_name": "Injection",
   "cvss": "9.8",
-  "cwe_name": "Updated"
+  "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
 }

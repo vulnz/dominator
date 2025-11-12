@@ -9,5 +9,7 @@
   "owasp": "A08:2021",
   "cvss": "9.8",
   "severity": "critical",
-  "cwe_name": "Updated"
+  "cwe_name": "Deserialization of Untrusted Data",
+  "owasp_name": "Software and Data Integrity Failures",
+  "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
 }

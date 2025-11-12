@@ -3,8 +3,10 @@
   "description": "Detects Server-Side Request Forgery vulnerabilities",
   "severity": "High",
   "cwe": "CWE-918",
+  "cwe_name": "Server-Side Request Forgery (SSRF)",
   "owasp": "A10:2021",
+  "owasp_name": "Server-Side Request Forgery",
   "cvss": "8.6",
-  "max_payloads": 25,
-  "cwe_name": "Updated"
+  "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:N/A:N",
+  "max_payloads": 25
 }
