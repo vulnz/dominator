@@ -725,7 +725,7 @@ class WebCrawler:
 
             # JavaScript secrets detection
             js_secrets_detector = JSSecretsDetector()
-            js_secrets_findings = js_secrets_detector.detect(url, type('obj', (object,), {'text': response_text, 'headers': headers})(), soup)
+            js_secrets_findings = js_secrets_detector.detect(url, type('obj', (object,), {'text': response_text, 'headers': headers})(), None)
             if js_secrets_findings:
                 self.passive_findings.extend(js_secrets_findings)
                 print(f"    [PASSIVE] Found {len(js_secrets_findings)} exposed secret(s) in JavaScript!")

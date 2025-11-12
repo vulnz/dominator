@@ -1,0 +1,53 @@
+# XSS Indicators - patterns that indicate XSS vulnerability
+
+# Script tags
+<script>
+</script>
+<script
+<SCRIPT>
+<ScRiPt>
+
+# Event handlers
+onerror=
+onload=
+onclick=
+onmouseover=
+onfocus=
+onblur=
+onchange=
+onsubmit=
+onkeypress=
+onkeydown=
+onkeyup=
+ontoggle=
+onstart=
+
+# JavaScript protocol
+javascript:
+javascript%3A
+
+# HTML injection
+<img
+<svg
+<iframe
+<body
+<div
+<input
+<textarea
+<video>
+<audio>
+<details
+
+# JavaScript functions
+alert(
+prompt(
+confirm(
+eval(
+setTimeout(
+setInterval(
+
+# Common XSS vectors
+document.cookie
+document.domain
+window.location
+location.href

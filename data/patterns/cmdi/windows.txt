@@ -1,0 +1,18 @@
+# Windows command injection indicators
+C:\
+C:/
+Windows
+System32
+Program Files
+ipconfig
+All Connections
+Ethernet adapter
+Wireless
+Default Gateway
+IP Address
+Subnet Mask
+Volume Serial Number
+Directory of
+<DIR>
+win.ini
+boot.ini

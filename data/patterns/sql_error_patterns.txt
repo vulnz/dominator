@@ -1,17 +1,38 @@
-# SQL error detection patterns
-mysql_fetch_array
+# SQL error patterns for detection
+# MySQL errors
+mysql_fetch
+mysql_query
 mysql_num_rows
-you have an error in your sql syntax
-check the manual that corresponds
-supplied argument is not a valid mysql
-ora-00
-ora-01
-microsoft ole db
-odbc sql server driver
-postgresql
+mysql_error
+mysqli_sql_exception
+mysqli_query
+You have an error in your SQL syntax
+check the manual that corresponds to your MySQL server version
+Warning: mysql
+Fatal error: Uncaught exception 'mysqli
+
+# PostgreSQL errors
 pg_query
-sqlite_query
+pg_exec
+PostgreSQL query failed
+supplied argument is not a valid PostgreSQL
+ERROR: syntax error at or near
+
+# MSSQL errors
+mssql_query
+Microsoft OLE DB Provider for SQL Server
+ODBC SQL Server Driver
+SQLServer JDBC Driver
+com.microsoft.sqlserver.jdbc
+
+# Oracle errors
+ORA-
+Oracle error
+oracle.jdbc.driver
+
+# Generic SQL errors
+SQL syntax
 syntax error
-database error
-query failed
-invalid query
+unclosed quotation mark
+unterminated string
+invalid SQL statement

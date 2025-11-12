@@ -238,7 +238,7 @@ class PayloadLoader:
         else:
             base_dir = os.path.dirname(os.path.dirname(cls._base_path))
         
-        patterns_file = os.path.join(base_dir, 'data', 'patterns', f"{pattern_type}_patterns.txt")
+        patterns_file = os.path.join(base_dir, 'data', 'patterns', f"{pattern_type}.txt")
         
         if not os.path.exists(patterns_file):
             print(f"Warning: Patterns file not found: {patterns_file}")

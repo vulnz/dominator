@@ -1,0 +1,44 @@
+# Windows LFI Success Indicators
+
+# boot.ini indicators
+[boot loader]
+timeout=
+default=
+[operating systems]
+multi(0)disk(0)
+partition(
+/fastdetect
+/NoExecute=
+
+# win.ini indicators
+[windows]
+[Desktop]
+[extensions]
+[mci extensions]
+for 16-bit app support
+
+# system.ini
+[drivers]
+[386Enh]
+[boot]
+SCRNSAVE.EXE=
+
+# Windows registry exports
+Windows Registry Editor
+REGEDIT
+HKEY_
+
+# IIS config
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+<system.webServer>
+
+# Windows system files
+Microsoft Corporation
+Windows NT
+Program Files
+
+# Common Windows paths
+C:\Windows
+C:\Program Files
+C:\Users

@@ -1,0 +1,53 @@
+# Linux LFI Success Indicators
+# These patterns indicate successful LFI on Linux systems
+
+# /etc/passwd indicators
+root:x:0:0:
+daemon:x:1:1:
+bin:x:2:2:
+sys:x:3:3:
+nobody:x:65534:
+root:x:0:0:root:/root:
+/bin/bash
+/bin/sh
+/sbin/nologin
+
+# /etc/shadow indicators (if readable)
+root:$
+$1$
+$6$
+
+# Config files
+# MySQL
+[mysqld]
+datadir=
+socket=
+pid-file=
+
+# Apache
+ServerRoot
+DocumentRoot
+<Directory
+LoadModule
+
+# PHP
+extension=
+memory_limit=
+upload_max_filesize=
+
+# System info
+Linux version
+GNU/Linux
+kernel
+
+# Proc files
+processor	:
+model name	:
+cpu MHz	:
+cache size	:
+
+# Common file markers
+# Copyright
+# /etc/hosts
+localhost
+127.0.0.1

@@ -22,26 +22,31 @@ class URLParser:
             'host': '',
             'port': None,
             'path': '',
-            'query_params': {},
+            'params': {},  # Changed from query_params to params for compatibility with modules
+            'query_params': {},  # Keep for backward compatibility
             'injection_points': [],
             'forms': [],
             'cookies': [],
             'headers': []
         }
-        
+
         # URL normalization
         normalized_url = self._normalize_url(target)
         result['url'] = normalized_url
-        
+
         # URL parsing
         parsed = urlparse(normalized_url)
         result['scheme'] = parsed.scheme
         result['host'] = parsed.hostname or ''
         result['port'] = parsed.port
         result['path'] = parsed.path
-        
-        # Query parameters parsing
-        result['query_params'] = parse_qs(parsed.query)
+
+        # Query parameters parsing - convert parse_qs result to simple dict
+        query_dict = parse_qs(parsed.query)
+        # parse_qs returns lists, but we just want the first value for each param
+        simple_params = {k: v[0] if v else '' for k, v in query_dict.items()}
+        result['params'] = simple_params  # Modules expect this key
+        result['query_params'] = simple_params  # Backward compatibility
         
         # Extract injection points
         result['injection_points'] = self._extract_injection_points(result)
@@ -284,14 +289,17 @@ class URLParser:
             
             # Extract input fields
             input_patterns = [
-                r'<input[^>]*/?>', 
-                r'<input[^>]*>',   
-                r'<INPUT[^>]*/?>', 
-                r'<INPUT[^>]*>',   
+                r'<input[^>]*/?>',
+                r'<input[^>]*>',
+                r'<INPUT[^>]*/?>',
+                r'<INPUT[^>]*>',
                 r'<textarea[^>]*>.*?</textarea>',
                 r'<TEXTAREA[^>]*>.*?</TEXTAREA>',
                 r'<select[^>]*>.*?</select>',
-                r'<SELECT[^>]*>.*?</SELECT>'
+                r'<SELECT[^>]*>.*?</SELECT>',
+                # Handle unclosed/broken select tags - just extract opening tag
+                r'<select[^>]*>',
+                r'<SELECT[^>]*>'
             ]
             
             inputs = []
@@ -337,20 +345,32 @@ class URLParser:
                     input_data['type'] = 'textarea'
                 elif input_html.lower().startswith('<select'):
                     input_data['type'] = 'select'
-                
+                    # Extract first option value from select
+                    option_match = re.search(r'<option[^>]+value=["\']([^"\']+)["\']', input_html, re.IGNORECASE)
+                    if option_match:
+                        input_data['value'] = option_match.group(1)
+                    else:
+                        # Try to get any option text content
+                        option_text = re.search(r'<option[^>]*>([^<]+)</option>', input_html, re.IGNORECASE)
+                        if option_text:
+                            input_data['value'] = option_text.group(1).strip()
+                        else:
+                            input_data['value'] = '1'  # Default value for select
+
                 value_patterns = [
                     r'value=["\']([^"\']*)["\']',
                     r'value=([^\s>]*)',
                     r'VALUE=["\']([^"\']*)["\']',
                     r'VALUE=([^\s>]*)'
                 ]
-                
-                input_data['value'] = ''
-                for pattern in value_patterns:
-                    value_match = re.search(pattern, input_html, re.IGNORECASE)
-                    if value_match:
-                        input_data['value'] = value_match.group(1).strip('\'"')
-                        break
+
+                if 'value' not in input_data or not input_data['value']:
+                    input_data['value'] = ''
+                    for pattern in value_patterns:
+                        value_match = re.search(pattern, input_html, re.IGNORECASE)
+                        if value_match:
+                            input_data['value'] = value_match.group(1).strip('\'"')
+                            break
                 
                 # Extract additional attributes
                 placeholder_match = re.search(r'placeholder=["\']([^"\']*)["\']', input_html, re.IGNORECASE)

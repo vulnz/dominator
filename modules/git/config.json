@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "name": "Git Repository Exposure",
+  "description": "Detects exposed .git directories and files that leak source code and credentials",
+  "severity": "High",
+  "cwe": "CWE-200",
+  "owasp": "A01:2021",
+  "cvss": "7.5",
+  "max_threads": 5,
+  "timeout": 5,
+  "follow_redirects": false,
+  "cwe_name": "Exposure of Sensitive Information to an Unauthorized Actor",
+  "owasp_name": "Broken Access Control",
+  "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+  "remediation": "CRITICAL: Git repository is exposed! This can leak source code, credentials, and sensitive information. Immediate actions required: 1) Remove .git directory from web-accessible locations, 2) Configure web server to deny access to .git directories, 3) For Apache: add 'RedirectMatch 404 /\\.git' to .htaccess, 4) For Nginx: add 'location ~ /\\.git { deny all; }' to server config, 5) Use proper deployment practices (deploy only necessary files)"
+}

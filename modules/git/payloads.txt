@@ -1,0 +1,15 @@
+.git/
+.git/config
+.git/HEAD
+.git/index
+.git/logs/HEAD
+.git/logs/refs/heads/master
+.git/logs/refs/heads/main
+.git/refs/heads/master
+.git/refs/heads/main
+.git/refs/heads/develop
+.git/objects/
+.git/info/refs
+.git/description
+.git/hooks/
+.git/packed-refs
