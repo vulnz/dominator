@@ -37,17 +37,48 @@ class Config:
         self.detectors_dir = "detectors"
         self.templates_dir = "report/templates"
         
+    def _discover_available_modules(self) -> List[str]:
+        """
+        Auto-discover all available modules from modules/ directory
+
+        Returns:
+            List of module names (directory names that contain module.py)
+        """
+        available_modules = []
+        modules_dir = self.modules_dir if hasattr(self, 'modules_dir') else "modules"
+
+        if not os.path.exists(modules_dir):
+            return available_modules
+
+        try:
+            for item in os.listdir(modules_dir):
+                module_path = os.path.join(modules_dir, item)
+
+                # Check if it's a directory
+                if not os.path.isdir(module_path):
+                    continue
+
+                # Check if module.py exists
+                module_file = os.path.join(module_path, "module.py")
+                if os.path.exists(module_file):
+                    available_modules.append(item)
+
+        except Exception as e:
+            print(f"Warning: Error discovering modules: {e}")
+
+        return available_modules
+
     def _parse_headers(self, headers: Optional[List[str]], headers_file: Optional[str]) -> Dict[str, str]:
         """Parse HTTP headers"""
         result = {}
-        
+
         # From command line arguments
         if headers:
             for header in headers:
                 if ':' in header:
                     key, value = header.split(':', 1)
                     result[key.strip()] = value.strip()
-        
+
         # From file
         if headers_file and os.path.exists(headers_file):
             with open(headers_file, 'r', encoding='utf-8') as f:
@@ -56,21 +87,13 @@ class Config:
                     if line and ':' in line:
                         key, value = line.split(':', 1)
                         result[key.strip()] = value.strip()
-        
+
         return result
     
     def _parse_modules(self, modules_str: Optional[str], use_all: bool, filetree_mode: bool = False) -> List[str]:
         """Parse scanning modules"""
-        all_modules = [
-            'xss', 'sqli', 'lfi', 'rfi', 'xxe', 'csrf', 'idor', 'ssrf',
-            'dirbrute', 'git', 'dirtraversal', 'secheaders',
-            'versiondisclosure', 'clickjacking', 'blindxss', 'passwordoverhttp',
-            'outdatedsoftware', 'databaseerrors', 'phpinfo', 'ssltls',
-            'httponlycookies', 'technology', 'commandinjection', 'pathtraversal',
-            'ldapinjection', 'nosqlinjection', 'fileupload', 'cors', 'jwt',
-            'deserialization', 'responsesplitting', 'ssti', 'crlf',
-            'textinjection', 'htmlinjection'
-        ]
+        # Auto-discover all available modules from modules/ directory
+        all_modules = self._discover_available_modules()
         
         # If filetree mode is enabled, only use file/directory discovery modules
         if filetree_mode:
