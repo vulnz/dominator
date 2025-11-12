@@ -1,0 +1,20 @@
+{
+  "enabled": true,
+  "name": "Out-of-Band Vulnerability Detection",
+  "description": "Detects blind vulnerabilities using external callback service (SSRF, RCE, SQLi, XSS, XXE, RFI)",
+  "severity": "High",
+  "cwe": "CWE-918",
+  "owasp": "A10:2021",
+  "cvss": "8.6",
+  "cwe_name": "Server-Side Request Forgery (SSRF)",
+  "owasp_name": "Server-Side Request Forgery",
+  "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:N/A:N",
+  "callback_base_url": "http://requestbin.cn/15y70i81",
+  "callback_check_url": "http://requestbin.cn/15y70i81?inspect",
+  "pipedream_client_id": "j1XIbDfgEA8ihGUfQ5xALdY9fVSFQdaNP1HGMAUnnSc",
+  "pipedream_client_secret": "P4V40oQRWBFeKPSC8HIuJUn45KHnu784wzlmeaeXy8s",
+  "callback_wait_time": 3,
+  "max_callback_checks": 2,
+  "timeout": 10,
+  "remediation": "Implement strict input validation, use allowlists for URLs/commands, disable external entity processing in XML parsers, sanitize all user inputs, implement proper output encoding, and use Content Security Policy (CSP) headers."
+}

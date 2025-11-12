@@ -9,6 +9,7 @@ from typing import List, Dict, Any
 from core.base_module import BaseModule
 from detectors.base_detector import BaseDetector
 from core.logger import get_logger
+from utils.oob_detector import OOBDetector
 import re
 
 logger = get_logger(__name__)
@@ -20,6 +21,9 @@ class SSRFModule(BaseModule):
     def __init__(self, module_path: str):
         """Initialize SSRF module"""
         super().__init__(module_path)
+
+        # Initialize OOB detector for blind SSRF detection
+        self.oob_detector = OOBDetector()
 
         # SSRF indicators in responses
         self.ssrf_indicators = [
@@ -81,6 +85,15 @@ class SSRFModule(BaseModule):
                 logger.debug(f"Testing SSRF in parameter: {param_name} via {method} "
                            f"(URL param: {is_url_param})")
 
+                # FIRST: Test OOB (Blind SSRF) if parameter looks like URL parameter
+                if is_url_param:
+                    oob_result = self._test_oob_ssrf(url, params, param_name, method, http_client)
+                    if oob_result:
+                        results.append(oob_result)
+                        logger.info(f"✓ Blind SSRF (OOB) found in {url} (parameter: {param_name})")
+                        # Continue to test other parameters
+
+                # SECOND: Test regular SSRF with payloads
                 # Limit payloads based on parameter name
                 payload_limit = 15 if is_url_param else 5
 
@@ -198,6 +211,73 @@ class SSRFModule(BaseModule):
                                              context_size=200)
 
         return True, confidence, evidence
+
+    def _test_oob_ssrf(self, url: str, params: Dict[str, Any], param_name: str,
+                       method: str, http_client: Any) -> Dict[str, Any]:
+        """
+        Test for Blind SSRF using OOB detection
+
+        Args:
+            url: Target URL
+            params: Parameters dictionary
+            param_name: Parameter name to test
+            method: HTTP method (GET/POST)
+            http_client: HTTP client
+
+        Returns:
+            Result dictionary if vulnerability found, None otherwise
+        """
+        try:
+            # Generate OOB payloads
+            oob_payloads = self.oob_detector.get_callback_payloads('ssrf', url, param_name)
+
+            logger.debug(f"Testing Blind SSRF (OOB) with {len(oob_payloads)} payloads")
+
+            for payload_info in oob_payloads[:3]:  # Test first 3 OOB payloads
+                payload = payload_info['payload']
+                callback_id = payload_info['callback_id']
+
+                # Send request with OOB payload
+                test_params = params.copy()
+                test_params[param_name] = payload
+
+                if method == 'POST':
+                    response = http_client.post(url, data=test_params)
+                else:
+                    response = http_client.get(url, params=test_params)
+
+                if not response:
+                    continue
+
+                # Check for callback (wait 3 seconds)
+                detected, evidence = self.oob_detector.check_callback(callback_id, wait_time=3)
+
+                if detected:
+                    # Blind SSRF confirmed via OOB callback
+                    result = self.create_result(
+                        vulnerable=True,
+                        url=url,
+                        parameter=param_name,
+                        payload=payload,
+                        evidence=f"Blind SSRF confirmed via Out-of-Band callback. {evidence}",
+                        description=f"Blind Server-Side Request Forgery (SSRF) vulnerability detected. "
+                                  f"The server made an external request to attacker-controlled URL ({payload_info['type']} payload). "
+                                  f"This was confirmed via out-of-band callback detection.",
+                        confidence=0.95  # High confidence for OOB confirmation
+                    )
+
+                    # Add metadata
+                    result['cwe'] = self.config.get('cwe', 'CWE-918')
+                    result['owasp'] = self.config.get('owasp', 'A10:2021')
+                    result['cvss'] = self.config.get('cvss', '8.6')
+                    result['detection_method'] = 'Out-of-Band (OOB)'
+
+                    return result
+
+        except Exception as e:
+            logger.debug(f"Error in OOB SSRF testing: {e}")
+
+        return None
 
 
 def get_module(module_path: str):

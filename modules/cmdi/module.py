@@ -8,6 +8,7 @@ from typing import List, Dict, Any
 from core.base_module import BaseModule
 from detectors.base_detector import BaseDetector
 from core.logger import get_logger
+from utils.oob_detector import OOBDetector
 
 logger = get_logger(__name__)
 
@@ -18,6 +19,9 @@ class CMDiModule(BaseModule):
     def __init__(self, module_path: str):
         """Initialize CMDi module"""
         super().__init__(module_path)
+
+        # Initialize OOB detector for blind command injection
+        self.oob_detector = OOBDetector()
 
         # Load patterns from TXT files
         self.linux_patterns = BaseDetector.load_patterns_from_file('cmdi/linux')
@@ -58,7 +62,14 @@ class CMDiModule(BaseModule):
             for param_name in params:
                 logger.debug(f"Testing CMDi in parameter: {param_name} via {method}")
 
-                # Try payloads
+                # FIRST: Test OOB (Blind Command Injection)
+                oob_result = self._test_oob_cmdi(url, params, param_name, method, http_client)
+                if oob_result:
+                    results.append(oob_result)
+                    logger.info(f"✓ Blind CMDi (OOB) found in {url} (parameter: {param_name})")
+                    # Continue to test other parameters
+
+                # SECOND: Try regular payloads
                 for payload in self.payloads[:30]:  # Limit to 30 payloads
                     test_params = params.copy()
                     test_params[param_name] = str(params[param_name]) + payload
@@ -230,6 +241,89 @@ class CMDiModule(BaseModule):
         evidence += "Examples: " + " | ".join(evidence_parts[:2])
 
         return evidence
+
+    def _test_oob_cmdi(self, url: str, params: Dict[str, Any], param_name: str,
+                       method: str, http_client: Any) -> Dict[str, Any]:
+        """
+        Test for Blind Command Injection using OOB detection
+
+        Args:
+            url: Target URL
+            params: Parameters dictionary
+            param_name: Parameter name to test
+            method: HTTP method (GET/POST)
+            http_client: HTTP client
+
+        Returns:
+            Result dictionary if vulnerability found, None otherwise
+        """
+        try:
+            # Generate OOB payloads for RCE/CMDi
+            oob_payloads = self.oob_detector.get_callback_payloads('cmdi', url, param_name)
+
+            logger.debug(f"Testing Blind CMDi (OOB) with {len(oob_payloads)} payloads")
+
+            for payload_info in oob_payloads[:3]:  # Test first 3 OOB payloads
+                payload = payload_info['payload']
+                callback_id = payload_info['callback_id']
+
+                # Append payload to parameter value
+                test_params = params.copy()
+                original_value = str(params.get(param_name, ''))
+
+                # Try different injection points
+                injection_variants = [
+                    f"{original_value};{payload}",  # Command separator
+                    f"{original_value}|{payload}",  # Pipe
+                    f"{original_value}&&{payload}",  # AND
+                    f"{original_value}`{payload}`",  # Backticks
+                ]
+
+                for variant in injection_variants:
+                    test_params[param_name] = variant
+
+                    # Send request
+                    if method == 'POST':
+                        response = http_client.post(url, data=test_params)
+                    else:
+                        response = http_client.get(url, params=test_params)
+
+                    if not response:
+                        continue
+
+                    # Check for callback (wait 3 seconds)
+                    detected, evidence = self.oob_detector.check_callback(callback_id, wait_time=3)
+
+                    if detected:
+                        # Blind CMDi confirmed via OOB callback
+                        result = self.create_result(
+                            vulnerable=True,
+                            url=url,
+                            parameter=param_name,
+                            payload=variant,
+                            evidence=f"Blind Command Injection confirmed via Out-of-Band callback. {evidence}",
+                            description=f"Blind OS Command Injection vulnerability detected. "
+                                      f"The server executed arbitrary system commands ({payload_info['type']} payload). "
+                                      f"This was confirmed via out-of-band callback detection.",
+                            confidence=0.95  # High confidence for OOB confirmation
+                        )
+
+                        # Add metadata
+                        result['cwe'] = self.config.get('cwe', 'CWE-78')
+                        result['owasp'] = self.config.get('owasp', 'A03:2021')
+                        result['cvss'] = self.config.get('cvss', '9.8')
+                        result['detection_method'] = 'Out-of-Band (OOB)'
+
+                        return result
+
+                    # Small delay between variants
+                    import time
+                    time.sleep(0.5)
+
+        except Exception as e:
+            logger.debug(f"Error in OOB CMDi testing: {e}")
+
+        return None
 
 
 def get_module(module_path: str):
