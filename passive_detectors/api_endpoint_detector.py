@@ -23,6 +23,25 @@ class APIEndpointDetector:
         Returns:
             List of findings
         """
+        # ANTI-FALSE-POSITIVE: Skip common JS libraries and minified files
+        url_lower = url.lower()
+        skip_patterns = [
+            'jquery.js', 'jquery.min.js', 'jquery-',
+            'bootstrap.js', 'bootstrap.min.js',
+            'angular.js', 'angular.min.js',
+            'react.js', 'react.min.js', 'react-dom',
+            'vue.js', 'vue.min.js',
+            'lodash.js', 'lodash.min.js', 'underscore',
+            'moment.js', 'moment.min.js',
+            'axios.js', 'axios.min.js',
+            'd3.js', 'd3.min.js',
+            '.min.js', '-min.js',
+            'vendor.js', 'bundle.js', 'chunk.js'
+        ]
+
+        if any(pattern in url_lower for pattern in skip_patterns):
+            return []
+
         findings = []
 
         response_text = getattr(response, 'text', '')
