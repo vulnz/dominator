@@ -8,5 +8,6 @@
   "cwe": "CWE-1236",
   "owasp": "A03:2021",
   "cvss": "7.8",
-  "severity": "high"
+  "severity": "high",
+  "cwe_name": "Updated"
 }

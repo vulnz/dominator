@@ -4,9 +4,10 @@
   "version": "1.0",
   "author": "Dominator Scanner",
   "enabled": true,
-  "confidence_threshold": 0.60,
+  "confidence_threshold": 0.6,
   "cwe": "CWE-434",
   "owasp": "A03:2021",
   "cvss": "9.8",
-  "severity": "critical"
+  "severity": "critical",
+  "cwe_name": "Updated"
 }
