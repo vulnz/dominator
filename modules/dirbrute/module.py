@@ -31,6 +31,9 @@ class DirectoryBruteForceModule(BaseModule):
         self.max_threads = self.config.get('max_threads', 10)
         self.interesting_extensions = self.config.get('interesting_extensions', ['', '.php', '.txt', '.bak'])
 
+        # Real 404 detection - cache baseline responses per base URL
+        self.baseline_404_responses = {}  # {base_url: {'status': int, 'size': int, 'content_hash': str}}
+
         logger.info(f"Directory Brute Force module loaded: {len(self.payloads)} paths, "
                    f"{len(self.interesting_extensions)} extensions")
 
@@ -98,6 +101,104 @@ class DirectoryBruteForceModule(BaseModule):
         logger.info(f"Directory Brute Force scan complete: {len(results)} paths found")
         return results
 
+    def _establish_404_baseline(self, base_url: str, http_client: Any) -> Dict[str, Any]:
+        """
+        Establish baseline for fake 404 (Real 404) detection
+
+        Tests multiple non-existent random paths to identify how the server responds to 404s.
+        Some servers return 200 with same content for ALL paths (even non-existent).
+
+        Args:
+            base_url: Base URL to test
+            http_client: HTTP client
+
+        Returns:
+            Baseline dictionary with status, size, and content hash
+        """
+        import hashlib
+        import random
+        import string
+
+        # Generate 3 random non-existent paths
+        random_paths = []
+        for _ in range(3):
+            random_str = ''.join(random.choices(string.ascii_lowercase + string.digits, k=32))
+            random_paths.append(f"nonexistent_{random_str}.html")
+
+        responses = []
+        for random_path in random_paths:
+            try:
+                test_url = urljoin(base_url, random_path)
+                response = http_client.get(test_url, allow_redirects=False)
+                if response:
+                    resp_text = getattr(response, 'text', '')
+                    resp_hash = hashlib.md5(resp_text.encode()).hexdigest()
+                    responses.append({
+                        'status': response.status_code,
+                        'size': len(resp_text),
+                        'hash': resp_hash
+                    })
+            except Exception as e:
+                logger.debug(f"Error establishing 404 baseline: {e}")
+                continue
+
+        if not responses:
+            return None
+
+        # Check if all responses are identical (classic sign of fake 404)
+        first_resp = responses[0]
+        all_identical = all(
+            r['status'] == first_resp['status'] and
+            r['size'] == first_resp['size'] and
+            r['hash'] == first_resp['hash']
+            for r in responses
+        )
+
+        if all_identical and first_resp['status'] == 200:
+            logger.info(f"[REAL 404 DETECTED] {base_url} returns HTTP 200 for non-existent paths (size: {first_resp['size']} bytes)")
+            return first_resp
+
+        return None
+
+    def _is_fake_404(self, response: Any, base_url: str) -> bool:
+        """
+        Check if response is a fake 404 (server returns 200 but page doesn't exist)
+
+        Args:
+            response: Response object
+            base_url: Base URL being tested
+
+        Returns:
+            True if this is a fake 404, False if it's a real finding
+        """
+        import hashlib
+
+        if base_url not in self.baseline_404_responses:
+            return False
+
+        baseline = self.baseline_404_responses[base_url]
+        if not baseline:
+            return False
+
+        # Check if response matches the baseline
+        resp_text = getattr(response, 'text', '')
+        resp_hash = hashlib.md5(resp_text.encode()).hexdigest()
+        resp_size = len(resp_text)
+
+        # If status, size, and hash all match baseline, it's a fake 404
+        if (response.status_code == baseline['status'] and
+            resp_size == baseline['size'] and
+            resp_hash == baseline['hash']):
+            return True
+
+        # Also check size similarity (within 5% tolerance for dynamic content)
+        if response.status_code == baseline['status']:
+            size_diff_percent = abs(resp_size - baseline['size']) / max(baseline['size'], 1) * 100
+            if size_diff_percent < 5:
+                return True
+
+        return False
+
     def _brute_force_url(self, base_url: str, http_client: Any) -> List[Dict[str, Any]]:
         """
         Brute force a single base URL
@@ -109,6 +210,13 @@ class DirectoryBruteForceModule(BaseModule):
         Returns:
             List of found paths with metadata
         """
+        # Establish 404 baseline for this base URL
+        baseline = self._establish_404_baseline(base_url, http_client)
+        if baseline:
+            self.baseline_404_responses[base_url] = baseline
+        else:
+            self.baseline_404_responses[base_url] = None
+
         found_paths = []
         tested = 0
         start_time = time.time()
@@ -143,6 +251,11 @@ class DirectoryBruteForceModule(BaseModule):
 
                     # Check if status code is interesting
                     if status_code in self.interesting_codes:
+                        # CRITICAL: Check for fake 404 (Real 404 detection)
+                        if self._is_fake_404(response, base_url):
+                            logger.debug(f"✗ Fake 404: {test_path} (matches baseline)")
+                            continue
+
                         # Analyze the finding
                         confidence, severity, description = self._analyze_finding(
                             test_path, status_code, response

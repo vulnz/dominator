@@ -4,6 +4,7 @@ Unified report generator for all output formats
 
 import json
 import datetime
+import html
 from typing import List, Dict, Any
 from core.logger import get_logger
 
@@ -283,22 +284,31 @@ class ReportGenerator:
                 html_content += f"<h3>{severity} ({len(severity_results)})</h3>\n"
 
                 for result in severity_results:
+                    # HTML escape all user-controlled data to prevent XSS payloads from breaking the report
+                    vuln_type = html.escape(result.get('type', 'Unknown Vulnerability'))
+                    url = html.escape(result.get('url', 'N/A'))
+                    parameter = html.escape(result.get('parameter', ''))
+                    payload = html.escape(result.get('payload', ''))
+                    description = html.escape(result.get('description', ''))
+                    evidence = html.escape(result.get('evidence', ''))
+                    recommendation = html.escape(result.get('recommendation', ''))
+
                     html_content += f"""
         <div class="vulnerability {severity.lower()}">
-            <h3>{result.get('type', 'Unknown Vulnerability')}</h3>
-            <div class="detail"><span class="label">URL:</span> {result.get('url', 'N/A')}</div>
+            <h3>{vuln_type}</h3>
+            <div class="detail"><span class="label">URL:</span> {url}</div>
 """
                     if result.get('parameter'):
-                        html_content += f"            <div class=\"detail\"><span class=\"label\">Parameter:</span> {result.get('parameter')}</div>\n"
+                        html_content += f"            <div class=\"detail\"><span class=\"label\">Parameter:</span> {parameter}</div>\n"
                     if result.get('payload'):
-                        html_content += f"            <div class=\"detail\"><span class=\"label\">Payload:</span> <code>{result.get('payload')}</code></div>\n"
+                        html_content += f"            <div class=\"detail\"><span class=\"label\">Payload:</span> <code>{payload}</code></div>\n"
                     if result.get('description'):
-                        html_content += f"            <div class=\"detail\"><span class=\"label\">Description:</span> {result.get('description')}</div>\n"
+                        html_content += f"            <div class=\"detail\"><span class=\"label\">Description:</span> {description}</div>\n"
                     if result.get('evidence'):
                         html_content += f"            <div class=\"detail\"><span class=\"label\">Evidence:</span></div>\n"
-                        html_content += f"            <div class=\"evidence\">{result.get('evidence')}</div>\n"
+                        html_content += f"            <div class=\"evidence\">{evidence}</div>\n"
                     if result.get('recommendation'):
-                        html_content += f"            <div class=\"detail\"><span class=\"label\">Recommendation:</span> {result.get('recommendation')}</div>\n"
+                        html_content += f"            <div class=\"detail\"><span class=\"label\">Recommendation:</span> {recommendation}</div>\n"
 
                     html_content += "        </div>\n"
 
