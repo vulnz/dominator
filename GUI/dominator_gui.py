@@ -792,6 +792,13 @@ class DominatorGUI(QMainWindow):
         self.payload_limit_spin.setValue(50)
         crawler_layout.addWidget(self.payload_limit_spin, 0, 3)
 
+        # Forbidden Paths
+        crawler_layout.addWidget(QLabel("Forbidden Paths:"), 1, 0)
+        self.forbidden_paths_input = QLineEdit()
+        self.forbidden_paths_input.setPlaceholderText("/logout,/delete,/admin/critical (comma-separated)")
+        self.forbidden_paths_input.setToolTip("URLs/paths that should NOT be crawled or tested")
+        crawler_layout.addWidget(self.forbidden_paths_input, 1, 1, 1, 3)
+
         crawler_group.setLayout(crawler_layout)
         layout.addWidget(crawler_group)
 
