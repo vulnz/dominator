@@ -21,7 +21,7 @@
 - Added `QActionGroup` for exclusive theme selection
 
 ### 📝 Commits
-- (pending) - feat: Add 5 color themes with theme switcher menu
+- `5cfcd55` - feat: Add 5 color themes with theme switcher menu
 
 ---
 
