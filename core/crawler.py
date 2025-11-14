@@ -371,14 +371,28 @@ class WebCrawler:
                 '.css', '.js', '.jpg', '.jpeg', '.png', '.gif', '.svg', '.ico',
                 '.mp3', '.mp4', '.avi', '.mov', '.wmv', '.flv'
             ]
-        
+
         parsed = urlparse(url)
         path = parsed.path.lower()
-        
-        # Don't skip if URL has query parameters (might be dynamic)
+        query = parsed.query.upper()
+
+        # CRITICAL FIX: Skip Apache directory listing sorting parameters
+        # These are NOT injection points, just UI controls for directory listings
+        if query:
+            # Apache httpd directory listing sorting (C=column, O=order)
+            apache_sort_params = ['C=N', 'C=M', 'C=S', 'C=D', 'O=A', 'O=D']
+            if any(param in query for param in apache_sort_params):
+                # Check if it's ONLY sorting params (not mixed with real params)
+                query_lower = query.lower()
+                # If query only contains c=, o=, and & separators, skip it
+                if all(c in 'co=nad&;ms' for c in query_lower.replace('%', '')):
+                    print(f"    [CRAWLER] ✓ Skipping Apache directory listing sort: {url}")
+                    return True
+
+        # Don't skip if URL has OTHER query parameters (might be dynamic)
         if parsed.query:
             return False
-        
+
         return any(path.endswith(ext) for ext in skip_extensions)
     
     def _get_url_pattern(self, url: str) -> str:
