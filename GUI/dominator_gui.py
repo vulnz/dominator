@@ -312,7 +312,7 @@ class DominatorGUI(QMainWindow):
 
     def init_ui(self):
         """Initialize the user interface"""
-        self.setWindowTitle("🎯 Dominator Web Vulnerability Scanner")
+        self.setWindowTitle("Dominator Web Vulnerability Scanner")
         self.setGeometry(100, 100, 1400, 900)
 
         # Create menu bar
@@ -335,31 +335,31 @@ class DominatorGUI(QMainWindow):
 
         # Scan Configuration Tab
         scan_tab = self.create_scan_tab()
-        self.tabs.addTab(scan_tab, "🎯 Scan Configuration")
+        self.tabs.addTab(scan_tab, "Scan Configuration")
 
         # Advanced Options Tab
         advanced_tab = self.create_advanced_tab()
-        self.tabs.addTab(advanced_tab, "⚙️ Advanced Options")
+        self.tabs.addTab(advanced_tab, "Advanced Options")
 
         # Custom Payloads Tab
         payloads_tab = self.create_payloads_tab()
-        self.tabs.addTab(payloads_tab, "💉 Custom Payloads")
+        self.tabs.addTab(payloads_tab, "Custom Payloads")
 
         # Output Tab
         output_tab = self.create_output_tab()
-        self.tabs.addTab(output_tab, "📊 Scan Output")
+        self.tabs.addTab(output_tab, "Scan Output")
 
         # Results Tab
         results_tab = self.create_results_tab()
-        self.tabs.addTab(results_tab, "🔍 Results")
+        self.tabs.addTab(results_tab, "Results")
 
         # Resources Tab
         resources_tab = self.create_resources_tab()
-        self.tabs.addTab(resources_tab, "📦 Resources")
+        self.tabs.addTab(resources_tab, "Resources")
 
         # Scope Tab
         scope_tab = self.create_scope_tab()
-        self.tabs.addTab(scope_tab, "🎯 Scope")
+        self.tabs.addTab(scope_tab, "Scope")
 
         main_layout.addWidget(self.tabs)
 
@@ -447,31 +447,31 @@ class DominatorGUI(QMainWindow):
         # View menu
         view_menu = menubar.addMenu("👁️ View")
 
-        view_scan_tab_action = QAction("🎯 Scan Configuration", self)
+        view_scan_tab_action = QAction("Scan Configuration", self)
         view_scan_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(0))
         view_menu.addAction(view_scan_tab_action)
 
-        view_advanced_tab_action = QAction("⚙️ Advanced Options", self)
+        view_advanced_tab_action = QAction("Advanced Options", self)
         view_advanced_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(1))
         view_menu.addAction(view_advanced_tab_action)
 
-        view_payloads_tab_action = QAction("💉 Custom Payloads", self)
+        view_payloads_tab_action = QAction("Custom Payloads", self)
         view_payloads_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(2))
         view_menu.addAction(view_payloads_tab_action)
 
-        view_output_tab_action = QAction("📊 Scan Output", self)
+        view_output_tab_action = QAction("Scan Output", self)
         view_output_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(3))
         view_menu.addAction(view_output_tab_action)
 
-        view_results_tab_action = QAction("🔍 Results", self)
+        view_results_tab_action = QAction("Results", self)
         view_results_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(4))
         view_menu.addAction(view_results_tab_action)
 
-        view_resources_tab_action = QAction("📦 Resources", self)
+        view_resources_tab_action = QAction("Resources", self)
         view_resources_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(5))
         view_menu.addAction(view_resources_tab_action)
 
-        view_scope_tab_action = QAction("🎯 Scope", self)
+        view_scope_tab_action = QAction("Scope", self)
         view_scope_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(6))
         view_menu.addAction(view_scope_tab_action)
 
@@ -503,7 +503,7 @@ class DominatorGUI(QMainWindow):
 
         layout = QVBoxLayout(header)
 
-        title = QLabel("🎯 DOMINATOR")
+        title = QLabel("DOMINATOR")
         title.setFont(QFont("Arial", 28, QFont.Bold))
         title.setStyleSheet("color: #00ff88; background: transparent;")
         layout.addWidget(title)
@@ -521,7 +521,7 @@ class DominatorGUI(QMainWindow):
         layout = QVBoxLayout(widget)
 
         # Target Configuration
-        target_group = QGroupBox("🎯 Target Configuration")
+        target_group = QGroupBox("Target Configuration")
         target_layout = QGridLayout()
 
         # Target (supports URLs, domains, IPs, CIDR, ranges)
