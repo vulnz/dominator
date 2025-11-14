@@ -26,6 +26,12 @@ scan_report_*.json
 scan_report_*.xml
 *.log
 nul
+reports/*.html
+reports/*.json
+reports/*.xml
+reports/*.txt
+multi_target_report_*.html
+modules.html
 
 # Test files
 test_*.py
@@ -33,6 +39,38 @@ debug_*.py
 *_test.txt
 *_scan.txt
 *_benchmark*.txt
+test_targets.txt
+benchmark_test.py
+
+# Temporary analysis/rotation files
+analyze_*.py
+apply_*.py
+check_*.py
+check_*.sh
+fix_*.py
+generate_*.py
+quick_*.py
+view_*.py
+open_report.py
+wrapper.py
+ROTATION*_ANALYSIS.md
+ROTATION*_STATUS.md
+ROTATION*_FIXES*.md
+ROTATION*_MASTER_PLAN.md
+ROTATION*_IMPROVEMENTS.md
+ROTATION*_COMPLETE.md
+ROTATION*_PHASE*.md
+ROTATION_*.md
+PROGRESS_REPORT.md
+SCAN_SUMMARY.md
+VULNERABILITY_ANALYSIS.md
+WEAK_CREDENTIALS_ANALYSIS.md
+CRITICAL_FIXES.md
+IMPROVEMENTS_SUMMARY.md
+QUALITY_ANALYSIS_TABLE.md
+POST_FORMS_COVERAGE_ANALYSIS.md
+HARDCODED_PATTERNS_ANALYSIS.md
+TOP_10_NEW_MODULES.md
 
 # Temporary files
 *.tmp
