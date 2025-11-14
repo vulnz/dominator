@@ -24,7 +24,7 @@
 - Compact padding: 5px margins on Modules tab, 5px padding on search/buttons
 
 ### 📝 Commits
-- (pending) - refactor: Dynamic auth fields, fix module HTML display, compact layout
+- `ddda88b` - refactor: Dynamic auth fields, fix module HTML display, compact layout
 
 ---
 
