@@ -49,6 +49,9 @@ class ScanThread(QThread):
     def run(self):
         """Run the scan command"""
         try:
+            # Get parent directory (where main.py and modules/ are)
+            parent_dir = Path(__file__).parent.parent
+
             self.process = subprocess.Popen(
                 self.command,
                 stdout=subprocess.PIPE,
@@ -57,7 +60,8 @@ class ScanThread(QThread):
                 bufsize=1,
                 universal_newlines=True,
                 encoding='utf-8',
-                errors='ignore'
+                errors='ignore',
+                cwd=str(parent_dir)  # Set working directory to scanner root
             )
 
             for line in iter(self.process.stdout.readline, ''):
