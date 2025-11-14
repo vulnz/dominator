@@ -159,16 +159,16 @@ def launch_gui(args):
 
         # Configure advanced options
         if args.threads:
-            gui.threads_input.setValue(args.threads)
+            gui.threads_spin.setValue(args.threads)
 
         if args.timeout:
-            gui.timeout_input.setValue(args.timeout)
+            gui.timeout_spin.setValue(args.timeout)
 
         if args.delay:
-            gui.delay_input.setValue(args.delay)
+            gui.delay_spin.setValue(args.delay)
 
         if hasattr(args, 'max_crawl_pages'):
-            gui.max_pages_input.setValue(args.max_crawl_pages)
+            gui.max_crawl_spin.setValue(args.max_crawl_pages)
 
         # Set flags
         if hasattr(args, 'nocrawl') and args.nocrawl:
