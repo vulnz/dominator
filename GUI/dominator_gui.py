@@ -45,6 +45,7 @@ class ScanThread(QThread):
         self.total_modules = 20  # Total available modules
         self.completed_modules = 0
         self.total_vulns = 0
+        self.current_severity = 'MEDIUM'  # Track current severity section
 
     def run(self):
         """Run the scan command"""
@@ -81,48 +82,80 @@ class ScanThread(QThread):
 
     def parse_scan_output(self, line):
         """Parse scanner output for progress and findings"""
+        # Strip ANSI color codes for easier parsing
+        line_clean = line
+        if '[' in line and 'm' in line:
+            import re
+            line_clean = re.sub(r'\x1b\[[0-9;]*m', '', line)
+
         # Track module execution
-        if 'Running module:' in line:
-            module_name = line.split('Running module:')[-1].strip()
+        if 'Running module:' in line_clean:
+            module_name = line_clean.split('Running module:')[-1].strip()
             self.progress_signal.emit(0, f"🔍 Testing: {module_name}")
 
         # Track module completion
-        elif 'Module' in line and 'completed' in line:
+        elif 'Module' in line_clean and 'completed' in line_clean:
             self.completed_modules += 1
             progress = int((self.completed_modules / self.total_modules) * 100)
             self.progress_signal.emit(progress, f"✓ Completed {self.completed_modules}/{self.total_modules} modules")
             self.stats_signal.emit(self.total_vulns, self.completed_modules, self.total_modules)
 
         # Track crawling progress
-        elif 'Crawling:' in line or 'Found page:' in line or 'Form discovered:' in line:
+        elif 'Crawling:' in line_clean or 'Found page:' in line_clean or 'Form discovered:' in line_clean:
             self.progress_signal.emit(0, "🕷️ Crawling target...")
 
         # Track target discovery
-        elif 'Page discovery complete:' in line:
+        elif 'Page discovery complete:' in line_clean:
             try:
-                targets = line.split('Page discovery complete:')[-1].strip()
+                targets = line_clean.split('Page discovery complete:')[-1].strip()
                 self.progress_signal.emit(0, f"📍 {targets}")
             except:
                 pass
 
-        # Track vulnerabilities found
-        elif 'Found vulnerability:' in line or '[HIGH]' in line or '[CRITICAL]' in line or '[MEDIUM]' in line:
+        # Track vulnerabilities found - NEW: detect "✓ Found:" and severity sections
+        elif '✓ Found' in line_clean or 'Found:' in line_clean:
             self.total_vulns += 1
-            # Determine severity
+            # Try to determine severity from context (will be updated by severity line)
             severity = 'MEDIUM'
-            if '[CRITICAL]' in line or 'Critical' in line:
-                severity = 'CRITICAL'
-            elif '[HIGH]' in line or 'High' in line:
-                severity = 'HIGH'
-            elif '[MEDIUM]' in line or 'Medium' in line:
-                severity = 'MEDIUM'
-
-            self.vulnerability_signal.emit(severity, line)
+            self.vulnerability_signal.emit(severity, line_clean)
             self.stats_signal.emit(self.total_vulns, self.completed_modules, self.total_modules)
 
+        # Detect severity section headers (Critical Severity, High Severity, etc.)
+        elif 'Severity (' in line_clean:
+            # Extract count from "Critical Severity (5):" format
+            try:
+                if 'Critical' in line_clean:
+                    self.current_severity = 'CRITICAL'
+                elif 'High' in line_clean:
+                    self.current_severity = 'HIGH'
+                elif 'Medium' in line_clean:
+                    self.current_severity = 'MEDIUM'
+                elif 'Low' in line_clean:
+                    self.current_severity = 'LOW'
+            except:
+                pass
+
+        # Detect vulnerability type lines like "[SQL Injection]"
+        elif line_clean.strip().startswith('[') and line_clean.strip().endswith(']'):
+            vuln_type = line_clean.strip()
+            if hasattr(self, 'current_severity'):
+                severity = self.current_severity
+            else:
+                severity = 'MEDIUM'
+            self.vulnerability_signal.emit(severity, vuln_type)
+
+        # Detect "Total vulnerabilities:" summary
+        elif 'Total vulnerabilities:' in line_clean:
+            try:
+                count = int(line_clean.split('Total vulnerabilities:')[-1].strip())
+                self.total_vulns = count
+                self.stats_signal.emit(self.total_vulns, self.completed_modules, self.total_modules)
+            except:
+                pass
+
         # Track scan start
-        elif 'Target:' in line and 'http' in line:
-            target = line.split('Target:')[-1].strip()
+        elif 'Target:' in line_clean and 'http' in line_clean:
+            target = line_clean.split('Target:')[-1].strip()
             self.progress_signal.emit(0, f"🎯 Scanning: {target}")
 
     def stop(self):
