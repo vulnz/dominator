@@ -22,11 +22,17 @@ Usage examples:
         """
     )
     
+    # GUI mode
+    parser.add_argument('--gui', action='store_true',
+                       help='Launch GUI interface with optional pre-configured parameters')
+    parser.add_argument('--auto-start', action='store_true',
+                       help='Auto-start scan when using --gui (requires target/file)')
+
     # Target options
-    target_group = parser.add_mutually_exclusive_group(required=True)
+    target_group = parser.add_mutually_exclusive_group(required=False)
     target_group.add_argument('-t', '--target', nargs='+',
                        help='One or more scan targets (IP, domain, URL, IP:port, URL:port, subnet)')
-    target_group.add_argument('-f', '--file', 
+    target_group.add_argument('-f', '--file',
                        help='File with targets for scanning')
     
     # HTTP parameters

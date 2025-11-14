@@ -109,6 +109,100 @@ def print_banner():
     """
     print(banner)
 
+def launch_gui(args):
+    """Launch GUI with optional pre-configured parameters"""
+    try:
+        from PyQt5.QtWidgets import QApplication
+        from pathlib import Path
+
+        # Add GUI directory to path
+        gui_path = Path(__file__).parent / 'GUI'
+        if str(gui_path) not in sys.path:
+            sys.path.insert(0, str(gui_path))
+
+        # Import GUI
+        from dominator_gui import DominatorGUI
+
+        # Create QApplication
+        app = QApplication(sys.argv)
+        gui = DominatorGUI()
+
+        # Pre-configure GUI from CLI arguments
+        if args.target:
+            gui.target_input.setPlainText('\n'.join(args.target))
+
+        if args.file:
+            gui.target_file_input.setText(args.file)
+
+        # Configure modules
+        if args.all:
+            gui.select_all_modules_checkbox.setChecked(True)
+        elif args.modules:
+            # Parse module list
+            module_names = [m.strip() for m in args.modules.split(',')]
+            # Select specific modules in GUI
+            for i in range(gui.modules_list.count()):
+                item = gui.modules_list.item(i)
+                module_data = item.data(256)  # Qt.UserRole
+                if module_data and module_data.get('folder') in module_names:
+                    item.setCheckState(2)  # Qt.Checked
+
+        # Configure HTTP options
+        if args.headers:
+            gui.headers_input.setPlainText('\n'.join(args.headers))
+
+        if args.cookies:
+            gui.cookies_input.setText(args.cookies)
+
+        if args.proxy:
+            gui.proxy_input.setText(args.proxy)
+
+        # Configure advanced options
+        if args.threads:
+            gui.threads_input.setValue(args.threads)
+
+        if args.timeout:
+            gui.timeout_input.setValue(args.timeout)
+
+        if args.delay:
+            gui.delay_input.setValue(args.delay)
+
+        if hasattr(args, 'max_crawl_pages'):
+            gui.max_pages_input.setValue(args.max_crawl_pages)
+
+        # Set flags
+        if hasattr(args, 'nocrawl') and args.nocrawl:
+            gui.single_page_checkbox.setChecked(True)
+
+        if hasattr(args, 'rotate_agent') and args.rotate_agent:
+            gui.rotate_agent_checkbox.setChecked(True)
+
+        if hasattr(args, 'recon_only') and args.recon_only:
+            gui.recon_only_checkbox.setChecked(True)
+
+        # Auto-start scan if requested and target is specified
+        if args.auto_start and (args.target or args.file):
+            print("Auto-starting scan...")
+            # Use QTimer to start scan after GUI is shown
+            from PyQt5.QtCore import QTimer
+            QTimer.singleShot(500, gui.start_scan)
+
+        # Show GUI
+        gui.show()
+
+        # Run application
+        sys.exit(app.exec_())
+
+    except ImportError as e:
+        print(f"Error: PyQt5 not installed. Install with: pip install PyQt5")
+        print(f"Details: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error launching GUI: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
 def main():
     """Main function"""
     global shutdown_requested
@@ -120,18 +214,23 @@ def main():
     parser = create_parser()
     args = parser.parse_args()
 
+    # Launch GUI if --gui flag is present
+    if args.gui:
+        launch_gui(args)
+        return
+
     # Print banner
     print_banner()
 
     # Setup logging
     setup_logging(level='INFO', verbose=getattr(args, 'verbose', False))
-    
+
     # Show modules and exit
     if args.modules_list:
         show_modules()
         return
-    
-    
+
+
     # Check required parameters
     if not args.target and not args.file:
         print("Error: Must specify target (-t) or targets file (-f)")
