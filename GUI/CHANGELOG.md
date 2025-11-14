@@ -1,5 +1,51 @@
 # GUI Changelog
 
+## v1.1.1 - Critical Bug Fix (2025-11-14)
+
+### 🐛 Critical Fix
+- **FIXED: "No modules found!" error** when running scans from GUI
+- **Root Cause**: subprocess was running from `GUI/` directory instead of `dominator/` root
+- **Solution**: Added `cwd=parent_dir` to `subprocess.Popen()` to set working directory
+- **Impact**: GUI now correctly discovers all 20 modules in `modules/` folder
+
+### 📝 Technical Details
+When the GUI launched scans, it executed:
+```python
+subprocess.Popen([python, main.py, ...])
+```
+This ran `main.py` from the **current directory** (GUI/), which couldn't find:
+- `modules/` folder
+- `payloads/` folder
+- `report/templates/` folder
+
+**Fix Applied**:
+```python
+parent_dir = Path(__file__).parent.parent  # dominator/
+subprocess.Popen([...], cwd=str(parent_dir))  # Run from dominator/ root
+```
+
+Now all file paths resolve correctly!
+
+### 📊 Before vs After
+**Before** (v1.1):
+```
+Available Modules: No modules found!
+ERROR - No modules loaded! Check your -m parameter
+```
+
+**After** (v1.1.1):
+```
+Available Modules: 20 modules loaded
+Running module: SQL Injection Scanner
+Running module: XSS Scanner
+...
+```
+
+### 📝 Commits
+- `f05aa04` - fix: Set working directory to scanner root
+
+---
+
 ## v1.1 - Real-Time Progress Update (2025-11-14)
 
 ### 🎯 Major Features Added
