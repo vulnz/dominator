@@ -21,10 +21,10 @@ try:
         QLabel, QLineEdit, QPushButton, QTextEdit, QComboBox, QCheckBox,
         QGroupBox, QGridLayout, QTabWidget, QFileDialog, QSpinBox,
         QProgressBar, QListWidget, QSplitter, QScrollArea, QFrame, QMessageBox,
-        QListWidgetItem
+        QListWidgetItem, QMenuBar, QAction, QMenu
     )
-    from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
-    from PyQt5.QtGui import QFont, QColor, QPalette, QIcon, QTextCursor
+    from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl
+    from PyQt5.QtGui import QFont, QColor, QPalette, QIcon, QTextCursor, QDesktopServices
 except ImportError:
     print("ERROR: PyQt5 is required for the GUI")
     print("Install with: pip install PyQt5")
@@ -180,6 +180,9 @@ class DominatorGUI(QMainWindow):
         self.setWindowTitle("🎯 Dominator Web Vulnerability Scanner")
         self.setGeometry(100, 100, 1400, 900)
 
+        # Create menu bar
+        self.create_menu_bar()
+
         # Central widget
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -221,6 +224,119 @@ class DominatorGUI(QMainWindow):
         self.statusBar().showMessage("Ready to scan")
         self.statusBar().setStyleSheet("background-color: #2b2b2b; color: #00ff00; padding: 5px;")
 
+    def create_menu_bar(self):
+        """Create menu bar"""
+        menubar = self.menuBar()
+        menubar.setStyleSheet("""
+            QMenuBar {
+                background-color: #2a2a2a;
+                color: white;
+                padding: 4px;
+            }
+            QMenuBar::item {
+                background-color: transparent;
+                padding: 6px 12px;
+            }
+            QMenuBar::item:selected {
+                background-color: #00ff88;
+                color: black;
+            }
+            QMenu {
+                background-color: #2a2a2a;
+                color: white;
+                border: 1px solid #3a3a3a;
+            }
+            QMenu::item {
+                padding: 6px 30px 6px 20px;
+            }
+            QMenu::item:selected {
+                background-color: #00ff88;
+                color: black;
+            }
+        """)
+
+        # File menu
+        file_menu = menubar.addMenu("📁 File")
+
+        new_scan_action = QAction("🆕 New Scan", self)
+        new_scan_action.setShortcut("Ctrl+N")
+        new_scan_action.triggered.connect(self.new_scan)
+        file_menu.addAction(new_scan_action)
+
+        load_config_action = QAction("📂 Load Configuration", self)
+        load_config_action.setShortcut("Ctrl+O")
+        load_config_action.triggered.connect(self.load_configuration)
+        file_menu.addAction(load_config_action)
+
+        save_config_action = QAction("💾 Save Configuration", self)
+        save_config_action.setShortcut("Ctrl+S")
+        save_config_action.triggered.connect(self.save_configuration)
+        file_menu.addAction(save_config_action)
+
+        file_menu.addSeparator()
+
+        export_results_action = QAction("📤 Export Results", self)
+        export_results_action.triggered.connect(self.export_results)
+        file_menu.addAction(export_results_action)
+
+        file_menu.addSeparator()
+
+        exit_action = QAction("🚪 Exit", self)
+        exit_action.setShortcut("Ctrl+Q")
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+
+        # Edit menu
+        edit_menu = menubar.addMenu("✏️ Edit")
+
+        clear_targets_action = QAction("🗑️ Clear Targets", self)
+        clear_targets_action.triggered.connect(self.clear_targets)
+        edit_menu.addAction(clear_targets_action)
+
+        clear_output_action = QAction("🧹 Clear Output", self)
+        clear_output_action.triggered.connect(lambda: self.output_console.clear())
+        edit_menu.addAction(clear_output_action)
+
+        clear_results_action = QAction("🔄 Clear Results", self)
+        clear_results_action.triggered.connect(self.clear_results)
+        edit_menu.addAction(clear_results_action)
+
+        # View menu
+        view_menu = menubar.addMenu("👁️ View")
+
+        view_scan_tab_action = QAction("🎯 Scan Configuration", self)
+        view_scan_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(0))
+        view_menu.addAction(view_scan_tab_action)
+
+        view_advanced_tab_action = QAction("⚙️ Advanced Options", self)
+        view_advanced_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(1))
+        view_menu.addAction(view_advanced_tab_action)
+
+        view_payloads_tab_action = QAction("💉 Custom Payloads", self)
+        view_payloads_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(2))
+        view_menu.addAction(view_payloads_tab_action)
+
+        view_output_tab_action = QAction("📊 Scan Output", self)
+        view_output_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(3))
+        view_menu.addAction(view_output_tab_action)
+
+        view_results_tab_action = QAction("🔍 Results", self)
+        view_results_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(4))
+        view_menu.addAction(view_results_tab_action)
+
+        # Help menu
+        help_menu = menubar.addMenu("❓ Help")
+
+        docs_action = QAction("📖 Documentation", self)
+        docs_action.triggered.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/vulnz/dominator")))
+        help_menu.addAction(docs_action)
+
+        help_menu.addSeparator()
+
+        about_action = QAction("ℹ️ About Dominator", self)
+        about_action.triggered.connect(self.show_about)
+        help_menu.addAction(about_action)
+
     def create_header(self):
         """Create header section"""
         header = QFrame()
@@ -257,16 +373,35 @@ class DominatorGUI(QMainWindow):
         target_group = QGroupBox("🎯 Target Configuration")
         target_layout = QGridLayout()
 
-        # Target URL
-        target_layout.addWidget(QLabel("Target URL:"), 0, 0)
-        self.target_input = QLineEdit()
-        self.target_input.setPlaceholderText("http://example.com or multiple URLs separated by commas")
+        # Target (supports URLs, domains, IPs, CIDR, ranges)
+        target_layout.addWidget(QLabel("Target:"), 0, 0)
+        self.target_input = QTextEdit()
+        self.target_input.setPlaceholderText(
+            "Enter targets (one per line). Supported formats:\n"
+            "• URLs: http://example.com, https://example.com:8080/path\n"
+            "• Domains: example.com, subdomain.example.com\n"
+            "• IP addresses: 192.168.1.1, 10.0.0.5\n"
+            "• CIDR ranges: 192.168.1.0/24\n"
+            "• IP ranges: 192.168.1.1-192.168.1.50\n\n"
+            "Mix and match different formats!"
+        )
+        self.target_input.setMaximumHeight(120)
+        self.target_input.setStyleSheet("""
+            QTextEdit {
+                background-color: #2a2a2a;
+                color: white;
+                border: 2px solid #3a3a3a;
+                border-radius: 4px;
+                padding: 6px;
+                font-family: 'Consolas', 'Courier New', monospace;
+            }
+        """)
         target_layout.addWidget(self.target_input, 0, 1, 1, 2)
 
         # Target File
         target_layout.addWidget(QLabel("Or Target File:"), 1, 0)
         self.target_file_input = QLineEdit()
-        self.target_file_input.setPlaceholderText("Path to file with targets (one per line)")
+        self.target_file_input.setPlaceholderText("Path to file with targets (one per line - all formats supported)")
         target_layout.addWidget(self.target_file_input, 1, 1)
 
         browse_btn = QPushButton("Browse...")
@@ -747,8 +882,12 @@ class DominatorGUI(QMainWindow):
         # Target
         if self.target_file_input.text():
             command.extend(["-f", self.target_file_input.text()])
-        elif self.target_input.text():
-            command.extend(["-t", self.target_input.text()])
+        elif self.target_input.toPlainText().strip():
+            # Get all targets from text area (comma-separated or newline-separated)
+            targets_text = self.target_input.toPlainText().strip()
+            # Convert newlines to commas for multi-target support
+            targets = targets_text.replace('\n', ',').replace('\r', '')
+            command.extend(["-t", targets])
         else:
             return None
 
@@ -926,6 +1065,149 @@ class DominatorGUI(QMainWindow):
         latest = max(reports, key=lambda p: p.stat().st_mtime)
         os.startfile(str(latest))  # Windows
         self.output_console.append(f"[*] Opening report: {latest.name}")
+
+    # Menu action handlers
+    def new_scan(self):
+        """Reset GUI for a new scan"""
+        self.target_input.clear()
+        self.target_file_input.clear()
+        self.output_console.clear()
+        self.vulns_list.clear()
+        self.vuln_counts = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0}
+        self.update_vuln_display()
+        self.progress_bar.setValue(0)
+        self.current_module_label.setText("")
+        self.tabs.setCurrentIndex(0)
+        self.statusBar().showMessage("Ready to scan")
+
+    def load_configuration(self):
+        """Load scan configuration from JSON file"""
+        filename, _ = QFileDialog.getOpenFileName(
+            self, "Load Configuration", "", "JSON Files (*.json);;All Files (*)"
+        )
+        if filename:
+            try:
+                with open(filename, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+
+                # Load settings
+                if 'target' in config:
+                    self.target_input.setPlainText(config['target'])
+                if 'threads' in config:
+                    self.threads_spin.setValue(config['threads'])
+                if 'timeout' in config:
+                    self.timeout_spin.setValue(config['timeout'])
+                if 'modules' in config:
+                    for module in config['modules']:
+                        if module in self.module_checkboxes:
+                            self.module_checkboxes[module].setChecked(True)
+
+                QMessageBox.information(self, "Success", f"Configuration loaded from:\n{filename}")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to load configuration:\n{e}")
+
+    def save_configuration(self):
+        """Save current scan configuration to JSON file"""
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Save Configuration", "scan_config.json", "JSON Files (*.json);;All Files (*)"
+        )
+        if filename:
+            try:
+                config = {
+                    'target': self.target_input.toPlainText(),
+                    'target_file': self.target_file_input.text(),
+                    'threads': self.threads_spin.value(),
+                    'timeout': self.timeout_spin.value(),
+                    'max_time': self.max_time_spin.value(),
+                    'format': self.format_combo.currentText(),
+                    'modules': [name for name, cb in self.module_checkboxes.items() if cb.isChecked()],
+                    'all_modules': self.all_modules_cb.isChecked(),
+                    'recon_only': self.recon_only_cb.isChecked(),
+                    'rotate_agent': self.rotate_agent_cb.isChecked(),
+                    'single_page': self.single_page_cb.isChecked(),
+                }
+
+                with open(filename, 'w', encoding='utf-8') as f:
+                    json.dump(config, f, indent=2)
+
+                QMessageBox.information(self, "Success", f"Configuration saved to:\n{filename}")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to save configuration:\n{e}")
+
+    def export_results(self):
+        """Export scan results to CSV"""
+        if not self.vulns_list.count():
+            QMessageBox.information(self, "No Results", "No vulnerabilities to export!")
+            return
+
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Export Results", "vulnerabilities.txt", "Text Files (*.txt);;CSV Files (*.csv);;All Files (*)"
+        )
+        if filename:
+            try:
+                with open(filename, 'w', encoding='utf-8') as f:
+                    f.write("DOMINATOR SCAN RESULTS\n")
+                    f.write("=" * 80 + "\n\n")
+                    f.write(f"Total Vulnerabilities: {self.vulns_list.count()}\n")
+                    f.write(f"Critical: {self.vuln_counts['CRITICAL']}\n")
+                    f.write(f"High: {self.vuln_counts['HIGH']}\n")
+                    f.write(f"Medium: {self.vuln_counts['MEDIUM']}\n\n")
+                    f.write("=" * 80 + "\n\n")
+
+                    for i in range(self.vulns_list.count()):
+                        item = self.vulns_list.item(i)
+                        f.write(f"{item.text()}\n")
+
+                QMessageBox.information(self, "Success", f"Results exported to:\n{filename}")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to export results:\n{e}")
+
+    def clear_targets(self):
+        """Clear target input"""
+        self.target_input.clear()
+        self.target_file_input.clear()
+        self.statusBar().showMessage("Targets cleared")
+
+    def clear_results(self):
+        """Clear all scan results"""
+        reply = QMessageBox.question(
+            self, "Clear Results",
+            "Are you sure you want to clear all results?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            self.vulns_list.clear()
+            self.vuln_counts = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0}
+            self.update_vuln_display()
+            self.output_console.append("[*] Results cleared")
+
+    def show_about(self):
+        """Show about dialog"""
+        about_text = """
+        <h2>🎯 DOMINATOR Web Vulnerability Scanner</h2>
+        <p><b>Version:</b> 1.2.0 (GUI v1.1.2)</p>
+        <p><b>Description:</b> Advanced Web Vulnerability Scanner with 20 modules</p>
+
+        <h3>Features:</h3>
+        <ul>
+            <li>20 vulnerability detection modules</li>
+            <li>Real-time scan progress tracking</li>
+            <li>Custom payloads support</li>
+            <li>Multiple target formats (URL, IP, CIDR, ranges)</li>
+            <li>Passive detection & active scanning</li>
+            <li>Out-of-Band (OOB) detection</li>
+        </ul>
+
+        <h3>Modules:</h3>
+        <p>SQL Injection, XSS, CSRF, LFI, RFI, XXE, CMDi, SSTI, XPath, IDOR,
+        SSRF, Open Redirect, DOM XSS, File Upload, Weak Credentials,
+        Directory Brute Force, Git Exposure, Environment Secrets, PHP Object Injection</p>
+
+        <p><b>GitHub:</b> <a href="https://github.com/vulnz/dominator">https://github.com/vulnz/dominator</a></p>
+        <p><b>License:</b> MIT</p>
+        """
+        QMessageBox.about(self, "About Dominator", about_text)
 
     def apply_dark_theme(self):
         """Apply dark theme to the application"""
