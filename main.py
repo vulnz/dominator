@@ -136,7 +136,7 @@ def launch_gui(args):
 
         # Configure modules
         if args.all:
-            gui.select_all_modules_checkbox.setChecked(True)
+            gui.all_modules_cb.setChecked(True)
         elif args.modules:
             # Parse module list
             module_names = [m.strip() for m in args.modules.split(',')]
