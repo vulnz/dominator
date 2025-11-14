@@ -20,7 +20,8 @@ try:
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
         QLabel, QLineEdit, QPushButton, QTextEdit, QComboBox, QCheckBox,
         QGroupBox, QGridLayout, QTabWidget, QFileDialog, QSpinBox,
-        QProgressBar, QListWidget, QSplitter, QScrollArea, QFrame
+        QProgressBar, QListWidget, QSplitter, QScrollArea, QFrame, QMessageBox,
+        QListWidgetItem
     )
     from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
     from PyQt5.QtGui import QFont, QColor, QPalette, QIcon, QTextCursor
@@ -201,6 +202,10 @@ class DominatorGUI(QMainWindow):
         # Advanced Options Tab
         advanced_tab = self.create_advanced_tab()
         self.tabs.addTab(advanced_tab, "⚙️ Advanced Options")
+
+        # Custom Payloads Tab
+        payloads_tab = self.create_payloads_tab()
+        self.tabs.addTab(payloads_tab, "💉 Custom Payloads")
 
         # Output Tab
         output_tab = self.create_output_tab()
@@ -456,6 +461,123 @@ class DominatorGUI(QMainWindow):
         layout.addStretch()
         return widget
 
+    def create_payloads_tab(self):
+        """Create custom payloads tab"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        # Instructions
+        info_label = QLabel("💡 Provide custom payloads to override default payloads. You can enter payloads directly or load from a file.")
+        info_label.setStyleSheet("color: #00ff88; padding: 10px; background-color: #2a2a2a; border-radius: 5px;")
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+
+        # Custom Payloads File
+        file_group = QGroupBox("📁 Load Payloads from File")
+        file_layout = QGridLayout()
+
+        file_layout.addWidget(QLabel("Payloads File:"), 0, 0)
+        self.custom_payloads_file = QLineEdit()
+        self.custom_payloads_file.setPlaceholderText("Path to file with custom payloads (one per line)")
+        file_layout.addWidget(self.custom_payloads_file, 0, 1)
+
+        browse_payloads_btn = QPushButton("Browse...")
+        browse_payloads_btn.clicked.connect(self.browse_payloads_file)
+        file_layout.addWidget(browse_payloads_btn, 0, 2)
+
+        file_group.setLayout(file_layout)
+        layout.addWidget(file_group)
+
+        # Direct Payload Entry
+        direct_group = QGroupBox("✍️ Enter Payloads Directly")
+        direct_layout = QVBoxLayout()
+
+        help_text = QLabel("Enter custom payloads below (one per line). These will override default payloads for selected modules.")
+        help_text.setStyleSheet("color: #888888; font-size: 10px;")
+        help_text.setWordWrap(True)
+        direct_layout.addWidget(help_text)
+
+        self.custom_payloads_text = QTextEdit()
+        self.custom_payloads_text.setPlaceholderText(
+            "Example XSS payloads:\n"
+            "<script>alert('XSS')</script>\n"
+            "<img src=x onerror=alert(1)>\n"
+            "'\"><script>alert(document.domain)</script>\n\n"
+            "Example SQLi payloads:\n"
+            "' OR 1=1--\n"
+            "admin' --\n"
+            "1' UNION SELECT NULL,NULL--\n\n"
+            "Example SSTI payloads:\n"
+            "{{7*7}}\n"
+            "${7*7}\n"
+            "{{config}}"
+        )
+        self.custom_payloads_text.setMinimumHeight(300)
+        self.custom_payloads_text.setStyleSheet("""
+            QTextEdit {
+                background-color: #0a0a0a;
+                color: #00ff00;
+                font-family: 'Consolas', 'Courier New', monospace;
+                font-size: 11px;
+                border: 2px solid #3a3a3a;
+                border-radius: 4px;
+                padding: 8px;
+            }
+        """)
+        direct_layout.addWidget(self.custom_payloads_text)
+
+        # Payload count
+        self.payload_count_label = QLabel("Payloads: 0")
+        self.payload_count_label.setStyleSheet("color: #00ff88; font-weight: bold;")
+        direct_layout.addWidget(self.payload_count_label)
+
+        # Update count when text changes
+        self.custom_payloads_text.textChanged.connect(self.update_payload_count)
+
+        # Action buttons
+        button_layout = QHBoxLayout()
+
+        clear_btn = QPushButton("🗑️ Clear All")
+        clear_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ff4444;
+                color: white;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #cc0000;
+            }
+        """)
+        clear_btn.clicked.connect(lambda: self.custom_payloads_text.clear())
+        button_layout.addWidget(clear_btn)
+
+        save_btn = QPushButton("💾 Save to File")
+        save_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #00ff88;
+                color: black;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #00cc70;
+            }
+        """)
+        save_btn.clicked.connect(self.save_payloads_to_file)
+        button_layout.addWidget(save_btn)
+
+        button_layout.addStretch()
+        direct_layout.addLayout(button_layout)
+
+        direct_group.setLayout(direct_layout)
+        layout.addWidget(direct_group)
+
+        layout.addStretch()
+        return widget
+
     def create_output_tab(self):
         """Create output tab"""
         widget = QWidget()
@@ -578,6 +700,42 @@ class DominatorGUI(QMainWindow):
         if filename:
             self.target_file_input.setText(filename)
 
+    def browse_payloads_file(self):
+        """Browse for custom payloads file"""
+        filename, _ = QFileDialog.getOpenFileName(
+            self, "Select Payloads File", "", "Text Files (*.txt);;All Files (*)"
+        )
+        if filename:
+            self.custom_payloads_file.setText(filename)
+            # Auto-load the file content into the text editor
+            try:
+                with open(filename, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    self.custom_payloads_text.setPlainText(content)
+            except Exception as e:
+                self.output_console.append(f"[!] Error loading payloads file: {e}")
+
+    def update_payload_count(self):
+        """Update the payload count label"""
+        text = self.custom_payloads_text.toPlainText()
+        lines = [line.strip() for line in text.split('\n') if line.strip()]
+        count = len(lines)
+        self.payload_count_label.setText(f"Payloads: {count}")
+
+    def save_payloads_to_file(self):
+        """Save custom payloads to a file"""
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Save Payloads File", "custom_payloads.txt", "Text Files (*.txt);;All Files (*)"
+        )
+        if filename:
+            try:
+                with open(filename, 'w', encoding='utf-8') as f:
+                    f.write(self.custom_payloads_text.toPlainText())
+                self.custom_payloads_file.setText(filename)
+                QMessageBox.information(self, "Success", f"Payloads saved to:\n{filename}")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to save payloads:\n{e}")
+
     def build_command(self):
         """Build the scanner command"""
         # Get parent directory (where main.py is)
@@ -625,6 +783,11 @@ class DominatorGUI(QMainWindow):
         # Crawler
         command.extend(["--max-crawl-pages", str(self.max_crawl_spin.value())])
 
+        # Custom payloads - will be set in start_scan if text payloads are provided
+        # Otherwise use file path if specified
+        if self.custom_payloads_file.text() and not self.custom_payloads_text.toPlainText().strip():
+            command.extend(["--custom-payloads", self.custom_payloads_file.text()])
+
         return command
 
     def start_scan(self):
@@ -633,6 +796,27 @@ class DominatorGUI(QMainWindow):
         if not command:
             self.output_console.append("ERROR: Please specify a target URL or file")
             return
+
+        # Handle custom payloads entered directly in text area
+        payloads_text = self.custom_payloads_text.toPlainText().strip()
+        temp_payload_file = None
+
+        if payloads_text:
+            # Create temporary file with custom payloads
+            import tempfile
+            try:
+                temp_payload_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt', encoding='utf-8')
+                temp_payload_file.write(payloads_text)
+                temp_payload_file.close()
+
+                # Add to command
+                command.extend(["--custom-payloads", temp_payload_file.name])
+                self.output_console.append(f"[*] Using {len(payloads_text.split(chr(10)))} custom payloads from text editor\n")
+            except Exception as e:
+                self.output_console.append(f"[!] Error creating temporary payloads file: {e}\n")
+                if temp_payload_file:
+                    temp_payload_file.close()
+                return
 
         # Update UI
         self.start_btn.setEnabled(False)
@@ -648,7 +832,7 @@ class DominatorGUI(QMainWindow):
         self.update_vuln_display()
         self.vulns_list.clear()
         # Reset results tab color
-        self.tabs.tabBar().setTabTextColor(3, QColor('white'))
+        self.tabs.tabBar().setTabTextColor(4, QColor('white'))  # Results tab (index 4)
 
         # Start scan thread
         self.scan_thread = ScanThread(command)
@@ -660,7 +844,7 @@ class DominatorGUI(QMainWindow):
         self.scan_thread.start()
 
         # Switch to output tab to show progress
-        self.tabs.setCurrentIndex(2)  # Switch to "Scan Output" tab
+        self.tabs.setCurrentIndex(3)  # Switch to "Scan Output" tab (index 3 after adding Custom Payloads tab)
 
     def stop_scan(self):
         """Stop the running scan"""
@@ -692,7 +876,7 @@ class DominatorGUI(QMainWindow):
             self.progress_bar.setValue(100)
             self.current_module_label.setText("Scan complete!")
             # Switch to results tab
-            self.tabs.setCurrentIndex(3)
+            self.tabs.setCurrentIndex(4)  # Results tab (index 4 after adding Custom Payloads tab)
         else:
             self.statusBar().showMessage("Scan failed or was stopped")
             self.output_console.append("\n[✗] Scan failed or was stopped")
@@ -713,7 +897,7 @@ class DominatorGUI(QMainWindow):
         self.vulns_list.addItem(item)
 
         # Flash results tab to show new finding
-        self.tabs.tabBar().setTabTextColor(3, QColor('#ff0000'))
+        self.tabs.tabBar().setTabTextColor(4, QColor('#ff0000'))  # Results tab (index 4)
 
     def update_stats(self, total_vulns, modules_done, modules_total):
         """Update scan statistics"""
