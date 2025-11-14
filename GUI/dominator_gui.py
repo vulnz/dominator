@@ -35,11 +35,16 @@ class ScanThread(QThread):
     output_signal = pyqtSignal(str)
     finished_signal = pyqtSignal(int)
     progress_signal = pyqtSignal(int, str)
+    vulnerability_signal = pyqtSignal(str, str)  # (severity, description)
+    stats_signal = pyqtSignal(int, int, int)  # (total, modules_done, modules_total)
 
     def __init__(self, command):
         super().__init__()
         self.command = command
         self.process = None
+        self.total_modules = 20  # Total available modules
+        self.completed_modules = 0
+        self.total_vulns = 0
 
     def run(self):
         """Run the scan command"""
@@ -50,15 +55,18 @@ class ScanThread(QThread):
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
-                universal_newlines=True
+                universal_newlines=True,
+                encoding='utf-8',
+                errors='ignore'
             )
 
             for line in iter(self.process.stdout.readline, ''):
                 if line:
-                    self.output_signal.emit(line.strip())
-                    # Parse progress from output
-                    if 'Module' in line and 'completed' in line:
-                        self.progress_signal.emit(0, line.strip())
+                    line_clean = line.strip()
+                    self.output_signal.emit(line_clean)
+
+                    # Parse different types of output
+                    self.parse_scan_output(line_clean)
 
             self.process.wait()
             self.finished_signal.emit(self.process.returncode)
@@ -66,6 +74,52 @@ class ScanThread(QThread):
         except Exception as e:
             self.output_signal.emit(f"ERROR: {str(e)}")
             self.finished_signal.emit(-1)
+
+    def parse_scan_output(self, line):
+        """Parse scanner output for progress and findings"""
+        # Track module execution
+        if 'Running module:' in line:
+            module_name = line.split('Running module:')[-1].strip()
+            self.progress_signal.emit(0, f"🔍 Testing: {module_name}")
+
+        # Track module completion
+        elif 'Module' in line and 'completed' in line:
+            self.completed_modules += 1
+            progress = int((self.completed_modules / self.total_modules) * 100)
+            self.progress_signal.emit(progress, f"✓ Completed {self.completed_modules}/{self.total_modules} modules")
+            self.stats_signal.emit(self.total_vulns, self.completed_modules, self.total_modules)
+
+        # Track crawling progress
+        elif 'Crawling:' in line or 'Found page:' in line or 'Form discovered:' in line:
+            self.progress_signal.emit(0, "🕷️ Crawling target...")
+
+        # Track target discovery
+        elif 'Page discovery complete:' in line:
+            try:
+                targets = line.split('Page discovery complete:')[-1].strip()
+                self.progress_signal.emit(0, f"📍 {targets}")
+            except:
+                pass
+
+        # Track vulnerabilities found
+        elif 'Found vulnerability:' in line or '[HIGH]' in line or '[CRITICAL]' in line or '[MEDIUM]' in line:
+            self.total_vulns += 1
+            # Determine severity
+            severity = 'MEDIUM'
+            if '[CRITICAL]' in line or 'Critical' in line:
+                severity = 'CRITICAL'
+            elif '[HIGH]' in line or 'High' in line:
+                severity = 'HIGH'
+            elif '[MEDIUM]' in line or 'Medium' in line:
+                severity = 'MEDIUM'
+
+            self.vulnerability_signal.emit(severity, line)
+            self.stats_signal.emit(self.total_vulns, self.completed_modules, self.total_modules)
+
+        # Track scan start
+        elif 'Target:' in line and 'http' in line:
+            target = line.split('Target:')[-1].strip()
+            self.progress_signal.emit(0, f"🎯 Scanning: {target}")
 
     def stop(self):
         """Stop the running scan"""
@@ -79,6 +133,7 @@ class DominatorGUI(QMainWindow):
     def __init__(self):
         super().__init__()
         self.scan_thread = None
+        self.vuln_counts = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0}
         self.init_ui()
         self.apply_dark_theme()
 
@@ -99,26 +154,26 @@ class DominatorGUI(QMainWindow):
         main_layout.addWidget(header)
 
         # Tab widget for different sections
-        tabs = QTabWidget()
-        tabs.setStyleSheet("QTabWidget::pane { border: 1px solid #3a3a3a; }")
+        self.tabs = QTabWidget()
+        self.tabs.setStyleSheet("QTabWidget::pane { border: 1px solid #3a3a3a; }")
 
         # Scan Configuration Tab
         scan_tab = self.create_scan_tab()
-        tabs.addTab(scan_tab, "🎯 Scan Configuration")
+        self.tabs.addTab(scan_tab, "🎯 Scan Configuration")
 
         # Advanced Options Tab
         advanced_tab = self.create_advanced_tab()
-        tabs.addTab(advanced_tab, "⚙️ Advanced Options")
+        self.tabs.addTab(advanced_tab, "⚙️ Advanced Options")
 
         # Output Tab
         output_tab = self.create_output_tab()
-        tabs.addTab(output_tab, "📊 Scan Output")
+        self.tabs.addTab(output_tab, "📊 Scan Output")
 
         # Results Tab
         results_tab = self.create_results_tab()
-        tabs.addTab(results_tab, "🔍 Results")
+        self.tabs.addTab(results_tab, "🔍 Results")
 
-        main_layout.addWidget(tabs)
+        main_layout.addWidget(self.tabs)
 
         # Status bar
         self.statusBar().showMessage("Ready to scan")
@@ -551,12 +606,24 @@ class DominatorGUI(QMainWindow):
         self.progress_bar.setValue(0)
         self.current_module_label.setText("Initializing scan...")
 
+        # Reset vulnerability counters and list
+        self.vuln_counts = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0}
+        self.update_vuln_display()
+        self.vulns_list.clear()
+        # Reset results tab color
+        self.tabs.tabBar().setTabTextColor(3, QColor('white'))
+
         # Start scan thread
         self.scan_thread = ScanThread(command)
         self.scan_thread.output_signal.connect(self.append_output)
         self.scan_thread.finished_signal.connect(self.scan_finished)
         self.scan_thread.progress_signal.connect(self.update_progress)
+        self.scan_thread.vulnerability_signal.connect(self.add_vulnerability)
+        self.scan_thread.stats_signal.connect(self.update_stats)
         self.scan_thread.start()
+
+        # Switch to output tab to show progress
+        self.tabs.setCurrentIndex(2)  # Switch to "Scan Output" tab
 
     def stop_scan(self):
         """Stop the running scan"""
@@ -587,9 +654,42 @@ class DominatorGUI(QMainWindow):
             self.output_console.append("\n[✓] Scan completed successfully!")
             self.progress_bar.setValue(100)
             self.current_module_label.setText("Scan complete!")
+            # Switch to results tab
+            self.tabs.setCurrentIndex(3)
         else:
             self.statusBar().showMessage("Scan failed or was stopped")
             self.output_console.append("\n[✗] Scan failed or was stopped")
+
+    def add_vulnerability(self, severity, description):
+        """Add vulnerability to the results list"""
+        # Update counters
+        if severity in self.vuln_counts:
+            self.vuln_counts[severity] += 1
+
+        # Update display
+        self.update_vuln_display()
+
+        # Add to list with color coding
+        color = '#ff0000' if severity == 'CRITICAL' else '#ff8800' if severity == 'HIGH' else '#ffff00'
+        item = QListWidgetItem(f"[{severity}] {description}")
+        item.setForeground(QColor(color))
+        self.vulns_list.addItem(item)
+
+        # Flash results tab to show new finding
+        self.tabs.tabBar().setTabTextColor(3, QColor('#ff0000'))
+
+    def update_stats(self, total_vulns, modules_done, modules_total):
+        """Update scan statistics"""
+        # Update status bar
+        self.statusBar().showMessage(f"Scan running... | {modules_done}/{modules_total} modules | {total_vulns} vulnerabilities")
+
+    def update_vuln_display(self):
+        """Update vulnerability count displays"""
+        total = sum(self.vuln_counts.values())
+        self.total_vulns_label.setText(f"Total Vulnerabilities: {total}")
+        self.critical_label.setText(f"Critical: {self.vuln_counts['CRITICAL']}")
+        self.high_label.setText(f"High: {self.vuln_counts['HIGH']}")
+        self.medium_label.setText(f"Medium: {self.vuln_counts['MEDIUM']}")
 
     def open_report(self):
         """Open the generated HTML report"""

@@ -121,9 +121,14 @@ To customize colors, edit the `apply_dark_theme()` method in `dominator_gui.py`.
 ## 📊 Features Breakdown
 
 ### Real-Time Updates
-- Progress bar updates as modules complete
-- Console shows live scanner output
-- Module names appear as they execute
+- **Live progress bar** that updates as modules complete (shows % complete)
+- **Real-time console output** with all scanner messages
+- **Current module indicator** shows which module is running
+- **Vulnerability counter** updates instantly when vulnerabilities are found
+- **Status bar** shows modules completed and vulnerability count
+- **Auto-switching tabs**: switches to Output tab on scan start, Results tab on completion
+- **Color-coded vulnerability list**: Critical (red), High (orange), Medium (yellow)
+- **Results tab notification**: turns red when new vulnerabilities are found
 
 ### Error Handling
 - Invalid target detection
