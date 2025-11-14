@@ -1961,9 +1961,11 @@ class DominatorGUI(QMainWindow):
         elif self.target_input.toPlainText().strip():
             # Get all targets from text area (comma-separated or newline-separated)
             targets_text = self.target_input.toPlainText().strip()
-            # Convert newlines to commas for multi-target support
-            targets = targets_text.replace('\n', ',').replace('\r', '')
-            command.extend(["-t", targets])
+            # Split by newlines and/or commas, filter empty strings
+            targets = [t.strip() for t in targets_text.replace('\n', ',').split(',') if t.strip()]
+            # Pass each target as separate argument: -t target1 target2 target3
+            command.append("-t")
+            command.extend(targets)
         else:
             return None
 
