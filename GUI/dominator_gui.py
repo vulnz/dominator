@@ -21,7 +21,8 @@ try:
         QLabel, QLineEdit, QPushButton, QTextEdit, QComboBox, QCheckBox,
         QGroupBox, QGridLayout, QTabWidget, QFileDialog, QSpinBox,
         QProgressBar, QListWidget, QSplitter, QScrollArea, QFrame, QMessageBox,
-        QListWidgetItem, QMenuBar, QAction, QMenu
+        QListWidgetItem, QMenuBar, QAction, QMenu, QTableWidget, QTableWidgetItem,
+        QHeaderView, QAbstractItemView
     )
     from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl
     from PyQt5.QtGui import QFont, QColor, QPalette, QIcon, QTextCursor, QDesktopServices
@@ -38,6 +39,7 @@ class ScanThread(QThread):
     progress_signal = pyqtSignal(int, str)
     vulnerability_signal = pyqtSignal(str, str)  # (severity, description)
     stats_signal = pyqtSignal(int, int, int)  # (total, modules_done, modules_total)
+    resource_signal = pyqtSignal(str, str, str, str)  # (type, value, extra, source)
 
     def __init__(self, command):
         super().__init__()
@@ -88,6 +90,9 @@ class ScanThread(QThread):
         if '[' in line and 'm' in line:
             import re
             line_clean = re.sub(r'\x1b\[[0-9;]*m', '', line)
+
+        # Detect resources (emails, phones, social media, leaked keys)
+        self.detect_resources(line_clean)
 
         # Track module execution
         if 'Running module:' in line_clean:
@@ -159,6 +164,66 @@ class ScanThread(QThread):
             target = line_clean.split('Target:')[-1].strip()
             self.progress_signal.emit(0, f"🎯 Scanning: {target}")
 
+    def detect_resources(self, line):
+        """Detect emails, phones, social media, and leaked keys in output"""
+        import re
+
+        # Detect emails
+        email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+        emails = re.findall(email_pattern, line)
+        for email in emails:
+            email_type = "Personal" if any(d in email.lower() for d in ['gmail', 'yahoo', 'hotmail', 'outlook']) else "Business"
+            self.resource_signal.emit("email", email, email_type, line[:100])
+
+        # Detect phone numbers (international formats)
+        phone_patterns = [
+            r'\+?\d{1,3}[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,9}',  # International
+            r'\(\d{3}\)\s?\d{3}-\d{4}',  # (123) 456-7890
+            r'\d{3}-\d{3}-\d{4}',  # 123-456-7890
+        ]
+        for pattern in phone_patterns:
+            phones = re.findall(pattern, line)
+            for phone in phones:
+                if len(phone.replace('-', '').replace(' ', '').replace('(', '').replace(')', '').replace('+', '')) >= 10:
+                    phone_format = "International" if '+' in phone else "US/Canada"
+                    self.resource_signal.emit("phone", phone, phone_format, line[:100])
+
+        # Detect social media links
+        social_media_patterns = {
+            'Facebook': r'(?:https?://)?(?:www\.)?facebook\.com/[A-Za-z0-9._-]+',
+            'Twitter/X': r'(?:https?://)?(?:www\.)?(?:twitter|x)\.com/[A-Za-z0-9._-]+',
+            'LinkedIn': r'(?:https?://)?(?:www\.)?linkedin\.com/(?:in|company)/[A-Za-z0-9._-]+',
+            'Instagram': r'(?:https?://)?(?:www\.)?instagram\.com/[A-Za-z0-9._-]+',
+            'GitHub': r'(?:https?://)?(?:www\.)?github\.com/[A-Za-z0-9._-]+',
+            'YouTube': r'(?:https?://)?(?:www\.)?youtube\.com/(?:c|channel|user)/[A-Za-z0-9._-]+',
+            'TikTok': r'(?:https?://)?(?:www\.)?tiktok\.com/@[A-Za-z0-9._-]+',
+        }
+        for platform, pattern in social_media_patterns.items():
+            matches = re.findall(pattern, line, re.IGNORECASE)
+            for match in matches:
+                self.resource_signal.emit("social", match, platform, line[:100])
+
+        # Detect leaked API keys and secrets
+        leaked_key_patterns = {
+            'AWS Access Key': r'AKIA[0-9A-Z]{16}',
+            'AWS Secret Key': r'aws_secret_access_key\s*=\s*[\'"]([A-Za-z0-9/+=]{40})[\'"]',
+            'Google API Key': r'AIza[0-9A-Za-z\-_]{35}',
+            'GitHub Token': r'gh[ps]_[A-Za-z0-9]{36}',
+            'Slack Token': r'xox[baprs]-[0-9]{10,12}-[0-9]{10,12}-[A-Za-z0-9]{24}',
+            'Stripe API Key': r'sk_live_[0-9a-zA-Z]{24}',
+            'PayPal Client ID': r'A[A-Z0-9]{80}',
+            'JWT Token': r'eyJ[A-Za-z0-9-_=]+\.eyJ[A-Za-z0-9-_=]+\.?[A-Za-z0-9-_.+/=]*',
+            'Private Key': r'-----BEGIN (?:RSA |OPENSSH )?PRIVATE KEY-----',
+            'Generic API Key': r'(?i)api[_-]?key["\']?\s*[:=]\s*["\']?([A-Za-z0-9_\-]{20,})["\']?',
+        }
+        for key_type, pattern in leaked_key_patterns.items():
+            matches = re.findall(pattern, line)
+            for match in matches:
+                # Truncate key preview for security
+                key_preview = str(match)[:20] + "..." if len(str(match)) > 20 else str(match)
+                severity = "CRITICAL" if any(k in key_type for k in ['AWS', 'Private Key', 'Secret']) else "HIGH"
+                self.resource_signal.emit("leaked_key", key_preview, f"{key_type}|{severity}", line[:100])
+
     def stop(self):
         """Stop the running scan"""
         if self.process:
@@ -217,6 +282,10 @@ class DominatorGUI(QMainWindow):
         # Results Tab
         results_tab = self.create_results_tab()
         self.tabs.addTab(results_tab, "🔍 Results")
+
+        # Resources Tab
+        resources_tab = self.create_resources_tab()
+        self.tabs.addTab(resources_tab, "📦 Resources")
 
         main_layout.addWidget(self.tabs)
 
@@ -323,6 +392,10 @@ class DominatorGUI(QMainWindow):
         view_results_tab_action = QAction("🔍 Results", self)
         view_results_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(4))
         view_menu.addAction(view_results_tab_action)
+
+        view_resources_tab_action = QAction("📦 Resources", self)
+        view_resources_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(5))
+        view_menu.addAction(view_resources_tab_action)
 
         # Help menu
         help_menu = menubar.addMenu("❓ Help")
@@ -812,6 +885,180 @@ class DominatorGUI(QMainWindow):
 
         return widget
 
+    def create_resources_tab(self):
+        """Create resources tab with social media, emails, phones, leaked keys"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        # Resources summary header
+        summary_label = QLabel("📦 Discovered Resources")
+        summary_label.setFont(QFont("Arial", 14, QFont.Bold))
+        summary_label.setStyleSheet("color: #00ff88; padding: 10px;")
+        layout.addWidget(summary_label)
+
+        # Social Media section
+        social_group = QGroupBox("🌐 Social Media Links")
+        social_layout = QVBoxLayout()
+
+        self.social_media_table = QTableWidget()
+        self.social_media_table.setColumnCount(3)
+        self.social_media_table.setHorizontalHeaderLabels(["Platform", "URL", "Found On"])
+        self.social_media_table.horizontalHeader().setStretchLastSection(True)
+        self.social_media_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.social_media_table.setStyleSheet("""
+            QTableWidget {
+                background-color: #1a1a1a;
+                color: white;
+                gridline-color: #3a3a3a;
+                border: 2px solid #3a3a3a;
+                border-radius: 5px;
+            }
+            QHeaderView::section {
+                background-color: #2a2a2a;
+                color: #00ff88;
+                padding: 8px;
+                border: 1px solid #3a3a3a;
+                font-weight: bold;
+            }
+            QTableWidget::item {
+                padding: 5px;
+            }
+            QTableWidget::item:selected {
+                background-color: #00ff88;
+                color: black;
+            }
+        """)
+        social_layout.addWidget(self.social_media_table)
+        social_group.setLayout(social_layout)
+        layout.addWidget(social_group)
+
+        # Emails section
+        emails_group = QGroupBox("📧 Email Addresses")
+        emails_layout = QVBoxLayout()
+
+        self.emails_table = QTableWidget()
+        self.emails_table.setColumnCount(3)
+        self.emails_table.setHorizontalHeaderLabels(["Email", "Type", "Found On"])
+        self.emails_table.horizontalHeader().setStretchLastSection(True)
+        self.emails_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.emails_table.setStyleSheet("""
+            QTableWidget {
+                background-color: #1a1a1a;
+                color: white;
+                gridline-color: #3a3a3a;
+                border: 2px solid #3a3a3a;
+                border-radius: 5px;
+            }
+            QHeaderView::section {
+                background-color: #2a2a2a;
+                color: #00ff88;
+                padding: 8px;
+                border: 1px solid #3a3a3a;
+                font-weight: bold;
+            }
+            QTableWidget::item {
+                padding: 5px;
+            }
+            QTableWidget::item:selected {
+                background-color: #00ff88;
+                color: black;
+            }
+        """)
+        emails_layout.addWidget(self.emails_table)
+        emails_group.setLayout(emails_layout)
+        layout.addWidget(emails_group)
+
+        # Phone Numbers section
+        phones_group = QGroupBox("📱 Phone Numbers")
+        phones_layout = QVBoxLayout()
+
+        self.phones_table = QTableWidget()
+        self.phones_table.setColumnCount(3)
+        self.phones_table.setHorizontalHeaderLabels(["Phone Number", "Format", "Found On"])
+        self.phones_table.horizontalHeader().setStretchLastSection(True)
+        self.phones_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.phones_table.setStyleSheet("""
+            QTableWidget {
+                background-color: #1a1a1a;
+                color: white;
+                gridline-color: #3a3a3a;
+                border: 2px solid #3a3a3a;
+                border-radius: 5px;
+            }
+            QHeaderView::section {
+                background-color: #2a2a2a;
+                color: #00ff88;
+                padding: 8px;
+                border: 1px solid #3a3a3a;
+                font-weight: bold;
+            }
+            QTableWidget::item {
+                padding: 5px;
+            }
+            QTableWidget::item:selected {
+                background-color: #00ff88;
+                color: black;
+            }
+        """)
+        phones_layout.addWidget(self.phones_table)
+        phones_group.setLayout(phones_layout)
+        layout.addWidget(phones_group)
+
+        # Leaked Keys section
+        keys_group = QGroupBox("🔑 Leaked API Keys & Secrets")
+        keys_layout = QVBoxLayout()
+
+        self.leaked_keys_table = QTableWidget()
+        self.leaked_keys_table.setColumnCount(4)
+        self.leaked_keys_table.setHorizontalHeaderLabels(["Key Type", "Key Preview", "Severity", "Found On"])
+        self.leaked_keys_table.horizontalHeader().setStretchLastSection(True)
+        self.leaked_keys_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.leaked_keys_table.setStyleSheet("""
+            QTableWidget {
+                background-color: #1a1a1a;
+                color: white;
+                gridline-color: #3a3a3a;
+                border: 2px solid #3a3a3a;
+                border-radius: 5px;
+            }
+            QHeaderView::section {
+                background-color: #2a2a2a;
+                color: #00ff88;
+                padding: 8px;
+                border: 1px solid #3a3a3a;
+                font-weight: bold;
+            }
+            QTableWidget::item {
+                padding: 5px;
+            }
+            QTableWidget::item:selected {
+                background-color: #00ff88;
+                color: black;
+            }
+        """)
+        keys_layout.addWidget(self.leaked_keys_table)
+        keys_group.setLayout(keys_layout)
+        layout.addWidget(keys_group)
+
+        # Export button
+        export_btn = QPushButton("📤 Export Resources to File")
+        export_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #00ff88;
+                color: black;
+                padding: 10px;
+                border-radius: 5px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #00cc70;
+            }
+        """)
+        export_btn.clicked.connect(self.export_resources)
+        layout.addWidget(export_btn)
+
+        return widget
+
     def create_results_tab(self):
         """Create results tab"""
         widget = QWidget()
@@ -1099,6 +1346,12 @@ class DominatorGUI(QMainWindow):
         # Reset results tab color
         self.tabs.tabBar().setTabTextColor(4, QColor('white'))  # Results tab (index 4)
 
+        # Clear resources tables
+        self.social_media_table.setRowCount(0)
+        self.emails_table.setRowCount(0)
+        self.phones_table.setRowCount(0)
+        self.leaked_keys_table.setRowCount(0)
+
         # Start scan thread
         self.scan_thread = ScanThread(command)
         self.scan_thread.output_signal.connect(self.append_output)
@@ -1106,6 +1359,7 @@ class DominatorGUI(QMainWindow):
         self.scan_thread.progress_signal.connect(self.update_progress)
         self.scan_thread.vulnerability_signal.connect(self.add_vulnerability)
         self.scan_thread.stats_signal.connect(self.update_stats)
+        self.scan_thread.resource_signal.connect(self.add_resource)
         self.scan_thread.start()
 
         # Switch to output tab to show progress
@@ -1176,6 +1430,145 @@ class DominatorGUI(QMainWindow):
         self.critical_label.setText(f"Critical: {self.vuln_counts['CRITICAL']}")
         self.high_label.setText(f"High: {self.vuln_counts['HIGH']}")
         self.medium_label.setText(f"Medium: {self.vuln_counts['MEDIUM']}")
+
+    def add_resource(self, resource_type, value, extra, source):
+        """Add discovered resource to appropriate table"""
+        if resource_type == "email":
+            # Check if already exists
+            for row in range(self.emails_table.rowCount()):
+                if self.emails_table.item(row, 0) and self.emails_table.item(row, 0).text() == value:
+                    return  # Already added
+
+            row = self.emails_table.rowCount()
+            self.emails_table.insertRow(row)
+            self.emails_table.setItem(row, 0, QTableWidgetItem(value))
+            self.emails_table.setItem(row, 1, QTableWidgetItem(extra))  # Type (Personal/Business)
+            self.emails_table.setItem(row, 2, QTableWidgetItem(source))
+
+        elif resource_type == "phone":
+            # Check if already exists
+            for row in range(self.phones_table.rowCount()):
+                if self.phones_table.item(row, 0) and self.phones_table.item(row, 0).text() == value:
+                    return
+
+            row = self.phones_table.rowCount()
+            self.phones_table.insertRow(row)
+            self.phones_table.setItem(row, 0, QTableWidgetItem(value))
+            self.phones_table.setItem(row, 1, QTableWidgetItem(extra))  # Format
+            self.phones_table.setItem(row, 2, QTableWidgetItem(source))
+
+        elif resource_type == "social":
+            # Check if already exists
+            for row in range(self.social_media_table.rowCount()):
+                if self.social_media_table.item(row, 1) and self.social_media_table.item(row, 1).text() == value:
+                    return
+
+            row = self.social_media_table.rowCount()
+            self.social_media_table.insertRow(row)
+            self.social_media_table.setItem(row, 0, QTableWidgetItem(extra))  # Platform
+            self.social_media_table.setItem(row, 1, QTableWidgetItem(value))  # URL
+            self.social_media_table.setItem(row, 2, QTableWidgetItem(source))
+
+        elif resource_type == "leaked_key":
+            # Check if already exists
+            for row in range(self.leaked_keys_table.rowCount()):
+                if self.leaked_keys_table.item(row, 1) and self.leaked_keys_table.item(row, 1).text() == value:
+                    return
+
+            row = self.leaked_keys_table.rowCount()
+            self.leaked_keys_table.insertRow(row)
+
+            # Parse extra: "KeyType|Severity"
+            parts = extra.split('|')
+            key_type = parts[0] if len(parts) > 0 else "Unknown"
+            severity = parts[1] if len(parts) > 1 else "HIGH"
+
+            self.leaked_keys_table.setItem(row, 0, QTableWidgetItem(key_type))
+            self.leaked_keys_table.setItem(row, 1, QTableWidgetItem(value))
+
+            # Color-code severity
+            severity_item = QTableWidgetItem(severity)
+            if severity == "CRITICAL":
+                severity_item.setForeground(QColor('#ff0000'))
+            elif severity == "HIGH":
+                severity_item.setForeground(QColor('#ff8800'))
+            self.leaked_keys_table.setItem(row, 2, severity_item)
+
+            self.leaked_keys_table.setItem(row, 3, QTableWidgetItem(source))
+
+    def export_resources(self):
+        """Export discovered resources to a file"""
+        if (self.social_media_table.rowCount() == 0 and
+            self.emails_table.rowCount() == 0 and
+            self.phones_table.rowCount() == 0 and
+            self.leaked_keys_table.rowCount() == 0):
+            QMessageBox.information(self, "No Resources", "No resources to export!")
+            return
+
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Export Resources", "resources_report.txt", "Text Files (*.txt);;CSV Files (*.csv);;All Files (*)"
+        )
+        if filename:
+            try:
+                with open(filename, 'w', encoding='utf-8') as f:
+                    f.write("="*80 + "\n")
+                    f.write(" DOMINATOR - DISCOVERED RESOURCES REPORT\n")
+                    f.write("="*80 + "\n\n")
+
+                    # Social Media
+                    if self.social_media_table.rowCount() > 0:
+                        f.write(f"\n🌐 SOCIAL MEDIA LINKS ({self.social_media_table.rowCount()})\n")
+                        f.write("-"*80 + "\n")
+                        for row in range(self.social_media_table.rowCount()):
+                            platform = self.social_media_table.item(row, 0).text()
+                            url = self.social_media_table.item(row, 1).text()
+                            source = self.social_media_table.item(row, 2).text()
+                            f.write(f"  {platform:15s} | {url}\n")
+                            f.write(f"  Found on: {source}\n\n")
+
+                    # Emails
+                    if self.emails_table.rowCount() > 0:
+                        f.write(f"\n📧 EMAIL ADDRESSES ({self.emails_table.rowCount()})\n")
+                        f.write("-"*80 + "\n")
+                        for row in range(self.emails_table.rowCount()):
+                            email = self.emails_table.item(row, 0).text()
+                            email_type = self.emails_table.item(row, 1).text()
+                            source = self.emails_table.item(row, 2).text()
+                            f.write(f"  {email:30s} | Type: {email_type}\n")
+                            f.write(f"  Found on: {source}\n\n")
+
+                    # Phones
+                    if self.phones_table.rowCount() > 0:
+                        f.write(f"\n📱 PHONE NUMBERS ({self.phones_table.rowCount()})\n")
+                        f.write("-"*80 + "\n")
+                        for row in range(self.phones_table.rowCount()):
+                            phone = self.phones_table.item(row, 0).text()
+                            phone_format = self.phones_table.item(row, 1).text()
+                            source = self.phones_table.item(row, 2).text()
+                            f.write(f"  {phone:20s} | Format: {phone_format}\n")
+                            f.write(f"  Found on: {source}\n\n")
+
+                    # Leaked Keys
+                    if self.leaked_keys_table.rowCount() > 0:
+                        f.write(f"\n🔑 LEAKED API KEYS & SECRETS ({self.leaked_keys_table.rowCount()})\n")
+                        f.write("-"*80 + "\n")
+                        f.write("⚠️  WARNING: These keys should be rotated immediately!\n\n")
+                        for row in range(self.leaked_keys_table.rowCount()):
+                            key_type = self.leaked_keys_table.item(row, 0).text()
+                            key_preview = self.leaked_keys_table.item(row, 1).text()
+                            severity = self.leaked_keys_table.item(row, 2).text()
+                            source = self.leaked_keys_table.item(row, 3).text()
+                            f.write(f"  [{severity}] {key_type}\n")
+                            f.write(f"  Preview: {key_preview}\n")
+                            f.write(f"  Found on: {source}\n\n")
+
+                    f.write("="*80 + "\n")
+                    f.write("End of Resources Report\n")
+                    f.write("="*80 + "\n")
+
+                QMessageBox.information(self, "Success", f"Resources exported to:\n{filename}")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to export resources:\n{e}")
 
     def open_report(self):
         """Open the generated HTML report"""
