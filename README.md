@@ -2,7 +2,7 @@
 
 🔥 **Advanced web vulnerability scanner** with 17+ detection modules, intelligent passive scanning, and OOB (Out-of-Band) detection capabilities.
 
-[![GitHub stars](https://img.shields.io/github/stars/yourusername/dominator?style=social)](https://github.com/yourusername/dominator)
+[![GitHub stars](https://img.shields.io/github/stars/vulnz/dominator?style=social)](https://github.com/vulnz/dominator)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/)
 
