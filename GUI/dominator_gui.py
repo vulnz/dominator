@@ -2150,6 +2150,21 @@ class DominatorGUI(QMainWindow):
         # Also strip any remaining [XXm patterns (colorama on Windows)
         text_clean = re.sub(r'\[([0-9]{1,2}(;[0-9]{1,2})?)?m', '', text_clean)
 
+        # Filter out noisy debug/error messages from OOB detection
+        skip_patterns = [
+            'Error checking Pipedream:',
+            'Error checking Requestbin:',
+            'Max retries exceeded',
+            'Read timed out',
+            'SSL: UNEXPECTED_EOF_WHILE_READING',
+            'SSLError',
+            'SSLEOFError'
+        ]
+
+        # Skip line if it contains any of the noisy patterns
+        if any(pattern in text_clean for pattern in skip_patterns):
+            return
+
         self.output_console.append(text_clean)
         # Auto-scroll to bottom
         self.output_console.moveCursor(QTextCursor.End)
