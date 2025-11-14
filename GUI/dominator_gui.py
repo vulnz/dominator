@@ -40,6 +40,7 @@ class ScanThread(QThread):
     vulnerability_signal = pyqtSignal(str, str)  # (severity, description)
     stats_signal = pyqtSignal(int, int, int)  # (total, modules_done, modules_total)
     resource_signal = pyqtSignal(str, str, str, str)  # (type, value, extra, source)
+    scope_signal = pyqtSignal(str, str, str, str)  # (type, data1, data2, data3)
 
     def __init__(self, command):
         super().__init__()
@@ -93,6 +94,9 @@ class ScanThread(QThread):
 
         # Detect resources (emails, phones, social media, leaked keys)
         self.detect_resources(line_clean)
+
+        # Detect scope info (technologies, titles, IPs)
+        self.detect_scope_info(line_clean)
 
         # Track module execution
         if 'Running module:' in line_clean:
@@ -224,6 +228,72 @@ class ScanThread(QThread):
                 severity = "CRITICAL" if any(k in key_type for k in ['AWS', 'Private Key', 'Secret']) else "HIGH"
                 self.resource_signal.emit("leaked_key", key_preview, f"{key_type}|{severity}", line[:100])
 
+    def detect_scope_info(self, line):
+        """Detect technologies, page titles, and IP information"""
+        import re
+
+        # Detect technologies from headers/responses
+        tech_patterns = {
+            'PHP': r'(?:X-Powered-By|Server).*PHP/([0-9.]+)',
+            'Apache': r'Server.*Apache/([0-9.]+)',
+            'Nginx': r'Server.*nginx/([0-9.]+)',
+            'WordPress': r'(?:wp-content|wp-includes|WordPress/([0-9.]+))',
+            'jQuery': r'jquery[.-]([0-9.]+)\.(?:min\.)?js',
+            'React': r'react(?:-dom)?[.-]([0-9.]+)\.(?:min\.)?js',
+            'Vue.js': r'vue[.-]([0-9.]+)\.(?:min\.)?js',
+            'Angular': r'angular[.-]([0-9.]+)\.(?:min\.)?js',
+            'Bootstrap': r'bootstrap[.-]([0-9.]+)\.(?:min\.)?(?:css|js)',
+            'MySQL': r'MySQL/([0-9.]+)',
+            'PostgreSQL': r'PostgreSQL/([0-9.]+)',
+            'IIS': r'Server.*IIS/([0-9.]+)',
+            'ASP.NET': r'X-AspNet-Version.*([0-9.]+)',
+        }
+
+        for tech_name, pattern in tech_patterns.items():
+            matches = re.findall(pattern, line, re.IGNORECASE)
+            for version in matches:
+                category = self._get_tech_category(tech_name)
+                self.scope_signal.emit("technology", tech_name, version, f"{category}|{line[:80]}")
+
+        # Detect page titles
+        title_pattern = r'<title>([^<]+)</title>'
+        titles = re.findall(title_pattern, line, re.IGNORECASE)
+        for title in titles:
+            # Extract URL from line if present
+            url_match = re.search(r'https?://[^\s]+', line)
+            url = url_match.group(0) if url_match else "Unknown"
+            self.scope_signal.emit("title", title.strip(), url, "")
+
+        # Detect IP addresses and potential geo info
+        ip_pattern = r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b'
+        ips = re.findall(ip_pattern, line)
+        for ip in ips:
+            # Skip private IPs
+            if not (ip.startswith('192.168.') or ip.startswith('10.') or ip.startswith('172.') or ip.startswith('127.')):
+                # Extract domain from line if present
+                domain_match = re.search(r'(?:https?://)?([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', line)
+                domain = domain_match.group(1) if domain_match else ""
+                self.scope_signal.emit("ip", ip, domain, line[:80])
+
+    def _get_tech_category(self, tech_name):
+        """Categorize technology"""
+        categories = {
+            'PHP': 'Language',
+            'ASP.NET': 'Framework',
+            'Apache': 'Web Server',
+            'Nginx': 'Web Server',
+            'IIS': 'Web Server',
+            'WordPress': 'CMS',
+            'jQuery': 'JavaScript Library',
+            'React': 'Frontend Framework',
+            'Vue.js': 'Frontend Framework',
+            'Angular': 'Frontend Framework',
+            'Bootstrap': 'CSS Framework',
+            'MySQL': 'Database',
+            'PostgreSQL': 'Database',
+        }
+        return categories.get(tech_name, 'Other')
+
     def stop(self):
         """Stop the running scan"""
         if self.process:
@@ -286,6 +356,10 @@ class DominatorGUI(QMainWindow):
         # Resources Tab
         resources_tab = self.create_resources_tab()
         self.tabs.addTab(resources_tab, "📦 Resources")
+
+        # Scope Tab
+        scope_tab = self.create_scope_tab()
+        self.tabs.addTab(scope_tab, "🎯 Scope")
 
         main_layout.addWidget(self.tabs)
 
@@ -396,6 +470,10 @@ class DominatorGUI(QMainWindow):
         view_resources_tab_action = QAction("📦 Resources", self)
         view_resources_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(5))
         view_menu.addAction(view_resources_tab_action)
+
+        view_scope_tab_action = QAction("🎯 Scope", self)
+        view_scope_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(6))
+        view_menu.addAction(view_scope_tab_action)
 
         # Help menu
         help_menu = menubar.addMenu("❓ Help")
@@ -885,6 +963,163 @@ class DominatorGUI(QMainWindow):
 
         return widget
 
+    def create_scope_tab(self):
+        """Create scope tab with technology detection, IP info, titles, description"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        # Project Description
+        desc_group = QGroupBox("📝 Project Information")
+        desc_layout = QVBoxLayout()
+
+        desc_label = QLabel("Project/Scan Description:")
+        desc_label.setStyleSheet("color: #00ff88; font-weight: bold;")
+        desc_layout.addWidget(desc_label)
+
+        self.project_description = QTextEdit()
+        self.project_description.setPlaceholderText(
+            "Enter project details, scope notes, or testing objectives...\n\n"
+            "Example:\n"
+            "- Client: Acme Corp\n"
+            "- Scope: Web application penetration test\n"
+            "- Authorized by: John Doe (john@acme.com)\n"
+            "- Testing window: Nov 14-18, 2025\n"
+            "- Special notes: Avoid production database"
+        )
+        self.project_description.setMaximumHeight(120)
+        self.project_description.setStyleSheet("""
+            QTextEdit {
+                background-color: #2a2a2a;
+                color: white;
+                border: 2px solid #3a3a3a;
+                border-radius: 4px;
+                padding: 8px;
+                font-family: 'Consolas', 'Courier New', monospace;
+            }
+        """)
+        desc_layout.addWidget(self.project_description)
+
+        desc_group.setLayout(desc_layout)
+        layout.addWidget(desc_group)
+
+        # Scope Management
+        scope_group = QGroupBox("🎯 Scan Scope")
+        scope_layout = QVBoxLayout()
+
+        scope_info = QLabel("Targets in scope will be scanned. Out-of-scope URLs will be ignored during crawling.")
+        scope_info.setStyleSheet("color: #888888; font-size: 10px;")
+        scope_info.setWordWrap(True)
+        scope_layout.addWidget(scope_info)
+
+        self.scope_table = QTableWidget()
+        self.scope_table.setColumnCount(4)
+        self.scope_table.setHorizontalHeaderLabels(["URL/Domain", "Status", "Title", "Technologies"])
+        self.scope_table.horizontalHeader().setStretchLastSection(True)
+        self.scope_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.scope_table.setStyleSheet("""
+            QTableWidget {
+                background-color: #1a1a1a;
+                color: white;
+                gridline-color: #3a3a3a;
+                border: 2px solid #3a3a3a;
+                border-radius: 5px;
+            }
+            QHeaderView::section {
+                background-color: #2a2a2a;
+                color: #00ff88;
+                padding: 8px;
+                border: 1px solid #3a3a3a;
+                font-weight: bold;
+            }
+            QTableWidget::item {
+                padding: 5px;
+            }
+            QTableWidget::item:selected {
+                background-color: #00ff88;
+                color: black;
+            }
+        """)
+        scope_layout.addWidget(self.scope_table)
+
+        scope_group.setLayout(scope_layout)
+        layout.addWidget(scope_group)
+
+        # Technology Detection
+        tech_group = QGroupBox("🔧 Detected Technologies")
+        tech_layout = QVBoxLayout()
+
+        self.tech_table = QTableWidget()
+        self.tech_table.setColumnCount(4)
+        self.tech_table.setHorizontalHeaderLabels(["Technology", "Version", "Category", "Found On"])
+        self.tech_table.horizontalHeader().setStretchLastSection(True)
+        self.tech_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.tech_table.setStyleSheet("""
+            QTableWidget {
+                background-color: #1a1a1a;
+                color: white;
+                gridline-color: #3a3a3a;
+                border: 2px solid #3a3a3a;
+                border-radius: 5px;
+            }
+            QHeaderView::section {
+                background-color: #2a2a2a;
+                color: #00ff88;
+                padding: 8px;
+                border: 1px solid #3a3a3a;
+                font-weight: bold;
+            }
+            QTableWidget::item {
+                padding: 5px;
+            }
+            QTableWidget::item:selected {
+                background-color: #00ff88;
+                color: black;
+            }
+        """)
+        tech_layout.addWidget(self.tech_table)
+
+        tech_group.setLayout(tech_layout)
+        layout.addWidget(tech_group)
+
+        # IP Geolocation
+        geo_group = QGroupBox("🌍 IP Geolocation")
+        geo_layout = QVBoxLayout()
+
+        self.geo_table = QTableWidget()
+        self.geo_table.setColumnCount(5)
+        self.geo_table.setHorizontalHeaderLabels(["IP Address", "Country", "City", "ISP", "Domain"])
+        self.geo_table.horizontalHeader().setStretchLastSection(True)
+        self.geo_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.geo_table.setStyleSheet("""
+            QTableWidget {
+                background-color: #1a1a1a;
+                color: white;
+                gridline-color: #3a3a3a;
+                border: 2px solid #3a3a3a;
+                border-radius: 5px;
+            }
+            QHeaderView::section {
+                background-color: #2a2a2a;
+                color: #00ff88;
+                padding: 8px;
+                border: 1px solid #3a3a3a;
+                font-weight: bold;
+            }
+            QTableWidget::item {
+                padding: 5px;
+            }
+            QTableWidget::item:selected {
+                background-color: #00ff88;
+                color: black;
+            }
+        """)
+        geo_layout.addWidget(self.geo_table)
+
+        geo_group.setLayout(geo_layout)
+        layout.addWidget(geo_group)
+
+        return widget
+
     def create_resources_tab(self):
         """Create resources tab with social media, emails, phones, leaked keys"""
         widget = QWidget()
@@ -1352,6 +1587,11 @@ class DominatorGUI(QMainWindow):
         self.phones_table.setRowCount(0)
         self.leaked_keys_table.setRowCount(0)
 
+        # Clear scope tables
+        self.scope_table.setRowCount(0)
+        self.tech_table.setRowCount(0)
+        self.geo_table.setRowCount(0)
+
         # Start scan thread
         self.scan_thread = ScanThread(command)
         self.scan_thread.output_signal.connect(self.append_output)
@@ -1360,6 +1600,7 @@ class DominatorGUI(QMainWindow):
         self.scan_thread.vulnerability_signal.connect(self.add_vulnerability)
         self.scan_thread.stats_signal.connect(self.update_stats)
         self.scan_thread.resource_signal.connect(self.add_resource)
+        self.scan_thread.scope_signal.connect(self.add_scope_info)
         self.scan_thread.start()
 
         # Switch to output tab to show progress
@@ -1569,6 +1810,61 @@ class DominatorGUI(QMainWindow):
                 QMessageBox.information(self, "Success", f"Resources exported to:\n{filename}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to export resources:\n{e}")
+
+    def add_scope_info(self, info_type, data1, data2, data3):
+        """Add scope information (technologies, titles, IPs) to appropriate tables"""
+        if info_type == "technology":
+            # Check if already exists
+            for row in range(self.tech_table.rowCount()):
+                if (self.tech_table.item(row, 0) and self.tech_table.item(row, 0).text() == data1 and
+                    self.tech_table.item(row, 1) and self.tech_table.item(row, 1).text() == data2):
+                    return
+
+            row = self.tech_table.rowCount()
+            self.tech_table.insertRow(row)
+
+            # data1 = tech_name, data2 = version, data3 = "category|source"
+            parts = data3.split('|', 1)
+            category = parts[0] if len(parts) > 0 else "Other"
+            source = parts[1] if len(parts) > 1 else ""
+
+            self.tech_table.setItem(row, 0, QTableWidgetItem(data1))  # Technology
+            self.tech_table.setItem(row, 1, QTableWidgetItem(data2))  # Version
+            self.tech_table.setItem(row, 2, QTableWidgetItem(category))  # Category
+            self.tech_table.setItem(row, 3, QTableWidgetItem(source))  # Found On
+
+        elif info_type == "title":
+            # Check if already exists
+            for row in range(self.scope_table.rowCount()):
+                if (self.scope_table.item(row, 0) and self.scope_table.item(row, 0).text() == data2 and
+                    self.scope_table.item(row, 2) and self.scope_table.item(row, 2).text() == data1):
+                    return
+
+            row = self.scope_table.rowCount()
+            self.scope_table.insertRow(row)
+
+            # data1 = title, data2 = url, data3 = unused
+            self.scope_table.setItem(row, 0, QTableWidgetItem(data2))  # URL
+            self.scope_table.setItem(row, 1, QTableWidgetItem("In Scope"))  # Status
+            self.scope_table.setItem(row, 2, QTableWidgetItem(data1))  # Title
+            self.scope_table.setItem(row, 3, QTableWidgetItem(""))  # Technologies (will be updated)
+
+        elif info_type == "ip":
+            # Check if already exists
+            for row in range(self.geo_table.rowCount()):
+                if self.geo_table.item(row, 0) and self.geo_table.item(row, 0).text() == data1:
+                    return
+
+            row = self.geo_table.rowCount()
+            self.geo_table.insertRow(row)
+
+            # data1 = IP, data2 = domain, data3 = source
+            # For now, we don't have actual geo lookup, so we'll mark as "Pending"
+            self.geo_table.setItem(row, 0, QTableWidgetItem(data1))  # IP
+            self.geo_table.setItem(row, 1, QTableWidgetItem("Lookup Pending"))  # Country (placeholder)
+            self.geo_table.setItem(row, 2, QTableWidgetItem("-"))  # City (placeholder)
+            self.geo_table.setItem(row, 3, QTableWidgetItem("-"))  # ISP (placeholder)
+            self.geo_table.setItem(row, 4, QTableWidgetItem(data2))  # Domain
 
     def open_report(self):
         """Open the generated HTML report"""
