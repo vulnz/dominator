@@ -99,6 +99,14 @@ class ModularScanner:
             discovered_urls = self._discover_pages(target)
             logger.info(f"Discovered {len(discovered_urls)} URLs")
 
+            # DEBUG: Log target breakdown
+            logger.debug(f"DEBUG: Target breakdown:")
+            logger.debug(f"  - Total targets: {len(discovered_urls)}")
+            logger.debug(f"  - From pages: {len([t for t in discovered_urls if t.get('source') != 'form'])}")
+            logger.debug(f"  - From forms: {len([t for t in discovered_urls if t.get('source') == 'form'])}")
+            if discovered_urls:
+                logger.debug(f"  - Sample target: {discovered_urls[0]}")
+
             # Recon-only mode: Skip all active modules, only passive scanning
             if self.config.recon_only:
                 logger.info("[RECON-ONLY MODE] Skipping active module scans - passive reconnaissance only")
