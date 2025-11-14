@@ -556,6 +556,57 @@ class DominatorGUI(QMainWindow):
         rotation9_group.setLayout(rotation9_layout)
         layout.addWidget(rotation9_group)
 
+        # Authentication
+        auth_group = QGroupBox("🔐 Authentication")
+        auth_layout = QGridLayout()
+
+        auth_layout.addWidget(QLabel("Auth Type:"), 0, 0)
+        self.auth_type_combo = QComboBox()
+        self.auth_type_combo.addItems([
+            "None",
+            "Basic Auth",
+            "Digest Auth",
+            "NTLM Auth",
+            "Bearer Token",
+            "API Key",
+            "OAuth 2.0",
+            "Custom Header"
+        ])
+        self.auth_type_combo.currentTextChanged.connect(self.on_auth_type_changed)
+        auth_layout.addWidget(self.auth_type_combo, 0, 1, 1, 3)
+
+        # Username (for Basic, Digest, NTLM)
+        auth_layout.addWidget(QLabel("Username:"), 1, 0)
+        self.auth_username = QLineEdit()
+        self.auth_username.setPlaceholderText("Username for authentication")
+        self.auth_username.setEnabled(False)
+        auth_layout.addWidget(self.auth_username, 1, 1, 1, 3)
+
+        # Password (for Basic, Digest, NTLM)
+        auth_layout.addWidget(QLabel("Password:"), 2, 0)
+        self.auth_password = QLineEdit()
+        self.auth_password.setPlaceholderText("Password for authentication")
+        self.auth_password.setEchoMode(QLineEdit.Password)
+        self.auth_password.setEnabled(False)
+        auth_layout.addWidget(self.auth_password, 2, 1, 1, 3)
+
+        # Token/API Key (for Bearer, API Key, OAuth)
+        auth_layout.addWidget(QLabel("Token/Key:"), 3, 0)
+        self.auth_token = QLineEdit()
+        self.auth_token.setPlaceholderText("Bearer token, API key, or OAuth token")
+        self.auth_token.setEnabled(False)
+        auth_layout.addWidget(self.auth_token, 3, 1, 1, 3)
+
+        # Custom header name (for API Key, Custom Header)
+        auth_layout.addWidget(QLabel("Header Name:"), 4, 0)
+        self.auth_header_name = QLineEdit()
+        self.auth_header_name.setPlaceholderText("e.g., X-API-Key, Authorization")
+        self.auth_header_name.setEnabled(False)
+        auth_layout.addWidget(self.auth_header_name, 4, 1, 1, 3)
+
+        auth_group.setLayout(auth_layout)
+        layout.addWidget(auth_group)
+
         # HTTP Configuration
         http_group = QGroupBox("🌐 HTTP Configuration")
         http_layout = QGridLayout()
@@ -871,6 +922,31 @@ class DominatorGUI(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to save payloads:\n{e}")
 
+    def on_auth_type_changed(self, auth_type):
+        """Handle authentication type change"""
+        # Disable all fields first
+        self.auth_username.setEnabled(False)
+        self.auth_password.setEnabled(False)
+        self.auth_token.setEnabled(False)
+        self.auth_header_name.setEnabled(False)
+
+        # Enable fields based on auth type
+        if auth_type in ["Basic Auth", "Digest Auth", "NTLM Auth"]:
+            self.auth_username.setEnabled(True)
+            self.auth_password.setEnabled(True)
+        elif auth_type == "Bearer Token":
+            self.auth_token.setEnabled(True)
+        elif auth_type == "API Key":
+            self.auth_token.setEnabled(True)
+            self.auth_header_name.setEnabled(True)
+            self.auth_header_name.setPlaceholderText("e.g., X-API-Key")
+        elif auth_type == "OAuth 2.0":
+            self.auth_token.setEnabled(True)
+        elif auth_type == "Custom Header":
+            self.auth_token.setEnabled(True)
+            self.auth_header_name.setEnabled(True)
+            self.auth_header_name.setPlaceholderText("e.g., X-Custom-Auth")
+
     def build_command(self):
         """Build the scanner command"""
         # Get parent directory (where main.py is)
@@ -915,9 +991,59 @@ class DominatorGUI(QMainWindow):
         if self.single_page_cb.isChecked():
             command.append("--single-page")
 
+        # Authentication - add as custom headers
+        auth_type = self.auth_type_combo.currentText()
+        auth_headers = []
+
+        if auth_type == "Basic Auth":
+            if self.auth_username.text() and self.auth_password.text():
+                import base64
+                credentials = f"{self.auth_username.text()}:{self.auth_password.text()}"
+                b64_credentials = base64.b64encode(credentials.encode()).decode()
+                auth_headers.append(f"Authorization: Basic {b64_credentials}")
+
+        elif auth_type == "Bearer Token":
+            if self.auth_token.text():
+                auth_headers.append(f"Authorization: Bearer {self.auth_token.text()}")
+
+        elif auth_type == "API Key":
+            if self.auth_token.text() and self.auth_header_name.text():
+                auth_headers.append(f"{self.auth_header_name.text()}: {self.auth_token.text()}")
+
+        elif auth_type == "OAuth 2.0":
+            if self.auth_token.text():
+                auth_headers.append(f"Authorization: Bearer {self.auth_token.text()}")
+
+        elif auth_type == "Custom Header":
+            if self.auth_token.text() and self.auth_header_name.text():
+                auth_headers.append(f"{self.auth_header_name.text()}: {self.auth_token.text()}")
+
+        # Add authentication headers to custom headers
+        if auth_headers:
+            existing_headers = self.headers_input.toPlainText()
+            if existing_headers:
+                all_headers = existing_headers + "\n" + "\n".join(auth_headers)
+            else:
+                all_headers = "\n".join(auth_headers)
+            # Will be handled by custom headers processing below
+
         # HTTP config
         if self.cookies_input.text():
             command.extend(["-c", self.cookies_input.text()])
+
+        # Custom headers (including auth headers)
+        headers_text = self.headers_input.toPlainText()
+        if auth_headers:
+            if headers_text:
+                headers_text += "\n" + "\n".join(auth_headers)
+            else:
+                headers_text = "\n".join(auth_headers)
+
+        if headers_text.strip():
+            # Convert headers to command format (Header:Value pairs)
+            for line in headers_text.strip().split('\n'):
+                if ':' in line:
+                    command.extend(["-H", line.strip()])
 
         # Crawler
         command.extend(["--max-crawl-pages", str(self.max_crawl_spin.value())])
