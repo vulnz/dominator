@@ -1,5 +1,100 @@
 # GUI Changelog
 
+## v1.4.2 - Forbidden Paths Feature (2025-11-14)
+
+### ✨ New Feature
+- **Added Forbidden Paths input field** in Advanced Options → Crawler Settings
+- Allows specifying paths/URLs that should NOT be crawled or tested
+- Comma-separated format: `/logout,/delete,/admin/critical`
+- Tooltip help text for user guidance
+- Prevents accidental logout, sensitive operations during scans
+
+### 📝 Commits
+- `39d6c2a` - feat: Add Forbidden Paths input field to Crawler Settings
+
+---
+
+## v1.4.1 - UI Refinement (2025-11-14)
+
+### 🎨 UI Improvements
+- **Removed all emojis** from GUI for cleaner, more professional appearance
+- Updated DOMINATOR header (removed 🎯)
+- Removed emojis from all 7 tab names
+- Removed emojis from menu items and group boxes
+- Better compatibility across different font renderings
+
+### 📝 Commits
+- `5f839d8` - refactor: Remove emojis from GUI - cleaner professional look
+
+---
+
+## v1.4.0 - Scope Tab (2025-11-14)
+
+### ✨ Major Features Added
+- **New Scope Tab** for target reconnaissance and project management
+- **Project Description** field for documenting scan objectives/authorization
+- **Scan Scope** table showing URLs/domains with status and titles
+- **Technology Detection** - Auto-detect frameworks, servers, CMS, databases:
+  - Web Servers: Apache, Nginx, IIS
+  - Languages: PHP, ASP.NET
+  - Frameworks: React, Vue.js, Angular, Bootstrap
+  - CMS: WordPress
+  - Databases: MySQL, PostgreSQL
+  - Libraries: jQuery
+- **IP Geolocation** table with domain mapping (placeholder for future API integration)
+- Real-time updates during scan
+- Technology categorization (Language, Web Server, CMS, etc.)
+
+### 📝 Commits
+- `ffb551b` - feat: Add Scope tab with Technology Detection, IP Geo, Project Description, and Page Titles
+
+---
+
+## v1.3.0 - Resources Tab (2025-11-14)
+
+### ✨ Major Features Added
+- **New Resources Tab** with 4 categorized tables:
+  - **Social Media Links**: Facebook, Twitter/X, LinkedIn, Instagram, GitHub, YouTube, TikTok
+  - **Email Addresses**: Personal (Gmail, Yahoo, etc.) vs Business
+  - **Phone Numbers**: International, US/Canada formats
+  - **Leaked API Keys & Secrets**: AWS, Google, GitHub, Slack, Stripe, PayPal, JWT, Private Keys
+- Real-time regex-based detection during scans
+- Color-coded severity for leaked keys (CRITICAL/HIGH)
+- Key preview truncation for security
+- Export functionality to generate complete resources report
+- Duplicate prevention across all tables
+
+### 🔒 Security Features
+- Leaked keys flagged as CRITICAL/HIGH severity
+- Key previews truncated to prevent exposure
+- Export includes rotation warnings
+
+### 📝 Commits
+- `6535d81` - feat: Add Resources tab with Social Media, Emails, Phones, and Leaked Keys detection
+
+---
+
+## v1.2.0 - Authentication Support (2025-11-14)
+
+### ✨ New Features
+- **Comprehensive Authentication Support** - 8 auth types:
+  - None
+  - Basic Auth (with Base64 encoding)
+  - Digest Auth
+  - NTLM Auth
+  - Bearer Token
+  - API Key (custom header)
+  - OAuth 2.0
+  - Custom Header
+- Smart field enable/disable based on auth type
+- Auto-generates auth headers
+- Seamless integration with custom headers
+
+### 📝 Commits
+- `20e9aa6` - feat: Add comprehensive authentication support to GUI
+
+---
+
 ## v1.1.2 - Vulnerability Detection Fix (2025-11-14)
 
 ### 🐛 Critical Fix
