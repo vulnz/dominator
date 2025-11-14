@@ -54,11 +54,18 @@ class XXEModule(BaseModule):
         ]
 
     def scan(self, targets: List[Dict], http_client: Any) -> List[Dict]:
-        """Scan targets for XXE vulnerabilities"""
+        """
+        Scan targets for XXE vulnerabilities using OOB-only detection.
+
+        OOB (Out-of-Band) is the ONLY reliable method for XXE detection because:
+        - Error-based detection has too many false positives
+        - File disclosure rarely works in modern apps
+        - OOB proves the vulnerability definitively
+        """
         results = []
 
-        logger.info(f"Starting XXE scan on {len(targets)} targets")
-        logger.info(f"Using {len(self.payloads)} payloads")
+        logger.info(f"Starting XXE scan (OOB-only) on {len(targets)} targets")
+        logger.info("Using OOB callbacks for reliable blind XXE detection")
 
         for target in targets:
             url = target['url']
@@ -69,45 +76,15 @@ class XXEModule(BaseModule):
             if not self._likely_accepts_xml(url, params):
                 continue
 
-            # Test each parameter
+            # Test each parameter with OOB payloads
             for param_name in params.keys():
-                # METHOD 1: Error-based XXE (file disclosure)
-                for payload in self.payloads[:10]:  # File disclosure payloads
-                    try:
-                        modified_params = params.copy()
-                        modified_params[param_name] = payload
-
-                        response = self._send_request(http_client, url, method, modified_params)
-
-                        if response:
-                            detected, confidence, evidence = self._detect_xxe_error(
-                                payload, response
-                            )
-
-                            if detected:
-                                result = self.create_result(
-                                    vulnerable=True,
-                                    url=url,
-                                    parameter=param_name,
-                                    payload=payload,
-                                    evidence=evidence,
-                                    description="XXE (XML External Entity) vulnerability detected. "
-                                              "Application parses XML with external entities enabled.",
-                                    confidence=confidence,
-                                    severity='critical' if 'root:x:0:0' in evidence else 'high'
-                                )
-                                results.append(result)
-                                break  # Found XXE, move to next parameter
-
-                    except Exception as e:
-                        logger.debug(f"Error testing XXE on {url}: {e}")
-
-                # METHOD 2: OOB (Out-of-Band) detection for blind XXE
+                # OOB (Out-of-Band) detection for blind XXE
                 if self.config.get('enable_oob', True):
                     # Generate OOB payloads using the new API
                     oob_payloads = self.oob_detector.get_callback_payloads('xxe', url, param_name)
 
                     if not oob_payloads:
+                        logger.warning("OOB detector unavailable - XXE detection requires OOB!")
                         continue
 
                     # Get callback_id for verification
@@ -124,8 +101,9 @@ class XXEModule(BaseModule):
                             response = self._send_request(http_client, url, method, modified_params)
 
                         # Check if callback received (after testing all payloads)
+                        # Wait 5 seconds for blind XXE callback
                         detected_oob, oob_evidence = self.oob_detector.check_callback(
-                            callback_id, wait_time=3
+                            callback_id, wait_time=5
                         )
 
                         if detected_oob:
@@ -136,11 +114,13 @@ class XXEModule(BaseModule):
                                 payload=oob_payload,
                                 evidence=f"Blind XXE detected via OOB callback!\n\n{oob_evidence}",
                                 description="Blind XXE vulnerability detected via out-of-band callback. "
-                                          "Application processes external XML entities.",
+                                          "Application processes external XML entities and makes outbound requests.",
                                 confidence=1.0,
-                                severity='high'
+                                severity='critical',  # OOB confirms it's exploitable
+                                method=method
                             )
                             results.append(result)
+                            logger.info(f"XXE found via OOB: {url} (param: {param_name})")
 
                     except Exception as e:
                         logger.debug(f"Error testing OOB XXE on {url}: {e}")

@@ -31,14 +31,24 @@ Usage examples:
     
     # HTTP parameters
     parser.add_argument('-H', '--headers', action='append',
-                       help='HTTP headers (can be used multiple times)')
+                       help='HTTP headers (can be used multiple times, format: "Header: Value")')
     parser.add_argument('-hf', '--headers-file',
-                       help='File with HTTP headers')
+                       help='File with HTTP headers (one per line)')
     parser.add_argument('-c', '--cookies',
-                       help='HTTP cookies')
+                       help='HTTP cookies (format: "name=value; name2=value2")')
     parser.add_argument('-a', '--auth',
                        choices=['jwt', 'basic'],
                        help='Authorization type')
+    parser.add_argument('--proxy',
+                       help='HTTP/SOCKS proxy (format: http://127.0.0.1:8080 or socks5://127.0.0.1:1080)')
+    parser.add_argument('--follow-redirects', action='store_true', default=True,
+                       help='Follow HTTP redirects (default: True)')
+    parser.add_argument('--no-redirects', action='store_true',
+                       help='Do not follow HTTP redirects')
+    parser.add_argument('--verify-ssl', action='store_true',
+                       help='Verify SSL/TLS certificates (default: False for pentesting)')
+    parser.add_argument('--dns',
+                       help='Custom DNS server (format: 8.8.8.8 or 1.1.1.1)')
     
     # Scanning parameters
     parser.add_argument('--waf', action='store_true',
@@ -77,18 +87,32 @@ Usage examples:
                        help='Limit number of payloads per module (0 = no limit, default: 0)')
     parser.add_argument('--user-agent', default='Dominator/1.0',
                        help='User-Agent string to use')
+    parser.add_argument('--rotate-agent', action='store_true',
+                       help='Rotate User-Agent headers randomly for each request')
     parser.add_argument('--single-url', action='store_true',
                        help='Scan only the specified URL without crawling or testing other pages')
-    parser.add_argument('--nocrawl', action='store_true',
-                       help='Disable web crawling completely')
+    parser.add_argument('--single-page', '--no-crawl', action='store_true', dest='nocrawl',
+                       help='Scan only the target page without crawling (single-page mode)')
     parser.add_argument('--max-crawl-pages', type=int, default=50,
                        help='Maximum pages to crawl (default: 50)')
+    parser.add_argument('--add-known-paths',
+                       help='File with known paths/URLs to inject into scan (one per line)')
+    parser.add_argument('--scope-file',
+                       help='File with scope URLs to scan (one per line, alternative to -f/--file)')
+    parser.add_argument('--custom-payloads',
+                       help='Custom payloads file or inline payloads for specific module (format: module:file or module:payload1,payload2)')
+    parser.add_argument('--max-requests', type=int,
+                       help='Maximum total requests before stopping and generating report')
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Verbose output')
     parser.add_argument('--debug', action='store_true',
                        help='Enable debug output')
     parser.add_argument('--nopassive', action='store_true',
                        help='Disable passive detection modules')
+    parser.add_argument('--recon-only', action='store_true',
+                       help='Passive reconnaissance only - no active attacks (crawl + passive detectors only)')
+    parser.add_argument('--live', action='store_true',
+                       help='Enable live reporting mode - generate real-time HTML/TXT report as vulnerabilities are found')
     
     # Deduplication options
     parser.add_argument('--max-duplicates', type=int, default=3,

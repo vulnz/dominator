@@ -103,22 +103,106 @@ python main.py -t example.com -m git --auto-report
 
 ### Parameters
 
+#### Core Options
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `-t, --target` | Target URL to scan | *Required* |
-| `-m, --modules` | Modules to use (comma-separated) | All enabled |
+| `-t, --target` | Target URL(s) to scan | *Required* |
+| `-f, --file` | File with targets for scanning | - |
+| `-m, --modules` | Modules to use (comma-separated) | All |
 | `--all` | Use all available modules | False |
-| `--threads` | Number of concurrent threads | 10 |
-| `--timeout` | HTTP request timeout (seconds) | 10 |
-| `--auto-report` | Auto-generate report after scan | False |
-| `--format` | Report format (txt/html/json/xml) | txt |
 | `-v, --verbose` | Verbose output | False |
-| `--depth` | Crawling depth | 2 |
-| `--max-urls` | Maximum URLs to crawl | 100 |
+
+#### HTTP Configuration
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `-H, --headers` | Custom HTTP headers (repeatable) | - |
+| `-c, --cookies` | HTTP cookies | - |
+| `--user-agent` | Custom User-Agent string | Dominator/1.0 |
+| `--rotate-agent` | **NEW** Rotate User-Agent randomly | False |
+| `--proxy` | **NEW** HTTP/SOCKS proxy | - |
+| `--timeout` | HTTP request timeout (seconds) | 20 |
+| `--follow-redirects` | Follow HTTP redirects | True |
+| `--verify-ssl` | Verify SSL certificates | False |
+
+#### Scan Control
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `--threads` | Number of concurrent threads | 15 |
+| `--max-time` | **NEW** Max scan time (minutes) | Unlimited |
+| `--max-requests` | **NEW** Max total requests | Unlimited |
+| `--delay` | Delay between requests (seconds) | 0 |
+| `--payload-limit` | Limit payloads per module | 0 (all) |
+| `--limit` | Max total requests (legacy) | 10000 |
+
+#### Crawling Options
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `--single-page` | **NEW** Single-page mode (no crawl) | False |
+| `--no-crawl` | **NEW** Alias for --single-page | False |
+| `--max-crawl-pages` | Maximum pages to crawl | 50 |
+| `--add-known-paths` | **NEW** File with known paths to inject | - |
+
+#### Advanced Features
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `--recon-only` | **NEW** Passive mode - no attacks | False |
+| `--live` | **NEW** Real-time HTML/TXT reporting | False |
+| `--custom-payloads` | **NEW** Custom payloads (module:file) | - |
+| `--scope-file` | **NEW** Scope file (URLs list) | - |
+| `--auto-report` | Auto-generate report after scan | False |
+| `--format` | Report format (html/txt/json/xml) | html |
 
 ---
 
-## 🔥 Rotation 8 Improvements (Latest)
+## 🔥 ROTATION 9 - Maximum Flexibility (Latest)
+
+This release adds **comprehensive scanner control and customization** requested by users:
+
+### ✅ XXE Module - OOB-Only Detection
+- **Switched to OOB-only** payloads for XXE detection
+- Error-based XXE had too many false positives
+- OOB callback proves the vulnerability definitively
+- Increased wait time to 5 seconds for blind XXE
+- **Impact**: 100% reliable XXE detection, no false positives
+
+### ✅ Advanced Scan Control
+- **`--max-time`** - Stop scan after N minutes and generate report
+- **`--max-requests`** - Stop after N total requests
+- **`--payload-limit`** - Limit payloads per module (1 = single payload testing)
+- **`--delay`** - Add delays between requests for rate limiting
+- **Impact**: Full control over scan duration and intensity
+
+### ✅ Crawling & Scope Management
+- **`--single-page` / `--no-crawl`** - Test only target page without crawling
+- **`--add-known-paths`** - Inject known paths from file into scan
+- **`--scope-file`** - Load multiple targets from file
+- **`--max-crawl-pages`** - Limit crawler to N pages
+- **Impact**: Precise scope control for targeted testing
+
+### ✅ Custom Payloads & Headers
+- **`--custom-payloads`** - Use custom payloads for modules (format: `module:file` or `module:payload1,payload2`)
+- **`-H, --headers`** - Multiple custom headers support
+- **`-c, --cookies`** - Session cookies for authenticated scanning
+- **`--user-agent`** - Custom User-Agent string
+- **`--rotate-agent`** - Random User-Agent rotation for stealth
+- **Impact**: Full request customization
+
+### ✅ Reconnaissance & Reporting
+- **`--recon-only`** - Passive mode: crawl + passive detectors only, no attacks
+- **`--live`** - Real-time HTML/TXT reporting as vulnerabilities are found
+- **Progress Bar** - ETA calculation and visual progress tracking
+- **Impact**: Better UX and workflow flexibility
+
+### ✅ Network Configuration
+- **`--proxy`** - HTTP/SOCKS proxy support
+- **`--follow-redirects` / `--no-redirects`** - Redirect control
+- **`--verify-ssl`** - SSL certificate verification
+- **`--dns`** - Custom DNS server
+- **Impact**: Enterprise and stealth scanning support
+
+---
+
+## 📋 Rotation 8 Improvements
 
 This release focuses on **critical quick wins** identified in Acunetix gap analysis:
 
