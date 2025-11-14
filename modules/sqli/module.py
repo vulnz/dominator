@@ -82,6 +82,9 @@ class SQLiModule(BaseModule):
                     if not response:
                         continue
 
+                    # PASSIVE ANALYSIS: Check for path disclosure, DB errors in response
+                    self.analyze_payload_response(response, url, payload)
+
                     # IMPROVED DETECTION
                     detected, confidence, evidence = self._detect_sqli_improved(
                         payload, response
@@ -304,22 +307,33 @@ class SQLiModule(BaseModule):
             "1' AND BENCHMARK(5000000,MD5('A'))--",
         ]
 
-        # Only test POST forms for blind SQLi (more likely)
-        post_targets = [t for t in targets if t.get('method', 'GET').upper() == 'POST']
+        # Test both GET and POST for blind SQLi
+        # IMPROVED: Also test GET parameters (many blind SQLi are in GET)
+        all_targets = targets
+
+        # Prioritize POST, but test GET too
+        post_targets = [t for t in all_targets if t.get('method', 'GET').upper() == 'POST']
+        get_targets = [t for t in all_targets if t.get('method', 'GET').upper() == 'GET' and t.get('params')]
+
+        # Test POST first, then GET
+        test_targets = post_targets[:10] + get_targets[:10]
 
         # Limit testing to avoid very long scan times
-        logger.info(f"Testing {min(len(post_targets), 10)} POST forms for Blind SQLi (time-based)")
+        logger.info(f"Testing {len(test_targets)} targets for Blind SQLi (time-based): {len(post_targets[:10])} POST, {len(get_targets[:10])} GET")
 
-        for target in post_targets[:10]:  # Limit to 10 forms
+        for target in test_targets:  # Limit to 20 total
             url = target.get('url')
             params = target.get('params', {})
 
             # Skip if already detected regular SQLi here
             # (Blind SQLi is for when no errors are shown)
 
+            # Get method for this target
+            method = target.get('method', 'GET').upper()
+
             # Test each parameter
             for param_name in params:
-                logger.debug(f"Testing Blind SQLi in parameter: {param_name}")
+                logger.debug(f"Testing Blind SQLi in parameter: {param_name} via {method}")
 
                 # STAGE 1: Get baseline response time (normal request)
                 baseline_times = []
@@ -328,7 +342,10 @@ class SQLiModule(BaseModule):
                     test_params[param_name] = "1"
 
                     start_time = time.time()
-                    response = http_client.post(url, data=test_params)
+                    if method == 'POST':
+                        response = http_client.post(url, data=test_params)
+                    else:
+                        response = http_client.get(url, params=test_params)
                     elapsed = time.time() - start_time
 
                     if response:
@@ -346,11 +363,17 @@ class SQLiModule(BaseModule):
                     test_params[param_name] = payload
 
                     start_time = time.time()
-                    response = http_client.post(url, data=test_params)
+                    if method == 'POST':
+                        response = http_client.post(url, data=test_params)
+                    else:
+                        response = http_client.get(url, params=test_params)
                     elapsed = time.time() - start_time
 
                     if not response:
                         continue
+
+                    # PASSIVE ANALYSIS: Check for path disclosure, DB errors in response
+                    self.analyze_payload_response(response, url, payload)
 
                     logger.debug(f"Payload '{payload}' response time: {elapsed:.2f}s")
 
@@ -364,7 +387,10 @@ class SQLiModule(BaseModule):
 
                         # Verification test
                         start_time = time.time()
-                        verify_response = http_client.post(url, data=test_params)
+                        if method == 'POST':
+                            verify_response = http_client.post(url, data=test_params)
+                        else:
+                            verify_response = http_client.get(url, params=test_params)
                         verify_elapsed = time.time() - start_time
                         verify_diff = verify_elapsed - baseline_avg
 

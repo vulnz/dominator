@@ -71,6 +71,24 @@ class WebCrawler:
                 # Check for directory listing on main page first
                 if self._detect_directory_listing(response.text):
                     print(f"    [CRAWLER] Directory listing detected on main page: {base_url}")
+
+                    # IMPORTANT: Add directory listing as a finding
+                    dir_listing_finding = {
+                        'vulnerability': True,
+                        'module': 'Directory Listing',
+                        'type': 'Directory Listing',
+                        'url': base_url,
+                        'severity': 'Medium',
+                        'confidence': 0.95,
+                        'description': 'Directory listing is enabled, exposing file/directory structure',
+                        'evidence': 'Directory index page detected with file/folder listings',
+                        'recommendation': 'Disable directory indexing in web server configuration',
+                        'cwe': 'CWE-548',
+                        'owasp': 'A05:2021',
+                        'cvss': '5.3'
+                    }
+                    self.passive_findings.append(dir_listing_finding)
+
                     # Extract directory listing URLs
                     dir_urls = self._extract_directory_listing_urls(response.text, base_url)
                     found_urls.extend(dir_urls)
@@ -425,10 +443,29 @@ class WebCrawler:
 
                     # Check for directory listing on this page
                     if self._detect_directory_listing(response.text):
-                        print(f"    [CRAWLER] Directory listing detected on: {url}")
+                        print(f"    [CRAWLER] Directory listing detected during deep crawl: {url}")
+
+                        # Add directory listing finding
+                        dir_listing_finding = {
+                            'vulnerability': True,
+                            'module': 'Directory Listing',
+                            'type': 'Directory Listing',
+                            'url': url,
+                            'severity': 'Medium',
+                            'confidence': 0.95,
+                            'description': 'Directory listing is enabled, exposing file/directory structure',
+                            'evidence': 'Directory index page detected with file/folder listings',
+                            'recommendation': 'Disable directory indexing in web server configuration',
+                            'cwe': 'CWE-548',
+                            'owasp': 'A05:2021',
+                            'cvss': '5.3'
+                        }
+                        self.passive_findings.append(dir_listing_finding)
+
                         # Extract directory listing URLs
                         dir_urls = self._extract_directory_listing_urls(response.text, url)
                         found_urls.extend(dir_urls)
+                        print(f"    [CRAWLER] Extracted {len(dir_urls)} URLs from directory listing")
 
                     # Extract all URLs from this page
                     page_urls = self._extract_all_urls(response.text, url)
@@ -847,45 +884,118 @@ class WebCrawler:
             print(f"    Detected Technologies: {', '.join(list(tech_names)[:10])}")
     
     def _detect_directory_listing(self, response_text: str) -> bool:
-        """Detect if response contains directory listing"""
+        """Detect if response contains directory listing (ENHANCED)"""
         response_lower = response_text.lower()
-        
+
         # Enhanced directory listing indicators
         directory_indicators = PayloadLoader.load_indicators('directory_listing')
         if not directory_indicators:
             print("    [CRAWLER] Warning: Directory listing indicators not loaded, using fallback.")
             directory_indicators = [
+                # Apache directory listing
                 'index of /',
-                'directory listing',
-                'parent directory',
                 '<title>index of',
-                'directory listing for',
+                '<h1>index of',
+                'parent directory',
                 '[to parent directory]',
-                'folder.gif',
-                'dir.gif',
-                '[dir]',
-                '[   ]',
-                'last modified',
-                'size</th>',
-                'name</th>',
                 '<pre><a href="../">../</a>',
                 '<a href="?c=n;o=d">name</a>',
                 '<a href="?c=m;o=a">last modified</a>',
                 '<a href="?c=s;o=a">size</a>',
-                '<a href="?c=d;o=a">description</a>'
+                '<a href="?c=d;o=a">description</a>',
+                'folder.gif',
+                'dir.gif',
+
+                # Nginx directory listing
+                'directory listing for',
+                '<h1>directory listing',
+
+                # IIS directory listing
+                '<title>localhost - /',
+                'directory listing -- /',
+                '[dir]',
+                '[   ]',
+
+                # Generic patterns
+                'last modified',
+                'size</th>',
+                'name</th>',
+                '<th>name</th>',
+                '<th>last modified</th>',
+                '<th>size</th>',
+                '<th>description</th>',
+
+                # More Apache patterns
+                'apache/ server at',
+                'apache server at',
+                'indexing policy',
+
+                # Table-based listings
+                '<table summary="directory listing">',
+                '<caption>directory listing for',
+
+                # More Nginx patterns
+                'autoindex on',
+
+                # Additional patterns
+                '<a href="../">parent directory</a>',
+                'href="../">..</a>',
+                '<a href="/">[to parent directory]</a>'
             ]
-        
+
         # Check for multiple indicators to reduce false positives
-        indicators_found = sum(1 for indicator in directory_indicators 
+        indicators_found = sum(1 for indicator in directory_indicators
                              if indicator in response_lower)
-        
-        # Also check for typical directory listing structure
-        has_parent_dir = '../' in response_text or '[to parent directory]' in response_lower
-        has_file_links = len([m for m in re.finditer(r'<a href="[^"]*">[^<]+</a>', response_text)]) > 3
-        has_size_column = 'size' in response_lower and ('kb' in response_lower or 'mb' in response_lower or 'bytes' in response_lower)
-        
-        # Directory listing detected if we have multiple indicators or strong structural evidence
-        return indicators_found >= 2 or (has_parent_dir and has_file_links) or (has_file_links and has_size_column)
+
+        # Enhanced structural checks
+        has_parent_dir = (
+            '../' in response_text or
+            '[to parent directory]' in response_lower or
+            'parent directory' in response_lower
+        )
+
+        # Count file/directory links (excluding sorting/navigation)
+        link_pattern = r'<a href="(?!\\?[cso]=)[^"]*">[^<]+</a>'
+        file_links = [m for m in re.finditer(link_pattern, response_text)]
+        has_file_links = len(file_links) > 3
+
+        # Check for size column indicators
+        has_size_column = (
+            ('size' in response_lower and ('kb' in response_lower or
+                                           'mb' in response_lower or
+                                           'bytes' in response_lower or
+                                           '<th>size</th>' in response_lower))
+        )
+
+        # Check for date/time column (common in directory listings)
+        has_datetime = bool(re.search(r'\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}', response_text))
+
+        # Check for table structure with Name/Size/Modified columns
+        has_table_structure = bool(re.search(
+            r'<th[^>]*>(name|filename|file)',
+            response_text,
+            re.IGNORECASE
+        ))
+
+        # Enhanced detection logic with multiple criteria
+        # Require 2+ indicators OR strong structural evidence
+        structural_evidence = sum([
+            has_parent_dir,
+            has_file_links,
+            has_size_column,
+            has_datetime,
+            has_table_structure
+        ])
+
+        # Directory listing detected if:
+        # 1. Multiple text indicators (2+), OR
+        # 2. Strong structural evidence (3+ structural indicators), OR
+        # 3. Parent directory link + file links + (size OR datetime)
+        return (
+            indicators_found >= 2 or
+            structural_evidence >= 3 or
+            (has_parent_dir and has_file_links and (has_size_column or has_datetime))
+        )
     
     def _extract_directory_listing_urls(self, response_text: str, base_url: str) -> List[str]:
         """Extract URLs from directory listing, filtering out sorting parameters"""

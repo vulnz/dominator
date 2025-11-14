@@ -236,7 +236,13 @@ class OOBDetector:
             logger.debug(f"Error checking Pipedream: {e}")
 
         if detected:
+            # Add proof URLs for manual verification
+            proof_urls = []
+            proof_urls.append(f"Requestbin Proof: {self.callback_url}?inspect (search for: {callback_id})")
+            proof_urls.append(f"Pipedream Proof: {self.pipedream_webhook} (search for: {callback_id})")
+
             final_evidence = " | ".join(evidence_parts)
+            final_evidence += "\n\nVerification URLs:\n" + "\n".join(proof_urls)
             return True, final_evidence
 
         return False, None

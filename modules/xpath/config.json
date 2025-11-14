@@ -1,4 +1,5 @@
 {
+  "enabled": true,
   "name": "XPath Injection Scanner",
   "description": "Detects XPath injection vulnerabilities",
   "severity": "High",

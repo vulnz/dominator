@@ -28,6 +28,7 @@ if sys.platform.startswith('win'):
 from core.clean_scanner import ModularScanner
 from core.config import Config
 from core.logger import setup_logging
+from core.retest_manager import RetestManager
 from menu import create_parser, show_modules, process_args
 
 class ScanTimeout:
@@ -245,7 +246,30 @@ def main():
         
         scan_duration = time.time() - start_time
         print(f"\nScan completed in {scan_duration:.2f} seconds")
-        
+
+        # Retest logic: Compare with baseline if --retest flag is set
+        retest_manager = None
+        if hasattr(args, 'retest') and args.retest:
+            print(f"\nRetest mode enabled - comparing with baseline: {args.retest}")
+            retest_manager = RetestManager(args.retest)
+
+            # Compare current results with baseline
+            comparison = retest_manager.compare_scans(results)
+
+            # Print retest summary
+            retest_manager.print_retest_summary()
+
+            # Annotate results with retest status (FIXED/NEW/STILL_VULNERABLE)
+            results = retest_manager.get_annotated_results(results)
+
+        # Save current scan as baseline if --save-baseline flag is set
+        if hasattr(args, 'save_baseline') and args.save_baseline:
+            if not retest_manager:
+                retest_manager = RetestManager()
+
+            print(f"\nSaving current scan as baseline: {args.save_baseline}")
+            retest_manager.save_current_as_baseline(results, args.save_baseline)
+
         # Print coordination statistics if available
         if hasattr(scanner, 'shared_module_data') and scanner.shared_module_data:
             print("\nModule Coordination Summary:")
@@ -297,8 +321,9 @@ def main():
             for report_format in report_formats:
                 auto_filename = f"{base_filename}.{report_format}"
                 try:
-                    scanner.save_report(results, auto_filename, report_format)
-                    print(f"\n{report_format.upper()} report saved to {auto_filename}")
+                    report_mode = getattr(args, 'report_mode', 'full')
+                    scanner.save_report(results, auto_filename, report_format, report_mode)
+                    print(f"\n{report_format.upper()} report saved to {auto_filename} (mode: {report_mode})")
                 except Exception as e:
                     print(f"Error saving {report_format.upper()} auto-report: {e}")
         

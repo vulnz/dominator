@@ -159,23 +159,41 @@ class FormulaInjectionModule(BaseModule):
         # METHOD 1: Direct reflection without escaping
         # Check if formula is reflected exactly as-is
         if payload in response_text:
-            confidence = 0.65
+            # CRITICAL FIX: Require export functionality OR data context for confirmation
+            # Simple math formulas like =1+1 are too common and cause false positives
+            has_export = any(keyword in url.lower() for keyword in self.export_keywords)
+            in_data_context = self._is_in_data_context(payload, response_text)
+
+            # DON'T report simple math formulas without export/data context
+            # Example: =1+1 is too weak to report as vulnerability
+            if not has_export and not in_data_context:
+                # Check if it's a dangerous payload (command execution)
+                dangerous_keywords = ['cmd|', 'powershell', 'HYPERLINK', 'IMPORTXML', 'WEBSERVICE', 'DDE', 'Excel|', 'Word|']
+                if not any(keyword.lower() in payload.lower() for keyword in dangerous_keywords):
+                    return False, 0.0, ""  # Too weak - skip simple math formulas
+
+            confidence = 0.70
 
             # Check if it's in a dangerous context (table, data display, etc.)
-            if self._is_in_data_context(payload, response_text):
-                confidence = 0.75
+            if in_data_context:
+                confidence += 0.10
 
             # Higher confidence if page has export functionality
-            if any(keyword in url.lower() for keyword in self.export_keywords):
-                confidence = 0.85
+            if has_export:
+                confidence += 0.15
 
             # Check if formula is in HTML without escaping
             if self._is_unescaped_in_html(payload, response_text):
-                confidence = 0.80
+                confidence += 0.05
+
+            # Cap confidence at 0.95
+            confidence = min(confidence, 0.95)
 
             evidence = f"Formula payload '{payload}' reflected without sanitization. "
-            if any(keyword in url.lower() for keyword in self.export_keywords):
-                evidence += "Page has export/download functionality. "
+            if has_export:
+                evidence += "Page has export/download functionality - HIGH RISK. "
+            if in_data_context:
+                evidence += "Payload found in data display context (table/list). "
             evidence += "If data is exported to CSV/Excel, formula will execute. "
             evidence += BaseDetector.get_evidence(payload, response_text, context_size=150)
 

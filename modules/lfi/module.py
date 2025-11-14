@@ -77,6 +77,9 @@ class LFIModule(BaseModule):
                     if not response:
                         continue
 
+                    # PASSIVE ANALYSIS: LFI often triggers path disclosure errors
+                    self.analyze_payload_response(response, url, payload)
+
                     # IMPROVED DETECTION with multi-stage validation
                     detected, confidence, evidence = self._detect_lfi_improved(
                         payload, response

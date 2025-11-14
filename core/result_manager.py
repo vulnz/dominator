@@ -134,12 +134,46 @@ class ResultManager:
                 result.get('status_code', 0)  # HTTP status code
             )
 
-        # For active findings: signature includes URL, parameter, payload
+        # FIX: For CSRF - deduplicate by URL only (not by form fields)
+        # Multiple forms on same page = one CSRF finding
+        if module_name == 'CSRF Scanner':
+            # Normalize URL: remove query params to group similar URLs
+            base_url = result.get('url', '').split('?')[0]
+            return (
+                'csrf',
+                base_url,  # Base URL without parameters
+                result.get('type', '')
+            )
+
+        # FIX: For Git Repository Exposure - deduplicate by base URL
+        # Multiple .git files (.git/HEAD, .git/config, .git/index) = ONE finding
+        # Example: http://example.com/.git/HEAD + .git/config = 1 finding
+        if module_name == 'Git Repository Exposure' or 'git' in module_name.lower():
+            # Extract base URL before .git
+            url = result.get('url', '')
+            if '.git' in url:
+                base_url = url.split('.git')[0]  # Everything before .git
+            else:
+                base_url = url
+            return (
+                'git_exposure',
+                base_url,  # Base URL before .git path
+                result.get('type', '')
+            )
+
+        # For active findings: signature includes URL, parameter, type
+        # BUT: normalize URL to avoid query param variations causing dupes
+        # CRITICAL FIX: DON'T include payload in signature!
+        # Same vuln with different payloads = still same vuln
+        # Example: SQLi in artist=1 and artist=2 = same bug, not 2 bugs
+        url = result.get('url', '')
+        base_url = url.split('?')[0]  # Remove query params for deduplication
+
         return (
-            result.get('url', ''),
+            base_url,  # Base URL without query params
             result.get('type', ''),
             result.get('parameter', ''),
-            result.get('payload', ''),
+            # NOTE: payload removed from signature - same vuln with different payloads = duplicate
             result.get('vulnerability', False)
         )
 

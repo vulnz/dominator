@@ -73,18 +73,31 @@ class XSSModule(BaseModule):
                     if not response:
                         continue
 
+                    # PASSIVE ANALYSIS: Check for path disclosure, DB errors in response
+                    self.analyze_payload_response(response, url, payload)
+
                     # IMPROVED DETECTION
                     detected, confidence, evidence = self._detect_xss_improved(
                         payload, response
                     )
 
                     if detected:
+                        # Build full URL with payload for evidence
+                        from urllib.parse import urlencode, urlparse, parse_qs
+                        parsed = urlparse(url)
+                        params = parse_qs(parsed.query) if parsed.query else {}
+                        params[param_name] = [payload]
+                        full_url_with_payload = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{urlencode(params, doseq=True)}"
+
+                        # Prepend full URL to evidence
+                        evidence_with_url = f"Vulnerable URL: {full_url_with_payload}\n\n{evidence}"
+
                         result = self.create_result(
                             vulnerable=True,
                             url=url,
                             parameter=param_name,
                             payload=payload,
-                            evidence=evidence,
+                            evidence=evidence_with_url,
                             description="Reflected Cross-Site Scripting (XSS) vulnerability detected. "
                                        "User input is reflected in HTML output without proper sanitization.",
                             confidence=confidence
@@ -240,7 +253,7 @@ class XSSModule(BaseModule):
 
         # Filter for POST forms that likely store data
         # Look for forms with 'stored', 'comment', 'message', 'post', 'add'
-        storage_keywords = ['stored', 'comment', 'message', 'post', 'add', 'create', 'write']
+        storage_keywords = ['stored', 'comment', 'message', 'post', 'add', 'create', 'write', 'guest', 'forum']
 
         post_targets = []
         for target in targets:
@@ -250,15 +263,21 @@ class XSSModule(BaseModule):
 
             # Check if this is a POST form with storage indicators
             if method == 'POST' and params:
-                # Check URL for storage keywords
+                # Check URL for storage keywords (handles both 'stored' and 'stored_xss')
                 if any(keyword in url for keyword in storage_keywords):
                     post_targets.append(target)
                     continue
 
                 # Check parameter names for textarea/comment fields
                 param_names_lower = [p.lower() for p in params.keys()]
-                if any(keyword in ' '.join(param_names_lower) for keyword in ['comment', 'message', 'text', 'content']):
+                if any(keyword in ' '.join(param_names_lower) for keyword in ['comment', 'message', 'text', 'content', 'data', 'input']):
                     post_targets.append(target)
+                    continue
+
+                # IMPROVED: Test ALL POST forms, not just those with keywords
+                # Many Stored XSS targets don't have obvious keywords
+                # Add all POST forms to testing list (will be checked anyway)
+                post_targets.append(target)
 
         logger.info(f"Found {len(post_targets)} POST targets for stored XSS testing")
 
@@ -285,10 +304,16 @@ class XSSModule(BaseModule):
                 if not post_response:
                     continue
 
+                # PASSIVE ANALYSIS: Check POST response for path disclosure, DB errors
+                self.analyze_payload_response(post_response, url, payload)
+
                 # STAGE 2: GET the same page to check if payload persists
                 get_response = http_client.get(url)
                 if not get_response:
                     continue
+
+                # PASSIVE ANALYSIS: Check GET response too
+                self.analyze_payload_response(get_response, url, payload)
 
                 get_text = getattr(get_response, 'text', '')
 

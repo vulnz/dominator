@@ -104,6 +104,16 @@ Usage examples:
     parser.add_argument('--format',
                        default='html',
                        help='Report format or comma-separated list of formats (e.g., html,txt)')
+    parser.add_argument('--report-mode',
+                       choices=['full', 'simple'],
+                       default='full',
+                       help='Report detail level: full (all details, default) or simple (summary only)')
+
+    # Retest options
+    parser.add_argument('--retest', '--baseline',
+                       help='Path to baseline scan results (JSON) for retest comparison. Scanner will mark vulnerabilities as FIXED/NEW/STILL_VULNERABLE')
+    parser.add_argument('--save-baseline',
+                       help='Save current scan results as baseline for future retests (JSON file path)')
     
     # Information commands
     parser.add_argument('--modules-list', action='store_true',

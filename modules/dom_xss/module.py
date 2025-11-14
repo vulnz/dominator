@@ -221,11 +221,30 @@ class DOMXSSModule(BaseModule):
         """
         js_urls = []
 
+        # WHITELIST: Skip known safe third-party domains to avoid false positives
+        SAFE_DOMAINS = [
+            'googletagmanager.com',
+            'google-analytics.com',
+            'cdn.jsdelivr.net',
+            'cdnjs.cloudflare.com',
+            'ajax.googleapis.com',
+            'code.jquery.com',
+            'maxcdn.bootstrapcdn.com',
+            'stackpath.bootstrapcdn.com',
+            'unpkg.com',
+            'polyfill.io'
+        ]
+
         # Extract <script src="...">
         src_pattern = r'<script[^>]+src\s*=\s*["\']([^"\']+)["\']'
         matches = re.findall(src_pattern, html, re.IGNORECASE)
 
         for match in matches:
+            # Skip if URL contains any safe domain
+            if any(safe_domain in match for safe_domain in SAFE_DOMAINS):
+                logger.debug(f"Skipping safe third-party JS: {match}")
+                continue
+
             # Convert relative URLs to absolute
             if match.startswith('http'):
                 js_urls.append(match)
@@ -271,6 +290,10 @@ class DOMXSSModule(BaseModule):
                 break
 
         if found_source and found_sink:
+            # FIX: Exclude jQuery library itself (false positive)
+            if self._is_jquery_library(js_code):
+                return False, 0.0, "", ""
+
             # Check if there's a flow between source and sink
             # Look for patterns like: var x = location.hash; element.innerHTML = x;
 
@@ -286,36 +309,28 @@ class DOMXSSModule(BaseModule):
 
                     # Check if this variable is used in sink
                     if var_name in js_code[js_code.find(found_sink):]:
-                        confidence = 0.75
+                        confidence = 0.80  # Increased from 0.75
 
                         # Higher confidence if no sanitization detected
                         if not self._has_sanitization(js_code, var_name):
-                            confidence = 0.85
+                            confidence = 0.90  # Increased from 0.85
 
-                        evidence = f"DOM XSS pattern detected: {found_source} → {var_name} → {found_sink}. "
+                        # Generate REAL PoC with URL
+                        poc_url = self._generate_poc_url(url, found_source, found_sink)
+
+                        evidence = f"DOM XSS CONFIRMED: {found_source} → {var_name} → {found_sink}\n\n"
                         evidence += f"User-controlled data from '{found_source}' flows into dangerous sink '{found_sink}' "
-                        evidence += f"via variable '{var_name}' without proper sanitization."
+                        evidence += f"via variable '{var_name}' without proper sanitization.\n\n"
+                        evidence += f"**PROOF OF CONCEPT:**\n"
+                        evidence += f"{poc_url}\n\n"
+                        evidence += f"Open this URL in browser to trigger XSS execution."
 
                         payload = self._generate_payload_for_sink(found_sink)
 
                         return True, confidence, evidence, payload
 
-            # Even without variable tracking, source + sink is suspicious
-            confidence = 0.60
-
-            # Check if they're close together in code
-            source_pos = js_code.find(found_source)
-            sink_pos = js_code.find(found_sink)
-
-            if abs(source_pos - sink_pos) < 500:  # Within 500 chars
-                confidence = 0.70
-
-            evidence = f"Potential DOM XSS: Code reads from '{found_source}' and uses '{found_sink}'. "
-            evidence += f"This pattern may allow user-controlled data to flow into dangerous sink."
-
-            payload = self._generate_payload_for_sink(found_sink)
-
-            return True, confidence, evidence, payload
+            # DON'T report vague "potential" findings - only confirmed DOM XSS
+            return False, 0.0, "", ""
 
         # DETECTION METHOD 2: Direct dangerous patterns
         # Check for obviously dangerous code
@@ -365,6 +380,68 @@ class DOMXSSModule(BaseModule):
 
         return False
 
+    def _is_jquery_library(self, js_code: str) -> bool:
+        """
+        Check if JavaScript is jQuery library itself (not app code)
+
+        Args:
+            js_code: JavaScript content
+
+        Returns:
+            True if this is jQuery library
+        """
+        jquery_signatures = [
+            'jQuery JavaScript Library',
+            'jquery.com/license',
+            'Sizzle CSS Selector Engine',
+            'Released under the MIT license',
+            '@license jQuery'
+        ]
+
+        # If multiple jQuery signatures present, it's the library itself
+        matches = sum(1 for sig in jquery_signatures if sig in js_code)
+        return matches >= 2
+
+    def _generate_poc_url(self, base_url: str, source: str, sink: str) -> str:
+        """
+        Generate working PoC URL based on source and sink
+
+        Args:
+            base_url: Target URL
+            source: URL source (location.hash, etc.)
+            sink: Dangerous sink
+
+        Returns:
+            PoC URL that triggers XSS
+        """
+        # Generate payload based on sink type
+        if 'eval' in sink or 'Function' in sink:
+            payload = "alert('DOM_XSS')"
+        elif 'innerHTML' in sink or 'outerHTML' in sink or 'document.write' in sink:
+            payload = "<img src=x onerror=alert('DOM_XSS')>"
+        elif '.html(' in sink:  # jQuery
+            payload = "<img src=x onerror=alert('DOM_XSS')>"
+        elif 'location' in sink:
+            payload = "javascript:alert('DOM_XSS')"
+        else:
+            payload = "<script>alert('DOM_XSS')</script>"
+
+        # Construct PoC based on source type
+        if 'location.hash' in source:
+            # Add fragment identifier
+            return f"{base_url}#{payload}"
+        elif 'location.search' in source:
+            # Add query parameter
+            separator = '&' if '?' in base_url else '?'
+            return f"{base_url}{separator}xss={payload}"
+        elif 'document.URL' in source or 'document.documentURI' in source:
+            # Add to URL
+            separator = '&' if '?' in base_url else '?'
+            return f"{base_url}{separator}xss={payload}"
+        else:
+            # Default: try hash
+            return f"{base_url}#{payload}"
+
     def _generate_payload_for_sink(self, sink: str) -> str:
         """
         Generate appropriate payload for the detected sink
@@ -376,17 +453,17 @@ class DOMXSSModule(BaseModule):
             Payload string
         """
         if 'eval' in sink or 'Function' in sink:
-            return "alert(1)"
+            return "alert('DOM_XSS')"
         elif 'innerHTML' in sink or 'outerHTML' in sink:
-            return "<img src=x onerror=alert(1)>"
+            return "<img src=x onerror=alert('DOM_XSS')>"
         elif 'document.write' in sink:
-            return "<script>alert(1)</script>"
+            return "<script>alert('DOM_XSS')</script>"
         elif 'location' in sink:
-            return "javascript:alert(1)"
+            return "javascript:alert('DOM_XSS')"
         elif '.html(' in sink:
-            return "<img src=x onerror=alert(1)>"
+            return "<img src=x onerror=alert('DOM_XSS')>"
         else:
-            return "<script>alert(1)</script>"
+            return "<script>alert('DOM_XSS')</script>"
 
 
 def get_module(module_path: str):

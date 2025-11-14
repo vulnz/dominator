@@ -1,4 +1,5 @@
 {
+  "enabled": true,
   "name": "SSTI Scanner",
   "description": "Detects Server-Side Template Injection vulnerabilities",
   "severity": "Critical",

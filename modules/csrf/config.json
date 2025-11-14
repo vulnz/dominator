@@ -1,4 +1,5 @@
 {
+  "enabled": true,
   "name": "CSRF Scanner",
   "description": "Detects Cross-Site Request Forgery vulnerabilities",
   "severity": "Medium",

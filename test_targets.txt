@@ -1,0 +1,4 @@
+# Test targets for vulnerability scanning
+http://127.0.0.1/xvwa/
+http://testphp.vulnweb.com/
+http://testasp.vulnweb.com/

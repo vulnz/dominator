@@ -1,4 +1,5 @@
 {
+  "enabled": true,
   "name": "SSRF Scanner",
   "description": "Detects Server-Side Request Forgery vulnerabilities",
   "severity": "High",

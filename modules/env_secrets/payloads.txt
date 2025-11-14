@@ -1,0 +1,66 @@
+# Environment files
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+.env.staging
+.env.backup
+.env.old
+.env.save
+.env.bak
+env
+environment
+
+# Configuration files
+config.json
+config.yml
+config.yaml
+config.xml
+config.ini
+config.php
+config.inc
+configuration.json
+settings.json
+settings.yml
+appsettings.json
+appsettings.production.json
+appsettings.development.json
+
+# AWS files
+.aws/credentials
+.aws/config
+aws.json
+aws-credentials.json
+
+# Docker secrets
+docker-compose.yml
+docker-compose.override.yml
+.dockerenv
+
+# Database configs
+database.yml
+database.json
+db.json
+db.config
+
+# SSH/Private keys
+.ssh/id_rsa
+.ssh/id_dsa
+.ssh/authorized_keys
+id_rsa
+id_dsa
+private.key
+server.key
+
+# Other sensitive files
+secrets.json
+secrets.yml
+credentials.json
+api_keys.json
+token.json
+tokens.txt
+passwords.txt
+.htpasswd
+.npmrc
+.pypirc

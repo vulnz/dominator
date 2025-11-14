@@ -121,6 +121,14 @@ class ModularScanner:
                     vulnerabilities = len([r for r in module_results if r.get('vulnerability')])
                     logger.info(f"Module '{module.get_name()}' completed: {len(module_results)} findings ({vulnerabilities} vulnerabilities)")
 
+                    # CRITICAL: Collect passive findings from payload responses
+                    # These are path disclosures, DB errors found when sending payloads
+                    payload_passive_findings = module.get_payload_passive_findings()
+                    if payload_passive_findings:
+                        logger.info(f"  → Payload testing triggered {len(payload_passive_findings)} passive findings (path disclosure, DB errors)")
+                        all_results.extend(payload_passive_findings)
+                        self.result_manager.add_results(payload_passive_findings)
+
                 except Exception as e:
                     logger.error(f"Error in module '{module.get_name()}': {e}")
                     import traceback
@@ -274,7 +282,7 @@ class ModularScanner:
                     if result.get('evidence'):
                         print(f"  Evidence: {result.get('evidence')[:200]}...")
 
-    def save_report(self, results: List[Dict[str, Any]], output_file: str, format: str = 'html'):
+    def save_report(self, results: List[Dict[str, Any]], output_file: str, format: str = 'html', report_mode: str = 'full'):
         """
         Save scan report
 
@@ -282,6 +290,7 @@ class ModularScanner:
             results: Scan results (ignored, using result_manager instead)
             output_file: Output file path
             format: Report format (html, json, xml, txt)
+            report_mode: Report detail level ('full' or 'simple')
         """
         # IMPORTANT: Use ALL results from result_manager (including passive scanner)
         # NOT just the 'results' parameter which only contains active module results
@@ -291,6 +300,7 @@ class ModularScanner:
             'targets': self.config.get_targets(),
             'modules': [m.get_name() for m in self.modules],
             'total_requests': self.http_client.request_count,
+            'report_mode': report_mode,
         }
 
         success = self.report_generator.generate(all_results, output_file, format, scan_info)

@@ -1,0 +1,9 @@
+{
+  "enabled": true,
+  "confidence_threshold": 0.70,
+  "max_payloads": 20,
+  "enable_oob": true,
+  "oob_wait_time": 3,
+  "test_file_upload_endpoints": true,
+  "test_api_endpoints": true
+}

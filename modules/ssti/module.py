@@ -91,22 +91,56 @@ class SSTIModule(BaseModule):
                     if not response:
                         continue
 
+                    # PASSIVE ANALYSIS: Check for path disclosure, DB errors in response
+                    self.analyze_payload_response(response, url, payload)
+
                     response_text = getattr(response, 'text', '')
 
+                    # IMPROVED DETECTION: Reduce false positives
                     # Check if expression was evaluated
                     if expected in response_text and expected not in baseline_text:
-                        # Likely SSTI!
-                        confidence = 0.90
+                        # ANTI-FALSE-POSITIVE checks:
 
-                        # Check if payload is just reflected (not evaluated)
+                        # 1. Check if payload is reflected but NOT evaluated
                         if payload in response_text:
-                            # Both payload and result present = definitely SSTI
+                            # Payload is present in response
+                            # Check if it appears OUTSIDE of template delimiters
+                            # If payload appears as-is, it's just reflection, NOT execution
+
+                            # Count occurrences
+                            payload_count = response_text.count(payload)
+                            result_count = response_text.count(expected)
+
+                            # If result doesn't appear MORE than payload, it's reflection
+                            if result_count <= payload_count:
+                                logger.debug(f"SSTI false positive: payload reflected but not evaluated")
+                                continue
+
+                        # 2. Context validation - check if result appears in dangerous context
+                        # For SSTI, we expect the RESULT (49) to appear where payload was
+                        # Find where payload would be in response
+                        if not self._validate_ssti_context(payload, expected, response_text, baseline_text):
+                            logger.debug(f"SSTI false positive: result not in injection context")
+                            continue
+
+                        # 3. Check if "49" is just a random number (common in HTML)
+                        # Look for patterns like: <td>49</td>, "count":49, etc.
+                        # These are NOT SSTI - just normal data
+                        if self._is_likely_false_positive(expected, response_text):
+                            logger.debug(f"SSTI false positive: result appears in normal HTML/JSON context")
+                            continue
+
+                        # Passed all checks - likely real SSTI
+                        confidence = 0.85
+
+                        # Boost confidence if we can confirm evaluation
+                        if not payload in response_text:
+                            # Payload NOT in response, but result IS = clear evaluation
                             confidence = 0.95
-                        else:
-                            # Only result present = very likely SSTI
-                            confidence = 0.85
 
                         evidence = f"Template injection detected. Payload '{payload}' evaluated to '{expected}' in response."
+                        evidence += f"\n\nBaseline response did NOT contain '{expected}', but after injection it appears."
+                        evidence += f"\n\nThis indicates server-side template evaluation of user input."
 
                         result = self.create_result(
                             vulnerable=True,
@@ -137,6 +171,69 @@ class SSTIModule(BaseModule):
 
         logger.info(f"SSTI scan complete: {len(results)} vulnerabilities found")
         return results
+
+    def _validate_ssti_context(self, payload: str, expected: str, response_text: str,
+                               baseline_text: str) -> bool:
+        """
+        Validate that the result appears in the context where payload was injected
+
+        Returns True if this looks like real SSTI, False if false positive
+        """
+        # Find positions of expected result
+        result_positions = [m.start() for m in re.finditer(re.escape(expected), response_text)]
+
+        if not result_positions:
+            return False
+
+        # Check if result appears in user-controlled context
+        # Look for the result appearing outside of common HTML/JSON structures
+        for pos in result_positions:
+            # Extract context around result
+            start = max(0, pos - 50)
+            end = min(len(response_text), pos + 50)
+            context = response_text[start:end]
+
+            # Skip if result is in common data structures (not SSTI)
+            false_positive_patterns = [
+                r'<td[^>]*>' + re.escape(expected),  # Table cell
+                r'"[^"]*":\s*' + re.escape(expected),  # JSON value
+                r'value="' + re.escape(expected),  # Input value
+                r'<span[^>]*>' + re.escape(expected),  # Span content
+            ]
+
+            is_false_positive = any(re.search(pattern, context) for pattern in false_positive_patterns)
+
+            if not is_false_positive:
+                # Result appears outside of normal structures - likely SSTI
+                return True
+
+        # All occurrences look like false positives
+        return False
+
+    def _is_likely_false_positive(self, expected: str, response_text: str) -> bool:
+        """
+        Check if the expected result appears in contexts that indicate false positive
+
+        Common false positives:
+        - Pagination: "Page 49 of 100"
+        - Counts: "49 items found"
+        - Prices: "$49.99"
+        - Dates: "2049"
+        """
+        # Patterns that indicate this is NOT SSTI
+        false_positive_patterns = [
+            r'\b' + re.escape(expected) + r'\s+(?:items|results|found|total|pages)',
+            r'(?:page|item|product)\s+' + re.escape(expected),
+            r'\$\s*' + re.escape(expected),  # Price
+            r'\b20' + re.escape(expected),  # Year 2049
+            r'<(?:td|th|li|span|div)[^>]*>\s*' + re.escape(expected) + r'\s*</(?:td|th|li|span|div)>',
+        ]
+
+        for pattern in false_positive_patterns:
+            if re.search(pattern, response_text, re.IGNORECASE):
+                return True
+
+        return False
 
 
 def get_module(module_path: str):

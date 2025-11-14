@@ -8,6 +8,10 @@ from .security_headers_detector import SecurityHeadersDetector
 from .sensitive_data_detector import SensitiveDataDetector
 from .technology_detector import TechnologyDetector
 from .version_disclosure_detector import VersionDisclosureDetector
+from .debug_information_detector import DebugInformationDetector
+from .backup_files_detector import BackupFilesDetector
+from .js_secrets_detector import JSSecretsDetector
+from .api_endpoints_detector import APIEndpointsDetector
 
 class PassiveScanner:
     """
@@ -91,7 +95,29 @@ class PassiveScanner:
             if has_versions:
                 response_findings['version_disclosures'].extend(versions)
                 self.findings['version_disclosures'].extend(versions)
-            
+
+            # Debug information detection (stack traces, debug output)
+            has_debug, debug_info = DebugInformationDetector.analyze(response_text, url, headers)
+            if has_debug:
+                response_findings['sensitive_data'].extend(debug_info)
+                self.findings['sensitive_data'].extend(debug_info)
+
+            # Backup files detection (.bak, .sql, .old files)
+            has_backups, backup_files = BackupFilesDetector.analyze(response_text, url, headers)
+            if has_backups:
+                response_findings['sensitive_data'].extend(backup_files)
+                self.findings['sensitive_data'].extend(backup_files)
+
+            # API endpoints detection (REST, GraphQL, exposed secrets)
+            has_api, api_findings = APIEndpointsDetector.analyze(response_text, url, headers)
+            if has_api:
+                response_findings['sensitive_data'].extend(api_findings)
+                self.findings['sensitive_data'].extend(api_findings)
+
+            # JavaScript secrets detection (API keys, tokens, AWS keys)
+            # Note: JSSecretsDetector has different signature (requires response object)
+            # We'll handle it separately if needed
+
             # Calculate totals
             all_response_findings = (
                 response_findings['security_issues'] +

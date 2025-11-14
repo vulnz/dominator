@@ -158,7 +158,7 @@ class PHPObjectInjectionModule(BaseModule):
                 break
 
         if error_found:
-            confidence = 0.80
+            confidence = 0.90
 
             # Higher confidence if multiple error indicators
             error_count = sum(1 for err in self.error_patterns if err in response_text)
@@ -179,7 +179,7 @@ class PHPObjectInjectionModule(BaseModule):
                 indicators_found.append(indicator)
 
         if len(indicators_found) >= 2:
-            confidence = 0.70
+            confidence = 0.85
 
             # Check if serialization format is reflected
             if 'O:' in payload and ('object(' in response_text or 'stdClass' in response_text):
@@ -190,29 +190,9 @@ class PHPObjectInjectionModule(BaseModule):
 
             return True, confidence, evidence
 
-        # METHOD 3: Behavior-based detection
-        # Check for significant response changes with valid vs invalid serialization
-
-        # If payload is valid serialization format
-        if self._is_valid_serialization(payload):
-            # Check for behavior change
-            length_diff = abs(response_length - baseline_length)
-
-            # If response is very different, might indicate deserialization
-            if length_diff > 100:
-                # Check if it's not just reflection
-                if payload not in response_text:
-                    confidence = 0.60
-
-                    # Check for PHP object patterns
-                    if re.search(r'object\([^\)]+\)', response_text, re.IGNORECASE):
-                        confidence = 0.75
-
-                    evidence = f"Application behavior changed significantly with serialized input. "
-                    evidence += f"Response length diff: {length_diff} bytes. "
-                    evidence += "May indicate deserialization processing."
-
-                    return True, confidence, evidence
+        # METHOD 3: DISABLED - Too many false positives
+        # Behavior-based detection is unreliable for PHP Object Injection
+        # Relying only on error-based (METHOD 1) and indicator-based (METHOD 2) detection
 
         # METHOD 4: Magic method execution detection
         # Check if magic methods like __wakeup, __destruct are triggered
