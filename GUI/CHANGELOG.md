@@ -1,5 +1,43 @@
 # GUI Changelog
 
+## v1.9.0 - Progress & Plan Tab + Scope Fix (2025-11-14)
+
+### ✨ New Features
+- **New "Progress & Plan" Tab** - Real-time scan progress monitoring with time estimates
+  - **Current Progress** section showing scan phase (Crawler, Passive Analysis, Active Scanning, Report Generation)
+  - **Time Estimates** with scan start time, elapsed time (HH:MM:SS), estimated remaining time, and estimated completion time
+  - **Scan Plan** table showing all selected modules with their status (Pending, Running, Complete, Failed) and progress percentage
+  - Live updates during scan with color-coded status indicators
+  - Auto-calculating time remaining based on actual progress
+
+- **Fixed Scope Tab Technology Detection**
+  - Now correctly parses passive scanner output format
+  - Detects technologies from `[PASSIVE] Detected technologies: X, Y, Z` lines
+  - Detects from passive summary: `Detected Technologies: X, Y`
+  - Prevents duplicate technology entries
+  - Real-time population during scans
+
+### 🔧 Technical Implementation
+**Progress & Plan Tab:**
+- `create_progress_tab()` - Creates 3-section layout with tables
+- `populate_scan_plan(command)` - Extracts modules from command and populates plan table
+- `update_time_display()` - QTimer callback updating elapsed/remaining time every second
+- `update_plan_status(module_name, status, progress)` - Updates module status in plan table
+- Timer starts on scan start, stops on scan finish
+- Progress estimates calculated from `progress_bar.value()`
+
+**Scope Tab Fix:**
+- Added passive technology detection regex patterns to `detect_scope_info()`
+- Pattern 1: `\[PASSIVE\]\s+Detected technologies:\s*(.+)` for real-time detection
+- Pattern 2: `^\s+Detected Technologies:\s*(.+)` for summary lines
+- Duplicate prevention using sets
+- Falls back to "Unknown" category if technology not in mapping
+
+### 📝 Commits
+- TBD
+
+---
+
 ## v1.8.0 - Theme System (2025-11-14)
 
 ### 🎨 Major Feature - 5 Color Themes

@@ -232,6 +232,33 @@ class ScanThread(QThread):
         """Detect technologies, page titles, and IP information"""
         import re
 
+        # Detect passive scanner technology detection output
+        # Format: "[PASSIVE] Detected technologies: Nginx, Nginx, PHP"
+        passive_tech_pattern = r'\[PASSIVE\]\s+Detected technologies:\s*(.+)'
+        passive_match = re.search(passive_tech_pattern, line, re.IGNORECASE)
+        if passive_match:
+            techs = passive_match.group(1).split(',')
+            seen_techs = set()  # Avoid duplicates
+            for tech in techs:
+                tech_name = tech.strip()
+                if tech_name and tech_name not in seen_techs:
+                    seen_techs.add(tech_name)
+                    category = self._get_tech_category(tech_name)
+                    self.scope_signal.emit("technology", tech_name, "", f"{category}|Passive Detection")
+
+        # Also detect from summary line: "Detected Technologies: PHP, Nginx"
+        summary_tech_pattern = r'^\s+Detected Technologies:\s*(.+)'
+        summary_match = re.search(summary_tech_pattern, line)
+        if summary_match:
+            techs = summary_match.group(1).split(',')
+            seen_techs = set()
+            for tech in techs:
+                tech_name = tech.strip()
+                if tech_name and tech_name not in seen_techs:
+                    seen_techs.add(tech_name)
+                    category = self._get_tech_category(tech_name)
+                    self.scope_signal.emit("technology", tech_name, "", f"{category}|Passive Summary")
+
         # Detect technologies from headers/responses
         tech_patterns = {
             'PHP': r'(?:X-Powered-By|Server).*PHP/([0-9.]+)',
@@ -348,6 +375,10 @@ class DominatorGUI(QMainWindow):
         # Output Tab
         output_tab = self.create_output_tab()
         self.tabs.addTab(output_tab, "Scan Output")
+
+        # Progress & Plan Tab
+        progress_tab = self.create_progress_tab()
+        self.tabs.addTab(progress_tab, "Progress & Plan")
 
         # Results Tab
         results_tab = self.create_results_tab()
@@ -1097,6 +1128,103 @@ class DominatorGUI(QMainWindow):
         clear_btn = QPushButton("Clear Output")
         clear_btn.clicked.connect(self.output_console.clear)
         layout.addWidget(clear_btn)
+
+        return widget
+
+    def create_progress_tab(self):
+        """Create Progress & Plan tab showing scan progress and time estimates"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        # Current Progress Section
+        progress_group = QGroupBox("Current Progress")
+        progress_layout = QVBoxLayout()
+
+        # Progress details table
+        self.progress_table = QTableWidget(0, 2)
+        self.progress_table.setHorizontalHeaderLabels(["Item", "Status"])
+        self.progress_table.horizontalHeader().setStretchLastSection(True)
+        self.progress_table.setStyleSheet("""
+            QTableWidget {
+                background-color: #1a1a1a;
+                color: white;
+                border: 1px solid #3a3a3a;
+                gridline-color: #3a3a3a;
+            }
+            QHeaderView::section {
+                background-color: #2a2a2a;
+                color: #00ff88;
+                padding: 5px;
+                border: 1px solid #3a3a3a;
+                font-weight: bold;
+            }
+        """)
+        progress_layout.addWidget(self.progress_table)
+
+        progress_group.setLayout(progress_layout)
+        layout.addWidget(progress_group)
+
+        # Time Estimates Section
+        time_group = QGroupBox("Time Estimates")
+        time_layout = QGridLayout()
+
+        time_layout.addWidget(QLabel("Scan Start:"), 0, 0)
+        self.scan_start_label = QLabel("Not started")
+        self.scan_start_label.setStyleSheet("color: #00ff88;")
+        time_layout.addWidget(self.scan_start_label, 0, 1)
+
+        time_layout.addWidget(QLabel("Elapsed Time:"), 1, 0)
+        self.elapsed_time_label = QLabel("00:00:00")
+        self.elapsed_time_label.setStyleSheet("color: #00ff88; font-weight: bold; font-size: 16px;")
+        time_layout.addWidget(self.elapsed_time_label, 1, 1)
+
+        time_layout.addWidget(QLabel("Estimated Remaining:"), 2, 0)
+        self.estimated_time_label = QLabel("Calculating...")
+        self.estimated_time_label.setStyleSheet("color: #ffaa00; font-weight: bold; font-size: 16px;")
+        time_layout.addWidget(self.estimated_time_label, 2, 1)
+
+        time_layout.addWidget(QLabel("Estimated Completion:"), 3, 0)
+        self.completion_time_label = QLabel("Calculating...")
+        self.completion_time_label.setStyleSheet("color: #00ff88;")
+        time_layout.addWidget(self.completion_time_label, 3, 1)
+
+        time_group.setLayout(time_layout)
+        layout.addWidget(time_group)
+
+        # Scan Plan Section
+        plan_group = QGroupBox("Scan Plan")
+        plan_layout = QVBoxLayout()
+
+        # Plan table: Module | Status | Progress
+        self.plan_table = QTableWidget(0, 3)
+        self.plan_table.setHorizontalHeaderLabels(["Module", "Status", "Progress"])
+        self.plan_table.horizontalHeader().setStretchLastSection(True)
+        self.plan_table.setColumnWidth(0, 250)
+        self.plan_table.setColumnWidth(1, 120)
+        self.plan_table.setStyleSheet("""
+            QTableWidget {
+                background-color: #1a1a1a;
+                color: white;
+                border: 1px solid #3a3a3a;
+                gridline-color: #3a3a3a;
+            }
+            QHeaderView::section {
+                background-color: #2a2a2a;
+                color: #00ff88;
+                padding: 5px;
+                border: 1px solid #3a3a3a;
+                font-weight: bold;
+            }
+        """)
+        plan_layout.addWidget(self.plan_table)
+
+        plan_group.setLayout(plan_layout)
+        layout.addWidget(plan_group)
+
+        # Initialize timer for elapsed time updates
+        self.scan_start_time = None
+        self.time_update_timer = QTimer()
+        self.time_update_timer.timeout.connect(self.update_time_display)
 
         return widget
 
@@ -1982,6 +2110,15 @@ class DominatorGUI(QMainWindow):
         self.tech_table.setRowCount(0)
         self.geo_table.setRowCount(0)
 
+        # Initialize Progress & Plan tab
+        import datetime
+        self.scan_start_time = datetime.datetime.now()
+        self.scan_start_label.setText(self.scan_start_time.strftime("%Y-%m-%d %H:%M:%S"))
+        self.time_update_timer.start(1000)  # Update every second
+
+        # Populate scan plan based on selected modules
+        self.populate_scan_plan(command)
+
         # Start scan thread
         self.scan_thread = ScanThread(command)
         self.scan_thread.output_signal.connect(self.append_output)
@@ -2019,6 +2156,9 @@ class DominatorGUI(QMainWindow):
         """Handle scan completion"""
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
+
+        # Stop time update timer
+        self.time_update_timer.stop()
 
         if return_code == 0:
             self.statusBar().showMessage("Scan completed successfully")
@@ -2642,6 +2782,131 @@ class DominatorGUI(QMainWindow):
         <p><b>License:</b> MIT</p>
         """
         QMessageBox.about(self, "About Dominator", about_text)
+
+    def populate_scan_plan(self, command):
+        """Populate the scan plan table based on command arguments"""
+        self.plan_table.setRowCount(0)
+        self.progress_table.setRowCount(0)
+
+        # Extract modules from command
+        modules = []
+        if "--all" in command:
+            # All 20 modules
+            modules = ["Command Injection", "CSRF", "Directory Brute Force", "DOM XSS", "Environment Files & API Keys",
+                      "File Upload", "Git Exposure", "IDOR", "LFI", "PHP Object Injection", "Open Redirect", "RFI",
+                      "SQL Injection", "SSRF", "SSTI", "Weak Credentials", "XPath Injection", "XSS", "XXE", "OOB Detection"]
+        elif "-m" in command:
+            # Specific modules
+            m_index = command.index("-m")
+            if m_index + 1 < len(command):
+                module_str = command[m_index + 1]
+                modules = [m.strip() for m in module_str.split(',')]
+
+        # Populate plan table
+        for module in modules:
+            row = self.plan_table.rowCount()
+            self.plan_table.insertRow(row)
+
+            name_item = QTableWidgetItem(module)
+            name_item.setForeground(QColor(255, 255, 255))
+
+            status_item = QTableWidgetItem("Pending")
+            status_item.setForeground(QColor(200, 200, 200))
+
+            progress_item = QTableWidgetItem("0%")
+            progress_item.setForeground(QColor(200, 200, 200))
+
+            self.plan_table.setItem(row, 0, name_item)
+            self.plan_table.setItem(row, 1, status_item)
+            self.plan_table.setItem(row, 2, progress_item)
+
+        # Add progress items
+        progress_items = [
+            ("Crawler", "Pending"),
+            ("Passive Analysis", "Pending"),
+            ("Active Scanning", "Pending"),
+            ("Report Generation", "Pending")
+        ]
+
+        for item, status in progress_items:
+            row = self.progress_table.rowCount()
+            self.progress_table.insertRow(row)
+
+            item_widget = QTableWidgetItem(item)
+            item_widget.setForeground(QColor(255, 255, 255))
+
+            status_widget = QTableWidgetItem(status)
+            status_widget.setForeground(QColor(200, 200, 200))
+
+            self.progress_table.setItem(row, 0, item_widget)
+            self.progress_table.setItem(row, 1, status_widget)
+
+    def update_time_display(self):
+        """Update elapsed time and estimates"""
+        if not self.scan_start_time:
+            return
+
+        import datetime
+        now = datetime.datetime.now()
+        elapsed = now - self.scan_start_time
+
+        # Format elapsed time as HH:MM:SS
+        hours = int(elapsed.total_seconds() // 3600)
+        minutes = int((elapsed.total_seconds() % 3600) // 60)
+        seconds = int(elapsed.total_seconds() % 60)
+        self.elapsed_time_label.setText(f"{hours:02d}:{minutes:02d}:{seconds:02d}")
+
+        # Calculate estimated remaining time based on progress
+        if hasattr(self, 'progress_bar') and self.progress_bar.value() > 0:
+            progress_pct = self.progress_bar.value() / 100.0
+            if progress_pct > 0:
+                estimated_total = elapsed.total_seconds() / progress_pct
+                remaining = estimated_total - elapsed.total_seconds()
+
+                if remaining > 0:
+                    rem_hours = int(remaining // 3600)
+                    rem_minutes = int((remaining % 3600) // 60)
+                    rem_seconds = int(remaining % 60)
+                    self.estimated_time_label.setText(f"{rem_hours:02d}:{rem_minutes:02d}:{rem_seconds:02d}")
+
+                    # Calculate completion time
+                    completion_time = now + datetime.timedelta(seconds=remaining)
+                    self.completion_time_label.setText(completion_time.strftime("%Y-%m-%d %H:%M:%S"))
+                else:
+                    self.estimated_time_label.setText("00:00:00")
+                    self.completion_time_label.setText("Now")
+            else:
+                self.estimated_time_label.setText("Calculating...")
+                self.completion_time_label.setText("Calculating...")
+        else:
+            self.estimated_time_label.setText("Calculating...")
+            self.completion_time_label.setText("Calculating...")
+
+    def update_plan_status(self, module_name, status, progress=None):
+        """Update module status in plan table"""
+        # Find module in plan table
+        for row in range(self.plan_table.rowCount()):
+            name_item = self.plan_table.item(row, 0)
+            if name_item and module_name.lower() in name_item.text().lower():
+                # Update status
+                status_item = QTableWidgetItem(status)
+                if status == "Running":
+                    status_item.setForeground(QColor(0, 255, 136))  # Green
+                elif status == "Complete":
+                    status_item.setForeground(QColor(0, 200, 255))  # Blue
+                elif status == "Failed":
+                    status_item.setForeground(QColor(255, 0, 85))  # Red
+                else:
+                    status_item.setForeground(QColor(200, 200, 200))  # Gray
+
+                self.plan_table.setItem(row, 1, status_item)
+
+                # Update progress
+                if progress is not None:
+                    progress_item = QTableWidgetItem(f"{progress}%")
+                    progress_item.setForeground(QColor(0, 255, 136))
+                    self.plan_table.setItem(row, 2, progress_item)
+                break
 
     def apply_theme(self, theme_id="hacker_green"):
         """Apply selected theme to the application"""
