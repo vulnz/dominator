@@ -2144,7 +2144,13 @@ class DominatorGUI(QMainWindow):
 
     def append_output(self, text):
         """Append text to output console"""
-        self.output_console.append(text)
+        # Strip ANSI color codes for clean display
+        import re
+        text_clean = re.sub(r'\x1b\[[0-9;]*m', '', text)
+        # Also strip any remaining [XXm patterns (colorama on Windows)
+        text_clean = re.sub(r'\[([0-9]{1,2}(;[0-9]{1,2})?)?m', '', text_clean)
+
+        self.output_console.append(text_clean)
         # Auto-scroll to bottom
         self.output_console.moveCursor(QTextCursor.End)
 
