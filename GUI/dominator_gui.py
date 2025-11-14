@@ -1074,51 +1074,95 @@ class DominatorGUI(QMainWindow):
         header_label.setStyleSheet("color: #00ff88; padding: 10px;")
         layout.addWidget(header_label)
 
-        # Module Selector
-        selector_group = QGroupBox("Select Module")
-        selector_layout = QHBoxLayout()
+        # Main horizontal splitter: Module list on left, editors on right
+        main_splitter = QSplitter(Qt.Horizontal)
 
-        selector_layout.addWidget(QLabel("Module:"))
-        self.module_selector = QComboBox()
+        # Left Panel: Module List
+        left_panel = QWidget()
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Populate with actual modules from modules/ directory
-        parent_dir = Path(__file__).parent.parent
-        modules_dir = parent_dir / "modules"
-        module_names = []
+        # Search/Filter bar
+        search_layout = QHBoxLayout()
+        search_label = QLabel("Search:")
+        search_label.setStyleSheet("color: #00ff88; font-weight: bold;")
+        search_layout.addWidget(search_label)
 
-        if modules_dir.exists():
-            for module_path in modules_dir.iterdir():
-                if module_path.is_dir() and not module_path.name.startswith('_'):
-                    module_names.append(module_path.name)
-
-        module_names.sort()
-        self.module_selector.addItems(module_names)
-        self.module_selector.setStyleSheet("""
-            QComboBox {
+        self.module_search = QLineEdit()
+        self.module_search.setPlaceholderText("Filter modules by name or description...")
+        self.module_search.setStyleSheet("""
+            QLineEdit {
                 background-color: #2a2a2a;
                 color: white;
                 border: 2px solid #3a3a3a;
                 border-radius: 4px;
                 padding: 8px;
-                min-width: 250px;
+            }
+            QLineEdit:focus {
+                border: 2px solid #00ff88;
             }
         """)
-        self.module_selector.currentTextChanged.connect(self.load_module_data)
-        selector_layout.addWidget(self.module_selector)
+        self.module_search.textChanged.connect(self.filter_modules)
+        search_layout.addWidget(self.module_search)
 
-        refresh_btn = QPushButton("🔄 Refresh Modules")
-        refresh_btn.clicked.connect(self.refresh_modules_list)
-        selector_layout.addWidget(refresh_btn)
+        refresh_btn = QPushButton("Refresh")
+        refresh_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2a2a2a;
+                color: #00ff88;
+                border: 2px solid #3a3a3a;
+                border-radius: 4px;
+                padding: 8px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #3a3a3a;
+                border-color: #00ff88;
+            }
+        """)
+        refresh_btn.clicked.connect(self.load_modules_list)
+        search_layout.addWidget(refresh_btn)
 
-        selector_layout.addStretch()
-        selector_group.setLayout(selector_layout)
-        layout.addWidget(selector_group)
+        left_layout.addLayout(search_layout)
 
-        # Split view: Config on left, Payloads on right
-        splitter = QSplitter(Qt.Horizontal)
+        # Module count label
+        self.module_count_label = QLabel("Modules: 0")
+        self.module_count_label.setStyleSheet("color: #888888; font-size: 10px; padding: 5px;")
+        left_layout.addWidget(self.module_count_label)
 
-        # Left: Module Configuration
-        config_group = QGroupBox("📋 Module Configuration (config.json)")
+        # Module list widget
+        self.module_list = QListWidget()
+        self.module_list.setStyleSheet("""
+            QListWidget {
+                background-color: #1a1a1a;
+                color: white;
+                border: 2px solid #3a3a3a;
+                border-radius: 4px;
+                outline: none;
+            }
+            QListWidget::item {
+                padding: 12px;
+                min-height: 70px;
+                border-bottom: 1px solid #2a2a2a;
+            }
+            QListWidget::item:hover {
+                background-color: #2a2a2a;
+            }
+            QListWidget::item:selected {
+                background-color: #00ff88;
+                color: black;
+            }
+        """)
+        self.module_list.itemClicked.connect(self.on_module_selected)
+        left_layout.addWidget(self.module_list)
+
+        main_splitter.addWidget(left_panel)
+
+        # Right Panel: Split view with Config on left, Payloads on right
+        right_splitter = QSplitter(Qt.Horizontal)
+
+        # Config Editor
+        config_group = QGroupBox("Module Configuration (config.json)")
         config_layout = QVBoxLayout()
 
         config_help = QLabel("View and edit module settings (name, severity, CWE, OWASP, etc.)")
@@ -1140,7 +1184,7 @@ class DominatorGUI(QMainWindow):
         config_layout.addWidget(self.module_config_editor)
 
         config_btn_layout = QHBoxLayout()
-        save_config_btn = QPushButton("💾 Save Config")
+        save_config_btn = QPushButton("Save Config")
         save_config_btn.setStyleSheet("""
             QPushButton {
                 background-color: #00ff88;
@@ -1156,18 +1200,18 @@ class DominatorGUI(QMainWindow):
         save_config_btn.clicked.connect(self.save_module_config)
         config_btn_layout.addWidget(save_config_btn)
 
-        reload_config_btn = QPushButton("↻ Reload")
-        reload_config_btn.clicked.connect(lambda: self.load_module_data(self.module_selector.currentText()))
+        reload_config_btn = QPushButton("Reload")
+        reload_config_btn.clicked.connect(self.reload_current_module)
         config_btn_layout.addWidget(reload_config_btn)
 
         config_btn_layout.addStretch()
         config_layout.addLayout(config_btn_layout)
 
         config_group.setLayout(config_layout)
-        splitter.addWidget(config_group)
+        right_splitter.addWidget(config_group)
 
-        # Right: Payloads
-        payloads_group = QGroupBox("💉 Module Payloads (payloads.txt)")
+        # Payloads Editor
+        payloads_group = QGroupBox("Module Payloads (payloads.txt)")
         payloads_layout = QVBoxLayout()
 
         payloads_help = QLabel("View and edit payloads used by this module (one per line)")
@@ -1195,7 +1239,7 @@ class DominatorGUI(QMainWindow):
         payloads_layout.addWidget(self.module_payloads_editor)
 
         payload_btn_layout = QHBoxLayout()
-        save_payloads_btn = QPushButton("💾 Save Payloads")
+        save_payloads_btn = QPushButton("Save Payloads")
         save_payloads_btn.setStyleSheet("""
             QPushButton {
                 background-color: #00ff88;
@@ -1211,11 +1255,11 @@ class DominatorGUI(QMainWindow):
         save_payloads_btn.clicked.connect(self.save_module_payloads)
         payload_btn_layout.addWidget(save_payloads_btn)
 
-        reload_payloads_btn = QPushButton("↻ Reload")
-        reload_payloads_btn.clicked.connect(lambda: self.load_module_data(self.module_selector.currentText()))
+        reload_payloads_btn = QPushButton("Reload")
+        reload_payloads_btn.clicked.connect(self.reload_current_module)
         payload_btn_layout.addWidget(reload_payloads_btn)
 
-        export_payloads_btn = QPushButton("📤 Export")
+        export_payloads_btn = QPushButton("Export")
         export_payloads_btn.clicked.connect(self.export_module_payloads)
         payload_btn_layout.addWidget(export_payloads_btn)
 
@@ -1223,14 +1267,17 @@ class DominatorGUI(QMainWindow):
         payloads_layout.addLayout(payload_btn_layout)
 
         payloads_group.setLayout(payloads_layout)
-        splitter.addWidget(payloads_group)
+        right_splitter.addWidget(payloads_group)
 
-        splitter.setSizes([400, 400])
-        layout.addWidget(splitter)
+        right_splitter.setSizes([400, 400])
+        main_splitter.addWidget(right_splitter)
 
-        # Load first module if available
-        if module_names:
-            self.load_module_data(module_names[0])
+        # Set splitter sizes: 300px for module list, rest for editors
+        main_splitter.setSizes([300, 700])
+        layout.addWidget(main_splitter)
+
+        # Load modules list
+        self.load_modules_list()
 
         return widget
 
@@ -2288,6 +2335,105 @@ class DominatorGUI(QMainWindow):
             self.update_vuln_display()
             self.output_console.append("[*] Results cleared")
 
+    def load_modules_list(self):
+        """Load and display all modules in the list"""
+        import json
+
+        self.module_list.clear()
+        parent_dir = Path(__file__).parent.parent
+        modules_dir = parent_dir / "modules"
+
+        if not modules_dir.exists():
+            return
+
+        module_data = []
+
+        # Scan modules directory
+        for module_path in modules_dir.iterdir():
+            if module_path.is_dir() and not module_path.name.startswith('_'):
+                config_file = module_path / "config.json"
+
+                # Load module metadata
+                module_name = "Unknown Module"
+                module_desc = "No description available"
+                severity = "Info"
+
+                if config_file.exists():
+                    try:
+                        with open(config_file, 'r', encoding='utf-8') as f:
+                            config = json.load(f)
+                            module_name = config.get('name', module_path.name)
+                            module_desc = config.get('description', 'No description')
+                            severity = config.get('severity', 'Info')
+                    except:
+                        module_name = module_path.name
+                else:
+                    module_name = module_path.name
+
+                module_data.append({
+                    'folder': module_path.name,
+                    'name': module_name,
+                    'description': module_desc,
+                    'severity': severity
+                })
+
+        # Sort by folder name
+        module_data.sort(key=lambda x: x['folder'])
+
+        # Add to list
+        for module in module_data:
+            # Create rich text display
+            severity_color = {
+                'Critical': '#ff0000',
+                'High': '#ff6600',
+                'Medium': '#ffaa00',
+                'Low': '#00ff00',
+                'Info': '#00aaff'
+            }.get(module['severity'], '#888888')
+
+            item_text = f"<b style='color: #00ff88; font-size: 12px;'>{module['name']}</b><br>" \
+                       f"<span style='color: #888888; font-size: 10px;'>{module['description'][:80]}{'...' if len(module['description']) > 80 else ''}</span><br>" \
+                       f"<span style='color: {severity_color}; font-size: 9px;'>● {module['severity']}</span> " \
+                       f"<span style='color: #555555; font-size: 9px;'>({module['folder']})</span>"
+
+            item = QListWidgetItem()
+            item.setText(item_text)
+            item.setData(Qt.UserRole, module['folder'])  # Store folder name
+            self.module_list.addItem(item)
+
+        self.module_count_label.setText(f"Modules: {len(module_data)}")
+
+        # Select first item if available
+        if module_data:
+            self.module_list.setCurrentRow(0)
+            self.on_module_selected(self.module_list.item(0))
+
+    def filter_modules(self):
+        """Filter modules list based on search text"""
+        search_text = self.module_search.text().lower()
+
+        visible_count = 0
+        for i in range(self.module_list.count()):
+            item = self.module_list.item(i)
+            item_text = item.text().lower()
+
+            # Check if search text is in item text
+            if search_text in item_text:
+                item.setHidden(False)
+                visible_count += 1
+            else:
+                item.setHidden(True)
+
+        self.module_count_label.setText(f"Modules: {visible_count}/{self.module_list.count()}")
+
+    def on_module_selected(self, item):
+        """Handle module selection from list"""
+        if not item:
+            return
+
+        module_folder = item.data(Qt.UserRole)
+        self.load_module_data(module_folder)
+
     def load_module_data(self, module_name):
         """Load module configuration and payloads"""
         if not module_name:
@@ -2328,11 +2474,12 @@ class DominatorGUI(QMainWindow):
 
     def save_module_config(self):
         """Save module configuration"""
-        module_name = self.module_selector.currentText()
-        if not module_name:
+        current_item = self.module_list.currentItem()
+        if not current_item:
             QMessageBox.warning(self, "No Module", "Please select a module first")
             return
 
+        module_name = current_item.data(Qt.UserRole)
         parent_dir = Path(__file__).parent.parent
         config_file = parent_dir / "modules" / module_name / "config.json"
 
@@ -2354,11 +2501,12 @@ class DominatorGUI(QMainWindow):
 
     def save_module_payloads(self):
         """Save module payloads"""
-        module_name = self.module_selector.currentText()
-        if not module_name:
+        current_item = self.module_list.currentItem()
+        if not current_item:
             QMessageBox.warning(self, "No Module", "Please select a module first")
             return
 
+        module_name = current_item.data(Qt.UserRole)
         parent_dir = Path(__file__).parent.parent
         payloads_file = parent_dir / "modules" / module_name / "payloads.txt"
 
@@ -2372,10 +2520,11 @@ class DominatorGUI(QMainWindow):
 
     def export_module_payloads(self):
         """Export module payloads to external file"""
-        module_name = self.module_selector.currentText()
-        if not module_name:
+        current_item = self.module_list.currentItem()
+        if not current_item:
             return
 
+        module_name = current_item.data(Qt.UserRole)
         filename, _ = QFileDialog.getSaveFileName(
             self, "Export Payloads", f"{module_name}_payloads.txt", "Text Files (*.txt);;All Files (*)"
         )
@@ -2387,27 +2536,12 @@ class DominatorGUI(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to export:\n{e}")
 
-    def refresh_modules_list(self):
-        """Refresh the modules list"""
-        parent_dir = Path(__file__).parent.parent
-        modules_dir = parent_dir / "modules"
-        module_names = []
-
-        if modules_dir.exists():
-            for module_path in modules_dir.iterdir():
-                if module_path.is_dir() and not module_path.name.startswith('_'):
-                    module_names.append(module_path.name)
-
-        module_names.sort()
-
-        current = self.module_selector.currentText()
-        self.module_selector.clear()
-        self.module_selector.addItems(module_names)
-
-        if current in module_names:
-            self.module_selector.setCurrentText(current)
-
-        self.statusBar().showMessage(f"Refreshed {len(module_names)} modules")
+    def reload_current_module(self):
+        """Reload the currently selected module's data"""
+        current_item = self.module_list.currentItem()
+        if current_item:
+            module_name = current_item.data(Qt.UserRole)
+            self.load_module_data(module_name)
 
     def update_payload_stats(self):
         """Update payload statistics"""

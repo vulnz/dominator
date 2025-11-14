@@ -1,5 +1,47 @@
 # GUI Changelog
 
+## v1.7.0 - Fancy Module List View (2025-11-14)
+
+### ✨ Major UI Redesign - Modules Tab
+- **Replaced dropdown with fancy list view** showing all modules at once
+- **Display full module names** from config.json instead of folder names
+- **Show module descriptions** (80 chars preview) for each module
+- **Color-coded severity indicators** - Critical (red), High (orange), Medium (yellow), Low (green), Info (blue)
+- **3-panel layout**: Module list (left), Config editor (center), Payloads editor (right)
+- **Live search/filter** - Filter modules by name or description in real-time
+- **Module counter** - Shows "Modules: X/Total" with search results
+- **Rich text display** - Each module shows:
+  - Full name in bold green
+  - Description preview in gray
+  - Severity badge with color coding
+  - Folder name in small text
+
+### 🎨 UI Improvements
+- Resizable split-view panels for customizable workspace
+- Hover effects on module list items
+- Selected module highlighted in green (#00ff88)
+- Search bar with focus highlighting
+- Auto-selects first module on load
+- Removed emojis from Modules tab buttons for consistency
+
+### 📝 Technical Details
+**New Methods:**
+- `load_modules_list()` - Loads all modules with metadata from config.json
+- `filter_modules()` - Real-time filtering based on search text
+- `on_module_selected()` - Handles module selection from list
+- `reload_current_module()` - Reloads currently selected module data
+
+**Updated Methods:**
+- `create_modules_tab()` - Complete redesign with QListWidget
+- `save_module_config()` - Now uses list item instead of dropdown
+- `save_module_payloads()` - Now uses list item instead of dropdown
+- `export_module_payloads()` - Now uses list item instead of dropdown
+
+### 📝 Commits
+- (pending) - feat: Redesign Modules tab with fancy list view and full module info
+
+---
+
 ## v1.4.2 - Forbidden Paths Feature (2025-11-14)
 
 ### ✨ New Feature
