@@ -13,6 +13,12 @@ from .backup_files_detector import BackupFilesDetector
 from .js_secrets_detector import JSSecretsDetector
 from .api_endpoints_detector import APIEndpointsDetector
 
+# CRITICAL FIX: Import PasswordOverHTTPDetector (was missing!)
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from detectors.password_over_http_detector import PasswordOverHTTPDetector
+
 class PassiveScanner:
     """
     Unified passive scanner that coordinates all passive detectors
@@ -117,6 +123,27 @@ class PassiveScanner:
             # JavaScript secrets detection (API keys, tokens, AWS keys)
             # Note: JSSecretsDetector has different signature (requires response object)
             # We'll handle it separately if needed
+
+            # CRITICAL FIX: Password over HTTP detection (HIGH severity vuln!)
+            # This detector was implemented but NEVER called - now integrated!
+            response_code = headers.get('status_code', 200) if isinstance(headers.get('status_code'), int) else 200
+            is_vuln, evidence, forms_found = PasswordOverHTTPDetector.detect_password_over_http(
+                url, response_text, response_code
+            )
+            if is_vuln:
+                password_finding = {
+                    'type': 'Password Transmitted over HTTP',
+                    'severity': 'High',
+                    'url': url,
+                    'description': 'Password field detected on HTTP (non-encrypted) page. Credentials can be intercepted.',
+                    'evidence': PasswordOverHTTPDetector.get_evidence(forms_found),
+                    'remediation': PasswordOverHTTPDetector.get_remediation_advice(),
+                    'cwe': 'CWE-319',
+                    'owasp': 'A02:2021 - Cryptographic Failures',
+                    'cvss': '7.5'
+                }
+                response_findings['security_issues'].append(password_finding)
+                self.findings['security_issues'].append(password_finding)
 
             # Calculate totals
             all_response_findings = (

