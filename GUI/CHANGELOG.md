@@ -38,7 +38,7 @@
 - `export_module_payloads()` - Now uses list item instead of dropdown
 
 ### 📝 Commits
-- (pending) - feat: Redesign Modules tab with fancy list view and full module info
+- `8ef1575` - feat: Redesign Modules tab with fancy list view and full module info
 
 ---
 
