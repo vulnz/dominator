@@ -1,5 +1,54 @@
 # GUI Changelog
 
+## v1.1.2 - Vulnerability Detection Fix (2025-11-14)
+
+### 🐛 Critical Fix
+- **FIXED: Results tab showing empty** during scans - vulnerabilities weren't being detected
+- **Root Cause**: Parser was looking for wrong output format (`[HIGH]`, `[CRITICAL]` tags that don't exist)
+- **Solution**: Updated parser to detect actual scanner output format
+- **Impact**: Results tab now shows vulnerabilities in real-time with correct severity colors
+
+### 📝 Technical Details
+The scanner outputs vulnerabilities in this format:
+```
+✓ Found: http://example.com/vuln.php (HTTP 200)
+Critical Severity (2):
+[SQL Injection]
+  URL: http://example.com/login.php?id=1
+```
+
+**Previous Parser** was looking for:
+- `[HIGH]`, `[CRITICAL]`, `[MEDIUM]` tags in output ❌
+- `Found vulnerability:` messages ❌
+
+**New Parser** correctly detects:
+- ✅ ANSI color codes stripped (`[32mINFO[0m` → `INFO`)
+- ✅ `✓ Found:` messages (actual vulnerability detection)
+- ✅ Severity section headers (`Critical Severity (5):`)
+- ✅ Vulnerability type lines (`[SQL Injection]`)
+- ✅ `Total vulnerabilities:` summary line
+
+### 📊 Before vs After
+**Before** (v1.1.1):
+```
+Results Tab: Empty (no vulnerabilities detected)
+Status Bar: 0 vulnerabilities
+```
+
+**After** (v1.1.2):
+```
+Results Tab:
+  [CRITICAL] [SQL Injection]
+  [HIGH] ✓ Found: /admin/config.php
+  [MEDIUM] [Open Redirect]
+Status Bar: Scan running... | 8/20 modules | 3 vulnerabilities
+```
+
+### 📝 Commits
+- `9116d82` - fix: GUI now correctly detects and displays vulnerabilities
+
+---
+
 ## v1.1.1 - Critical Bug Fix (2025-11-14)
 
 ### 🐛 Critical Fix
