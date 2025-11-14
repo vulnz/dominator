@@ -1,5 +1,30 @@
 # GUI Changelog
 
+## v1.8.0 - Theme System (2025-11-14)
+
+### 🎨 Major Feature - 5 Color Themes
+- **New Themes menu** in menu bar with 5 stunning color themes
+- **Hacker Green** (default) - Classic terminal green (#00ff88)
+- **Cyber Blue** - Futuristic cyan blue (#00d4ff)
+- **Purple Haze** - Royal purple aesthetic (#c77dff)
+- **Blood Red** - Aggressive red accent (#ff0055)
+- **Matrix** - Pure black with matrix green (#00ff00)
+- **Real-time theme switching** - changes apply instantly
+- **Checkable menu items** - shows current active theme
+
+### 🔧 Technical Implementation
+- Refactored `apply_dark_theme()` to `apply_theme(theme_id)`
+- Dynamic stylesheet generation using f-strings
+- Theme configurations stored in dict with bg_main, bg_alt, bg_input, bg_button, accent colors
+- All UI elements update colors: buttons, inputs, tabs, checkboxes, group boxes
+- QPalette + QStyleSheet for complete theming
+- Added `QActionGroup` for exclusive theme selection
+
+### 📝 Commits
+- (pending) - feat: Add 5 color themes with theme switcher menu
+
+---
+
 ## v1.7.1 - UI Polish & Dynamic Auth Fields (2025-11-14)
 
 ### 🎨 UI Improvements

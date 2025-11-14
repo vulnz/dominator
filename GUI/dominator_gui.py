@@ -22,7 +22,7 @@ try:
         QGroupBox, QGridLayout, QTabWidget, QFileDialog, QSpinBox,
         QProgressBar, QListWidget, QSplitter, QScrollArea, QFrame, QMessageBox,
         QListWidgetItem, QMenuBar, QAction, QMenu, QTableWidget, QTableWidgetItem,
-        QHeaderView, QAbstractItemView
+        QHeaderView, QAbstractItemView, QActionGroup
     )
     from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl
     from PyQt5.QtGui import QFont, QColor, QPalette, QIcon, QTextCursor, QDesktopServices
@@ -308,7 +308,7 @@ class DominatorGUI(QMainWindow):
         self.scan_thread = None
         self.vuln_counts = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0}
         self.init_ui()
-        self.apply_dark_theme()
+        self.apply_theme("hacker_green")  # Default theme
 
     def init_ui(self):
         """Initialize the user interface"""
@@ -483,16 +483,43 @@ class DominatorGUI(QMainWindow):
         view_modules_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(7))
         view_menu.addAction(view_modules_tab_action)
 
-        # Help menu
-        help_menu = menubar.addMenu("❓ Help")
+        # Themes menu
+        themes_menu = menubar.addMenu("Themes")
 
-        docs_action = QAction("📖 Documentation", self)
+        self.theme_group = QActionGroup(self)
+        self.theme_group.setExclusive(True)
+
+        # Define themes with checkable actions
+        themes = [
+            ("Hacker Green", "hacker_green"),
+            ("Cyber Blue", "cyber_blue"),
+            ("Purple Haze", "purple_haze"),
+            ("Blood Red", "blood_red"),
+            ("Matrix", "matrix")
+        ]
+
+        for theme_name, theme_id in themes:
+            theme_action = QAction(theme_name, self)
+            theme_action.setCheckable(True)
+            theme_action.setData(theme_id)
+            theme_action.triggered.connect(lambda checked, tid=theme_id: self.apply_theme(tid))
+            self.theme_group.addAction(theme_action)
+            themes_menu.addAction(theme_action)
+
+            # Set Hacker Green as default
+            if theme_id == "hacker_green":
+                theme_action.setChecked(True)
+
+        # Help menu
+        help_menu = menubar.addMenu("Help")
+
+        docs_action = QAction("Documentation", self)
         docs_action.triggered.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/vulnz/dominator")))
         help_menu.addAction(docs_action)
 
         help_menu.addSeparator()
 
-        about_action = QAction("ℹ️ About Dominator", self)
+        about_action = QAction("About Dominator", self)
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
 
@@ -2616,147 +2643,196 @@ class DominatorGUI(QMainWindow):
         """
         QMessageBox.about(self, "About Dominator", about_text)
 
-    def apply_dark_theme(self):
-        """Apply dark theme to the application"""
-        dark_palette = QPalette()
+    def apply_theme(self, theme_id="hacker_green"):
+        """Apply selected theme to the application"""
 
-        # Window colors
-        dark_palette.setColor(QPalette.Window, QColor(26, 26, 26))
-        dark_palette.setColor(QPalette.WindowText, Qt.white)
-        dark_palette.setColor(QPalette.Base, QColor(35, 35, 35))
-        dark_palette.setColor(QPalette.AlternateBase, QColor(45, 45, 45))
-        dark_palette.setColor(QPalette.ToolTipBase, Qt.white)
-        dark_palette.setColor(QPalette.ToolTipText, Qt.white)
-        dark_palette.setColor(QPalette.Text, Qt.white)
-        dark_palette.setColor(QPalette.Button, QColor(45, 45, 45))
-        dark_palette.setColor(QPalette.ButtonText, Qt.white)
-        dark_palette.setColor(QPalette.BrightText, Qt.red)
-        dark_palette.setColor(QPalette.Link, QColor(0, 255, 136))
-        dark_palette.setColor(QPalette.Highlight, QColor(0, 255, 136))
-        dark_palette.setColor(QPalette.HighlightedText, Qt.black)
+        # Theme configurations: (bg_main, bg_alt, accent_color, accent_name)
+        themes = {
+            "hacker_green": {
+                "bg_main": "#1a1a1a",
+                "bg_alt": "#2a2a2a",
+                "bg_input": "#2a2a2a",
+                "bg_button": "#3a3a3a",
+                "accent": "#00ff88",
+                "accent_rgb": "0, 255, 136"
+            },
+            "cyber_blue": {
+                "bg_main": "#0a0a1a",
+                "bg_alt": "#1a1a2a",
+                "bg_input": "#1a1a2a",
+                "bg_button": "#2a2a3a",
+                "accent": "#00d4ff",
+                "accent_rgb": "0, 212, 255"
+            },
+            "purple_haze": {
+                "bg_main": "#1a0a1a",
+                "bg_alt": "#2a1a2a",
+                "bg_input": "#2a1a2a",
+                "bg_button": "#3a2a3a",
+                "accent": "#c77dff",
+                "accent_rgb": "199, 125, 255"
+            },
+            "blood_red": {
+                "bg_main": "#1a0a0a",
+                "bg_alt": "#2a1a1a",
+                "bg_input": "#2a1a1a",
+                "bg_button": "#3a2a2a",
+                "accent": "#ff0055",
+                "accent_rgb": "255, 0, 85"
+            },
+            "matrix": {
+                "bg_main": "#000000",
+                "bg_alt": "#0d0d0d",
+                "bg_input": "#0d0d0d",
+                "bg_button": "#1a1a1a",
+                "accent": "#00ff00",
+                "accent_rgb": "0, 255, 0"
+            }
+        }
 
-        self.setPalette(dark_palette)
+        theme = themes.get(theme_id, themes["hacker_green"])
 
-        # Additional stylesheet
-        self.setStyleSheet("""
-            QMainWindow {
-                background-color: #1a1a1a;
+        # Apply palette
+        palette = QPalette()
+        palette.setColor(QPalette.Window, QColor(theme["bg_main"]))
+        palette.setColor(QPalette.WindowText, Qt.white)
+        palette.setColor(QPalette.Base, QColor(theme["bg_input"]))
+        palette.setColor(QPalette.AlternateBase, QColor(theme["bg_alt"]))
+        palette.setColor(QPalette.ToolTipBase, Qt.white)
+        palette.setColor(QPalette.ToolTipText, Qt.white)
+        palette.setColor(QPalette.Text, Qt.white)
+        palette.setColor(QPalette.Button, QColor(theme["bg_button"]))
+        palette.setColor(QPalette.ButtonText, Qt.white)
+        palette.setColor(QPalette.BrightText, Qt.red)
+        palette.setColor(QPalette.Link, QColor(theme["accent"]))
+        palette.setColor(QPalette.Highlight, QColor(theme["accent"]))
+        palette.setColor(QPalette.HighlightedText, Qt.black)
+
+        self.setPalette(palette)
+
+        # Store current theme for dynamic elements
+        self.current_theme = theme
+
+        # Additional stylesheet with theme colors
+        self.setStyleSheet(f"""
+            QMainWindow {{
+                background-color: {theme['bg_main']};
                 color: white;
-            }
-            QWidget {
+            }}
+            QWidget {{
                 color: white;
-            }
-            QLabel {
+            }}
+            QLabel {{
                 color: white;
-            }
-            QGroupBox {
+            }}
+            QGroupBox {{
                 font-weight: bold;
-                border: 2px solid #3a3a3a;
+                border: 2px solid {theme['bg_button']};
                 border-radius: 8px;
                 margin-top: 10px;
                 padding: 15px;
-                color: #00ff88;
-            }
-            QGroupBox::title {
+                color: {theme['accent']};
+            }}
+            QGroupBox::title {{
                 subcontrol-origin: margin;
                 subcontrol-position: top left;
                 padding: 5px 10px;
-                color: #00ff88;
-            }
-            QPushButton {
-                background-color: #3a3a3a;
+                color: {theme['accent']};
+            }}
+            QPushButton {{
+                background-color: {theme['bg_button']};
                 color: white;
                 border: none;
                 padding: 8px 15px;
                 border-radius: 4px;
                 font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #4a4a4a;
-            }
-            QPushButton:pressed {
-                background-color: #2a2a2a;
-            }
-            QLineEdit, QSpinBox, QComboBox {
-                background-color: #2a2a2a;
-                border: 2px solid #3a3a3a;
+            }}
+            QPushButton:hover {{
+                background-color: {theme['bg_alt']};
+            }}
+            QPushButton:pressed {{
+                background-color: {theme['bg_input']};
+            }}
+            QLineEdit, QSpinBox, QComboBox {{
+                background-color: {theme['bg_input']};
+                border: 2px solid {theme['bg_button']};
                 border-radius: 4px;
                 padding: 6px;
                 color: white;
-            }
-            QLineEdit:focus, QSpinBox:focus, QComboBox:focus {
-                border: 2px solid #00ff88;
-            }
-            QComboBox::drop-down {
+            }}
+            QLineEdit:focus, QSpinBox:focus, QComboBox:focus {{
+                border: 2px solid {theme['accent']};
+            }}
+            QComboBox::drop-down {{
                 border: none;
-                background-color: #3a3a3a;
-            }
-            QComboBox::down-arrow {
+                background-color: {theme['bg_button']};
+            }}
+            QComboBox::down-arrow {{
                 image: none;
                 border-left: 5px solid transparent;
                 border-right: 5px solid transparent;
                 border-top: 5px solid white;
                 margin-right: 5px;
-            }
-            QComboBox QAbstractItemView {
-                background-color: #2a2a2a;
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {theme['bg_input']};
                 color: white;
-                selection-background-color: #00ff88;
+                selection-background-color: {theme['accent']};
                 selection-color: black;
-                border: 2px solid #3a3a3a;
-            }
-            QSpinBox::up-button, QSpinBox::down-button {
-                background-color: #3a3a3a;
+                border: 2px solid {theme['bg_button']};
+            }}
+            QSpinBox::up-button, QSpinBox::down-button {{
+                background-color: {theme['bg_button']};
                 border: none;
-            }
-            QSpinBox::up-arrow, QSpinBox::down-arrow {
+            }}
+            QSpinBox::up-arrow, QSpinBox::down-arrow {{
                 width: 7px;
                 height: 7px;
-            }
-            QCheckBox {
+            }}
+            QCheckBox {{
                 spacing: 8px;
                 color: white;
-            }
-            QCheckBox::indicator {
+            }}
+            QCheckBox::indicator {{
                 width: 18px;
                 height: 18px;
-                border: 2px solid #3a3a3a;
+                border: 2px solid {theme['bg_button']};
                 border-radius: 3px;
-                background-color: #2a2a2a;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #00ff88;
-                border-color: #00ff88;
-            }
-            QTabWidget::pane {
-                border: 2px solid #3a3a3a;
+                background-color: {theme['bg_input']};
+            }}
+            QCheckBox::indicator:checked {{
+                background-color: {theme['accent']};
+                border-color: {theme['accent']};
+            }}
+            QTabWidget::pane {{
+                border: 2px solid {theme['bg_button']};
                 border-radius: 4px;
-                background-color: #1a1a1a;
-            }
-            QTabBar::tab {
-                background-color: #2a2a2a;
+                background-color: {theme['bg_main']};
+            }}
+            QTabBar::tab {{
+                background-color: {theme['bg_alt']};
                 color: white;
                 padding: 10px 20px;
-                border: 2px solid #3a3a3a;
+                border: 2px solid {theme['bg_button']};
                 border-bottom: none;
                 border-top-left-radius: 4px;
                 border-top-right-radius: 4px;
                 margin-right: 2px;
-            }
-            QTabBar::tab:selected {
-                background-color: #1a1a1a;
-                color: #00ff88;
-                border-bottom: 2px solid #00ff88;
-            }
-            QTabBar::tab:hover {
-                background-color: #3a3a3a;
-            }
-            QTextEdit {
+            }}
+            QTabBar::tab:selected {{
+                background-color: {theme['bg_main']};
+                color: {theme['accent']};
+                border-bottom: 2px solid {theme['accent']};
+            }}
+            QTabBar::tab:hover {{
+                background-color: {theme['bg_button']};
+            }}
+            QTextEdit {{
                 color: white;
-            }
-            QListWidget {
+            }}
+            QListWidget {{
                 color: white;
-            }
+            }}
         """)
 
 
