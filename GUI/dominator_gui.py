@@ -716,7 +716,7 @@ class DominatorGUI(QMainWindow):
         layout.addWidget(rotation9_group)
 
         # Authentication
-        auth_group = QGroupBox("🔐 Authentication")
+        auth_group = QGroupBox("Authentication")
         auth_layout = QGridLayout()
 
         auth_layout.addWidget(QLabel("Auth Type:"), 0, 0)
@@ -735,39 +735,49 @@ class DominatorGUI(QMainWindow):
         auth_layout.addWidget(self.auth_type_combo, 0, 1, 1, 3)
 
         # Username (for Basic, Digest, NTLM)
-        auth_layout.addWidget(QLabel("Username:"), 1, 0)
+        self.auth_username_label = QLabel("Username:")
+        auth_layout.addWidget(self.auth_username_label, 1, 0)
         self.auth_username = QLineEdit()
         self.auth_username.setPlaceholderText("Username for authentication")
-        self.auth_username.setEnabled(False)
         auth_layout.addWidget(self.auth_username, 1, 1, 1, 3)
 
         # Password (for Basic, Digest, NTLM)
-        auth_layout.addWidget(QLabel("Password:"), 2, 0)
+        self.auth_password_label = QLabel("Password:")
+        auth_layout.addWidget(self.auth_password_label, 2, 0)
         self.auth_password = QLineEdit()
         self.auth_password.setPlaceholderText("Password for authentication")
         self.auth_password.setEchoMode(QLineEdit.Password)
-        self.auth_password.setEnabled(False)
         auth_layout.addWidget(self.auth_password, 2, 1, 1, 3)
 
         # Token/API Key (for Bearer, API Key, OAuth)
-        auth_layout.addWidget(QLabel("Token/Key:"), 3, 0)
+        self.auth_token_label = QLabel("Token/Key:")
+        auth_layout.addWidget(self.auth_token_label, 3, 0)
         self.auth_token = QLineEdit()
         self.auth_token.setPlaceholderText("Bearer token, API key, or OAuth token")
-        self.auth_token.setEnabled(False)
         auth_layout.addWidget(self.auth_token, 3, 1, 1, 3)
 
         # Custom header name (for API Key, Custom Header)
-        auth_layout.addWidget(QLabel("Header Name:"), 4, 0)
+        self.auth_header_name_label = QLabel("Header Name:")
+        auth_layout.addWidget(self.auth_header_name_label, 4, 0)
         self.auth_header_name = QLineEdit()
         self.auth_header_name.setPlaceholderText("e.g., X-API-Key, Authorization")
-        self.auth_header_name.setEnabled(False)
         auth_layout.addWidget(self.auth_header_name, 4, 1, 1, 3)
+
+        # Hide all fields initially
+        self.auth_username_label.hide()
+        self.auth_username.hide()
+        self.auth_password_label.hide()
+        self.auth_password.hide()
+        self.auth_token_label.hide()
+        self.auth_token.hide()
+        self.auth_header_name_label.hide()
+        self.auth_header_name.hide()
 
         auth_group.setLayout(auth_layout)
         layout.addWidget(auth_group)
 
         # HTTP Configuration
-        http_group = QGroupBox("🌐 HTTP Configuration")
+        http_group = QGroupBox("HTTP Configuration")
         http_layout = QGridLayout()
 
         http_layout.addWidget(QLabel("Custom Headers:"), 0, 0)
@@ -785,7 +795,7 @@ class DominatorGUI(QMainWindow):
         layout.addWidget(http_group)
 
         # Crawler Settings
-        crawler_group = QGroupBox("🕷️ Crawler Settings")
+        crawler_group = QGroupBox("Crawler Settings")
         crawler_layout = QGridLayout()
 
         crawler_layout.addWidget(QLabel("Max Crawl Pages:"), 0, 0)
@@ -1067,12 +1077,7 @@ class DominatorGUI(QMainWindow):
         """Create modules tab for viewing/editing module configs and payloads"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
-
-        # Header
-        header_label = QLabel("Module Configuration & Payload Management")
-        header_label.setFont(QFont("Arial", 14, QFont.Bold))
-        header_label.setStyleSheet("color: #00ff88; padding: 10px;")
-        layout.addWidget(header_label)
+        layout.setContentsMargins(5, 5, 5, 5)  # Compact margins
 
         # Main horizontal splitter: Module list on left, editors on right
         main_splitter = QSplitter(Qt.Horizontal)
@@ -1089,14 +1094,14 @@ class DominatorGUI(QMainWindow):
         search_layout.addWidget(search_label)
 
         self.module_search = QLineEdit()
-        self.module_search.setPlaceholderText("Filter modules by name or description...")
+        self.module_search.setPlaceholderText("Filter modules...")
         self.module_search.setStyleSheet("""
             QLineEdit {
                 background-color: #2a2a2a;
                 color: white;
                 border: 2px solid #3a3a3a;
                 border-radius: 4px;
-                padding: 8px;
+                padding: 5px;
             }
             QLineEdit:focus {
                 border: 2px solid #00ff88;
@@ -1112,7 +1117,7 @@ class DominatorGUI(QMainWindow):
                 color: #00ff88;
                 border: 2px solid #3a3a3a;
                 border-radius: 4px;
-                padding: 8px;
+                padding: 5px 10px;
                 font-weight: bold;
             }
             QPushButton:hover {
@@ -1743,29 +1748,49 @@ class DominatorGUI(QMainWindow):
                 QMessageBox.critical(self, "Error", f"Failed to save payloads:\n{e}")
 
     def on_auth_type_changed(self, auth_type):
-        """Handle authentication type change"""
-        # Disable all fields first
-        self.auth_username.setEnabled(False)
-        self.auth_password.setEnabled(False)
-        self.auth_token.setEnabled(False)
-        self.auth_header_name.setEnabled(False)
+        """Handle authentication type change - hide/show fields dynamically"""
+        # Hide all fields first
+        self.auth_username_label.hide()
+        self.auth_username.hide()
+        self.auth_password_label.hide()
+        self.auth_password.hide()
+        self.auth_token_label.hide()
+        self.auth_token.hide()
+        self.auth_header_name_label.hide()
+        self.auth_header_name.hide()
 
-        # Enable fields based on auth type
+        # Show only relevant fields based on auth type
         if auth_type in ["Basic Auth", "Digest Auth", "NTLM Auth"]:
-            self.auth_username.setEnabled(True)
-            self.auth_password.setEnabled(True)
+            self.auth_username_label.show()
+            self.auth_username.show()
+            self.auth_password_label.show()
+            self.auth_password.show()
         elif auth_type == "Bearer Token":
-            self.auth_token.setEnabled(True)
+            self.auth_token_label.setText("Bearer Token:")
+            self.auth_token.setPlaceholderText("Enter bearer token")
+            self.auth_token_label.show()
+            self.auth_token.show()
         elif auth_type == "API Key":
-            self.auth_token.setEnabled(True)
-            self.auth_header_name.setEnabled(True)
+            self.auth_token_label.setText("API Key:")
+            self.auth_token.setPlaceholderText("Enter API key value")
+            self.auth_token_label.show()
+            self.auth_token.show()
             self.auth_header_name.setPlaceholderText("e.g., X-API-Key")
+            self.auth_header_name_label.show()
+            self.auth_header_name.show()
         elif auth_type == "OAuth 2.0":
-            self.auth_token.setEnabled(True)
+            self.auth_token_label.setText("OAuth Token:")
+            self.auth_token.setPlaceholderText("Enter OAuth 2.0 token")
+            self.auth_token_label.show()
+            self.auth_token.show()
         elif auth_type == "Custom Header":
-            self.auth_token.setEnabled(True)
-            self.auth_header_name.setEnabled(True)
             self.auth_header_name.setPlaceholderText("e.g., X-Custom-Auth")
+            self.auth_header_name_label.show()
+            self.auth_header_name.show()
+            self.auth_token_label.setText("Header Value:")
+            self.auth_token.setPlaceholderText("Enter header value")
+            self.auth_token_label.show()
+            self.auth_token.show()
 
     def build_command(self):
         """Build the scanner command"""
@@ -2382,23 +2407,34 @@ class DominatorGUI(QMainWindow):
 
         # Add to list
         for module in module_data:
-            # Create rich text display
-            severity_color = {
-                'Critical': '#ff0000',
-                'High': '#ff6600',
-                'Medium': '#ffaa00',
-                'Low': '#00ff00',
-                'Info': '#00aaff'
-            }.get(module['severity'], '#888888')
+            # Create plain text display (QListWidget doesn't render HTML properly)
+            severity_icon = {
+                'Critical': '●',
+                'High': '●',
+                'Medium': '●',
+                'Low': '●',
+                'Info': '●'
+            }.get(module['severity'], '●')
 
-            item_text = f"<b style='color: #00ff88; font-size: 12px;'>{module['name']}</b><br>" \
-                       f"<span style='color: #888888; font-size: 10px;'>{module['description'][:80]}{'...' if len(module['description']) > 80 else ''}</span><br>" \
-                       f"<span style='color: {severity_color}; font-size: 9px;'>● {module['severity']}</span> " \
-                       f"<span style='color: #555555; font-size: 9px;'>({module['folder']})</span>"
+            # Format: Name | Description | [Severity] (folder)
+            desc_preview = module['description'][:60] + '...' if len(module['description']) > 60 else module['description']
+            item_text = f"{module['name']}\n{desc_preview}\n{severity_icon} {module['severity']} | {module['folder']}"
 
-            item = QListWidgetItem()
-            item.setText(item_text)
+            item = QListWidgetItem(item_text)
             item.setData(Qt.UserRole, module['folder'])  # Store folder name
+
+            # Set item colors based on severity
+            severity_color = {
+                'Critical': QColor(255, 0, 0),
+                'High': QColor(255, 102, 0),
+                'Medium': QColor(255, 170, 0),
+                'Low': QColor(0, 255, 0),
+                'Info': QColor(0, 170, 255)
+            }.get(module['severity'], QColor(136, 136, 136))
+
+            # Set foreground color for the icon
+            item.setForeground(QColor(255, 255, 255))  # White text
+
             self.module_list.addItem(item)
 
         self.module_count_label.setText(f"Modules: {len(module_data)}")

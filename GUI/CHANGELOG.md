@@ -1,5 +1,33 @@
 # GUI Changelog
 
+## v1.7.1 - UI Polish & Dynamic Auth Fields (2025-11-14)
+
+### 🎨 UI Improvements
+- **Auth tab**: Fields now hide/show dynamically based on selected auth type
+  - No more seeing disabled/grayed out fields
+  - Cleaner, more compact authentication section
+  - Only shows relevant fields for selected method
+- **Modules tab**: Removed large header, more compact layout
+  - Saved vertical space by removing "Module Configuration & Payload Management" header
+  - Reduced margins and padding
+  - More room for actual content
+- **Fixed module list display**: No more HTML tags showing in list
+  - Switched from HTML rendering to plain text formatting
+  - Clean 3-line display: Name | Description | Severity + Folder
+  - White text, easier to read
+- **Removed emojis** from Authentication, HTTP Configuration, and Crawler Settings group boxes
+
+### 🔧 Technical Changes
+- Auth fields now use `.hide()` and `.show()` instead of `.setEnabled()`
+- Each auth type shows contextual label text (e.g., "Bearer Token:" vs "API Key:")
+- Module list uses `QListWidgetItem` with plain text instead of HTML
+- Compact padding: 5px margins on Modules tab, 5px padding on search/buttons
+
+### 📝 Commits
+- (pending) - refactor: Dynamic auth fields, fix module HTML display, compact layout
+
+---
+
 ## v1.7.0 - Fancy Module List View (2025-11-14)
 
 ### ✨ Major UI Redesign - Modules Tab
