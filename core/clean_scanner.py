@@ -41,7 +41,8 @@ class ModularScanner:
             timeout=config.timeout,
             headers=config.headers,
             cookies=config.cookies,
-            rate_limit=config.request_limit
+            rate_limit=config.request_limit,
+            rotate_agent=config.rotate_agent  # ROTATION 9
         )
 
         self.result_manager = ResultManager()
@@ -97,6 +98,12 @@ class ModularScanner:
             # Discover URLs
             discovered_urls = self._discover_pages(target)
             logger.info(f"Discovered {len(discovered_urls)} URLs")
+
+            # Recon-only mode: Skip all active modules, only passive scanning
+            if self.config.recon_only:
+                logger.info("[RECON-ONLY MODE] Skipping active module scans - passive reconnaissance only")
+                logger.info(f"[RECON-ONLY MODE] Passive findings collected during crawl")
+                continue
 
             # Run each module
             for module in self.modules:

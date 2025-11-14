@@ -8,6 +8,7 @@ from typing import Dict, Optional, Any
 from dataclasses import dataclass
 import time
 import logging
+from utils.user_agents import UserAgentRotator  # ROTATION 9
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -35,7 +36,8 @@ class HTTPClient:
     """Centralized HTTP client with rate limiting and error handling"""
 
     def __init__(self, timeout: int = 20, headers: Optional[Dict[str, str]] = None,
-                 cookies: Optional[Dict[str, str]] = None, rate_limit: Optional[int] = None):
+                 cookies: Optional[Dict[str, str]] = None, rate_limit: Optional[int] = None,
+                 rotate_agent: bool = False):
         """
         Initialize HTTP client
 
@@ -44,12 +46,16 @@ class HTTPClient:
             headers: Default headers for all requests
             cookies: Default cookies for all requests
             rate_limit: Max requests per second (None = no limit)
+            rotate_agent: Enable User-Agent rotation (ROTATION 9)
         """
         self.timeout = timeout
         self.default_headers = headers or {}
         self.default_cookies = cookies or {}
         self.rate_limit = rate_limit
         self.last_request_time = 0
+
+        # ROTATION 9: User-Agent rotation
+        self.user_agent_rotator = UserAgentRotator(rotate=rotate_agent)
 
         # Create session for connection pooling
         self.session = requests.Session()
@@ -127,6 +133,11 @@ class HTTPClient:
         headers = self.default_headers.copy()
         if kwargs.get('headers'):
             headers.update(kwargs['headers'])
+
+        # ROTATION 9: Apply User-Agent rotation (if not already set by user)
+        if 'User-Agent' not in headers and 'user-agent' not in headers:
+            headers['User-Agent'] = self.user_agent_rotator.get()
+
         kwargs['headers'] = headers
 
         # Set timeout

@@ -30,7 +30,14 @@ class Config:
         self.crawler_depth = getattr(args, 'crawler_depth', 3)
         self.enable_js_crawling = getattr(args, 'enable_js_crawling', True)
         self.max_crawl_pages = getattr(args, 'max_crawl_pages', 100)
-        
+
+        # ROTATION 9 - New flags
+        self.recon_only = getattr(args, 'recon_only', False)  # Passive recon only, no active attacks
+        self.rotate_agent = getattr(args, 'rotate_agent', False)  # Random User-Agent rotation
+        self.live_reporting = getattr(args, 'live', False)  # Real-time report updates
+        self.add_known_paths = getattr(args, 'add_known_paths', None)  # File with known paths to inject
+        self.custom_payloads = getattr(args, 'custom_payloads', None)  # Custom payloads override
+
         # Directory paths
         self.modules_dir = "modules"
         self.payloads_dir = "payloads"
