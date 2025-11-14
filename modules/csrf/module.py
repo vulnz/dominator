@@ -67,12 +67,19 @@ class CSRFModule(BaseModule):
 
         logger.info(f"Starting CSRF scan on {len(targets)} targets")
 
-        # CSRF is relevant for forms with state-changing operations
-        # GET forms with state-changing params are EVEN MORE VULNERABLE
-        # Check both POST and GET forms
-        form_targets = [t for t in targets if t.get('method', 'GET').upper() in ['POST', 'GET']]
+        # CRITICAL FIX: CSRF affects ALL state-changing forms, not just keyword-based!
+        # Previous logic skipped forms without keywords - WRONG!
+        # POST forms are almost always state-changing (submit data to server)
+        # Check ALL POST forms + GET forms that look state-changing
 
-        logger.info(f"Found {len(form_targets)} forms to check for CSRF protection")
+        post_forms = [t for t in targets if t.get('method', 'GET').upper() == 'POST']
+        get_forms_stateful = [t for t in targets
+                              if t.get('method', 'GET').upper() == 'GET'
+                              and self._is_state_changing(t.get('url', ''), t.get('params', {}))]
+
+        form_targets = post_forms + get_forms_stateful
+
+        logger.info(f"Found {len(post_forms)} POST forms + {len(get_forms_stateful)} stateful GET forms = {len(form_targets)} total")
 
         for target in form_targets:
             url = target.get('url')
@@ -80,13 +87,6 @@ class CSRFModule(BaseModule):
             method = target.get('method', 'GET').upper()
 
             if not params:
-                continue
-
-            # Check if this form is state-changing
-            is_state_changing = self._is_state_changing(url, params)
-
-            if not is_state_changing:
-                logger.debug(f"Skipping {url} - not state-changing")
                 continue
 
             logger.debug(f"Checking CSRF protection for: {url}")
@@ -230,15 +230,28 @@ class CSRFModule(BaseModule):
                 if success_count >= 2:
                     confidence = 0.85
 
+                # BOOST confidence if form has state-changing keywords
+                # (keywords used for confidence, NOT filtering!)
+                has_keywords = self._is_state_changing(url, params)
+                if has_keywords:
+                    confidence = min(1.0, confidence + 0.10)
+
                 # Check if using GET method (very bad for state-changing)
-                if method == 'GET' or 'passwd' in url.lower():
+                if method == 'GET':
                     confidence = 0.90
+
+                # Password forms are CRITICAL
+                if any(k in url.lower() or k in str(params).lower()
+                       for k in ['password', 'passwd', 'pass', 'pwd', 'login']):
+                    confidence = 0.95
 
                 evidence = f"{method} form accepts state-changing requests without CSRF token. "
                 if method == 'GET':
                     evidence += "CRITICAL: State-changing operation uses GET method! "
                 evidence += f"Form has {len(params)} parameters: {', '.join(list(params.keys())[:5])}. "
                 evidence += "No anti-CSRF token field found (checked: csrf, csrf_token, _token, etc). "
+                if has_keywords:
+                    evidence += "Contains state-changing keywords. "
 
                 if success_count > 0:
                     evidence += f"Request accepted (found {success_count} success indicators). "
