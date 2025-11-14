@@ -361,6 +361,10 @@ class DominatorGUI(QMainWindow):
         scope_tab = self.create_scope_tab()
         self.tabs.addTab(scope_tab, "Scope")
 
+        # Modules Tab
+        modules_tab = self.create_modules_tab()
+        self.tabs.addTab(modules_tab, "Modules")
+
         main_layout.addWidget(self.tabs)
 
         # Status bar
@@ -474,6 +478,10 @@ class DominatorGUI(QMainWindow):
         view_scope_tab_action = QAction("Scope", self)
         view_scope_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(6))
         view_menu.addAction(view_scope_tab_action)
+
+        view_modules_tab_action = QAction("Modules", self)
+        view_modules_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(7))
+        view_menu.addAction(view_modules_tab_action)
 
         # Help menu
         help_menu = menubar.addMenu("❓ Help")
@@ -978,6 +986,23 @@ class DominatorGUI(QMainWindow):
         save_btn.clicked.connect(self.save_payloads_to_file)
         button_layout.addWidget(save_btn)
 
+        view_existing_btn = QPushButton("👁️ View Existing Payloads")
+        view_existing_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4a4aff;
+                color: white;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #3838dd;
+            }
+        """)
+        view_existing_btn.setToolTip("Open Modules tab to view/edit existing payloads for each module")
+        view_existing_btn.clicked.connect(lambda: self.tabs.setCurrentIndex(7))
+        button_layout.addWidget(view_existing_btn)
+
         button_layout.addStretch()
         direct_layout.addLayout(button_layout)
 
@@ -1035,6 +1060,177 @@ class DominatorGUI(QMainWindow):
         clear_btn = QPushButton("Clear Output")
         clear_btn.clicked.connect(self.output_console.clear)
         layout.addWidget(clear_btn)
+
+        return widget
+
+    def create_modules_tab(self):
+        """Create modules tab for viewing/editing module configs and payloads"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        # Header
+        header_label = QLabel("Module Configuration & Payload Management")
+        header_label.setFont(QFont("Arial", 14, QFont.Bold))
+        header_label.setStyleSheet("color: #00ff88; padding: 10px;")
+        layout.addWidget(header_label)
+
+        # Module Selector
+        selector_group = QGroupBox("Select Module")
+        selector_layout = QHBoxLayout()
+
+        selector_layout.addWidget(QLabel("Module:"))
+        self.module_selector = QComboBox()
+
+        # Populate with actual modules from modules/ directory
+        parent_dir = Path(__file__).parent.parent
+        modules_dir = parent_dir / "modules"
+        module_names = []
+
+        if modules_dir.exists():
+            for module_path in modules_dir.iterdir():
+                if module_path.is_dir() and not module_path.name.startswith('_'):
+                    module_names.append(module_path.name)
+
+        module_names.sort()
+        self.module_selector.addItems(module_names)
+        self.module_selector.setStyleSheet("""
+            QComboBox {
+                background-color: #2a2a2a;
+                color: white;
+                border: 2px solid #3a3a3a;
+                border-radius: 4px;
+                padding: 8px;
+                min-width: 250px;
+            }
+        """)
+        self.module_selector.currentTextChanged.connect(self.load_module_data)
+        selector_layout.addWidget(self.module_selector)
+
+        refresh_btn = QPushButton("🔄 Refresh Modules")
+        refresh_btn.clicked.connect(self.refresh_modules_list)
+        selector_layout.addWidget(refresh_btn)
+
+        selector_layout.addStretch()
+        selector_group.setLayout(selector_layout)
+        layout.addWidget(selector_group)
+
+        # Split view: Config on left, Payloads on right
+        splitter = QSplitter(Qt.Horizontal)
+
+        # Left: Module Configuration
+        config_group = QGroupBox("📋 Module Configuration (config.json)")
+        config_layout = QVBoxLayout()
+
+        config_help = QLabel("View and edit module settings (name, severity, CWE, OWASP, etc.)")
+        config_help.setStyleSheet("color: #888888; font-size: 10px;")
+        config_layout.addWidget(config_help)
+
+        self.module_config_editor = QTextEdit()
+        self.module_config_editor.setStyleSheet("""
+            QTextEdit {
+                background-color: #0a0a0a;
+                color: #00ff88;
+                font-family: 'Consolas', 'Courier New', monospace;
+                font-size: 11px;
+                border: 2px solid #3a3a3a;
+                border-radius: 4px;
+                padding: 8px;
+            }
+        """)
+        config_layout.addWidget(self.module_config_editor)
+
+        config_btn_layout = QHBoxLayout()
+        save_config_btn = QPushButton("💾 Save Config")
+        save_config_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #00ff88;
+                color: black;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #00cc70;
+            }
+        """)
+        save_config_btn.clicked.connect(self.save_module_config)
+        config_btn_layout.addWidget(save_config_btn)
+
+        reload_config_btn = QPushButton("↻ Reload")
+        reload_config_btn.clicked.connect(lambda: self.load_module_data(self.module_selector.currentText()))
+        config_btn_layout.addWidget(reload_config_btn)
+
+        config_btn_layout.addStretch()
+        config_layout.addLayout(config_btn_layout)
+
+        config_group.setLayout(config_layout)
+        splitter.addWidget(config_group)
+
+        # Right: Payloads
+        payloads_group = QGroupBox("💉 Module Payloads (payloads.txt)")
+        payloads_layout = QVBoxLayout()
+
+        payloads_help = QLabel("View and edit payloads used by this module (one per line)")
+        payloads_help.setStyleSheet("color: #888888; font-size: 10px;")
+        payloads_layout.addWidget(payloads_help)
+
+        # Payload stats
+        self.payload_stats_label = QLabel("Payloads: 0 | Lines: 0")
+        self.payload_stats_label.setStyleSheet("color: #00ff88; font-weight: bold; padding: 5px;")
+        payloads_layout.addWidget(self.payload_stats_label)
+
+        self.module_payloads_editor = QTextEdit()
+        self.module_payloads_editor.setStyleSheet("""
+            QTextEdit {
+                background-color: #0a0a0a;
+                color: #00ff00;
+                font-family: 'Consolas', 'Courier New', monospace;
+                font-size: 11px;
+                border: 2px solid #3a3a3a;
+                border-radius: 4px;
+                padding: 8px;
+            }
+        """)
+        self.module_payloads_editor.textChanged.connect(self.update_payload_stats)
+        payloads_layout.addWidget(self.module_payloads_editor)
+
+        payload_btn_layout = QHBoxLayout()
+        save_payloads_btn = QPushButton("💾 Save Payloads")
+        save_payloads_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #00ff88;
+                color: black;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #00cc70;
+            }
+        """)
+        save_payloads_btn.clicked.connect(self.save_module_payloads)
+        payload_btn_layout.addWidget(save_payloads_btn)
+
+        reload_payloads_btn = QPushButton("↻ Reload")
+        reload_payloads_btn.clicked.connect(lambda: self.load_module_data(self.module_selector.currentText()))
+        payload_btn_layout.addWidget(reload_payloads_btn)
+
+        export_payloads_btn = QPushButton("📤 Export")
+        export_payloads_btn.clicked.connect(self.export_module_payloads)
+        payload_btn_layout.addWidget(export_payloads_btn)
+
+        payload_btn_layout.addStretch()
+        payloads_layout.addLayout(payload_btn_layout)
+
+        payloads_group.setLayout(payloads_layout)
+        splitter.addWidget(payloads_group)
+
+        splitter.setSizes([400, 400])
+        layout.addWidget(splitter)
+
+        # Load first module if available
+        if module_names:
+            self.load_module_data(module_names[0])
 
         return widget
 
@@ -2092,11 +2288,142 @@ class DominatorGUI(QMainWindow):
             self.update_vuln_display()
             self.output_console.append("[*] Results cleared")
 
+    def load_module_data(self, module_name):
+        """Load module configuration and payloads"""
+        if not module_name:
+            return
+
+        parent_dir = Path(__file__).parent.parent
+        module_dir = parent_dir / "modules" / module_name
+
+        # Load config.json
+        config_file = module_dir / "config.json"
+        if config_file.exists():
+            try:
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    config_content = f.read()
+                # Pretty print JSON
+                import json
+                config_data = json.loads(config_content)
+                formatted_config = json.dumps(config_data, indent=2)
+                self.module_config_editor.setPlainText(formatted_config)
+            except Exception as e:
+                self.module_config_editor.setPlainText(f"Error loading config: {e}")
+        else:
+            self.module_config_editor.setPlainText("No config.json found for this module")
+
+        # Load payloads.txt
+        payloads_file = module_dir / "payloads.txt"
+        if payloads_file.exists():
+            try:
+                with open(payloads_file, 'r', encoding='utf-8') as f:
+                    payloads_content = f.read()
+                self.module_payloads_editor.setPlainText(payloads_content)
+            except Exception as e:
+                self.module_payloads_editor.setPlainText(f"Error loading payloads: {e}")
+        else:
+            self.module_payloads_editor.setPlainText("No payloads.txt found for this module")
+
+        self.update_payload_stats()
+
+    def save_module_config(self):
+        """Save module configuration"""
+        module_name = self.module_selector.currentText()
+        if not module_name:
+            QMessageBox.warning(self, "No Module", "Please select a module first")
+            return
+
+        parent_dir = Path(__file__).parent.parent
+        config_file = parent_dir / "modules" / module_name / "config.json"
+
+        try:
+            # Validate JSON first
+            import json
+            config_text = self.module_config_editor.toPlainText()
+            json.loads(config_text)  # This will raise if invalid
+
+            # Save
+            with open(config_file, 'w', encoding='utf-8') as f:
+                f.write(config_text)
+
+            QMessageBox.information(self, "Success", f"Config saved for {module_name}")
+        except json.JSONDecodeError as e:
+            QMessageBox.critical(self, "Invalid JSON", f"JSON syntax error:\n{e}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to save config:\n{e}")
+
+    def save_module_payloads(self):
+        """Save module payloads"""
+        module_name = self.module_selector.currentText()
+        if not module_name:
+            QMessageBox.warning(self, "No Module", "Please select a module first")
+            return
+
+        parent_dir = Path(__file__).parent.parent
+        payloads_file = parent_dir / "modules" / module_name / "payloads.txt"
+
+        try:
+            with open(payloads_file, 'w', encoding='utf-8') as f:
+                f.write(self.module_payloads_editor.toPlainText())
+
+            QMessageBox.information(self, "Success", f"Payloads saved for {module_name}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to save payloads:\n{e}")
+
+    def export_module_payloads(self):
+        """Export module payloads to external file"""
+        module_name = self.module_selector.currentText()
+        if not module_name:
+            return
+
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Export Payloads", f"{module_name}_payloads.txt", "Text Files (*.txt);;All Files (*)"
+        )
+        if filename:
+            try:
+                with open(filename, 'w', encoding='utf-8') as f:
+                    f.write(self.module_payloads_editor.toPlainText())
+                QMessageBox.information(self, "Success", f"Payloads exported to:\n{filename}")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to export:\n{e}")
+
+    def refresh_modules_list(self):
+        """Refresh the modules list"""
+        parent_dir = Path(__file__).parent.parent
+        modules_dir = parent_dir / "modules"
+        module_names = []
+
+        if modules_dir.exists():
+            for module_path in modules_dir.iterdir():
+                if module_path.is_dir() and not module_path.name.startswith('_'):
+                    module_names.append(module_path.name)
+
+        module_names.sort()
+
+        current = self.module_selector.currentText()
+        self.module_selector.clear()
+        self.module_selector.addItems(module_names)
+
+        if current in module_names:
+            self.module_selector.setCurrentText(current)
+
+        self.statusBar().showMessage(f"Refreshed {len(module_names)} modules")
+
+    def update_payload_stats(self):
+        """Update payload statistics"""
+        text = self.module_payloads_editor.toPlainText()
+        lines = text.split('\n')
+        total_lines = len(lines)
+        payloads = [line.strip() for line in lines if line.strip() and not line.strip().startswith('#')]
+        payload_count = len(payloads)
+
+        self.payload_stats_label.setText(f"Payloads: {payload_count} | Total Lines: {total_lines}")
+
     def show_about(self):
         """Show about dialog"""
         about_text = """
         <h2>🎯 DOMINATOR Web Vulnerability Scanner</h2>
-        <p><b>Version:</b> 1.2.0 (GUI v1.1.2)</p>
+        <p><b>Version:</b> 1.5.0 (GUI v1.5.0)</p>
         <p><b>Description:</b> Advanced Web Vulnerability Scanner with 20 modules</p>
 
         <h3>Features:</h3>
