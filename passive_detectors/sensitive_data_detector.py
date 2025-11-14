@@ -342,7 +342,7 @@ class SensitiveDataDetector:
 
     @staticmethod
     def _detect_path_disclosure(response_text: str, url: str) -> List[Dict[str, Any]]:
-        """
+        r"""
         Detect path disclosure in error messages and responses
 
         Example patterns:
