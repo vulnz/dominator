@@ -631,6 +631,13 @@ class DominatorGUI(QMainWindow):
         self.setStyleSheet("""
             QMainWindow {
                 background-color: #1a1a1a;
+                color: white;
+            }
+            QWidget {
+                color: white;
+            }
+            QLabel {
+                color: white;
             }
             QGroupBox {
                 font-weight: bold;
@@ -670,6 +677,32 @@ class DominatorGUI(QMainWindow):
             QLineEdit:focus, QSpinBox:focus, QComboBox:focus {
                 border: 2px solid #00ff88;
             }
+            QComboBox::drop-down {
+                border: none;
+                background-color: #3a3a3a;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 5px solid white;
+                margin-right: 5px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #2a2a2a;
+                color: white;
+                selection-background-color: #00ff88;
+                selection-color: black;
+                border: 2px solid #3a3a3a;
+            }
+            QSpinBox::up-button, QSpinBox::down-button {
+                background-color: #3a3a3a;
+                border: none;
+            }
+            QSpinBox::up-arrow, QSpinBox::down-arrow {
+                width: 7px;
+                height: 7px;
+            }
             QCheckBox {
                 spacing: 8px;
                 color: white;
@@ -702,10 +735,17 @@ class DominatorGUI(QMainWindow):
             }
             QTabBar::tab:selected {
                 background-color: #1a1a1a;
+                color: #00ff88;
                 border-bottom: 2px solid #00ff88;
             }
             QTabBar::tab:hover {
                 background-color: #3a3a3a;
+            }
+            QTextEdit {
+                color: white;
+            }
+            QListWidget {
+                color: white;
             }
         """)
 
