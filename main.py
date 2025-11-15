@@ -175,10 +175,10 @@ def launch_gui(args):
             gui.single_page_checkbox.setChecked(True)
 
         if hasattr(args, 'rotate_agent') and args.rotate_agent:
-            gui.rotate_agent_checkbox.setChecked(True)
+            gui.rotate_agent_cb.setChecked(True)
 
         if hasattr(args, 'recon_only') and args.recon_only:
-            gui.recon_only_checkbox.setChecked(True)
+            gui.recon_only_cb.setChecked(True)
 
         # Auto-start scan if requested and target is specified
         if args.auto_start and (args.target or args.file):
