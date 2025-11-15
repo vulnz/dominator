@@ -30,6 +30,75 @@ class BrowserTab(QWidget):
 
     def init_ui(self):
         """Initialize the browser tab UI"""
+
+        # Set light theme for entire tab
+        self.setStyleSheet("""
+            QWidget {
+                background-color: white;
+                color: black;
+            }
+            QGroupBox {
+                background-color: #f5f5f5;
+                color: black;
+                border: 2px solid #cccccc;
+                border-radius: 5px;
+                margin-top: 10px;
+                padding-top: 10px;
+                font-weight: bold;
+            }
+            QGroupBox::title {
+                color: black;
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+            }
+            QLabel {
+                color: black;
+                background-color: transparent;
+            }
+            QTableWidget {
+                background-color: white;
+                color: black;
+                gridline-color: #cccccc;
+                border: 1px solid #cccccc;
+            }
+            QTableWidget::item {
+                color: black;
+                background-color: white;
+            }
+            QTableWidget::item:selected {
+                background-color: #e0e0ff;
+                color: black;
+            }
+            QHeaderView::section {
+                background-color: #e0e0e0;
+                color: black;
+                padding: 5px;
+                border: 1px solid #cccccc;
+                font-weight: bold;
+            }
+            QTextEdit {
+                background-color: white;
+                color: black;
+                border: 1px solid #cccccc;
+            }
+            QPushButton {
+                color: black;
+            }
+            QCheckBox {
+                color: black;
+                background-color: transparent;
+            }
+            QSpinBox {
+                color: black;
+                background-color: white;
+            }
+            QComboBox {
+                color: black;
+                background-color: white;
+            }
+        """)
+
         layout = QVBoxLayout()
 
         # === Top Control Panel ===
@@ -302,66 +371,101 @@ class BrowserTab(QWidget):
             self.proxy.passive_scan_enabled = (state == Qt.Checked)
 
     def launch_browser(self):
-        """Launch Chromium browser with proxy configuration"""
+        """Launch browser with proxy configuration"""
         port = self.proxy_port_spin.value()
         chromium_mgr = get_chromium_manager()
 
-        # Check if Chromium is installed
-        if not chromium_mgr.is_installed():
-            # Ask user if they want to download
-            reply = QMessageBox.question(
-                self,
-                "Download Chromium?",
-                f"Portable Chromium not found.\n\n"
-                f"Download size: ~{chromium_mgr.get_download_size_mb()} MB\n\n"
-                f"Download now? (Or use system Chrome as fallback)",
-                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
-                QMessageBox.Yes
-            )
+        # Try to launch browser (prefer system Chrome for simplicity)
+        try:
+            # First try system Chrome
+            chrome_path = chromium_mgr.get_installed_chrome()
 
-            if reply == QMessageBox.Yes:
-                # Show progress dialog
-                progress = QProgressDialog("Downloading Chromium...", "Cancel", 0, 100, self)
-                progress.setWindowModality(Qt.WindowModal)
-                progress.setAutoClose(True)
-                progress.setAutoReset(True)
+            if chrome_path:
+                # Launch system Chrome
+                import subprocess
+                import os
 
-                def progress_callback(msg, percent):
-                    progress.setLabelText(msg)
-                    progress.setValue(percent)
-                    QMessageBox.qApp.processEvents()
+                user_data_dir = chromium_mgr.base_dir / "user_data"
+                user_data_dir.mkdir(parents=True, exist_ok=True)
 
-                try:
-                    chromium_mgr.download(progress_callback=progress_callback)
-                    progress.close()
+                cmd = [
+                    chrome_path,
+                    f"--proxy-server=127.0.0.1:{port}",
+                    f"--user-data-dir={user_data_dir}",
+                    "--no-first-run",
+                    "--new-window"
+                ]
+
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
+                )
+
+                QMessageBox.information(
+                    self,
+                    "Browser Launched",
+                    f"Chrome launched with proxy: 127.0.0.1:{port}\n\n"
+                    "All requests will be intercepted and logged."
+                )
+            else:
+                # No Chrome found - ask to download portable Chromium
+                reply = QMessageBox.question(
+                    self,
+                    "Chrome Not Found",
+                    "System Chrome not found.\n\n"
+                    "Would you like to download portable Chromium?\n"
+                    f"(~{chromium_mgr.get_download_size_mb()} MB)\n\n"
+                    "Or click No to configure your browser manually.",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No
+                )
+
+                if reply == QMessageBox.Yes:
+                    # Show progress dialog
+                    progress = QProgressDialog("Downloading Chromium...", None, 0, 100, self)
+                    progress.setWindowModality(Qt.WindowModal)
+                    progress.setAutoClose(True)
+
+                    def progress_callback(msg, percent):
+                        progress.setLabelText(msg)
+                        progress.setValue(percent)
+                        QMessageBox.qApp.processEvents()
+
+                    try:
+                        chromium_mgr.download(progress_callback=progress_callback)
+                        progress.close()
+
+                        # Launch downloaded Chromium
+                        chromium_mgr.launch(proxy_host='127.0.0.1', proxy_port=port)
+
+                        QMessageBox.information(
+                            self,
+                            "Browser Launched",
+                            f"Chromium launched with proxy: 127.0.0.1:{port}\n\n"
+                            "All requests will be intercepted and logged."
+                        )
+                    except Exception as e:
+                        progress.close()
+                        QMessageBox.critical(
+                            self,
+                            "Download Failed",
+                            f"Failed to download Chromium:\n{str(e)}\n\n"
+                            "Please manually configure your browser:\n"
+                            f"Proxy: 127.0.0.1:{port}"
+                        )
+                else:
+                    # Show manual configuration instructions
                     QMessageBox.information(
                         self,
-                        "Download Complete",
-                        "Chromium downloaded successfully!"
-                    )
-                except Exception as e:
-                    progress.close()
-                    QMessageBox.critical(
-                        self,
-                        "Download Failed",
-                        f"Failed to download Chromium:\n{str(e)}\n\n"
-                        "Falling back to system Chrome..."
+                        "Manual Configuration",
+                        f"Configure your browser's proxy settings:\n\n"
+                        f"HTTP Proxy: 127.0.0.1\n"
+                        f"Port: {port}\n\n"
+                        "Or use browser extensions like FoxyProxy."
                     )
 
-            elif reply == QMessageBox.Cancel:
-                return
-
-        # Launch browser
-        try:
-            chromium_mgr.launch_with_fallback(proxy_host='127.0.0.1', proxy_port=port)
-
-            browser_type = "Chromium" if chromium_mgr.is_installed() else "Chrome"
-            QMessageBox.information(
-                self,
-                "Browser Launched",
-                f"{browser_type} launched with proxy: 127.0.0.1:{port}\n\n"
-                "All requests will be intercepted and logged."
-            )
         except Exception as e:
             QMessageBox.critical(
                 self,
