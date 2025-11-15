@@ -117,7 +117,13 @@ class SQLiModule(BaseModule):
         logger.info("Starting Blind SQLi (time-based) detection phase")
         blind_sqli_results = self._scan_blind_sqli(prioritized_targets, http_client)
         results.extend(blind_sqli_results)
-        logger.info(f"Blind SQLi scan found {len(blind_sqli_results)} vulnerabilities")
+        logger.info(f"Blind SQLi (time-based) scan found {len(blind_sqli_results)} vulnerabilities")
+
+        # BOOLEAN-BASED BLIND SQLI DETECTION
+        logger.info("Starting Boolean-based Blind SQLi detection phase")
+        boolean_sqli_results = self._scan_boolean_blind_sqli(prioritized_targets, http_client)
+        results.extend(boolean_sqli_results)
+        logger.info(f"Boolean-based Blind SQLi scan found {len(boolean_sqli_results)} vulnerabilities")
 
         logger.info(f"SQLi scan complete: {len(results)} vulnerabilities found")
         return results
@@ -454,6 +460,164 @@ class SQLiModule(BaseModule):
                             logger.info(f"✓ Blind SQLi found in {url} (parameter: {param_name}, confidence: {confidence:.2f})")
 
                             # Move to next parameter
+                            break
+
+        return results
+
+    def _scan_boolean_blind_sqli(self, targets: List[Dict[str, Any]], http_client: Any) -> List[Dict[str, Any]]:
+        """
+        Scan for Boolean-based Blind SQL Injection
+
+        Uses boolean logic (true/false) to detect blind SQLi by comparing responses
+        Detection: Compare TRUE condition vs FALSE condition response differences
+
+        Args:
+            targets: List of URLs with parameters
+            http_client: HTTP client
+
+        Returns:
+            List of boolean-based blind SQLi results
+        """
+        results = []
+
+        # Boolean-based blind SQLi payloads
+        # Each tuple: (true_payload, false_payload, description)
+        boolean_tests = [
+            # MySQL/MariaDB
+            ("1' AND '1'='1", "1' AND '1'='2", "String comparison"),
+            ("1' OR '1'='1", "1' OR '1'='2", "OR string comparison"),
+            ("1' AND 1=1--", "1' AND 1=2--", "Numeric comparison"),
+            ("1' OR 1=1--", "1' OR 1=2--", "OR numeric comparison"),
+
+            # Generic
+            ("' OR 'a'='a", "' OR 'a'='b", "Generic string OR"),
+            ("' AND 'a'='a", "' AND 'a'='b", "Generic string AND"),
+        ]
+
+        # Prioritize POST, then GET
+        post_targets = [t for t in targets if t.get('method', 'GET').upper() == 'POST']
+        get_targets = [t for t in targets if t.get('method', 'GET').upper() == 'GET' and t.get('params')]
+
+        test_targets = post_targets[:8] + get_targets[:8]
+
+        logger.info(f"Testing {len(test_targets)} targets for Boolean-based Blind SQLi")
+
+        for target in test_targets:
+            url = target.get('url')
+            params = target.get('params', {})
+            method = target.get('method', 'GET').upper()
+
+            # Test each parameter
+            for param_name in params:
+                logger.debug(f"Testing Boolean Blind SQLi in parameter: {param_name} via {method}")
+
+                # Get baseline response (normal request)
+                baseline_params = params.copy()
+                if method == 'POST':
+                    baseline_response = http_client.post(url, data=baseline_params)
+                else:
+                    baseline_response = http_client.get(url, params=baseline_params)
+
+                if not baseline_response:
+                    continue
+
+                baseline_text = getattr(baseline_response, 'text', '')
+                baseline_length = len(baseline_text)
+
+                # Test each boolean pair
+                for true_payload, false_payload, description in boolean_tests:
+                    # Send TRUE condition
+                    true_params = params.copy()
+                    true_params[param_name] = true_payload
+
+                    if method == 'POST':
+                        true_response = http_client.post(url, data=true_params)
+                    else:
+                        true_response = http_client.get(url, params=true_params)
+
+                    if not true_response:
+                        continue
+
+                    # Send FALSE condition
+                    false_params = params.copy()
+                    false_params[param_name] = false_payload
+
+                    if method == 'POST':
+                        false_response = http_client.post(url, data=false_params)
+                    else:
+                        false_response = http_client.get(url, params=false_params)
+
+                    if not false_response:
+                        continue
+
+                    # PASSIVE ANALYSIS on responses
+                    self.analyze_payload_response(true_response, url, true_payload)
+                    self.analyze_payload_response(false_response, url, false_payload)
+
+                    # Compare responses
+                    true_text = getattr(true_response, 'text', '')
+                    false_text = getattr(false_response, 'text', '')
+
+                    true_length = len(true_text)
+                    false_length = len(false_text)
+
+                    # Calculate response similarity
+                    # TRUE should match baseline, FALSE should differ
+
+                    # Check 1: Length difference
+                    baseline_vs_true_diff = abs(baseline_length - true_length)
+                    baseline_vs_false_diff = abs(baseline_length - false_length)
+                    true_vs_false_diff = abs(true_length - false_length)
+
+                    # Check 2: TRUE response should be similar to baseline
+                    # FALSE response should differ from both
+
+                    # If TRUE and FALSE responses are significantly different (>5% length diff)
+                    if true_vs_false_diff > max(true_length, false_length) * 0.05:
+                        # Check if TRUE is closer to baseline than FALSE
+                        if baseline_vs_true_diff < baseline_vs_false_diff:
+                            # Likely Boolean-based Blind SQLi
+                            confidence = 0.70
+
+                            # Higher confidence for larger differences
+                            diff_ratio = true_vs_false_diff / max(true_length, false_length)
+                            if diff_ratio > 0.2:
+                                confidence = 0.80
+                            if diff_ratio > 0.5:
+                                confidence = 0.90
+
+                            # Check content difference too
+                            if true_text != false_text:
+                                # Content differs - stronger indicator
+                                confidence = min(0.95, confidence + 0.1)
+
+                            evidence = f"Boolean-based Blind SQLi detected ({description}). "
+                            evidence += f"Baseline length: {baseline_length}, "
+                            evidence += f"TRUE payload ('{true_payload[:30]}...') length: {true_length}, "
+                            evidence += f"FALSE payload ('{false_payload[:30]}...') length: {false_length}. "
+                            evidence += f"Difference: {true_vs_false_diff} chars ({diff_ratio*100:.1f}%). "
+                            evidence += f"TRUE condition response differs from FALSE, indicating SQL logic evaluation."
+
+                            result = self.create_result(
+                                vulnerable=True,
+                                url=url,
+                                parameter=param_name,
+                                payload=f"TRUE: {true_payload}, FALSE: {false_payload}",
+                                evidence=evidence,
+                                description="Boolean-based Blind SQL Injection vulnerability detected. "
+                                          "Database evaluates boolean logic in injected queries.",
+                                confidence=confidence
+                            )
+
+                            result['cwe'] = 'CWE-89'
+                            result['owasp'] = 'A03:2021'
+                            result['cvss'] = '8.0'
+                            result['sqli_type'] = 'blind_boolean'
+
+                            results.append(result)
+                            logger.info(f"✓ Boolean Blind SQLi found in {url} (parameter: {param_name}, confidence: {confidence:.2f})")
+
+                            # Move to next parameter after finding
                             break
 
         return results

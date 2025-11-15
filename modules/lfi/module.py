@@ -128,28 +128,62 @@ class LFIModule(BaseModule):
         #     logger.debug("Response too short for LFI")
         #     return False, 0.0, ""
 
-        # STAGE 3: Multi-pattern matching (требуем минимум 2 совпадения)
+        # STAGE 3: Check for very strong single indicators first
+        very_strong_indicators = [
+            'root:x:0:0:root:/root:',  # Complete /etc/passwd root line
+            '[boot loader]',            # Windows boot.ini
+            'for 16-bit app support',   # Windows win.ini
+            '; for 16-bit app support', # Windows win.ini (full)
+        ]
+
+        for indicator in very_strong_indicators:
+            if indicator in response.text:
+                # Single very strong indicator = immediate detection
+                confidence = 0.95
+                evidence = f"Very strong LFI indicator found: '{indicator}'. "
+                evidence += BaseDetector.get_evidence(indicator, response.text, context_size=200)
+                logger.debug(f"LFI detected via very strong indicator: {indicator}")
+                return True, confidence, evidence
+
+        # STAGE 4: Multi-pattern matching (require minimum 2 matches)
+        # IMPROVED: Allow 1 match if it's strong enough
         detected, matches = BaseDetector.check_multiple_patterns(
             response.text,
             self.all_patterns,
-            min_matches=2  # Minimum 2 patterns for better detection
+            min_matches=1  # IMPROVED: Reduced from 2 to 1 for better detection
         )
 
         logger.debug(f"LFI Detection - Payload: {payload[:50]}, Matches: {len(matches)}, Patterns: {matches[:3] if matches else 'none'}")
 
         if not detected:
-            logger.debug(f"Insufficient pattern matches for LFI: {len(matches)}/2 required")
+            logger.debug(f"No pattern matches for LFI")
             return False, 0.0, ""
 
-        # STAGE 4: Context validation
+        # If only 1 match, verify it's strong
+        if len(matches) == 1:
+            single_match = matches[0]
+            # Check if the single match is substantial (not generic)
+            strong_single_patterns = [
+                'root:x:',
+                'daemon:x:',
+                'bin:x:',
+                '[extensions]',
+                '[fonts]',
+                'extension=',
+            ]
+            if not any(strong in single_match for strong in strong_single_patterns):
+                logger.debug(f"Single weak pattern '{single_match}' - rejecting")
+                return False, 0.0, ""
+
+        # STAGE 5: Context validation
         if not self._validate_context(payload, response.text, matches):
             logger.debug("Context validation failed")
             return False, 0.0, ""
 
-        # STAGE 5: Check for suspicious words (documentation, examples)
+        # STAGE 6: Check for suspicious words (documentation, examples)
         has_suspicious = BaseDetector.has_suspicious_words(response.text)
 
-        # STAGE 6: Calculate confidence
+        # STAGE 7: Calculate confidence
         confidence = BaseDetector.calculate_confidence(
             indicators_found=len(matches),
             response_length=len(response.text),
@@ -157,7 +191,7 @@ class LFIModule(BaseModule):
             payload_reflected=BaseDetector.is_payload_reflected(payload, response.text)
         )
 
-        if confidence < 0.45:  # Minimum confidence threshold (lowered for better detection)
+        if confidence < 0.35:  # IMPROVED: Lowered from 0.45 to catch more real LFI
             logger.debug(f"Confidence too low: {confidence:.2f}")
             return False, 0.0, ""
 

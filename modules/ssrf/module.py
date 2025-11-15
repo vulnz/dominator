@@ -201,7 +201,7 @@ class SSRFModule(BaseModule):
 
         confidence = min(1.0, confidence)
 
-        if confidence < 0.55:
+        if confidence < 0.45:  # IMPROVED: Lowered from 0.55 to catch more real SSRF
             logger.debug(f"SSRF confidence too low: {confidence:.2f}")
             return False, 0.0, ""
 
