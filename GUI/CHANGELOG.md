@@ -1,5 +1,62 @@
 # GUI Changelog
 
+## v1.10.0 - Major Vulnerability Detection Improvements (2025-11-14)
+
+### 🎯 Critical Detection Enhancements
+
+**XSS Module - Reduced False Negatives:**
+- Fixed overly strict context validation (was rejecting real XSS)
+- Reduced XSS indicator requirement from 2 to 1
+- Lowered confidence threshold from 0.45 to 0.35
+- Added 9 new context validation checks (img, SVG, event handlers, etc.)
+- Now catches XSS in HTML, attributes, scripts, and event handlers
+
+**SQLi Module - Triple Detection Methods:**
+1. **Error-based** - 10+ new error patterns (PostgreSQL, Oracle, MSSQL, SQLite)
+2. **Time-based Blind** - Improved with 3-second delays (faster scanning)
+3. **Boolean-based Blind** - NEW! Detects blind SQLi via TRUE/FALSE response comparison
+   - Tests 6 boolean payload pairs
+   - Compares response length/content differences
+   - 70-95% confidence scoring based on diff ratio
+
+**LFI Module - Better Single Indicator Detection:**
+- Added very strong single-indicator detection (root:x:0:0, [boot loader])
+- Reduced pattern requirement from 2 to 1 (with strength validation)
+- Lowered confidence threshold from 0.45 to 0.35
+- Immediate 0.95 confidence for very strong indicators
+
+**SSTI Module - Fewer False Positives:**
+- Improved baseline comparison for better detection
+- Relaxed strict table/JSON filtering (was blocking real vulns)
+- Added valid context counting for accuracy
+
+**PHP Object Injection - Enhanced Detection:**
+- Reduced requirement from 2 to 1 strong indicator
+- Added 6 magic method patterns
+- Better confidence scoring (0.85 base, up to 0.95)
+
+**CMDi Module - Improved Context:**
+- Reduced pattern requirement from 3 to 2
+- Lowered confidence threshold from 0.55 to 0.45
+- Added very strong single-indicator detection
+- Expanded pattern proximity from 500 to 800 chars
+
+**SSRF Module:**
+- Lowered confidence threshold from 0.55 to 0.45
+- Better cloud metadata detection (AWS, GCP)
+
+### 📊 Impact
+- **45 new SQLi error patterns** added across all major databases
+- **Boolean-based Blind SQLi** - brand new detection method
+- **All modules** now have optimized confidence thresholds
+- **Tested** on testphp.vulnweb.com - successfully finds XSS, SQLi, CMDi, PHP Object Injection
+
+### 📝 Commits
+- `bad2d91` - feat: Major vulnerability detection improvements across all critical modules
+- `b3dc2bd` - feat: Advanced detection improvements - LFI, SSRF, Boolean-based Blind SQLi
+
+---
+
 ## v1.9.0 - Progress & Plan Tab + Scope Fix (2025-11-14)
 
 ### ✨ New Features

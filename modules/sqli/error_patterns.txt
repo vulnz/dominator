@@ -52,3 +52,48 @@ syntax error
 unclosed quotation mark
 unterminated string
 invalid SQL statement
+quoted string not properly terminated
+unexpected end of SQL command
+
+# Additional MySQL/MariaDB errors
+Operand should contain 1 column(s)
+Unknown database
+Column count doesn't match
+Subquery returns more than 1 row
+Truncated incorrect DOUBLE value
+
+# Additional PostgreSQL errors
+ERROR: column
+ERROR: relation
+ERROR: unterminated quoted string
+ERROR: invalid input syntax
+psql: FATAL
+
+# Additional Oracle errors
+ORA-00933: SQL command not properly ended
+ORA-01756: quoted string not properly terminated
+ORA-00936: missing expression
+ORA-00942: table or view does not exist
+
+# Additional MSSQL errors
+Unclosed quotation mark after the character string
+Incorrect syntax near
+The multi-part identifier
+Invalid column name
+Msg 156, Level 15, State 1
+Line 1: Incorrect syntax
+
+# SQLite errors
+SQLite error
+SQLITE_ERROR
+unrecognized token
+near "SELECT": syntax error
+
+# Generic database indicators
+database error
+db error
+query error
+SQL command failed
+failed to execute
+database query
+invalid query
