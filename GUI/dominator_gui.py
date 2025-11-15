@@ -15,6 +15,9 @@ from pathlib import Path
 # Add parent directory to path to import scanner modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Import GUI components
+from GUI.components.browser_tab import BrowserTab
+
 try:
     from PyQt5.QtWidgets import (
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -395,6 +398,11 @@ class DominatorGUI(QMainWindow):
         # Modules Tab
         modules_tab = self.create_modules_tab()
         self.tabs.addTab(modules_tab, "Modules")
+
+        # Browser Integration Tab
+        self.browser_tab = BrowserTab()
+        self.browser_tab.scan_page_requested.connect(self.on_scan_page_requested)
+        self.tabs.addTab(self.browser_tab, "🌐 Browser & Proxy")
 
         main_layout.addWidget(self.tabs)
 
@@ -3122,6 +3130,40 @@ class DominatorGUI(QMainWindow):
                 color: white;
             }}
         """)
+
+    def on_scan_page_requested(self, url, modules):
+        """Handle scan page request from browser tab"""
+        # Set the target URL
+        self.target_input.setText(url)
+
+        # Clear current module selection
+        for i in range(self.module_list.count()):
+            item = self.module_list.item(i)
+            item.setCheckState(Qt.Unchecked)
+
+        # Select requested modules
+        if modules:  # If specific modules requested
+            for i in range(self.module_list.count()):
+                item = self.module_list.item(i)
+                module_folder = item.data(Qt.UserRole)
+                if module_folder in modules:
+                    item.setCheckState(Qt.Checked)
+        else:  # If all modules requested
+            for i in range(self.module_list.count()):
+                item = self.module_list.item(i)
+                item.setCheckState(Qt.Checked)
+
+        # Switch to Scan Configuration tab
+        self.tabs.setCurrentIndex(0)
+
+        # Show message
+        module_text = "all modules" if not modules else ", ".join(modules)
+        self.output_console.append(f"\n🌐 Browser Tab: Prepared scan for {url}")
+        self.output_console.append(f"   Modules: {module_text}")
+        self.output_console.append(f"   Click 'Start Scan' to begin\n")
+
+        # Optionally auto-start the scan
+        # self.start_scan()
 
 
 def main():
