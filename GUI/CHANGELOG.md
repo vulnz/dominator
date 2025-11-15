@@ -34,7 +34,7 @@
 - Falls back to "Unknown" category if technology not in mapping
 
 ### 📝 Commits
-- TBD
+- `baadf9e` - feat: Add Progress & Plan tab + Fix Scope technology detection
 
 ---
 

@@ -137,10 +137,11 @@ class XSSModule(BaseModule):
             return False, 0.0, ""
 
         # STAGE 2: Check for XSS indicators from TXT file
+        # IMPROVED: Require only 1 strong indicator (reduced from 2 to catch more real XSS)
         detected, matches = BaseDetector.check_multiple_patterns(
             response.text,
             self.xss_indicators,
-            min_matches=2  # Требуем минимум 2 индикатора
+            min_matches=1  # Minimum 1 strong XSS indicator
         )
 
         if not detected:
@@ -167,7 +168,7 @@ class XSSModule(BaseModule):
             confidence += 0.2
             confidence = min(1.0, confidence)
 
-        if confidence < 0.45:  # Minimum threshold (lowered for better detection)
+        if confidence < 0.35:  # IMPROVED: Lowered threshold from 0.45 to catch more real XSS
             logger.debug(f"XSS confidence too low: {confidence:.2f}")
             return False, 0.0, ""
 
@@ -178,7 +179,8 @@ class XSSModule(BaseModule):
 
     def _validate_xss_context(self, payload: str, response_text: str) -> bool:
         """
-        Validate XSS context - payload должен быть в опасном месте
+        Validate XSS context - payload should be in dangerous location
+        IMPROVED: More flexible detection to reduce false negatives
 
         Args:
             payload: Injected payload
@@ -187,18 +189,30 @@ class XSSModule(BaseModule):
         Returns:
             True if context is dangerous
         """
-        # Check 1: Payload in <script> tag
+        response_lower = response_text.lower()
+        payload_lower = payload.lower()
+
+        # CRITICAL: If payload contains <script> and response has <script>, very likely XSS
+        if '<script>' in payload_lower and '<script>' in response_lower:
+            return True
+
+        # Check 1: Payload in <script> tag (exact or with spaces)
         if f"<script>{payload}" in response_text or f"<script> {payload}" in response_text:
             return True
 
-        # Check 2: Payload in event handler
-        event_handlers = ['onerror=', 'onload=', 'onclick=', 'onmouseover=']
+        # Check 2: Payload in event handler (more flexible)
+        event_handlers = ['onerror=', 'onload=', 'onclick=', 'onmouseover=', 'onfocus=', 'onblur=']
         for handler in event_handlers:
-            if f"{handler}{payload}" in response_text or f'{handler}"{payload}"' in response_text:
-                return True
+            # Check various formats: onerror=payload, onerror="payload", onerror='payload'
+            if handler in response_lower and payload_lower in response_lower:
+                # Verify they're close together (within 50 chars)
+                handler_pos = response_lower.find(handler)
+                payload_pos = response_lower.find(payload_lower)
+                if abs(handler_pos - payload_pos) < 50:
+                    return True
 
-        # Check 3: Payload breaks out of attribute
-        if f'>{payload}<' in response_text or f'">{payload}' in response_text:
+        # Check 3: Payload breaks out of attribute or tag
+        if f'>{payload}<' in response_text or f'">{payload}' in response_text or f"'>{payload}" in response_text:
             return True
 
         # Check 4: Payload in src/href attribute
@@ -208,8 +222,30 @@ class XSSModule(BaseModule):
             return True
 
         # Check 5: javascript: protocol
-        if 'javascript:' in payload.lower() and 'javascript:' in response_text.lower():
+        if 'javascript:' in payload_lower and 'javascript:' in response_lower:
             return True
+
+        # Check 6: IMPORTANT - If payload has <img and response reflects it
+        if '<img' in payload_lower and '<img' in response_lower:
+            # Check if img tag attributes are present (src, onerror, etc.)
+            if 'src=' in response_lower or 'onerror=' in response_lower:
+                return True
+
+        # Check 7: SVG-based XSS
+        if '<svg' in payload_lower and '<svg' in response_lower:
+            return True
+
+        # Check 8: HTML tag injection (payload contains < and >)
+        if '<' in payload and '>' in payload:
+            # If any HTML-like structure is reflected, consider it dangerous
+            if payload in response_text:
+                return True
+
+        # Check 9: Alert function (strong XSS indicator)
+        if 'alert(' in payload_lower and 'alert(' in response_lower:
+            # Check if they're in executable context
+            if '<script>' in response_lower or 'onerror=' in response_lower or 'onload=' in response_lower:
+                return True
 
         return False
 

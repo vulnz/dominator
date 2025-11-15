@@ -169,7 +169,7 @@ class CMDiModule(BaseModule):
             payload_reflected=BaseDetector.is_payload_reflected(payload, response.text)
         )
 
-        if confidence < 0.55:
+        if confidence < 0.45:  # IMPROVED: Lowered from 0.55 to catch more real CMDi
             logger.debug(f"CMDi confidence too low: {confidence:.2f}")
             return False, 0.0, ""
 
@@ -182,6 +182,7 @@ class CMDiModule(BaseModule):
     def _validate_context(self, payload: str, response_text: str, matches: List[str]) -> bool:
         """
         Validate that patterns appear in proper context
+        IMPROVED: More flexible to catch real command injection
 
         Args:
             payload: Injected payload
@@ -191,33 +192,65 @@ class CMDiModule(BaseModule):
         Returns:
             True if context is valid
         """
-        # Check 1: Multiple strong indicators (at least 2)
+        # Check 1: Very strong indicators (immediate pass)
+        very_strong_indicators = [
+            'uid=',
+            'gid=',
+            'root:x:0:0:',
+            'Linux version',
+            'GNU/Linux',
+            'kernel',
+        ]
+
+        very_strong_found = sum(1 for ind in very_strong_indicators if ind in response_text)
+        if very_strong_found >= 1:  # IMPROVED: Single very strong indicator is enough
+            return True
+
+        # Check 2: Multiple moderate indicators (at least 2)
         strong_indicators = [
             'uid=',
             'gid=',
             'groups=',
             'root:x:0:0:',
-            'Linux version'
+            'Linux version',
+            'bin/',
+            'usr/',
+            '/etc/',
+            '/var/',
+            'total ',  # ls -la output
         ]
 
         strong_found = sum(1 for ind in strong_indicators if ind in response_text)
         if strong_found >= 2:
             return True
 
-        # Check 2: Patterns should be near each other (within 500 chars)
-        if len(matches) >= 3:
+        # Check 3: Patterns should be near each other (within 800 chars)
+        # IMPROVED: Relaxed from 500 to 800 for better detection
+        if len(matches) >= 2:  # IMPROVED: Reduced from 3 to 2
             positions = []
             for match in matches[:3]:
                 pos = response_text.find(match)
                 if pos != -1:
                     positions.append(pos)
 
-            if len(positions) >= 3:
+            if len(positions) >= 2:
                 pos_range = max(positions) - min(positions)
-                if pos_range < 500:  # Tightened from 1000
+                if pos_range < 800:  # IMPROVED: Increased from 500
                     return True
 
-        # Don't rely solely on line count - too generic
+        # Check 4: Command output structure
+        # Look for common command output patterns
+        command_patterns = [
+            'drwx',  # Directory listing
+            '-rw-',  # File permissions
+            'total ',  # ls output
+            '/',  # Path separators (multiple)
+        ]
+
+        pattern_count = sum(1 for p in command_patterns if p in response_text)
+        if pattern_count >= 2:
+            return True
+
         return False
 
     def _generate_evidence(self, matches: List[str], response_text: str) -> str:

