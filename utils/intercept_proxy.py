@@ -88,6 +88,85 @@ class InterceptingProxy(QObject):
             def do_PATCH(self):
                 self.handle_request('PATCH')
 
+            def do_CONNECT(self):
+                """Handle HTTPS CONNECT tunnel for HTTPS traffic"""
+                # For HTTPS, we establish a tunnel
+                # Note: Full SSL interception requires certificate generation
+                # For now, we just tunnel the connection (can see URL but not content)
+
+                try:
+                    # Parse host and port
+                    host, port = self.path.split(':')
+                    port = int(port)
+
+                    # Log HTTPS connection attempt
+                    request_data = {
+                        'id': proxy_instance.request_id_counter,
+                        'method': 'CONNECT',
+                        'url': f"https://{self.path}",
+                        'headers': dict(self.headers),
+                        'body': '[HTTPS - Encrypted]',
+                        'raw_body': b'',
+                        'timestamp': time.time(),
+                        'client_address': self.client_address[0]
+                    }
+                    proxy_instance.request_id_counter += 1
+
+                    # Add to history
+                    proxy_instance.history.append(request_data)
+                    if len(proxy_instance.history) > proxy_instance.max_history:
+                        proxy_instance.history.pop(0)
+
+                    # Connect to destination
+                    dest_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    dest_socket.connect((host, port))
+
+                    # Send 200 Connection Established
+                    self.send_response(200, 'Connection Established')
+                    self.end_headers()
+
+                    # Tunnel data between client and server
+                    # This is a simple pass-through - encrypted data flows through
+                    import select
+
+                    client_socket = self.connection
+                    sockets = [client_socket, dest_socket]
+
+                    # Emit response signal (showing tunnel established)
+                    response_data = {
+                        'request': request_data,
+                        'response': {
+                            'status_code': 200,
+                            'headers': {'Connection': 'Established'},
+                            'body': b'',
+                            'text': '[HTTPS Tunnel - Content Encrypted]'
+                        }
+                    }
+                    proxy_instance.response_received.emit(response_data)
+
+                    # Simple bidirectional tunnel
+                    while True:
+                        readable, _, exceptional = select.select(sockets, [], sockets, 1)
+
+                        if exceptional:
+                            break
+
+                        for sock in readable:
+                            try:
+                                data = sock.recv(8192)
+                                if not data:
+                                    return
+
+                                if sock is client_socket:
+                                    dest_socket.sendall(data)
+                                else:
+                                    client_socket.sendall(data)
+                            except:
+                                return
+
+                except Exception as e:
+                    self.send_error(502, f"Bad Gateway: {str(e)}")
+
             def handle_request(self, method):
                 """Handle HTTP request"""
                 # Parse request

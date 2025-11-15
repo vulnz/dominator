@@ -1,0 +1,273 @@
+"""
+Chromium Manager - Download and manage portable Chromium browser
+Ensures browser availability without relying on system installation
+"""
+
+import os
+import sys
+import zipfile
+import tarfile
+import platform
+import subprocess
+from pathlib import Path
+import urllib.request
+import shutil
+
+
+class ChromiumManager:
+    """Manages portable Chromium browser for proxy integration"""
+
+    def __init__(self):
+        self.base_dir = Path(__file__).parent.parent / "chromium_portable"
+        self.base_dir.mkdir(exist_ok=True)
+
+        # Chromium download URLs (Chromium for Testing builds)
+        # These are official builds from Google for automated testing
+        self.download_urls = {
+            'win32': 'https://storage.googleapis.com/chrome-for-testing-public/121.0.6167.85/win64/chrome-win64.zip',
+            'win64': 'https://storage.googleapis.com/chrome-for-testing-public/121.0.6167.85/win64/chrome-win64.zip',
+            'linux': 'https://storage.googleapis.com/chrome-for-testing-public/121.0.6167.85/linux64/chrome-linux64.zip',
+            'darwin': 'https://storage.googleapis.com/chrome-for-testing-public/121.0.6167.85/mac-x64/chrome-mac-x64.zip',
+        }
+
+        # Detect platform
+        self.platform = self._detect_platform()
+
+        # Set paths
+        self.chromium_dir = self.base_dir / self.platform
+        self.executable_path = self._get_executable_path()
+
+    def _detect_platform(self):
+        """Detect current platform"""
+        system = platform.system().lower()
+        if system == 'windows':
+            return 'win64' if sys.maxsize > 2**32 else 'win32'
+        elif system == 'linux':
+            return 'linux'
+        elif system == 'darwin':
+            return 'darwin'
+        else:
+            raise Exception(f"Unsupported platform: {system}")
+
+    def _get_executable_path(self):
+        """Get path to Chromium executable"""
+        if self.platform.startswith('win'):
+            return self.chromium_dir / "chrome-win64" / "chrome.exe"
+        elif self.platform == 'linux':
+            return self.chromium_dir / "chrome-linux64" / "chrome"
+        elif self.platform == 'darwin':
+            return self.chromium_dir / "chrome-mac-x64" / "Google Chrome for Testing.app" / "Contents" / "MacOS" / "Google Chrome for Testing"
+        return None
+
+    def is_installed(self):
+        """Check if Chromium is already downloaded"""
+        if not self.executable_path:
+            return False
+        return self.executable_path.exists()
+
+    def download(self, progress_callback=None):
+        """Download and extract Chromium"""
+        if self.is_installed():
+            return str(self.executable_path)
+
+        url = self.download_urls.get(self.platform)
+        if not url:
+            raise Exception(f"No download URL for platform: {self.platform}")
+
+        # Download
+        download_path = self.base_dir / f"chromium_{self.platform}.zip"
+
+        if progress_callback:
+            progress_callback("Downloading Chromium (this may take a few minutes)...", 0)
+
+        try:
+            # Download with progress
+            def report_hook(block_num, block_size, total_size):
+                if total_size > 0 and progress_callback:
+                    percent = min(100, int((block_num * block_size * 100) / total_size))
+                    progress_callback(f"Downloading Chromium: {percent}%", percent)
+
+            urllib.request.urlretrieve(url, download_path, reporthook=report_hook)
+
+            if progress_callback:
+                progress_callback("Extracting Chromium...", 90)
+
+            # Extract
+            self.chromium_dir.mkdir(exist_ok=True)
+
+            with zipfile.ZipFile(download_path, 'r') as zip_ref:
+                zip_ref.extractall(self.chromium_dir)
+
+            # Clean up zip
+            download_path.unlink()
+
+            # Make executable on Unix-like systems
+            if self.platform in ['linux', 'darwin']:
+                os.chmod(self.executable_path, 0o755)
+
+            if progress_callback:
+                progress_callback("Chromium ready!", 100)
+
+            return str(self.executable_path)
+
+        except Exception as e:
+            # Clean up on error
+            if download_path.exists():
+                download_path.unlink()
+            if self.chromium_dir.exists():
+                shutil.rmtree(self.chromium_dir)
+            raise Exception(f"Failed to download Chromium: {str(e)}")
+
+    def get_executable(self):
+        """Get path to Chromium executable, download if needed"""
+        if not self.is_installed():
+            return None
+        return str(self.executable_path)
+
+    def launch(self, proxy_host='127.0.0.1', proxy_port=8080, additional_args=None):
+        """Launch Chromium with proxy configuration"""
+        executable = self.get_executable()
+        if not executable:
+            raise Exception("Chromium not installed. Please download first.")
+
+        # Create user data directory
+        user_data_dir = self.base_dir / "user_data"
+        user_data_dir.mkdir(exist_ok=True)
+
+        # Build command
+        cmd = [
+            executable,
+            f"--proxy-server={proxy_host}:{proxy_port}",
+            f"--user-data-dir={user_data_dir}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-background-networking",
+            "--disable-sync",
+            "--metrics-recording-only",
+            "--disable-default-apps",
+            "--mute-audio",
+            "--no-proxy-server",  # Disable system proxy
+            f"--proxy-server={proxy_host}:{proxy_port}",  # Set our proxy
+        ]
+
+        # Add additional arguments
+        if additional_args:
+            cmd.extend(additional_args)
+
+        # Launch
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == 'win32' else 0
+        )
+
+        return process
+
+    def get_installed_chrome(self):
+        """Try to find system-installed Chrome/Chromium as fallback"""
+        chrome_paths = [
+            # Windows
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+
+            # Linux
+            "/usr/bin/google-chrome",
+            "/usr/bin/chromium",
+            "/usr/bin/chromium-browser",
+            "/snap/bin/chromium",
+
+            # macOS
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            "/Applications/Chromium.app/Contents/MacOS/Chromium",
+            os.path.expanduser("~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+        ]
+
+        for path in chrome_paths:
+            if os.path.exists(path):
+                return path
+
+        return None
+
+    def launch_with_fallback(self, proxy_host='127.0.0.1', proxy_port=8080):
+        """Launch Chromium, falling back to system Chrome if needed"""
+        try:
+            # Try portable Chromium first
+            if self.is_installed():
+                return self.launch(proxy_host, proxy_port)
+        except Exception as e:
+            print(f"Portable Chromium launch failed: {e}")
+
+        # Fallback to system Chrome
+        chrome_path = self.get_installed_chrome()
+        if chrome_path:
+            user_data_dir = self.base_dir / "user_data"
+            user_data_dir.mkdir(exist_ok=True)
+
+            cmd = [
+                chrome_path,
+                f"--proxy-server={proxy_host}:{proxy_port}",
+                f"--user-data-dir={user_data_dir}",
+                "--no-first-run",
+                "--new-window"
+            ]
+
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == 'win32' else 0
+            )
+
+            return process
+
+        raise Exception("No Chrome/Chromium installation found")
+
+    def get_download_size_mb(self):
+        """Get approximate download size for current platform"""
+        sizes = {
+            'win32': 150,
+            'win64': 150,
+            'linux': 140,
+            'darwin': 160,
+        }
+        return sizes.get(self.platform, 150)
+
+    def remove(self):
+        """Remove downloaded Chromium"""
+        if self.base_dir.exists():
+            shutil.rmtree(self.base_dir)
+
+
+# Singleton instance
+_chromium_manager = None
+
+
+def get_chromium_manager():
+    """Get singleton ChromiumManager instance"""
+    global _chromium_manager
+    if _chromium_manager is None:
+        _chromium_manager = ChromiumManager()
+    return _chromium_manager
+
+
+if __name__ == "__main__":
+    # Test script
+    manager = get_chromium_manager()
+
+    print(f"Platform: {manager.platform}")
+    print(f"Chromium installed: {manager.is_installed()}")
+
+    if not manager.is_installed():
+        print(f"Download size: ~{manager.get_download_size_mb()} MB")
+        print("Downloading Chromium...")
+
+        def progress(msg, percent):
+            print(f"[{percent}%] {msg}")
+
+        manager.download(progress_callback=progress)
+
+    print(f"Executable path: {manager.get_executable()}")
+    print("\nLaunching Chromium with proxy...")
+    manager.launch_with_fallback()

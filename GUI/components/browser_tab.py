@@ -7,12 +7,13 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QTableWidget, QTableWidgetItem, QTextEdit, QSplitter,
     QCheckBox, QSpinBox, QGroupBox, QComboBox, QHeaderView,
-    QMessageBox, QDialog, QDialogButtonBox, QTabWidget
+    QMessageBox, QDialog, QDialogButtonBox, QTabWidget, QProgressDialog
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QThread
 from PyQt5.QtGui import QColor, QFont
 import json
 from datetime import datetime
+from utils.chromium_manager import get_chromium_manager
 
 
 class BrowserTab(QWidget):
@@ -301,59 +302,73 @@ class BrowserTab(QWidget):
             self.proxy.passive_scan_enabled = (state == Qt.Checked)
 
     def launch_browser(self):
-        """Launch Chrome browser with proxy configuration"""
-        import subprocess
-        import os
-
+        """Launch Chromium browser with proxy configuration"""
         port = self.proxy_port_spin.value()
-        proxy_url = f"127.0.0.1:{port}"
+        chromium_mgr = get_chromium_manager()
 
-        # Chrome launch command with proxy
-        chrome_paths = [
-            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-            os.path.expanduser("~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
-            "/usr/bin/google-chrome",
-            "/usr/bin/chromium-browser"
-        ]
-
-        chrome_path = None
-        for path in chrome_paths:
-            if os.path.exists(path):
-                chrome_path = path
-                break
-
-        if not chrome_path:
-            QMessageBox.warning(
+        # Check if Chromium is installed
+        if not chromium_mgr.is_installed():
+            # Ask user if they want to download
+            reply = QMessageBox.question(
                 self,
-                "Chrome Not Found",
-                "Could not find Google Chrome installation.\n\n"
-                "Please manually configure your browser:\n"
-                f"Proxy: {proxy_url}"
+                "Download Chromium?",
+                f"Portable Chromium not found.\n\n"
+                f"Download size: ~{chromium_mgr.get_download_size_mb()} MB\n\n"
+                f"Download now? (Or use system Chrome as fallback)",
+                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+                QMessageBox.Yes
             )
-            return
 
-        # Launch Chrome with proxy settings
+            if reply == QMessageBox.Yes:
+                # Show progress dialog
+                progress = QProgressDialog("Downloading Chromium...", "Cancel", 0, 100, self)
+                progress.setWindowModality(Qt.WindowModal)
+                progress.setAutoClose(True)
+                progress.setAutoReset(True)
+
+                def progress_callback(msg, percent):
+                    progress.setLabelText(msg)
+                    progress.setValue(percent)
+                    QMessageBox.qApp.processEvents()
+
+                try:
+                    chromium_mgr.download(progress_callback=progress_callback)
+                    progress.close()
+                    QMessageBox.information(
+                        self,
+                        "Download Complete",
+                        "Chromium downloaded successfully!"
+                    )
+                except Exception as e:
+                    progress.close()
+                    QMessageBox.critical(
+                        self,
+                        "Download Failed",
+                        f"Failed to download Chromium:\n{str(e)}\n\n"
+                        "Falling back to system Chrome..."
+                    )
+
+            elif reply == QMessageBox.Cancel:
+                return
+
+        # Launch browser
         try:
-            subprocess.Popen([
-                chrome_path,
-                f"--proxy-server={proxy_url}",
-                "--disable-web-security",  # For testing purposes
-                "--user-data-dir=" + os.path.join(os.getcwd(), "chrome_profile"),
-                "--new-window"
-            ])
+            chromium_mgr.launch_with_fallback(proxy_host='127.0.0.1', proxy_port=port)
 
+            browser_type = "Chromium" if chromium_mgr.is_installed() else "Chrome"
             QMessageBox.information(
                 self,
                 "Browser Launched",
-                f"Chrome launched with proxy: {proxy_url}\n\n"
+                f"{browser_type} launched with proxy: 127.0.0.1:{port}\n\n"
                 "All requests will be intercepted and logged."
             )
         except Exception as e:
             QMessageBox.critical(
                 self,
                 "Launch Failed",
-                f"Failed to launch Chrome:\n{str(e)}"
+                f"Failed to launch browser:\n{str(e)}\n\n"
+                "Please manually configure your browser:\n"
+                f"Proxy: 127.0.0.1:{port}"
             )
 
     def on_request_intercepted(self, request_data):
@@ -609,6 +624,24 @@ class InterceptDialog(QDialog):
         self.setWindowTitle(f"Intercept Request #{self.request_data['id']}")
         self.resize(800, 600)
 
+        # Set dark theme for dialog
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #1a1a1a;
+                color: #00ff88;
+            }
+            QLabel {
+                color: #00ff88;
+            }
+            QTextEdit {
+                background-color: #0a0a0a;
+                color: #00ff88;
+                border: 2px solid #3a3a3a;
+                border-radius: 4px;
+                padding: 5px;
+            }
+        """)
+
         layout = QVBoxLayout()
 
         # Request details
@@ -707,6 +740,35 @@ class ModifyRequestDialog(QDialog):
         """Initialize modify dialog UI"""
         self.setWindowTitle("Modify Request")
         self.resize(800, 600)
+
+        # Set dark theme for dialog
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #1a1a1a;
+                color: #00ff88;
+            }
+            QLabel {
+                color: #00ff88;
+            }
+            QTextEdit {
+                background-color: #0a0a0a;
+                color: #00ff88;
+                border: 2px solid #3a3a3a;
+                border-radius: 4px;
+                padding: 5px;
+            }
+            QDialogButtonBox QPushButton {
+                background-color: #2b2b2b;
+                color: #00ff88;
+                border: 2px solid #3a3a3a;
+                border-radius: 4px;
+                padding: 6px 15px;
+            }
+            QDialogButtonBox QPushButton:hover {
+                background-color: #3a3a3a;
+                border-color: #00ff88;
+            }
+        """)
 
         layout = QVBoxLayout()
 
