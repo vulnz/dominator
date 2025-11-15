@@ -6,7 +6,7 @@ Allows manual editing and resending of HTTP requests
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QTextEdit, QSplitter, QTabWidget, QComboBox, QLineEdit,
-    QGroupBox, QMessageBox, QSpinBox
+    QGroupBox, QMessageBox, QSpinBox, QCheckBox, QApplication
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QThread
 from PyQt5.QtGui import QFont, QColor, QSyntaxHighlighter, QTextCharFormat
@@ -523,6 +523,3 @@ class RepeaterTab(QWidget):
 
         # TODO: Show history selection dialog
         QMessageBox.information(self, "History", f"History contains {len(self.history)} requests")
-
-
-from PyQt5.QtWidgets import QApplication
