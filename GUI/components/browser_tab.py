@@ -624,19 +624,19 @@ class InterceptDialog(QDialog):
         self.setWindowTitle(f"Intercept Request #{self.request_data['id']}")
         self.resize(800, 600)
 
-        # Set dark theme for dialog
+        # Set light theme for dialog
         self.setStyleSheet("""
             QDialog {
-                background-color: #1a1a1a;
-                color: #00ff88;
+                background-color: #f0f0f0;
+                color: black;
             }
             QLabel {
-                color: #00ff88;
+                color: black;
             }
             QTextEdit {
-                background-color: #0a0a0a;
-                color: #00ff88;
-                border: 2px solid #3a3a3a;
+                background-color: white;
+                color: black;
+                border: 2px solid #cccccc;
                 border-radius: 4px;
                 padding: 5px;
             }
@@ -741,32 +741,32 @@ class ModifyRequestDialog(QDialog):
         self.setWindowTitle("Modify Request")
         self.resize(800, 600)
 
-        # Set dark theme for dialog
+        # Set light theme for dialog
         self.setStyleSheet("""
             QDialog {
-                background-color: #1a1a1a;
-                color: #00ff88;
+                background-color: #f0f0f0;
+                color: black;
             }
             QLabel {
-                color: #00ff88;
+                color: black;
             }
             QTextEdit {
-                background-color: #0a0a0a;
-                color: #00ff88;
-                border: 2px solid #3a3a3a;
+                background-color: white;
+                color: black;
+                border: 2px solid #cccccc;
                 border-radius: 4px;
                 padding: 5px;
             }
             QDialogButtonBox QPushButton {
-                background-color: #2b2b2b;
-                color: #00ff88;
-                border: 2px solid #3a3a3a;
+                background-color: #e0e0e0;
+                color: black;
+                border: 2px solid #999999;
                 border-radius: 4px;
                 padding: 6px 15px;
             }
             QDialogButtonBox QPushButton:hover {
-                background-color: #3a3a3a;
-                border-color: #00ff88;
+                background-color: #d0d0d0;
+                border-color: #666666;
             }
         """)
 

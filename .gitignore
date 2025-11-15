@@ -76,3 +76,5 @@ TOP_10_NEW_MODULES.md
 *.tmp
 *.bak
 *.old
+chrome_profile/
+chromium_portable/

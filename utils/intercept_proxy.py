@@ -90,10 +90,6 @@ class InterceptingProxy(QObject):
 
             def do_CONNECT(self):
                 """Handle HTTPS CONNECT tunnel for HTTPS traffic"""
-                # For HTTPS, we establish a tunnel
-                # Note: Full SSL interception requires certificate generation
-                # For now, we just tunnel the connection (can see URL but not content)
-
                 try:
                     # Parse host and port
                     host, port = self.path.split(':')
@@ -117,20 +113,14 @@ class InterceptingProxy(QObject):
                     if len(proxy_instance.history) > proxy_instance.max_history:
                         proxy_instance.history.pop(0)
 
-                    # Connect to destination
+                    # Connect to destination server
                     dest_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    dest_socket.settimeout(30)
                     dest_socket.connect((host, port))
 
-                    # Send 200 Connection Established
+                    # Send 200 Connection Established to client
                     self.send_response(200, 'Connection Established')
                     self.end_headers()
-
-                    # Tunnel data between client and server
-                    # This is a simple pass-through - encrypted data flows through
-                    import select
-
-                    client_socket = self.connection
-                    sockets = [client_socket, dest_socket]
 
                     # Emit response signal (showing tunnel established)
                     response_data = {
@@ -144,28 +134,62 @@ class InterceptingProxy(QObject):
                     }
                     proxy_instance.response_received.emit(response_data)
 
-                    # Simple bidirectional tunnel
-                    while True:
-                        readable, _, exceptional = select.select(sockets, [], sockets, 1)
+                    # Set sockets to non-blocking mode for Windows compatibility
+                    client_socket = self.connection
+                    client_socket.setblocking(False)
+                    dest_socket.setblocking(False)
 
-                        if exceptional:
-                            break
-
-                        for sock in readable:
+                    # Bidirectional tunnel using threads (Windows compatible)
+                    def forward_data(source, destination, name):
+                        """Forward data from source to destination"""
+                        try:
+                            while True:
+                                try:
+                                    data = source.recv(8192)
+                                    if not data:
+                                        break
+                                    destination.sendall(data)
+                                except socket.error as e:
+                                    # No data available (non-blocking)
+                                    if e.errno in (10035, 11):  # WSAEWOULDBLOCK or EAGAIN
+                                        time.sleep(0.01)
+                                        continue
+                                    break
+                        except Exception:
+                            pass
+                        finally:
                             try:
-                                data = sock.recv(8192)
-                                if not data:
-                                    return
-
-                                if sock is client_socket:
-                                    dest_socket.sendall(data)
-                                else:
-                                    client_socket.sendall(data)
+                                source.close()
+                                destination.close()
                             except:
-                                return
+                                pass
+
+                    # Create forwarding threads
+                    import threading
+                    client_to_server = threading.Thread(
+                        target=forward_data,
+                        args=(client_socket, dest_socket, "client->server"),
+                        daemon=True
+                    )
+                    server_to_client = threading.Thread(
+                        target=forward_data,
+                        args=(dest_socket, client_socket, "server->client"),
+                        daemon=True
+                    )
+
+                    # Start forwarding
+                    client_to_server.start()
+                    server_to_client.start()
+
+                    # Wait for both threads to complete
+                    client_to_server.join()
+                    server_to_client.join()
 
                 except Exception as e:
-                    self.send_error(502, f"Bad Gateway: {str(e)}")
+                    try:
+                        self.send_error(502, f"Bad Gateway: {str(e)}")
+                    except:
+                        pass
 
             def handle_request(self, method):
                 """Handle HTTP request"""
