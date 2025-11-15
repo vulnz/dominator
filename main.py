@@ -141,10 +141,10 @@ def launch_gui(args):
             # Parse module list
             module_names = [m.strip() for m in args.modules.split(',')]
             # Select specific modules in GUI
-            for i in range(gui.modules_list.count()):
-                item = gui.modules_list.item(i)
-                module_data = item.data(256)  # Qt.UserRole
-                if module_data and module_data.get('folder') in module_names:
+            for i in range(gui.module_list.count()):
+                item = gui.module_list.item(i)
+                module_folder = item.data(256)  # Qt.UserRole (stores folder name as string)
+                if module_folder and module_folder in module_names:
                     item.setCheckState(2)  # Qt.Checked
 
         # Configure HTTP options
