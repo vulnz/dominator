@@ -7,13 +7,14 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QTableWidget, QTableWidgetItem, QTextEdit, QSplitter,
     QCheckBox, QSpinBox, QGroupBox, QComboBox, QHeaderView,
-    QMessageBox, QDialog, QDialogButtonBox, QTabWidget, QProgressDialog
+    QMessageBox, QDialog, QDialogButtonBox, QTabWidget, QProgressDialog, QApplication
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QThread
 from PyQt5.QtGui import QColor, QFont
 import json
 from datetime import datetime
 from utils.chromium_manager import get_chromium_manager
+from GUI.components.repeater_tab import RepeaterTab
 
 
 class BrowserTab(QWidget):
@@ -26,6 +27,7 @@ class BrowserTab(QWidget):
         super().__init__(parent)
         self.proxy = None
         self.selected_modules = []
+        self.repeater_tab = None  # Will be created in init_ui
         self.init_ui()
 
     def init_ui(self):
@@ -101,11 +103,40 @@ class BrowserTab(QWidget):
 
         layout = QVBoxLayout()
 
-        # === Top Control Panel ===
-        control_panel = self._create_control_panel()
-        layout.addWidget(control_panel)
+        # Create sub-tabs for Proxy and Repeater
+        self.sub_tabs = QTabWidget()
+        self.sub_tabs.setStyleSheet("""
+            QTabWidget::pane {
+                border: 1px solid #cccccc;
+                background-color: white;
+            }
+            QTabBar::tab {
+                background-color: #e0e0e0;
+                color: black;
+                padding: 8px 20px;
+                border: 1px solid #cccccc;
+                border-bottom: none;
+                margin-right: 2px;
+            }
+            QTabBar::tab:selected {
+                background-color: white;
+                color: black;
+                font-weight: bold;
+            }
+            QTabBar::tab:hover {
+                background-color: #d0d0d0;
+            }
+        """)
 
-        # === Main Splitter (History + Details) ===
+        # === Proxy Tab (main functionality) ===
+        proxy_widget = QWidget()
+        proxy_layout = QVBoxLayout()
+
+        # Top Control Panel
+        control_panel = self._create_control_panel()
+        proxy_layout.addWidget(control_panel)
+
+        # Main Splitter (History + Details)
         splitter = QSplitter(Qt.Vertical)
 
         # Request History Table
@@ -118,11 +149,22 @@ class BrowserTab(QWidget):
 
         # Set splitter sizes (60% history, 40% details)
         splitter.setSizes([600, 400])
-        layout.addWidget(splitter)
+        proxy_layout.addWidget(splitter)
 
-        # === Bottom Findings Panel ===
+        # Bottom Findings Panel
         findings_group = self._create_findings_panel()
-        layout.addWidget(findings_group)
+        proxy_layout.addWidget(findings_group)
+
+        proxy_widget.setLayout(proxy_layout)
+
+        # === Repeater Tab ===
+        self.repeater_tab = RepeaterTab()
+
+        # Add tabs
+        self.sub_tabs.addTab(proxy_widget, "🌐 Proxy & Intercept")
+        self.sub_tabs.addTab(self.repeater_tab, "🔁 Repeater")
+
+        layout.addWidget(self.sub_tabs)
 
         self.setLayout(layout)
 
@@ -282,6 +324,25 @@ class BrowserTab(QWidget):
         self.modify_replay_btn.clicked.connect(self.modify_and_replay)
         self.modify_replay_btn.setEnabled(False)
         actions_row.addWidget(self.modify_replay_btn)
+
+        self.send_to_repeater_btn = QPushButton("🔁 Send to Repeater")
+        self.send_to_repeater_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+            QPushButton:disabled {
+                background-color: #cccccc;
+                color: #666666;
+            }
+        """)
+        self.send_to_repeater_btn.clicked.connect(self.send_to_repeater)
+        self.send_to_repeater_btn.setEnabled(False)
+        actions_row.addWidget(self.send_to_repeater_btn)
 
         actions_row.addStretch()
         layout.addLayout(actions_row)
@@ -615,6 +676,28 @@ class BrowserTab(QWidget):
 
             self.replay_btn.setEnabled(True)
             self.modify_replay_btn.setEnabled(True)
+            self.send_to_repeater_btn.setEnabled(True)
+
+    def send_to_repeater(self):
+        """Send selected request to Repeater tab"""
+        selected = self.history_table.selectedItems()
+        if not selected:
+            return
+
+        row = selected[0].row()
+        data = self.history_table.item(row, 0).data(Qt.UserRole)
+
+        if data:
+            request = data['request']
+            # Load request into Repeater
+            self.repeater_tab.load_request(request)
+            # Switch to Repeater tab
+            self.sub_tabs.setCurrentIndex(1)
+            QMessageBox.information(
+                self,
+                "Sent to Repeater",
+                f"Request sent to Repeater:\n{request['method']} {request['url']}"
+            )
 
     def replay_selected_request(self):
         """Replay the selected request"""
