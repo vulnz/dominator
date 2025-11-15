@@ -354,10 +354,19 @@ reports/
 
 ## 📚 Documentation
 
+### Core Documentation
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Complete system architecture and design patterns
+- **[modules/README.md](modules/README.md)** - Detailed module documentation (XSS, SQLi, LFI, SSTI, CMDi, SSRF)
+- **[PERFORMANCE_OPTIMIZATION.md](PERFORMANCE_OPTIMIZATION.md)** - Performance tuning and benchmarking guide
+- **[TESTING_GUIDE.md](TESTING_GUIDE.md)** - Comprehensive testing methodology and test targets
+
+### Advanced Guides
 - [ROTATION 7 Complete Summary](ROTATION7_FINAL_COMPLETE.md) - All R7 improvements
 - [Acunetix Gap Analysis](ACUNETIX_GAP_ANALYSIS.md) - Comparison with commercial scanner
 - [Intelligent Scanner System](INTELLIGENT_SCANNER_SYSTEM.md) - Architecture deep dive
 - [Passive Detectors Guide](PASSIVE_DETECTORS_COMPLETE.md) - Passive scanning details
+- [GUI Refactoring Plan](GUI/REFACTORING_PLAN.md) - Modular GUI architecture
+- [Improvements 2025-11-14](IMPROVEMENTS_2025-11-14.md) - Latest session summary
 
 ---
 
