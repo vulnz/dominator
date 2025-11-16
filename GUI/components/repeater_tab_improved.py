@@ -7,10 +7,10 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QTextEdit, QSplitter, QTabWidget, QComboBox, QLineEdit,
     QGroupBox, QMessageBox, QSpinBox, QCheckBox, QApplication,
-    QToolBar, QAction
+    QToolBar, QAction, QFileDialog, QProgressDialog, QShortcut
 )
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QFont, QColor, QSyntaxHighlighter, QTextCharFormat, QIcon
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer
+from PyQt5.QtGui import QFont, QColor, QSyntaxHighlighter, QTextCharFormat, QIcon, QKeySequence
 import requests
 from datetime import datetime
 import re
@@ -65,6 +65,7 @@ class SingleRepeaterWidget(QWidget):
         self.tab_name = tab_name
         self.request_history = []
         self.init_ui()
+        self.setup_shortcuts()
 
     def init_ui(self):
         """Initialize single repeater UI"""
@@ -148,10 +149,46 @@ class SingleRepeaterWidget(QWidget):
 
         toolbar.addSeparator()
 
+        # Auto-repeat controls
+        toolbar.addWidget(QLabel("Repeat:"))
+        self.repeat_count = QSpinBox()
+        self.repeat_count.setRange(1, 100)
+        self.repeat_count.setValue(1)
+        self.repeat_count.setSuffix(" times")
+        self.repeat_count.setToolTip("Number of times to send the request")
+        toolbar.addWidget(self.repeat_count)
+
+        self.auto_repeat_btn = QPushButton("🔄 Auto-Repeat")
+        self.auto_repeat_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #FF9800;
+                color: white;
+                font-weight: bold;
+                padding: 8px 20px;
+            }
+            QPushButton:hover {
+                background-color: #F57C00;
+            }
+        """)
+        self.auto_repeat_btn.clicked.connect(self.auto_repeat_request)
+        toolbar.addWidget(self.auto_repeat_btn)
+
+        toolbar.addSeparator()
+
         # Clear button
         clear_btn = QPushButton("🗑 Clear")
         clear_btn.clicked.connect(self.clear_request)
         toolbar.addWidget(clear_btn)
+
+        # Save/Load buttons
+        save_btn = QPushButton("💾 Save")
+        save_btn.clicked.connect(self.save_request)
+        save_btn.setToolTip("Save request to file (Ctrl+S)")
+        toolbar.addWidget(save_btn)
+
+        load_btn = QPushButton("📂 Load")
+        load_btn.clicked.connect(self.load_request_from_file)
+        toolbar.addWidget(load_btn)
 
         return toolbar
 
@@ -374,6 +411,199 @@ class SingleRepeaterWidget(QWidget):
         self.method_combo.setCurrentIndex(0)
         self.status_message.setText("Cleared")
 
+    def auto_repeat_request(self):
+        """Send request multiple times"""
+        repeat_count = self.repeat_count.value()
+
+        if repeat_count == 1:
+            self.send_request()
+            return
+
+        # Show progress dialog
+        progress = QProgressDialog(f"Sending request {repeat_count} times...", "Cancel", 0, repeat_count, self)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)
+
+        results = []
+
+        try:
+            for i in range(repeat_count):
+                if progress.wasCanceled():
+                    break
+
+                progress.setValue(i)
+                progress.setLabelText(f"Sending request {i+1}/{repeat_count}...")
+
+                # Send request (reuse send_request logic)
+                try:
+                    raw_request = self.request_edit.toPlainText()
+                    if not raw_request.strip():
+                        continue
+
+                    lines = raw_request.split('\n')
+                    if not lines:
+                        continue
+
+                    first_line = lines[0].strip().split()
+                    if len(first_line) < 2:
+                        continue
+
+                    method = first_line[0]
+                    url = self.url_input.text() or first_line[1]
+
+                    headers = {}
+                    body_start = 0
+                    for j, line in enumerate(lines[1:], 1):
+                        if not line.strip():
+                            body_start = j + 1
+                            break
+                        if ':' in line:
+                            key, value = line.split(':', 1)
+                            headers[key.strip()] = value.strip()
+
+                    body = '\n'.join(lines[body_start:]) if body_start > 0 else ''
+
+                    import time
+                    start_time = time.time()
+
+                    response = requests.request(
+                        method=method,
+                        url=url,
+                        headers=headers,
+                        data=body.encode('utf-8') if body else None,
+                        timeout=self.timeout_spin.value(),
+                        allow_redirects=self.follow_redirects.isChecked(),
+                        verify=False
+                    )
+
+                    elapsed = time.time() - start_time
+
+                    results.append({
+                        'index': i + 1,
+                        'status': response.status_code,
+                        'time': elapsed,
+                        'size': len(response.content)
+                    })
+
+                    # Update display with last response
+                    if i == repeat_count - 1:
+                        self._display_response(response, elapsed)
+
+                    QApplication.processEvents()
+
+                except Exception as e:
+                    results.append({
+                        'index': i + 1,
+                        'error': str(e)
+                    })
+
+            progress.setValue(repeat_count)
+
+            # Show summary
+            summary = f"Auto-Repeat completed: {len(results)}/{repeat_count} requests\n\n"
+            success_count = sum(1 for r in results if 'status' in r)
+            error_count = len(results) - success_count
+
+            if success_count > 0:
+                avg_time = sum(r['time'] for r in results if 'time' in r) / success_count
+                summary += f"✅ Successful: {success_count}\n"
+                summary += f"⏱ Average time: {avg_time:.3f}s\n"
+
+            if error_count > 0:
+                summary += f"❌ Errors: {error_count}\n"
+
+            # Status code distribution
+            status_codes = {}
+            for r in results:
+                if 'status' in r:
+                    code = r['status']
+                    status_codes[code] = status_codes.get(code, 0) + 1
+
+            if status_codes:
+                summary += f"\n📊 Status codes:\n"
+                for code, count in sorted(status_codes.items()):
+                    summary += f"   {code}: {count} times\n"
+
+            QMessageBox.information(self, "Auto-Repeat Results", summary)
+            self.status_message.setText(f"✅ Auto-Repeat: {success_count}/{repeat_count} successful")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Auto-Repeat Error", f"Failed:\n{str(e)}")
+        finally:
+            progress.close()
+
+    def save_request(self):
+        """Save current request to file"""
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Request",
+            "",
+            "HTTP Request Files (*.http);;Text Files (*.txt);;All Files (*)"
+        )
+
+        if filename:
+            try:
+                request_data = {
+                    'url': self.url_input.text(),
+                    'method': self.method_combo.currentText(),
+                    'raw_request': self.request_edit.toPlainText(),
+                    'timeout': self.timeout_spin.value(),
+                    'follow_redirects': self.follow_redirects.isChecked(),
+                    'saved_at': datetime.now().isoformat()
+                }
+
+                with open(filename, 'w', encoding='utf-8') as f:
+                    json.dump(request_data, f, indent=2)
+
+                self.status_message.setText(f"✅ Saved to {filename}")
+
+            except Exception as e:
+                QMessageBox.critical(self, "Save Error", f"Failed to save:\n{str(e)}")
+
+    def load_request_from_file(self):
+        """Load request from file"""
+        filename, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load Request",
+            "",
+            "HTTP Request Files (*.http);;Text Files (*.txt);;All Files (*)"
+        )
+
+        if filename:
+            try:
+                with open(filename, 'r', encoding='utf-8') as f:
+                    request_data = json.load(f)
+
+                self.url_input.setText(request_data.get('url', ''))
+
+                method = request_data.get('method', 'GET')
+                index = self.method_combo.findText(method)
+                if index >= 0:
+                    self.method_combo.setCurrentIndex(index)
+
+                self.request_edit.setPlainText(request_data.get('raw_request', ''))
+                self.timeout_spin.setValue(request_data.get('timeout', 10))
+                self.follow_redirects.setChecked(request_data.get('follow_redirects', False))
+
+                self.status_message.setText(f"✅ Loaded from {filename}")
+
+            except Exception as e:
+                QMessageBox.critical(self, "Load Error", f"Failed to load:\n{str(e)}")
+
+    def setup_shortcuts(self):
+        """Setup keyboard shortcuts"""
+        # Ctrl+Enter - Send request
+        send_shortcut = QShortcut(QKeySequence("Ctrl+Return"), self)
+        send_shortcut.activated.connect(self.send_request)
+
+        # Ctrl+L - Clear
+        clear_shortcut = QShortcut(QKeySequence("Ctrl+L"), self)
+        clear_shortcut.activated.connect(self.clear_request)
+
+        # Ctrl+S - Save
+        save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
+        save_shortcut.activated.connect(self.save_request)
+
 
 class RepeaterTabImproved(QWidget):
     """Improved Repeater with multiple tabs support"""
@@ -382,6 +612,7 @@ class RepeaterTabImproved(QWidget):
         super().__init__(parent)
         self.tab_counter = 1
         self.init_ui()
+        self.setup_global_shortcuts()
 
     def init_ui(self):
         """Initialize UI with tab management"""
@@ -471,3 +702,48 @@ class RepeaterTabImproved(QWidget):
                 self.add_new_tab(request_data)
         else:
             self.add_new_tab(request_data)
+
+    def duplicate_current_tab(self):
+        """Duplicate current tab"""
+        current = self.repeater_tabs.currentWidget()
+        if current and isinstance(current, SingleRepeaterWidget):
+            # Get current tab data
+            request_data = {
+                'url': current.url_input.text(),
+                'method': current.method_combo.currentText(),
+                'headers': {},
+                'body': ''
+            }
+
+            # Parse raw request for full data
+            raw_request = current.request_edit.toPlainText()
+            lines = raw_request.split('\n')
+
+            body_start = 0
+            for i, line in enumerate(lines[1:], 1):
+                if not line.strip():
+                    body_start = i + 1
+                    break
+                if ':' in line:
+                    key, value = line.split(':', 1)
+                    request_data['headers'][key.strip()] = value.strip()
+
+            if body_start > 0:
+                request_data['body'] = '\n'.join(lines[body_start:])
+
+            # Create new tab with same data
+            new_tab = self.add_new_tab(request_data)
+
+    def setup_global_shortcuts(self):
+        """Setup global keyboard shortcuts for tab management"""
+        # Ctrl+D - Duplicate current tab
+        duplicate_shortcut = QShortcut(QKeySequence("Ctrl+D"), self)
+        duplicate_shortcut.activated.connect(self.duplicate_current_tab)
+
+        # Ctrl+W - Close current tab
+        close_shortcut = QShortcut(QKeySequence("Ctrl+W"), self)
+        close_shortcut.activated.connect(lambda: self.close_tab(self.repeater_tabs.currentIndex()))
+
+        # Ctrl+T - New tab
+        new_tab_shortcut = QShortcut(QKeySequence("Ctrl+T"), self)
+        new_tab_shortcut.activated.connect(lambda: self.add_new_tab())
