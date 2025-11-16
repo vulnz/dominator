@@ -39,6 +39,9 @@ class InterceptingProxy(QObject):
         self.pending_requests = {}
         self.request_id_counter = 0
 
+        # Auto-allow hosts (bypass interception for these hosts)
+        self.auto_allow_hosts = set()
+
         # Passive detectors
         from passive_detectors.passive_scanner import PassiveScanner
         from passive_detectors.sensitive_data_detector import SensitiveDataDetector
@@ -216,8 +219,16 @@ class InterceptingProxy(QObject):
                 if len(proxy_instance.history) > proxy_instance.max_history:
                     proxy_instance.history.pop(0)
 
-                # Check if intercept is enabled
-                if proxy_instance.intercept_enabled:
+                # Check if intercept is enabled and host is not auto-allowed
+                parsed_url = urlparse(self.path)
+                host = parsed_url.netloc or self.headers.get('Host', '')
+
+                should_intercept = (
+                    proxy_instance.intercept_enabled and
+                    host not in proxy_instance.auto_allow_hosts
+                )
+
+                if should_intercept:
                     # Signal GUI to show intercept dialog
                     proxy_instance.request_intercepted.emit(request_data)
 
@@ -408,3 +419,19 @@ class InterceptingProxy(QObject):
             }
         except Exception as e:
             return {'error': str(e)}
+
+    def add_auto_allow_host(self, host):
+        """Add host to auto-allow list (bypass interception)"""
+        self.auto_allow_hosts.add(host)
+
+    def remove_auto_allow_host(self, host):
+        """Remove host from auto-allow list"""
+        self.auto_allow_hosts.discard(host)
+
+    def is_auto_allowed(self, host):
+        """Check if host is auto-allowed"""
+        return host in self.auto_allow_hosts
+
+    def get_auto_allow_hosts(self):
+        """Get list of auto-allowed hosts"""
+        return list(self.auto_allow_hosts)

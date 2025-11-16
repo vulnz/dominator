@@ -552,6 +552,25 @@ class BrowserTab(QWidget):
             elif action == 'modify':
                 modified = dialog.get_modified_request()
                 self.proxy.modify_and_forward(request_id, modified)
+            elif action == 'auto_allow':
+                # Extract host from URL
+                from urllib.parse import urlparse
+                parsed = urlparse(request_data['url'])
+                host = parsed.netloc or request_data['headers'].get('Host', '')
+
+                # Add to auto-allow list
+                self.proxy.add_auto_allow_host(host)
+
+                # Forward this request
+                self.proxy.forward_request(request_id)
+
+                # Show notification
+                QMessageBox.information(
+                    self,
+                    "Host Auto-Allowed",
+                    f"Host '{host}' added to auto-allow list.\n\n"
+                    "Future requests to this host will bypass interception."
+                )
         else:
             # Dialog closed - forward by default
             self.proxy.forward_request(request_id)
@@ -853,20 +872,28 @@ class InterceptDialog(QDialog):
 
         forward_btn = QPushButton("✓ Forward")
         forward_btn.clicked.connect(lambda: self.set_action('forward'))
-        forward_btn.setStyleSheet("background-color: #4CAF50; color: white;")
+        forward_btn.setStyleSheet("background-color: #4CAF50; color: white; padding: 8px;")
         button_layout.addWidget(forward_btn)
 
         modify_btn = QPushButton("✏ Modify & Forward")
         modify_btn.clicked.connect(lambda: self.set_action('modify'))
-        modify_btn.setStyleSheet("background-color: #2196F3; color: white;")
+        modify_btn.setStyleSheet("background-color: #2196F3; color: white; padding: 8px;")
         button_layout.addWidget(modify_btn)
 
         drop_btn = QPushButton("✗ Drop")
         drop_btn.clicked.connect(lambda: self.set_action('drop'))
-        drop_btn.setStyleSheet("background-color: #f44336; color: white;")
+        drop_btn.setStyleSheet("background-color: #f44336; color: white; padding: 8px;")
         button_layout.addWidget(drop_btn)
 
         layout.addLayout(button_layout)
+
+        # Auto-allow button row
+        auto_layout = QHBoxLayout()
+        auto_allow_btn = QPushButton("🚫 Auto-Allow This Host (Bypass Interception)")
+        auto_allow_btn.clicked.connect(lambda: self.set_action('auto_allow'))
+        auto_allow_btn.setStyleSheet("background-color: #FF9800; color: white; padding: 6px;")
+        auto_layout.addWidget(auto_allow_btn)
+        layout.addLayout(auto_layout)
 
         self.setLayout(layout)
 
