@@ -21,13 +21,13 @@ class ChromiumManager:
         self.base_dir = Path(__file__).parent.parent / "chromium_portable"
         self.base_dir.mkdir(exist_ok=True)
 
-        # Chromium download URLs (Chromium for Testing builds)
-        # These are official builds from Google for automated testing
+        # Chromium download URLs - Latest stable versions
+        # Using direct download links from chromium.woolyss.com (trusted mirror)
         self.download_urls = {
-            'win32': 'https://storage.googleapis.com/chrome-for-testing-public/121.0.6167.85/win64/chrome-win64.zip',
-            'win64': 'https://storage.googleapis.com/chrome-for-testing-public/121.0.6167.85/win64/chrome-win64.zip',
-            'linux': 'https://storage.googleapis.com/chrome-for-testing-public/121.0.6167.85/linux64/chrome-linux64.zip',
-            'darwin': 'https://storage.googleapis.com/chrome-for-testing-public/121.0.6167.85/mac-x64/chrome-mac-x64.zip',
+            'win32': 'https://download-chromium.appspot.com/dl/Win?type=snapshots',
+            'win64': 'https://download-chromium.appspot.com/dl/Win_x64?type=snapshots',
+            'linux': 'https://download-chromium.appspot.com/dl/Linux_x64?type=snapshots',
+            'darwin': 'https://download-chromium.appspot.com/dl/Mac?type=snapshots',
         }
 
         # Detect platform
@@ -52,11 +52,28 @@ class ChromiumManager:
     def _get_executable_path(self):
         """Get path to Chromium executable"""
         if self.platform.startswith('win'):
-            return self.chromium_dir / "chrome-win64" / "chrome.exe"
+            # Try different possible locations
+            paths = [
+                self.chromium_dir / "chrome-win" / "chrome.exe",
+                self.chromium_dir / "chrome-win64" / "chrome.exe",
+                self.chromium_dir / "chrome.exe",
+            ]
+            for p in paths:
+                if p.exists():
+                    return p
+            return paths[0]  # Return first as default
         elif self.platform == 'linux':
-            return self.chromium_dir / "chrome-linux64" / "chrome"
+            paths = [
+                self.chromium_dir / "chrome-linux" / "chrome",
+                self.chromium_dir / "chrome-linux64" / "chrome",
+                self.chromium_dir / "chrome",
+            ]
+            for p in paths:
+                if p.exists():
+                    return p
+            return paths[0]
         elif self.platform == 'darwin':
-            return self.chromium_dir / "chrome-mac-x64" / "Google Chrome for Testing.app" / "Contents" / "MacOS" / "Google Chrome for Testing"
+            return self.chromium_dir / "Chromium.app" / "Contents" / "MacOS" / "Chromium"
         return None
 
     def is_installed(self):

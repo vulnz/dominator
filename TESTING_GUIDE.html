@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>TESTING_GUIDE.md</title>
+<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+
+<style>
+/* https://github.com/microsoft/vscode/blob/master/extensions/markdown-language-features/media/markdown.css */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+body {
+	font-family: var(--vscode-markdown-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif);
+	font-size: var(--vscode-markdown-font-size, 14px);
+	padding: 0 26px;
+	line-height: var(--vscode-markdown-line-height, 22px);
+	word-wrap: break-word;
+}
+
+#code-csp-warning {
+	position: fixed;
+	top: 0;
+	right: 0;
+	color: white;
+	margin: 16px;
+	text-align: center;
+	font-size: 12px;
+	font-family: sans-serif;
+	background-color:#444444;
+	cursor: pointer;
+	padding: 6px;
+	box-shadow: 1px 1px 1px rgba(0,0,0,.25);
+}
+
+#code-csp-warning:hover {
+	text-decoration: none;
+	background-color:#007acc;
+	box-shadow: 2px 2px 2px rgba(0,0,0,.25);
+}
+
+body.scrollBeyondLastLine {
+	margin-bottom: calc(100vh - 22px);
+}
+
+body.showEditorSelection .code-line {
+	position: relative;
+}
+
+body.showEditorSelection .code-active-line:before,
+body.showEditorSelection .code-line:hover:before {
+	content: "";
+	display: block;
+	position: absolute;
+	top: 0;
+	left: -12px;
+	height: 100%;
+}
+
+body.showEditorSelection li.code-active-line:before,
+body.showEditorSelection li.code-line:hover:before {
+	left: -30px;
+}
+
+.vscode-light.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.15);
+}
+
+.vscode-light.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.40);
+}
+
+.vscode-light.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-dark.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.4);
+}
+
+.vscode-dark.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.60);
+}
+
+.vscode-dark.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-high-contrast.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 160, 0, 0.7);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 160, 0, 1);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+img {
+	max-width: 100%;
+	max-height: 100%;
+}
+
+a {
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+a:focus,
+input:focus,
+select:focus,
+textarea:focus {
+	outline: 1px solid -webkit-focus-ring-color;
+	outline-offset: -1px;
+}
+
+hr {
+	border: 0;
+	height: 2px;
+	border-bottom: 2px solid;
+}
+
+h1 {
+	padding-bottom: 0.3em;
+	line-height: 1.2;
+	border-bottom-width: 1px;
+	border-bottom-style: solid;
+}
+
+h1, h2, h3 {
+	font-weight: normal;
+}
+
+table {
+	border-collapse: collapse;
+}
+
+table > thead > tr > th {
+	text-align: left;
+	border-bottom: 1px solid;
+}
+
+table > thead > tr > th,
+table > thead > tr > td,
+table > tbody > tr > th,
+table > tbody > tr > td {
+	padding: 5px 10px;
+}
+
+table > tbody > tr + tr > td {
+	border-top: 1px solid;
+}
+
+blockquote {
+	margin: 0 7px 0 5px;
+	padding: 0 16px 0 10px;
+	border-left-width: 5px;
+	border-left-style: solid;
+}
+
+code {
+	font-family: Menlo, Monaco, Consolas, "Droid Sans Mono", "Courier New", monospace, "Droid Sans Fallback";
+	font-size: 1em;
+	line-height: 1.357em;
+}
+
+body.wordWrap pre {
+	white-space: pre-wrap;
+}
+
+pre:not(.hljs),
+pre.hljs code > div {
+	padding: 16px;
+	border-radius: 3px;
+	overflow: auto;
+}
+
+pre code {
+	color: var(--vscode-editor-foreground);
+	tab-size: 4;
+}
+
+/** Theming */
+
+.vscode-light pre {
+	background-color: rgba(220, 220, 220, 0.4);
+}
+
+.vscode-dark pre {
+	background-color: rgba(10, 10, 10, 0.4);
+}
+
+.vscode-high-contrast pre {
+	background-color: rgb(0, 0, 0);
+}
+
+.vscode-high-contrast h1 {
+	border-color: rgb(0, 0, 0);
+}
+
+.vscode-light table > thead > tr > th {
+	border-color: rgba(0, 0, 0, 0.69);
+}
+
+.vscode-dark table > thead > tr > th {
+	border-color: rgba(255, 255, 255, 0.69);
+}
+
+.vscode-light h1,
+.vscode-light hr,
+.vscode-light table > tbody > tr + tr > td {
+	border-color: rgba(0, 0, 0, 0.18);
+}
+
+.vscode-dark h1,
+.vscode-dark hr,
+.vscode-dark table > tbody > tr + tr > td {
+	border-color: rgba(255, 255, 255, 0.18);
+}
+
+</style>
+
+<style>
+/* Tomorrow Theme */
+/* http://jmblog.github.com/color-themes-for-google-code-highlightjs */
+/* Original theme - https://github.com/chriskempson/tomorrow-theme */
+
+/* Tomorrow Comment */
+.hljs-comment,
+.hljs-quote {
+	color: #8e908c;
+}
+
+/* Tomorrow Red */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-regexp,
+.hljs-deletion {
+	color: #c82829;
+}
+
+/* Tomorrow Orange */
+.hljs-number,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-literal,
+.hljs-type,
+.hljs-params,
+.hljs-meta,
+.hljs-link {
+	color: #f5871f;
+}
+
+/* Tomorrow Yellow */
+.hljs-attribute {
+	color: #eab700;
+}
+
+/* Tomorrow Green */
+.hljs-string,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition {
+	color: #718c00;
+}
+
+/* Tomorrow Blue */
+.hljs-title,
+.hljs-section {
+	color: #4271ae;
+}
+
+/* Tomorrow Purple */
+.hljs-keyword,
+.hljs-selector-tag {
+	color: #8959a8;
+}
+
+.hljs {
+	display: block;
+	overflow-x: auto;
+	color: #4d4d4c;
+	padding: 0.5em;
+}
+
+.hljs-emphasis {
+	font-style: italic;
+}
+
+.hljs-strong {
+	font-weight: bold;
+}
+</style>
+
+<style>
+/*
+ * Markdown PDF CSS
+ */
+
+ body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif, "Meiryo";
+	padding: 0 12px;
+}
+
+pre {
+	background-color: #f8f8f8;
+	border: 1px solid #cccccc;
+	border-radius: 3px;
+	overflow-x: auto;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+
+pre:not(.hljs) {
+	padding: 23px;
+	line-height: 19px;
+}
+
+blockquote {
+	background: rgba(127, 127, 127, 0.1);
+	border-color: rgba(0, 122, 204, 0.5);
+}
+
+.emoji {
+	height: 1.4em;
+}
+
+code {
+	font-size: 14px;
+	line-height: 19px;
+}
+
+/* for inline code */
+:not(pre):not(.hljs) > code {
+	color: #C9AE75; /* Change the old color so it seems less like an error */
+	font-size: inherit;
+}
+
+/* Page Break : use <div class="page"/> to insert page break
+-------------------------------------------------------- */
+.page {
+	page-break-after: always;
+}
+
+</style>
+
+<script src="https://unpkg.com/mermaid/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast')
+          ? 'dark'
+          : 'default'
+    });
+  </script>
+<h1 id="dominator-scanner---testing-guide">Dominator Scanner - Testing Guide</h1>
+<p>Complete guide for testing Dominator against vulnerable targets and validating module effectiveness.</p>
+<h2 id="recommended-test-targets">Recommended Test Targets</h2>
+<h3 id="1-online-vulnerable-applications">1. Online Vulnerable Applications</h3>
+<h4 id="owasp-juice-shop">OWASP Juice Shop</h4>
+<ul>
+<li><strong>URL</strong>: http://localhost:3000 (self-hosted)</li>
+<li><strong>GitHub</strong>: https://github.com/juice-shop/juice-shop</li>
+<li><strong>Setup</strong>: <code>docker run -p 3000:3000 bkimminich/juice-shop</code></li>
+<li><strong>Vulnerabilities</strong>: XSS, SQLi, CSRF, XXE, IDOR, and 90+ more</li>
+<li><strong>Difficulty</strong>: Easy to Advanced</li>
+</ul>
+<h4 id="dvwa-damn-vulnerable-web-application">DVWA (Damn Vulnerable Web Application)</h4>
+<ul>
+<li><strong>URL</strong>: http://localhost/dvwa (self-hosted)</li>
+<li><strong>GitHub</strong>: https://github.com/digininja/DVWA</li>
+<li><strong>Setup</strong>: <code>docker run --rm -it -p 80:80 vulnerables/web-dvwa</code></li>
+<li><strong>Vulnerabilities</strong>: SQLi, XSS, CSRF, File Upload, CMDi</li>
+<li><strong>Difficulty</strong>: Low, Medium, High, Impossible</li>
+</ul>
+<h4 id="bwapp-buggy-web-application">bWAPP (Buggy Web Application)</h4>
+<ul>
+<li><strong>URL</strong>: http://localhost/bWAPP (self-hosted)</li>
+<li><strong>Download</strong>: http://www.itsecgames.com/</li>
+<li><strong>Setup</strong>: PHP + MySQL installation</li>
+<li><strong>Vulnerabilities</strong>: 100+ web vulnerabilities</li>
+<li><strong>Difficulty</strong>: Low, Medium, High</li>
+</ul>
+<h4 id="webgoat">WebGoat</h4>
+<ul>
+<li><strong>URL</strong>: http://localhost:8080/WebGoat (self-hosted)</li>
+<li><strong>GitHub</strong>: https://github.com/WebGoat/WebGoat</li>
+<li><strong>Setup</strong>: <code>docker run -p 8080:8080 webgoat/webgoat</code></li>
+<li><strong>Vulnerabilities</strong>: Educational lessons with real vulns</li>
+<li><strong>Difficulty</strong>: Guided tutorials</li>
+</ul>
+<h4 id="mutillidae-ii">Mutillidae II</h4>
+<ul>
+<li><strong>URL</strong>: http://localhost/mutillidae (self-hosted)</li>
+<li><strong>GitHub</strong>: https://github.com/webpwnized/mutillidae</li>
+<li><strong>Setup</strong>: XAMPP/LAMP + Git clone</li>
+<li><strong>Vulnerabilities</strong>: OWASP Top 10 coverage</li>
+<li><strong>Difficulty</strong>: Easy to Hard</li>
+</ul>
+<h4 id="testphp-acunetix">TestPHP (Acunetix)</h4>
+<ul>
+<li><strong>URL</strong>: http://testphp.vulnweb.com</li>
+<li><strong>Type</strong>: Always-on testing site</li>
+<li><strong>Vulnerabilities</strong>: SQLi, XSS, File Upload</li>
+<li><strong>Note</strong>: Public test site, may be slow</li>
+</ul>
+<h4 id="testaspnet-acunetix">TestASP.NET (Acunetix)</h4>
+<ul>
+<li><strong>URL</strong>: http://testaspnet.vulnweb.com</li>
+<li><strong>Type</strong>: Always-on testing site</li>
+<li><strong>Vulnerabilities</strong>: .NET specific vulns</li>
+<li><strong>Note</strong>: Public test site</li>
+</ul>
+<h3 id="2-self-hosted-docker-lab">2. Self-Hosted Docker Lab</h3>
+<h4 id="quick-multi-target-setup">Quick Multi-Target Setup</h4>
+<pre class="hljs"><code><div><span class="hljs-comment"># Create docker-compose.yml</span>
+version: <span class="hljs-string">'3'</span>
+services:
+  dvwa:
+    image: vulnerables/web-dvwa
+    ports:
+      - <span class="hljs-string">"80:80"</span>
+
+  juice-shop:
+    image: bkimminich/juice-shop
+    ports:
+      - <span class="hljs-string">"3000:3000"</span>
+
+  webgoat:
+    image: webgoat/webgoat
+    ports:
+      - <span class="hljs-string">"8080:8080"</span>
+
+  mutillidae:
+    image: citizenstig/nowasp
+    ports:
+      - <span class="hljs-string">"8888:80"</span>
+
+<span class="hljs-comment"># Start all targets</span>
+docker-compose up -d
+</div></code></pre>
+<h2 id="testing-methodology">Testing Methodology</h2>
+<h3 id="1-baseline-scan-quick-validation">1. Baseline Scan (Quick Validation)</h3>
+<p>Test if scanner runs without errors:</p>
+<pre class="hljs"><code><div>python main.py -t http://testphp.vulnweb.com \
+  --max-crawl-pages 10 \
+  -m xss,sqli \
+  --timeout 10 \
+  -v
+</div></code></pre>
+<p><strong>Expected Result:</strong></p>
+<ul>
+<li>Scan completes in ~3-5 minutes</li>
+<li>Finds 2-5 XSS vulnerabilities</li>
+<li>Finds 1-3 SQLi vulnerabilities</li>
+<li>No crashes or errors</li>
+</ul>
+<h3 id="2-module-specific-testing">2. Module-Specific Testing</h3>
+<h4 id="test-xss-module">Test XSS Module</h4>
+<pre class="hljs"><code><div>python main.py -t http://testphp.vulnweb.com \
+  -m xss \
+  --max-crawl-pages 20 \
+  --auto-report --format html \
+  -v
+</div></code></pre>
+<p><strong>Validation Checklist:</strong></p>
+<ul>
+<li><input type="checkbox" id="checkbox0"><label for="checkbox0">Reflected XSS detected in search parameter</label></li>
+<li><input type="checkbox" id="checkbox1"><label for="checkbox1">Payload properly reflected in response</label></li>
+<li><input type="checkbox" id="checkbox2"><label for="checkbox2">Evidence shows execution context</label></li>
+<li><input type="checkbox" id="checkbox3"><label for="checkbox3">Confidence score is appropriate (&gt;0.7)</label></li>
+<li><input type="checkbox" id="checkbox4"><label for="checkbox4">HTML report generated with details</label></li>
+</ul>
+<h4 id="test-sqli-module">Test SQLi Module</h4>
+<pre class="hljs"><code><div>python main.py -t http://testphp.vulnweb.com \
+  -m sqli \
+  --max-crawl-pages 20 \
+  --auto-report --format html \
+  -v
+</div></code></pre>
+<p><strong>Validation Checklist:</strong></p>
+<ul>
+<li><input type="checkbox" id="checkbox5"><label for="checkbox5">Error-based SQLi detected</label></li>
+<li><input type="checkbox" id="checkbox6"><label for="checkbox6">Database error message in evidence</label></li>
+<li><input type="checkbox" id="checkbox7"><label for="checkbox7">Correct error pattern matched (MySQL)</label></li>
+<li><input type="checkbox" id="checkbox8"><label for="checkbox8">Confidence score is high (&gt;0.8)</label></li>
+<li><input type="checkbox" id="checkbox9"><label for="checkbox9">UNION-based detection attempted</label></li>
+</ul>
+<h4 id="test-lfi-module">Test LFI Module</h4>
+<pre class="hljs"><code><div>python main.py -t http://testphp.vulnweb.com \
+  -m lfi \
+  --max-crawl-pages 20 \
+  --auto-report --format html \
+  -v
+</div></code></pre>
+<p><strong>Validation Checklist:</strong></p>
+<ul>
+<li><input type="checkbox" id="checkbox10"><label for="checkbox10">Path traversal detected</label></li>
+<li><input type="checkbox" id="checkbox11"><label for="checkbox11">File content visible in evidence</label></li>
+<li><input type="checkbox" id="checkbox12"><label for="checkbox12">Pattern matching works (etc/passwd or win.ini)</label></li>
+<li><input type="checkbox" id="checkbox13"><label for="checkbox13">No false positives on normal files</label></li>
+</ul>
+<h3 id="3-full-scan-testing">3. Full Scan Testing</h3>
+<h4 id="comprehensive-test">Comprehensive Test</h4>
+<pre class="hljs"><code><div>python main.py -t http://testphp.vulnweb.com \
+  --all \
+  --max-crawl-pages 50 \
+  --threads 15 \
+  --timeout 20 \
+  --auto-report --format html,json,txt \
+  -v
+</div></code></pre>
+<p><strong>Expected Results:</strong></p>
+<ul>
+<li><strong>Duration</strong>: 15-25 minutes</li>
+<li><strong>Vulnerabilities</strong>: 10-20 total</li>
+<li><strong>Critical</strong>: 0-2</li>
+<li><strong>High</strong>: 5-10</li>
+<li><strong>Medium</strong>: 3-8</li>
+<li><strong>Low</strong>: 1-3</li>
+<li><strong>Info</strong>: 5-10 (passive findings)</li>
+</ul>
+<p><strong>Quality Checks:</strong></p>
+<ul>
+<li><input type="checkbox" id="checkbox14"><label for="checkbox14">No duplicate vulnerabilities</label></li>
+<li><input type="checkbox" id="checkbox15"><label for="checkbox15">All severities properly classified</label></li>
+<li><input type="checkbox" id="checkbox16"><label for="checkbox16">Evidence is clear and actionable</label></li>
+<li><input type="checkbox" id="checkbox17"><label for="checkbox17">Remediation advice provided</label></li>
+<li><input type="checkbox" id="checkbox18"><label for="checkbox18">CVSS/OWASP/CWE mappings correct</label></li>
+</ul>
+<h3 id="4-multi-target-testing">4. Multi-Target Testing</h3>
+<p>Create <code>test_targets.txt</code>:</p>
+<pre class="hljs"><code><div>http://testphp.vulnweb.com
+http://testaspnet.vulnweb.com
+http://localhost/dvwa
+</div></code></pre>
+<p>Run multi-target scan:</p>
+<pre class="hljs"><code><div>python main.py -f test_targets.txt \
+  -m xss,sqli,lfi \
+  --max-crawl-pages 30 \
+  --threads 15 \
+  --auto-report --format html \
+  -v
+</div></code></pre>
+<p><strong>Validation:</strong></p>
+<ul>
+<li><input type="checkbox" id="checkbox19"><label for="checkbox19">All 3 targets scanned</label></li>
+<li><input type="checkbox" id="checkbox20"><label for="checkbox20">Results separated by target</label></li>
+<li><input type="checkbox" id="checkbox21"><label for="checkbox21">Individual reports + combined report</label></li>
+<li><input type="checkbox" id="checkbox22"><label for="checkbox22">No cross-contamination of findings</label></li>
+</ul>
+<h3 id="5-gui-testing">5. GUI Testing</h3>
+<h4 id="launch-gui">Launch GUI</h4>
+<pre class="hljs"><code><div>python main.py --gui
+</div></code></pre>
+<p><strong>Manual Test Checklist:</strong></p>
+<p><strong>Target Configuration:</strong></p>
+<ul>
+<li><input type="checkbox" id="checkbox23"><label for="checkbox23">Single target input works</label></li>
+<li><input type="checkbox" id="checkbox24"><label for="checkbox24">Multi-target input works</label></li>
+<li><input type="checkbox" id="checkbox25"><label for="checkbox25">File browsing works</label></li>
+<li><input type="checkbox" id="checkbox26"><label for="checkbox26">Target validation (URL format)</label></li>
+</ul>
+<p><strong>Module Selection:</strong></p>
+<ul>
+<li><input type="checkbox" id="checkbox27"><label for="checkbox27">Individual module checkboxes work</label></li>
+<li><input type="checkbox" id="checkbox28"><label for="checkbox28">&quot;Select All&quot; checkbox works</label></li>
+<li><input type="checkbox" id="checkbox29"><label for="checkbox29">Module search/filter works</label></li>
+<li><input type="checkbox" id="checkbox30"><label for="checkbox30">Module descriptions visible</label></li>
+</ul>
+<p><strong>Advanced Options:</strong></p>
+<ul>
+<li><input type="checkbox" id="checkbox31"><label for="checkbox31">Thread count adjustment works</label></li>
+<li><input type="checkbox" id="checkbox32"><label for="checkbox32">Timeout configuration works</label></li>
+<li><input type="checkbox" id="checkbox33"><label for="checkbox33">Max pages slider works</label></li>
+<li><input type="checkbox" id="checkbox34"><label for="checkbox34">Authentication fields appear/hide correctly</label></li>
+</ul>
+<p><strong>Scan Execution:</strong></p>
+<ul>
+<li><input type="checkbox" id="checkbox35"><label for="checkbox35">Start scan button initiates scan</label></li>
+<li><input type="checkbox" id="checkbox36"><label for="checkbox36">Progress bar updates</label></li>
+<li><input type="checkbox" id="checkbox37"><label for="checkbox37">Real-time console output visible</label></li>
+<li><input type="checkbox" id="checkbox38"><label for="checkbox38">Stop scan button works</label></li>
+<li><input type="checkbox" id="checkbox39"><label for="checkbox39">Scan completes successfully</label></li>
+</ul>
+<p><strong>Results Display:</strong></p>
+<ul>
+<li><input type="checkbox" id="checkbox40"><label for="checkbox40">Vulnerabilities appear in Results tab</label></li>
+<li><input type="checkbox" id="checkbox41"><label for="checkbox41">Severity colors correct (Critical=red, High=orange, etc.)</label></li>
+<li><input type="checkbox" id="checkbox42"><label for="checkbox42">Clicking vulnerability shows details</label></li>
+<li><input type="checkbox" id="checkbox43"><label for="checkbox43">Filters work (severity, type, search)</label></li>
+<li><input type="checkbox" id="checkbox44"><label for="checkbox44">Statistics update correctly</label></li>
+</ul>
+<p><strong>Report Export:</strong></p>
+<ul>
+<li><input type="checkbox" id="checkbox45"><label for="checkbox45">HTML report button opens report</label></li>
+<li><input type="checkbox" id="checkbox46"><label for="checkbox46">JSON export works</label></li>
+<li><input type="checkbox" id="checkbox47"><label for="checkbox47">TXT export works</label></li>
+<li><input type="checkbox" id="checkbox48"><label for="checkbox48">Reports contain all findings</label></li>
+</ul>
+<h3 id="6-performance-testing">6. Performance Testing</h3>
+<h4 id="measure-scan-time">Measure Scan Time</h4>
+<pre class="hljs"><code><div>time python main.py -t http://testphp.vulnweb.com \
+  --all \
+  --max-crawl-pages 50 \
+  --threads 15
+</div></code></pre>
+<p><strong>Benchmarks (testphp.vulnweb.com):</strong></p>
+<ul>
+<li>20 pages, 3 modules: &lt; 5 minutes</li>
+<li>50 pages, 6 modules: &lt; 15 minutes</li>
+<li>50 pages, 20 modules: &lt; 30 minutes</li>
+</ul>
+<h4 id="memory-usage-test">Memory Usage Test</h4>
+<pre class="hljs"><code><div><span class="hljs-comment"># Linux/macOS</span>
+/usr/bin/time -v python main.py -t http://testphp.vulnweb.com --all
+
+<span class="hljs-comment"># Windows (Task Manager)</span>
+<span class="hljs-comment"># Monitor "python.exe" memory usage during scan</span>
+</div></code></pre>
+<p><strong>Expected Memory:</strong></p>
+<ul>
+<li>Small scan (20 pages): &lt; 200 MB</li>
+<li>Medium scan (50 pages): &lt; 400 MB</li>
+<li>Large scan (200 pages): &lt; 800 MB</li>
+</ul>
+<h3 id="7-false-positive-testing">7. False Positive Testing</h3>
+<p>Test against clean sites to verify low false positive rate:</p>
+<pre class="hljs"><code><div><span class="hljs-comment"># Test against Google (should find nothing)</span>
+python main.py -t https://www.google.com \
+  --max-crawl-pages 5 \
+  -m xss,sqli \
+  --timeout 10
+</div></code></pre>
+<p><strong>Expected Result:</strong></p>
+<ul>
+<li>0 Critical/High vulnerabilities</li>
+<li>0-3 Medium (likely passive findings)</li>
+<li>5-10 Info (missing headers, version disclosure)</li>
+</ul>
+<h3 id="8-edge-case-testing">8. Edge Case Testing</h3>
+<h4 id="test-invalid-target">Test Invalid Target</h4>
+<pre class="hljs"><code><div>python main.py -t http://this-does-not-exist-12345.com
+</div></code></pre>
+<p><strong>Expected</strong>: Error message, graceful exit</p>
+<h4 id="test-timeout-handling">Test Timeout Handling</h4>
+<pre class="hljs"><code><div>python main.py -t http://httpbin.org/delay/30 --timeout 5
+</div></code></pre>
+<p><strong>Expected</strong>: Timeout warning, continues scan</p>
+<h4 id="test-special-characters">Test Special Characters</h4>
+<pre class="hljs"><code><div>python main.py -t <span class="hljs-string">"http://testphp.vulnweb.com/?search=test%20space"</span>
+</div></code></pre>
+<p><strong>Expected</strong>: Proper URL encoding, no crashes</p>
+<h4 id="test-authentication">Test Authentication</h4>
+<pre class="hljs"><code><div>python main.py -t http://localhost/dvwa \
+  --auth-type basic \
+  --auth-username admin \
+  --auth-password password
+</div></code></pre>
+<p><strong>Expected</strong>: Successful authentication, pages crawled</p>
+<h3 id="9-regression-testing">9. Regression Testing</h3>
+<p>After making code changes, run regression tests:</p>
+<pre class="hljs"><code><div><span class="hljs-comment"># Quick regression (5 minutes)</span>
+python main.py -t http://testphp.vulnweb.com \
+  --max-crawl-pages 20 \
+  -m xss,sqli,lfi \
+  --auto-report --format json \
+  -v &gt; regression_test.log
+
+<span class="hljs-comment"># Compare with baseline</span>
+diff regression_test.log baseline_test.log
+</div></code></pre>
+<p><strong>What to Check:</strong></p>
+<ul>
+<li><input type="checkbox" id="checkbox49"><label for="checkbox49">Same vulnerabilities found</label></li>
+<li><input type="checkbox" id="checkbox50"><label for="checkbox50">No new errors/warnings</label></li>
+<li><input type="checkbox" id="checkbox51"><label for="checkbox51">Scan time similar (±20%)</label></li>
+<li><input type="checkbox" id="checkbox52"><label for="checkbox52">Memory usage similar (±20%)</label></li>
+</ul>
+<h3 id="10-payload-effectiveness-testing">10. Payload Effectiveness Testing</h3>
+<p>Test individual payloads:</p>
+<pre class="hljs"><code><div><span class="hljs-comment"># Create custom payload file</span>
+<span class="hljs-built_in">echo</span> <span class="hljs-string">'&lt;script&gt;alert("XSS")&lt;/script&gt;'</span> &gt; custom_xss.txt
+
+<span class="hljs-comment"># Test with custom payloads</span>
+python main.py -t http://testphp.vulnweb.com \
+  -m xss \
+  --custom-payloads custom_xss.txt \
+  --max-crawl-pages 10
+</div></code></pre>
+<p><strong>Validation:</strong></p>
+<ul>
+<li><input type="checkbox" id="checkbox53"><label for="checkbox53">Custom payload loaded</label></li>
+<li><input type="checkbox" id="checkbox54"><label for="checkbox54">Payload tested against parameters</label></li>
+<li><input type="checkbox" id="checkbox55"><label for="checkbox55">Detection logic works with custom payload</label></li>
+</ul>
+<h2 id="known-test-results">Known Test Results</h2>
+<h3 id="testphp-httptestphpvulnwebcom">TestPHP (http://testphp.vulnweb.com)</h3>
+<p>Expected findings with <code>--all --max-crawl-pages 50</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Vulnerability</th>
+<th>Count</th>
+<th>Confidence</th>
+<th>Location</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Reflected XSS</td>
+<td>3-5</td>
+<td>High</td>
+<td>search.php, hpp/</td>
+</tr>
+<tr>
+<td>SQL Injection</td>
+<td>1-2</td>
+<td>High</td>
+<td>artists.php, listproducts.php</td>
+</tr>
+<tr>
+<td>Missing Headers</td>
+<td>6-8</td>
+<td>Info</td>
+<td>All pages</td>
+</tr>
+<tr>
+<td>Version Disclosure</td>
+<td>2-3</td>
+<td>Low</td>
+<td>Server headers</td>
+</tr>
+<tr>
+<td>Email Disclosure</td>
+<td>1-2</td>
+<td>Info</td>
+<td>Contact pages</td>
+</tr>
+</tbody>
+</table>
+<h3 id="dvwa-httplocalhostdvwa---low-security">DVWA (http://localhost/dvwa) - Low Security</h3>
+<p>Expected findings with <code>--all --max-crawl-pages 30</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Vulnerability</th>
+<th>Count</th>
+<th>Confidence</th>
+<th>Location</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SQL Injection</td>
+<td>2-4</td>
+<td>Critical</td>
+<td>vulnerabilities/sqli/</td>
+</tr>
+<tr>
+<td>Reflected XSS</td>
+<td>2-3</td>
+<td>High</td>
+<td>vulnerabilities/xss_r/</td>
+</tr>
+<tr>
+<td>Stored XSS</td>
+<td>1-2</td>
+<td>Critical</td>
+<td>vulnerabilities/xss_s/</td>
+</tr>
+<tr>
+<td>Command Injection</td>
+<td>1-2</td>
+<td>Critical</td>
+<td>vulnerabilities/exec/</td>
+</tr>
+<tr>
+<td>File Upload</td>
+<td>1</td>
+<td>High</td>
+<td>vulnerabilities/upload/</td>
+</tr>
+<tr>
+<td>CSRF</td>
+<td>3-5</td>
+<td>Medium</td>
+<td>All forms</td>
+</tr>
+</tbody>
+</table>
+<h3 id="juice-shop-httplocalhost3000">Juice Shop (http://localhost:3000)</h3>
+<p>Expected findings with <code>--all --max-crawl-pages 50</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Vulnerability</th>
+<th>Count</th>
+<th>Confidence</th>
+<th>Location</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>XSS</td>
+<td>5-8</td>
+<td>Medium-High</td>
+<td>Search, reviews, admin</td>
+</tr>
+<tr>
+<td>SQL Injection</td>
+<td>2-3</td>
+<td>High</td>
+<td>Login, search</td>
+</tr>
+<tr>
+<td>IDOR</td>
+<td>3-5</td>
+<td>Medium</td>
+<td>API endpoints</td>
+</tr>
+<tr>
+<td>XXE</td>
+<td>1-2</td>
+<td>High</td>
+<td>File upload</td>
+</tr>
+<tr>
+<td>SSRF</td>
+<td>1</td>
+<td>Medium</td>
+<td>PDF generator</td>
+</tr>
+</tbody>
+</table>
+<h2 id="troubleshooting-test-issues">Troubleshooting Test Issues</h2>
+<h3 id="issue-no-vulnerabilities-found">Issue: No Vulnerabilities Found</h3>
+<p><strong>Causes:</strong></p>
+<ol>
+<li>Target is actually secure</li>
+<li>Module thresholds too strict</li>
+<li>Network issues preventing requests</li>
+<li>Authentication required but not provided</li>
+</ol>
+<p><strong>Solutions:</strong></p>
+<pre class="hljs"><code><div><span class="hljs-comment"># Enable verbose logging</span>
+python main.py -t TARGET -v
+
+<span class="hljs-comment"># Lower confidence threshold</span>
+<span class="hljs-comment"># Edit modules/*/config.json: "confidence_threshold": 0.3</span>
+
+<span class="hljs-comment"># Check network connectivity</span>
+curl -I TARGET
+</div></code></pre>
+<h3 id="issue-too-many-false-positives">Issue: Too Many False Positives</h3>
+<p><strong>Causes:</strong></p>
+<ol>
+<li>Confidence thresholds too low</li>
+<li>Pattern matching too broad</li>
+<li>Response context not validated</li>
+</ol>
+<p><strong>Solutions:</strong></p>
+<pre class="hljs"><code><div><span class="hljs-comment"># Increase confidence threshold</span>
+<span class="hljs-comment"># Edit modules/*/config.json: "confidence_threshold": 0.8</span>
+
+<span class="hljs-comment"># Enable stricter validation</span>
+<span class="hljs-comment"># Code changes in modules/*/module.py</span>
+</div></code></pre>
+<h3 id="issue-scan-hangs-or-crashes">Issue: Scan Hangs or Crashes</h3>
+<p><strong>Causes:</strong></p>
+<ol>
+<li>Target has infinite redirects</li>
+<li>Memory exhaustion</li>
+<li>Thread deadlock</li>
+</ol>
+<p><strong>Solutions:</strong></p>
+<pre class="hljs"><code><div><span class="hljs-comment"># Limit pages</span>
+--max-crawl-pages 20
+
+<span class="hljs-comment"># Reduce threads</span>
+--threads 5
+
+<span class="hljs-comment"># Add timeout</span>
+--timeout 10
+
+<span class="hljs-comment"># Monitor resources</span>
+watch -n 1 <span class="hljs-string">"ps aux | grep python"</span>
+</div></code></pre>
+<h2 id="reporting-issues">Reporting Issues</h2>
+<p>When reporting bugs, include:</p>
+<ol>
+<li><strong>Command used</strong>: Full command with all flags</li>
+<li><strong>Target</strong>: URL or description</li>
+<li><strong>Expected result</strong>: What should happen</li>
+<li><strong>Actual result</strong>: What actually happened</li>
+<li><strong>Logs</strong>: Output with <code>-v</code> verbose flag</li>
+<li><strong>Environment</strong>:
+<ul>
+<li>OS and version</li>
+<li>Python version</li>
+<li>Scanner version</li>
+<li>Network setup (VPN, proxy, etc.)</li>
+</ul>
+</li>
+</ol>
+<p>Example:</p>
+<pre class="hljs"><code><div>Command: python main.py -t http://testphp.vulnweb.com -m xss -v
+Target: testphp.vulnweb.com (public test site)
+Expected: Find 3-5 XSS vulnerabilities
+Actual: Found 0 vulnerabilities, no errors
+Logs: [attach verbose output]
+Environment:
+  - Windows 11
+  - Python 3.11.5
+  - Scanner v1.10.0
+  - No VPN/proxy
+</div></code></pre>
+<hr>
+<p><strong>Last Updated:</strong> 2025-11-15
+<strong>Scanner Version:</strong> 1.10.0
+<strong>Test Coverage:</strong> 15/20 modules validated
+<strong>Next Review:</strong> 2025-12-01</p>
+
+</body>
+</html>

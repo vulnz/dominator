@@ -14,7 +14,7 @@ from PyQt5.QtGui import QColor, QFont
 import json
 from datetime import datetime
 from utils.chromium_manager import get_chromium_manager
-from GUI.components.repeater_tab import RepeaterTab
+from GUI.components.repeater_tab_improved import RepeaterTabImproved as RepeaterTab
 
 
 class BrowserTab(QWidget):
