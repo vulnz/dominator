@@ -7,9 +7,9 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QTextEdit, QSplitter, QTabWidget, QComboBox, QLineEdit,
     QGroupBox, QMessageBox, QSpinBox, QCheckBox, QApplication,
-    QToolBar, QAction, QFileDialog, QProgressDialog, QShortcut
+    QToolBar, QAction, QFileDialog, QProgressDialog, QShortcut, QMenu, QInputDialog
 )
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QPoint
 from PyQt5.QtGui import QFont, QColor, QSyntaxHighlighter, QTextCharFormat, QIcon, QKeySequence
 import requests
 from datetime import datetime
@@ -220,6 +220,27 @@ class SingleRepeaterWidget(QWidget):
         self.request_highlighter = HTTPSyntaxHighlighter(self.request_edit.document())
         layout.addWidget(self.request_edit)
 
+        # Search bar for request
+        search_row = QHBoxLayout()
+        search_row.addWidget(QLabel("🔍 Search:"))
+        self.request_search_input = QLineEdit()
+        self.request_search_input.setPlaceholderText("Search in request...")
+        self.request_search_input.textChanged.connect(lambda: self.search_in_text(self.request_edit, self.request_search_input.text()))
+        search_row.addWidget(self.request_search_input)
+
+        self.request_search_prev = QPushButton("◀ Prev")
+        self.request_search_prev.clicked.connect(lambda: self.find_prev(self.request_edit, self.request_search_input.text()))
+        search_row.addWidget(self.request_search_prev)
+
+        self.request_search_next = QPushButton("Next ▶")
+        self.request_search_next.clicked.connect(lambda: self.find_next(self.request_edit, self.request_search_input.text()))
+        search_row.addWidget(self.request_search_next)
+
+        self.request_search_count = QLabel("0/0")
+        search_row.addWidget(self.request_search_count)
+
+        layout.addLayout(search_row)
+
         group.setLayout(layout)
         return group
 
@@ -248,6 +269,27 @@ class SingleRepeaterWidget(QWidget):
         self.response_tabs.addTab(self.response_body, "Body")
 
         layout.addWidget(self.response_tabs)
+
+        # Search bar for response
+        search_row = QHBoxLayout()
+        search_row.addWidget(QLabel("🔍 Search:"))
+        self.response_search_input = QLineEdit()
+        self.response_search_input.setPlaceholderText("Search in response...")
+        self.response_search_input.textChanged.connect(self.search_in_response)
+        search_row.addWidget(self.response_search_input)
+
+        self.response_search_prev = QPushButton("◀ Prev")
+        self.response_search_prev.clicked.connect(self.find_prev_in_response)
+        search_row.addWidget(self.response_search_prev)
+
+        self.response_search_next = QPushButton("Next ▶")
+        self.response_search_next.clicked.connect(self.find_next_in_response)
+        search_row.addWidget(self.response_search_next)
+
+        self.response_search_count = QLabel("0/0")
+        search_row.addWidget(self.response_search_count)
+
+        layout.addLayout(search_row)
 
         # Metadata
         meta_row = QHBoxLayout()
@@ -604,6 +646,87 @@ class SingleRepeaterWidget(QWidget):
         save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
         save_shortcut.activated.connect(self.save_request)
 
+        # Ctrl+F - Focus search in request
+        search_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
+        search_shortcut.activated.connect(lambda: self.request_search_input.setFocus())
+
+    def search_in_text(self, text_edit, search_term):
+        """Search and highlight all occurrences in text"""
+        if not search_term:
+            # Clear highlights
+            cursor = text_edit.textCursor()
+            cursor.select(cursor.Document)
+            cursor.setCharFormat(QTextCharFormat())
+            self.request_search_count.setText("0/0")
+            return
+
+        # Count occurrences
+        text = text_edit.toPlainText()
+        count = text.lower().count(search_term.lower())
+        self.request_search_count.setText(f"0/{count}")
+
+        # Highlight first occurrence
+        if count > 0:
+            self.find_next(text_edit, search_term)
+
+    def find_next(self, text_edit, search_term):
+        """Find next occurrence"""
+        if not search_term:
+            return
+
+        cursor = text_edit.textCursor()
+        found = text_edit.find(search_term)
+
+        if not found:
+            # Wrap around to beginning
+            cursor.movePosition(cursor.Start)
+            text_edit.setTextCursor(cursor)
+            text_edit.find(search_term)
+
+    def find_prev(self, text_edit, search_term):
+        """Find previous occurrence"""
+        if not search_term:
+            return
+
+        cursor = text_edit.textCursor()
+        found = text_edit.find(search_term, text_edit.document().FindBackward)
+
+        if not found:
+            # Wrap around to end
+            cursor.movePosition(cursor.End)
+            text_edit.setTextCursor(cursor)
+            text_edit.find(search_term, text_edit.document().FindBackward)
+
+    def search_in_response(self):
+        """Search in current response tab"""
+        search_term = self.response_search_input.text()
+        current_tab = self.response_tabs.currentWidget()
+
+        if not search_term:
+            self.response_search_count.setText("0/0")
+            return
+
+        # Count occurrences
+        text = current_tab.toPlainText()
+        count = text.lower().count(search_term.lower())
+        self.response_search_count.setText(f"0/{count}")
+
+        # Highlight first
+        if count > 0:
+            self.find_next_in_response()
+
+    def find_next_in_response(self):
+        """Find next in response"""
+        search_term = self.response_search_input.text()
+        current_tab = self.response_tabs.currentWidget()
+        self.find_next(current_tab, search_term)
+
+    def find_prev_in_response(self):
+        """Find previous in response"""
+        search_term = self.response_search_input.text()
+        current_tab = self.response_tabs.currentWidget()
+        self.find_prev(current_tab, search_term)
+
 
 class RepeaterTabImproved(QWidget):
     """Improved Repeater with multiple tabs support"""
@@ -611,6 +734,7 @@ class RepeaterTabImproved(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.tab_counter = 1
+        self.favorite_tabs = set()  # Track favorite tabs
         self.init_ui()
         self.setup_global_shortcuts()
 
@@ -623,6 +747,8 @@ class RepeaterTabImproved(QWidget):
         self.repeater_tabs = QTabWidget()
         self.repeater_tabs.setTabsClosable(True)
         self.repeater_tabs.tabCloseRequested.connect(self.close_tab)
+        self.repeater_tabs.tabBar().setContextMenuPolicy(Qt.CustomContextMenu)
+        self.repeater_tabs.tabBar().customContextMenuRequested.connect(self.show_tab_context_menu)
         self.repeater_tabs.setStyleSheet("""
             QTabWidget::pane {
                 border: 1px solid #cccccc;
@@ -747,3 +873,90 @@ class RepeaterTabImproved(QWidget):
         # Ctrl+T - New tab
         new_tab_shortcut = QShortcut(QKeySequence("Ctrl+T"), self)
         new_tab_shortcut.activated.connect(lambda: self.add_new_tab())
+
+    def show_tab_context_menu(self, position):
+        """Show context menu for tab"""
+        tab_bar = self.repeater_tabs.tabBar()
+        tab_index = tab_bar.tabAt(position)
+
+        if tab_index < 0:
+            return
+
+        menu = QMenu()
+
+        # Rename action
+        rename_action = menu.addAction("✏️ Rename Tab")
+        rename_action.triggered.connect(lambda: self.rename_tab(tab_index))
+
+        # Favorite action
+        is_favorite = tab_index in self.favorite_tabs
+        favorite_text = "⭐ Unfavorite" if is_favorite else "⭐ Add to Favorites"
+        favorite_action = menu.addAction(favorite_text)
+        favorite_action.triggered.connect(lambda: self.toggle_favorite(tab_index))
+
+        menu.addSeparator()
+
+        # Duplicate action
+        duplicate_action = menu.addAction("📋 Duplicate Tab")
+        duplicate_action.triggered.connect(self.duplicate_current_tab)
+
+        menu.addSeparator()
+
+        # Close action
+        if self.repeater_tabs.count() > 1:
+            close_action = menu.addAction("❌ Close Tab")
+            close_action.triggered.connect(lambda: self.close_tab(tab_index))
+
+            # Close other tabs
+            close_others_action = menu.addAction("❌ Close Other Tabs")
+            close_others_action.triggered.connect(lambda: self.close_other_tabs(tab_index))
+
+        menu.exec_(tab_bar.mapToGlobal(position))
+
+    def rename_tab(self, tab_index):
+        """Rename a tab"""
+        current_name = self.repeater_tabs.tabText(tab_index)
+        # Remove favorite star if present
+        current_name = current_name.replace("⭐ ", "")
+
+        new_name, ok = QInputDialog.getText(
+            self,
+            "Rename Tab",
+            "Enter new tab name:",
+            QLineEdit.Normal,
+            current_name
+        )
+
+        if ok and new_name:
+            # Keep favorite star if tab is favorite
+            if tab_index in self.favorite_tabs:
+                new_name = f"⭐ {new_name}"
+            self.repeater_tabs.setTabText(tab_index, new_name)
+
+    def toggle_favorite(self, tab_index):
+        """Toggle favorite status of tab"""
+        current_name = self.repeater_tabs.tabText(tab_index)
+
+        if tab_index in self.favorite_tabs:
+            # Remove from favorites
+            self.favorite_tabs.remove(tab_index)
+            new_name = current_name.replace("⭐ ", "")
+        else:
+            # Add to favorites
+            self.favorite_tabs.add(tab_index)
+            if not current_name.startswith("⭐ "):
+                new_name = f"⭐ {current_name}"
+            else:
+                new_name = current_name
+
+        self.repeater_tabs.setTabText(tab_index, new_name)
+
+    def close_other_tabs(self, keep_index):
+        """Close all tabs except the specified one"""
+        # Close tabs in reverse order to maintain indices
+        for i in range(self.repeater_tabs.count() - 1, -1, -1):
+            if i != keep_index:
+                self.repeater_tabs.removeTab(i)
+                # Update favorite_tabs set
+                if i in self.favorite_tabs:
+                    self.favorite_tabs.remove(i)
