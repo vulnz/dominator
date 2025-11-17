@@ -403,44 +403,66 @@ class BrowserTab(QWidget):
     def toggle_proxy(self):
         """Start or stop the proxy server"""
         if self.proxy is None or not self.proxy.running:
-            # Start proxy with SSL interception enabled
-            from utils.intercept_proxy import InterceptingProxy
+            try:
+                # Start proxy with SSL interception enabled
+                from utils.intercept_proxy import InterceptingProxy
 
-            port = self.proxy_port_spin.value()
-            self.proxy = InterceptingProxy(port=port, ssl_intercept_enabled=True)
+                port = self.proxy_port_spin.value()
+                self.proxy = InterceptingProxy(port=port, ssl_intercept_enabled=True)
 
-            # Connect signals
-            self.proxy.request_intercepted.connect(self.on_request_intercepted)
-            self.proxy.response_received.connect(self.on_response_received)
-            self.proxy.passive_finding.connect(self.on_passive_finding)
+                # Connect signals
+                self.proxy.request_intercepted.connect(self.on_request_intercepted)
+                self.proxy.response_received.connect(self.on_response_received)
+                self.proxy.passive_finding.connect(self.on_passive_finding)
 
-            # Start proxy
-            message = self.proxy.start()
+                # Start proxy
+                message = self.proxy.start()
 
-            # Show SSL interception notice
-            self.status_label.setText(f"{message} - SSL Interception: ✓ ENABLED")
+                # Show SSL interception notice
+                self.status_label.setText(f"{message} - SSL Interception: ✓ ENABLED")
 
-            # Update UI
-            self.proxy_status_label.setText("🟢 Proxy: Running")
-            self.proxy_status_label.setStyleSheet("color: green; font-weight: bold;")
-            self.start_proxy_btn.setText("⏹ Stop Proxy")
-            self.start_proxy_btn.setStyleSheet("background-color: #f44336; color: white; font-weight: bold;")
-            self.launch_browser_btn.setEnabled(True)
-            self.scan_page_btn.setEnabled(True)
-            self.proxy_port_spin.setEnabled(False)
+                # Update UI
+                self.proxy_status_label.setText("🟢 Proxy: Running")
+                self.proxy_status_label.setStyleSheet("color: green; font-weight: bold;")
+                self.start_proxy_btn.setText("⏹ Stop Proxy")
+                self.start_proxy_btn.setStyleSheet("background-color: #f44336; color: white; font-weight: bold;")
+                self.launch_browser_btn.setEnabled(True)
+                self.scan_page_btn.setEnabled(True)
+                self.proxy_port_spin.setEnabled(False)
 
-            # Show SSL interception info
-            QMessageBox.information(
-                self,
-                "Proxy Started - SSL Interception Enabled",
-                f"{message}\n\n"
-                "✓ SSL Interception: ENABLED\n"
-                "✓ HTTPS traffic will be decrypted and inspected\n"
-                "✓ Individual HTTPS requests visible in history\n"
-                "✓ Full request/response body inspection\n\n"
-                "CA certificate automatically generated at:\n"
-                f"{self.proxy.cert_manager.get_ca_cert_path()}"
-            )
+                # Get CA cert path safely
+                cert_path = "Certificate path not available"
+                if self.proxy and self.proxy.cert_manager:
+                    try:
+                        cert_path = self.proxy.cert_manager.get_ca_cert_path()
+                    except:
+                        pass
+
+                # Show SSL interception info
+                QMessageBox.information(
+                    self,
+                    "Proxy Started - SSL Interception Enabled",
+                    f"{message}\n\n"
+                    "✓ SSL Interception: ENABLED\n"
+                    "✓ HTTPS traffic will be decrypted and inspected\n"
+                    "✓ Individual HTTPS requests visible in history\n"
+                    "✓ Full request/response body inspection\n\n"
+                    "CA certificate automatically generated at:\n"
+                    f"{cert_path}"
+                )
+
+            except Exception as e:
+                # Show detailed error message
+                import traceback
+                error_details = traceback.format_exc()
+                QMessageBox.critical(
+                    self,
+                    "Proxy Start Error",
+                    f"Failed to start proxy:\n\n{str(e)}\n\nDetails:\n{error_details}"
+                )
+                # Reset proxy state
+                self.proxy = None
+                return
         else:
             # Stop proxy
             self.proxy.stop()
