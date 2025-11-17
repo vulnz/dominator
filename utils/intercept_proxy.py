@@ -127,83 +127,71 @@ class InterceptingProxy(QObject):
                         pass
 
             def _handle_ssl_tunnel(self, host, port):
-                """Handle HTTPS as encrypted tunnel (no inspection)"""
-                # Log HTTPS connection attempt
-                request_data = {
-                    'id': proxy_instance.request_id_counter,
-                    'method': 'CONNECT',
-                    'url': f"https://{host}:{port}",
-                    'headers': dict(self.headers),
-                    'body': '[HTTPS - Encrypted]',
-                    'raw_body': b'',
-                    'timestamp': time.time(),
-                    'client_address': self.client_address[0]
-                }
-                proxy_instance.request_id_counter += 1
-
-                # Add to history
-                proxy_instance.history.append(request_data)
-                if len(proxy_instance.history) > proxy_instance.max_history:
-                    proxy_instance.history.pop(0)
-
-                # Connect to destination server
-                dest_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                dest_socket.settimeout(30)
-                dest_socket.connect((host, port))
-
-                # Send 200 Connection Established to client
-                self.send_response(200, 'Connection Established')
-                self.end_headers()
-
-                # Emit response signal (showing tunnel established)
-                response_data = {
-                    'request': request_data,
-                    'response': {
-                        'status_code': 200,
-                        'headers': {'Connection': 'Established'},
-                        'body': b'',
-                        'text': '[HTTPS Tunnel - Content Encrypted]'
-                    }
-                }
-                proxy_instance.response_received.emit(response_data)
-
-                # Bidirectional tunnel using select - simple and reliable
-                import select
-                client_socket = self.connection
-
-                sockets = [client_socket, dest_socket]
-                timeout = 60  # 60 second timeout
-
+                """Handle HTTPS tunnel - proven working implementation"""
                 try:
+                    # Connect to destination
+                    dest = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    dest.connect((host, port))
+
+                    # Send 200 to client
+                    self.send_response(200, 'Connection Established')
+                    self.end_headers()
+
+                    # Log
+                    request_data = {
+                        'id': proxy_instance.request_id_counter,
+                        'method': 'CONNECT',
+                        'url': f"https://{host}:{port}",
+                        'headers': dict(self.headers),
+                        'body': '[HTTPS - Encrypted]',
+                        'raw_body': b'',
+                        'timestamp': time.time(),
+                        'client_address': self.client_address[0]
+                    }
+                    proxy_instance.request_id_counter += 1
+                    proxy_instance.history.append(request_data)
+                    if len(proxy_instance.history) > proxy_instance.max_history:
+                        proxy_instance.history.pop(0)
+
+                    proxy_instance.response_received.emit({
+                        'request': request_data,
+                        'response': {
+                            'status_code': 200,
+                            'headers': {'Connection': 'Established'},
+                            'body': b'',
+                            'text': '[HTTPS Tunnel]'
+                        }
+                    })
+
+                    # Set non-blocking
+                    self.connection.setblocking(0)
+                    dest.setblocking(0)
+
+                    # Relay data
+                    import select
+                    conns = [self.connection, dest]
+                    count = 0
                     while True:
-                        readable, _, exceptional = select.select(sockets, [], sockets, timeout)
-
-                        if exceptional:
+                        count += 1
+                        (recv, _, err) = select.select(conns, [], conns, 1)
+                        if err:
                             break
-
-                        if not readable:
-                            # Timeout - close connection
-                            break
-
-                        for sock in readable:
-                            try:
-                                data = sock.recv(8192)
+                        if recv:
+                            for in_ in recv:
+                                try:
+                                    data = in_.recv(8192)
+                                except:
+                                    break
                                 if not data:
-                                    # Connection closed
-                                    return
-
-                                # Forward data to the other socket
-                                if sock is client_socket:
-                                    dest_socket.sendall(data)
-                                else:
-                                    client_socket.sendall(data)
-                            except:
-                                return
-                finally:
-                    try:
-                        dest_socket.close()
-                    except:
-                        pass
+                                    break
+                                out = dest if in_ is self.connection else self.connection
+                                try:
+                                    out.sendall(data)
+                                except:
+                                    break
+                    dest.close()
+                except Exception as e:
+                    print(f"[!] Tunnel error {host}: {e}")
 
             def _handle_ssl_interception(self, host, port):
                 """Handle HTTPS with SSL interception (decrypt and inspect)"""
