@@ -513,44 +513,51 @@ class InterceptingProxy(QObject):
 
     def _passive_scan(self, request, response):
         """Run passive scans on request/response"""
-        url = request['url']
+        try:
+            url = request['url']
 
-        # Run passive detectors (analyze_response returns dict with findings)
-        passive_results = self.passive_scanner.analyze_response(
-            response['headers'],
-            response['text'],
-            url
-        )
+            # Run passive detectors (analyze_response returns dict with findings)
+            passive_results = self.passive_scanner.analyze_response(
+                response['headers'],
+                response['text'],
+                url
+            )
 
-        sensitive_results = self.sensitive_detector.detect(
-            response['text'],
-            url
-        )
+            # SensitiveDataDetector.analyze returns (has_findings, findings_list)
+            has_sensitive, sensitive_findings = self.sensitive_detector.analyze(
+                response['text'],
+                url,
+                response['headers']
+            )
 
-        # Emit findings from all categories
-        all_findings = (
-            passive_results.get('security_issues', []) +
-            passive_results.get('sensitive_data', []) +
-            passive_results.get('version_disclosures', [])
-        )
+            # Emit findings from all categories
+            all_findings = (
+                passive_results.get('security_issues', []) +
+                passive_results.get('sensitive_data', []) +
+                passive_results.get('version_disclosures', [])
+            )
 
-        for finding in all_findings:
-            self.passive_finding.emit({
-                'type': finding.get('type', 'Unknown'),
-                'severity': finding.get('severity', 'Info'),
-                'url': url,
-                'evidence': finding.get('evidence', ''),
-                'description': finding.get('description', '')
-            })
+            for finding in all_findings:
+                self.passive_finding.emit({
+                    'type': finding.get('type', 'Unknown'),
+                    'severity': finding.get('severity', 'Info'),
+                    'url': url,
+                    'evidence': finding.get('evidence', ''),
+                    'description': finding.get('description', '')
+                })
 
-        for finding in sensitive_results:
-            self.passive_finding.emit({
-                'type': 'Sensitive Data',
-                'severity': 'Medium',
-                'url': url,
-                'evidence': finding['value'],
-                'description': f"{finding['type']} detected"
-            })
+            # Emit additional sensitive data findings
+            if has_sensitive and sensitive_findings:
+                for finding in sensitive_findings:
+                    self.passive_finding.emit({
+                        'type': finding.get('type', 'Sensitive Data'),
+                        'severity': finding.get('severity', 'Medium'),
+                        'url': url,
+                        'evidence': finding.get('evidence', ''),
+                        'description': finding.get('description', '')
+                    })
+        except Exception as e:
+            print(f"[!] Passive scan error: {e}")
 
     def forward_request(self, request_id):
         """Forward a pending request"""
