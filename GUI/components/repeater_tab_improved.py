@@ -310,22 +310,76 @@ class SingleRepeaterWidget(QWidget):
         return group
 
     def _create_status_bar(self):
-        """Create status bar"""
-        widget = QWidget()
-        layout = QHBoxLayout()
-        layout.setContentsMargins(5, 2, 5, 2)
+        """Create status bar with history viewer"""
+        widget = QGroupBox("📋 Request History")
+        layout = QVBoxLayout()
 
+        # History list
+        from PyQt5.QtWidgets import QListWidget
+        self.history_list = QListWidget()
+        self.history_list.setMaximumHeight(100)
+        self.history_list.itemDoubleClicked.connect(self.load_from_history)
+        self.history_list.setStyleSheet("""
+            QListWidget {
+                background-color: white;
+                color: black;
+                border: 1px solid #cccccc;
+            }
+            QListWidget::item {
+                padding: 3px;
+            }
+            QListWidget::item:selected {
+                background-color: #e0e0ff;
+                color: black;
+            }
+        """)
+        layout.addWidget(self.history_list)
+
+        # Status row
+        status_row = QHBoxLayout()
         self.status_message = QLabel("Ready")
         self.status_message.setStyleSheet("color: #666;")
-        layout.addWidget(self.status_message)
+        status_row.addWidget(self.status_message)
 
-        layout.addStretch()
+        status_row.addStretch()
 
         self.history_count = QLabel("History: 0")
-        layout.addWidget(self.history_count)
+        status_row.addWidget(self.history_count)
+
+        layout.addLayout(status_row)
 
         widget.setLayout(layout)
         return widget
+
+    def load_from_history(self, item):
+        """Load request from history when double-clicked"""
+        index = self.history_list.row(item)
+        if 0 <= index < len(self.request_history):
+            history_item = self.request_history[index]
+
+            # Load the request
+            self.url_input.setText(history_item.get('url', ''))
+
+            method = history_item.get('method', 'GET')
+            method_index = self.method_combo.findText(method)
+            if method_index >= 0:
+                self.method_combo.setCurrentIndex(method_index)
+
+            # Rebuild raw request
+            raw_request = f"{method} {history_item.get('url', '')} HTTP/1.1\n"
+
+            # Add headers if available
+            headers = history_item.get('headers', {})
+            for header, value in headers.items():
+                raw_request += f"{header}: {value}\n"
+
+            # Add body if available
+            body = history_item.get('body', '')
+            if body:
+                raw_request += f"\n{body}"
+
+            self.request_edit.setPlainText(raw_request)
+            self.status_message.setText(f"✅ Loaded from history: {method} {history_item.get('url', '')}")
 
     def load_request(self, request_data):
         """Load request into this repeater"""
@@ -406,13 +460,24 @@ class SingleRepeaterWidget(QWidget):
 
             self._display_response(response, elapsed)
 
-            self.request_history.append({
+            # Add to history
+            history_item = {
                 'timestamp': datetime.now(),
                 'method': method,
                 'url': url,
                 'status': response.status_code,
-                'time': elapsed
-            })
+                'time': elapsed,
+                'headers': headers,
+                'body': body
+            }
+            self.request_history.append(history_item)
+
+            # Add to history list display
+            from PyQt5.QtWidgets import QListWidgetItem
+            history_text = f"{method} {url} - {response.status_code} ({elapsed:.2f}s)"
+            list_item = QListWidgetItem(history_text)
+            self.history_list.addItem(list_item)
+
             self.history_count.setText(f"History: {len(self.request_history)}")
             self.status_message.setText(f"✅ {response.status_code} ({elapsed:.2f}s)")
 
