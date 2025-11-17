@@ -203,14 +203,14 @@ class InterceptingProxy(QObject):
 
             def _handle_ssl_interception(self, host, port):
                 """Handle HTTPS with SSL interception (decrypt and inspect)"""
-                # Send 200 Connection Established to client
-                self.send_response(200, 'Connection Established')
-                self.end_headers()
-
-                # Get client socket
-                client_socket = self.connection
-
                 try:
+                    # Send 200 Connection Established to client
+                    self.send_response(200, 'Connection Established')
+                    self.end_headers()
+
+                    # Get client socket
+                    client_socket = self.connection
+
                     # Wrap client socket with our SSL certificate
                     ssl_client_socket = proxy_instance.cert_manager.wrap_client_socket(
                         client_socket, host
@@ -222,6 +222,10 @@ class InterceptingProxy(QObject):
 
                 except ssl.SSLError as e:
                     print(f"[!] SSL error for {host}: {e}")
+                except BrokenPipeError:
+                    print(f"[!] Client disconnected for {host}")
+                except ConnectionResetError:
+                    print(f"[!] Connection reset for {host}")
                 except Exception as e:
                     print(f"[!] Error intercepting HTTPS for {host}: {e}")
 
@@ -329,61 +333,66 @@ class InterceptingProxy(QObject):
                             status_text = status_texts.get(response['status_code'], 'OK')
 
                             # Send response back through SSL socket
-                            response_line = f"HTTP/1.1 {response['status_code']} {status_text}\r\n"
-                            ssl_client_socket.sendall(response_line.encode())
+                            try:
+                                response_line = f"HTTP/1.1 {response['status_code']} {status_text}\r\n"
+                                ssl_client_socket.sendall(response_line.encode())
 
-                            # Send headers (skip problematic ones and update Content-Length)
-                            response_body = response.get('body', b'')
-                            if isinstance(response_body, str):
-                                response_body = response_body.encode('utf-8')
+                                # Send headers (skip problematic ones and update Content-Length)
+                                response_body = response.get('body', b'')
+                                if isinstance(response_body, str):
+                                    response_body = response_body.encode('utf-8')
 
-                            sent_content_length = False
-                            sent_connection = False
+                                sent_content_length = False
+                                sent_connection = False
 
-                            # Important headers that must be preserved
-                            important_headers = ['location', 'set-cookie', 'content-type']
+                                # Important headers that must be preserved
+                                important_headers = ['location', 'set-cookie', 'content-type']
 
-                            for header, value in response['headers'].items():
-                                header_lower = header.lower()
+                                for header, value in response['headers'].items():
+                                    header_lower = header.lower()
 
-                                # Skip problematic headers
-                                if header_lower in ['transfer-encoding', 'content-encoding']:
-                                    continue
+                                    # Skip problematic headers
+                                    if header_lower in ['transfer-encoding', 'content-encoding']:
+                                        continue
 
-                                # Update Content-Length with actual body size
-                                if header_lower == 'content-length':
-                                    ssl_client_socket.sendall(f"Content-Length: {len(response_body)}\r\n".encode())
-                                    sent_content_length = True
+                                    # Update Content-Length with actual body size
+                                    if header_lower == 'content-length':
+                                        ssl_client_socket.sendall(f"Content-Length: {len(response_body)}\r\n".encode())
+                                        sent_content_length = True
 
-                                # Handle Connection header for keep-alive
-                                elif header_lower == 'connection':
-                                    # For redirects, use close; otherwise keep-alive
-                                    if response['status_code'] in [301, 302, 303, 307, 308]:
-                                        ssl_client_socket.sendall(b"Connection: keep-alive\r\n")
+                                    # Handle Connection header for keep-alive
+                                    elif header_lower == 'connection':
+                                        # For redirects, use close; otherwise keep-alive
+                                        if response['status_code'] in [301, 302, 303, 307, 308]:
+                                            ssl_client_socket.sendall(b"Connection: keep-alive\r\n")
+                                        else:
+                                            ssl_client_socket.sendall(b"Connection: keep-alive\r\n")
+                                        sent_connection = True
+
+                                    # Send all other headers as-is (including Location for redirects!)
                                     else:
-                                        ssl_client_socket.sendall(b"Connection: keep-alive\r\n")
-                                    sent_connection = True
+                                        try:
+                                            ssl_client_socket.sendall(f"{header}: {value}\r\n".encode())
+                                        except:
+                                            # Some headers might have encoding issues
+                                            pass
 
-                                # Send all other headers as-is (including Location for redirects!)
-                                else:
-                                    try:
-                                        ssl_client_socket.sendall(f"{header}: {value}\r\n".encode())
-                                    except:
-                                        # Some headers might have encoding issues
-                                        pass
+                                # Ensure Content-Length is always set
+                                if not sent_content_length:
+                                    ssl_client_socket.sendall(f"Content-Length: {len(response_body)}\r\n".encode())
 
-                            # Ensure Content-Length is always set
-                            if not sent_content_length:
-                                ssl_client_socket.sendall(f"Content-Length: {len(response_body)}\r\n".encode())
+                                # Ensure Connection header is set
+                                if not sent_connection:
+                                    ssl_client_socket.sendall(b"Connection: keep-alive\r\n")
 
-                            # Ensure Connection header is set
-                            if not sent_connection:
-                                ssl_client_socket.sendall(b"Connection: keep-alive\r\n")
+                                ssl_client_socket.sendall(b'\r\n')
 
-                            ssl_client_socket.sendall(b'\r\n')
+                                if response_body:
+                                    ssl_client_socket.sendall(response_body)
 
-                            if response_body:
-                                ssl_client_socket.sendall(response_body)
+                            except (BrokenPipeError, ConnectionResetError, OSError) as send_err:
+                                print(f"[!] Client disconnected while sending response for {host}: {send_err}")
+                                break  # Exit the keep-alive loop if client disconnected
 
                             # Emit signal
                             proxy_instance.response_received.emit({
@@ -595,10 +604,21 @@ class InterceptingProxy(QObject):
 
         # Start server
         try:
+            print(f"[+] Starting proxy server on 127.0.0.1:{self.port}")
             self.server = HTTPServer(('127.0.0.1', self.port), ProxyHandler)
+            print(f"[+] Proxy server listening...")
             self.server.serve_forever()
+        except OSError as e:
+            if e.errno == 10048:  # Address already in use on Windows
+                print(f"[!] Port {self.port} is already in use. Please stop other processes using this port.")
+            else:
+                print(f"[!] Proxy server OS error: {e}")
+            self.running = False
         except Exception as e:
-            print(f"Proxy server error: {e}")
+            print(f"[!] Proxy server error: {e}")
+            import traceback
+            traceback.print_exc()
+            self.running = False
 
     def _passive_scan(self, request, response):
         """Run passive scans on request/response"""
