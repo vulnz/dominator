@@ -451,67 +451,48 @@ class BrowserTab(QWidget):
             self.proxy.passive_scan_enabled = (state == Qt.Checked)
 
     def launch_browser(self):
-        """Launch browser with proxy configuration"""
+        """Launch browser with proxy configuration - ALWAYS use portable Chromium"""
         port = self.proxy_port_spin.value()
         chromium_mgr = get_chromium_manager()
 
-        # Try to launch browser (prefer system Chrome for simplicity)
         try:
-            # First try system Chrome
-            chrome_path = chromium_mgr.get_installed_chrome()
-
-            if chrome_path:
-                # Launch system Chrome
-                import subprocess
-                import os
-
-                user_data_dir = chromium_mgr.base_dir / "user_data"
-                user_data_dir.mkdir(parents=True, exist_ok=True)
-
-                cmd = [
-                    chrome_path,
-                    f"--proxy-server=127.0.0.1:{port}",
-                    f"--user-data-dir={user_data_dir}",
-                    "--no-first-run",
-                    "--new-window"
-                ]
-
-                process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
-                )
+            # Check if portable Chromium is installed
+            if chromium_mgr.is_installed():
+                # Launch portable Chromium
+                chromium_mgr.launch(proxy_host='127.0.0.1', proxy_port=port)
 
                 QMessageBox.information(
                     self,
                     "Browser Launched",
-                    f"Chrome launched with proxy: 127.0.0.1:{port}\n\n"
-                    "All requests will be intercepted and logged."
+                    f"Portable Chromium launched with proxy: 127.0.0.1:{port}\n\n"
+                    "All HTTP requests will be intercepted and logged.\n"
+                    "HTTPS requests will show as CONNECT tunnels (encrypted)."
                 )
             else:
-                # No Chrome found - ask to download portable Chromium
+                # Portable Chromium not found - offer to download
                 reply = QMessageBox.question(
                     self,
-                    "Chrome Not Found",
-                    "System Chrome not found.\n\n"
-                    "Would you like to download portable Chromium?\n"
-                    f"(~{chromium_mgr.get_download_size_mb()} MB)\n\n"
-                    "Or click No to configure your browser manually.",
+                    "Portable Chromium Required",
+                    "Portable Chromium is not installed.\n\n"
+                    "Dominator uses a clean portable browser to ensure:\n"
+                    "• Isolated environment (no extensions/plugins)\n"
+                    "• Proper proxy configuration\n"
+                    "• Consistent certificate handling\n\n"
+                    f"Download portable Chromium now? (~{chromium_mgr.get_download_size_mb()} MB)",
                     QMessageBox.Yes | QMessageBox.No,
-                    QMessageBox.No
+                    QMessageBox.Yes
                 )
 
                 if reply == QMessageBox.Yes:
                     # Show progress dialog
-                    progress = QProgressDialog("Downloading Chromium...", None, 0, 100, self)
+                    progress = QProgressDialog("Downloading portable Chromium...", None, 0, 100, self)
                     progress.setWindowModality(Qt.WindowModal)
                     progress.setAutoClose(True)
 
                     def progress_callback(msg, percent):
                         progress.setLabelText(msg)
                         progress.setValue(percent)
-                        QMessageBox.qApp.processEvents()
+                        QApplication.processEvents()
 
                     try:
                         chromium_mgr.download(progress_callback=progress_callback)
@@ -523,8 +504,11 @@ class BrowserTab(QWidget):
                         QMessageBox.information(
                             self,
                             "Browser Launched",
-                            f"Chromium launched with proxy: 127.0.0.1:{port}\n\n"
-                            "All requests will be intercepted and logged."
+                            f"Portable Chromium launched with proxy: 127.0.0.1:{port}\n\n"
+                            "All HTTP requests will be intercepted and logged.\n"
+                            "HTTPS requests will show as CONNECT tunnels (encrypted).\n\n"
+                            "For full HTTPS inspection, SSL certificate installation\n"
+                            "would be required (planned feature)."
                         )
                     except Exception as e:
                         progress.close()
@@ -532,18 +516,20 @@ class BrowserTab(QWidget):
                             self,
                             "Download Failed",
                             f"Failed to download Chromium:\n{str(e)}\n\n"
-                            "Please manually configure your browser:\n"
+                            "You can manually configure any browser:\n"
                             f"Proxy: 127.0.0.1:{port}"
                         )
                 else:
-                    # Show manual configuration instructions
+                    # User declined - show manual configuration
                     QMessageBox.information(
                         self,
                         "Manual Configuration",
-                        f"Configure your browser's proxy settings:\n\n"
+                        f"You can configure any browser manually:\n\n"
                         f"HTTP Proxy: 127.0.0.1\n"
                         f"Port: {port}\n\n"
-                        "Or use browser extensions like FoxyProxy."
+                        "Extensions like FoxyProxy can help.\n\n"
+                        "Note: For best results, use portable Chromium\n"
+                        "by clicking 'Launch Chrome Browser' again."
                     )
 
         except Exception as e:
@@ -551,7 +537,7 @@ class BrowserTab(QWidget):
                 self,
                 "Launch Failed",
                 f"Failed to launch browser:\n{str(e)}\n\n"
-                "Please manually configure your browser:\n"
+                "You can manually configure any browser:\n"
                 f"Proxy: 127.0.0.1:{port}"
             )
 
