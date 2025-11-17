@@ -167,55 +167,43 @@ class InterceptingProxy(QObject):
                 }
                 proxy_instance.response_received.emit(response_data)
 
-                # Bidirectional tunnel
+                # Bidirectional tunnel using select - simple and reliable
+                import select
                 client_socket = self.connection
-                client_socket.setblocking(False)
-                dest_socket.setblocking(False)
 
-                def forward_data(source, destination, name):
-                    try:
-                        while True:
+                sockets = [client_socket, dest_socket]
+                timeout = 60  # 60 second timeout
+
+                try:
+                    while True:
+                        readable, _, exceptional = select.select(sockets, [], sockets, timeout)
+
+                        if exceptional:
+                            break
+
+                        if not readable:
+                            # Timeout - close connection
+                            break
+
+                        for sock in readable:
                             try:
-                                data = source.recv(8192)
+                                data = sock.recv(8192)
                                 if not data:
-                                    break
-                                destination.sendall(data)
-                            except socket.error as e:
-                                if e.errno in (10035, 11):
-                                    time.sleep(0.01)
-                                    continue
-                                break
+                                    # Connection closed
+                                    return
+
+                                # Forward data to the other socket
+                                if sock is client_socket:
+                                    dest_socket.sendall(data)
+                                else:
+                                    client_socket.sendall(data)
+                            except:
+                                return
+                finally:
+                    try:
+                        dest_socket.close()
                     except:
                         pass
-                    finally:
-                        try:
-                            source.close()
-                            destination.close()
-                        except:
-                            pass
-
-                client_to_server = threading.Thread(
-                    target=forward_data,
-                    args=(client_socket, dest_socket, "client->server"),
-                    daemon=True
-                )
-                server_to_client = threading.Thread(
-                    target=forward_data,
-                    args=(dest_socket, client_socket, "server->client"),
-                    daemon=True
-                )
-
-                client_to_server.start()
-                server_to_client.start()
-
-                # Wait for at least one thread to finish (connection closed)
-                # This prevents the handler from closing sockets prematurely
-                # But we use a loop instead of join() to allow both threads to exit
-                while client_to_server.is_alive() and server_to_client.is_alive():
-                    time.sleep(0.1)
-
-                # Give both threads a moment to clean up
-                time.sleep(0.1)
 
             def _handle_ssl_interception(self, host, port):
                 """Handle HTTPS with SSL interception (decrypt and inspect)"""
