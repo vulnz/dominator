@@ -209,6 +209,9 @@ class ChromiumManager:
             "--mute-audio",
         ]
 
+        print(f"[DEBUG] Launching Chromium with proxy: {proxy_host}:{proxy_port}")
+        print(f"[DEBUG] Executable: {executable}")
+
         # Add SSL interception flags if enabled
         if ssl_intercept:
             cmd.extend([
