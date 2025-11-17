@@ -214,6 +214,11 @@ class BrowserTab(QWidget):
         self.launch_browser_btn.setEnabled(False)
         browser_row.addWidget(self.launch_browser_btn)
 
+        self.launch_firefox_btn = QPushButton("🦊 Launch Firefox")
+        self.launch_firefox_btn.clicked.connect(self.launch_firefox)
+        self.launch_firefox_btn.setEnabled(False)
+        browser_row.addWidget(self.launch_firefox_btn)
+
         browser_row.addWidget(QLabel("Scan Selected Page:"))
 
         self.scan_modules_combo = QComboBox()
@@ -431,6 +436,7 @@ class BrowserTab(QWidget):
                 self.start_proxy_btn.setText("⏹ Stop Proxy")
                 self.start_proxy_btn.setStyleSheet("background-color: #f44336; color: white; font-weight: bold;")
                 self.launch_browser_btn.setEnabled(True)
+                self.launch_firefox_btn.setEnabled(True)
                 self.scan_page_btn.setEnabled(True)
                 self.proxy_port_spin.setEnabled(False)
 
@@ -580,6 +586,44 @@ class BrowserTab(QWidget):
                 "Launch Failed",
                 f"Failed to launch browser:\n{str(e)}\n\n"
                 "You can manually configure any browser:\n"
+                f"Proxy: 127.0.0.1:{port}"
+            )
+
+    def launch_firefox(self):
+        """Launch Firefox with proxy configuration"""
+        from utils.firefox_manager import get_firefox_manager
+
+        port = self.proxy_port_spin.value()
+        firefox_mgr = get_firefox_manager()
+
+        try:
+            if firefox_mgr.is_installed():
+                # Launch Firefox with proxy
+                firefox_mgr.launch(proxy_host='127.0.0.1', proxy_port=port, url="http://example.com")
+
+                QMessageBox.information(
+                    self,
+                    "Firefox Launched",
+                    f"Firefox launched with proxy: 127.0.0.1:{port}\n\n"
+                    "All HTTP/HTTPS requests will be intercepted.\n"
+                    "Check the Request History tab to see captured traffic."
+                )
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Firefox Not Found",
+                    "Firefox is not installed on this system.\n\n"
+                    "Please install Firefox or use the Chrome browser option.\n\n"
+                    "You can also manually configure any browser:\n"
+                    f"HTTP Proxy: 127.0.0.1:{port}"
+                )
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Launch Failed",
+                f"Failed to launch Firefox:\n{str(e)}\n\n"
+                "You can manually configure Firefox:\n"
                 f"Proxy: 127.0.0.1:{port}"
             )
 
