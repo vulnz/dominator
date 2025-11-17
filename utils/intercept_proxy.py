@@ -8,6 +8,7 @@ import threading
 import time
 import ssl
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from socketserver import ThreadingMixIn
 from urllib.parse import urlparse
 import requests
 from PyQt5.QtCore import QObject, pyqtSignal
@@ -68,11 +69,93 @@ class InterceptingProxy(QObject):
         if self.running:
             return
 
+        # Check if port is already in use
+        if self._is_port_in_use(self.port):
+            print(f"[!] Port {self.port} is already in use!")
+            print(f"[*] Attempting to free port {self.port}...")
+
+            # Try to kill process using the port
+            if self._kill_process_on_port(self.port):
+                print(f"[+] Port {self.port} freed successfully")
+                time.sleep(1)  # Give OS time to release the port
+            else:
+                print(f"[!] Could not free port {self.port}")
+                print(f"[!] Please manually stop the process or use a different port")
+                return f"Port {self.port} is in use and could not be freed"
+
         self.running = True
         self.thread = threading.Thread(target=self._run_server, daemon=True)
         self.thread.start()
 
         return f"Proxy started on 127.0.0.1:{self.port}"
+
+    def _is_port_in_use(self, port):
+        """Check if a port is already in use"""
+        import socket
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(('127.0.0.1', port))
+                return False
+            except OSError:
+                return True
+
+    def _kill_process_on_port(self, port):
+        """Kill process using the specified port (Windows/Linux)"""
+        import subprocess
+        import platform
+
+        try:
+            if platform.system() == 'Windows':
+                # Find PID using netstat
+                result = subprocess.run(
+                    ['netstat', '-ano'],
+                    capture_output=True,
+                    text=True
+                )
+
+                pids = set()
+                for line in result.stdout.split('\n'):
+                    if f':{port}' in line and 'LISTENING' in line:
+                        parts = line.split()
+                        if len(parts) >= 5:
+                            pid = parts[-1]
+                            pids.add(pid)
+
+                # Kill all processes
+                for pid in pids:
+                    try:
+                        subprocess.run(
+                            ['taskkill', '/F', '/PID', pid],
+                            capture_output=True,
+                            check=True
+                        )
+                        print(f"[+] Killed process {pid} on port {port}")
+                    except:
+                        pass
+
+                return len(pids) > 0
+
+            else:  # Linux/Mac
+                result = subprocess.run(
+                    ['lsof', '-ti', f':{port}'],
+                    capture_output=True,
+                    text=True
+                )
+
+                pids = result.stdout.strip().split('\n')
+                for pid in pids:
+                    if pid:
+                        try:
+                            subprocess.run(['kill', '-9', pid], check=True)
+                            print(f"[+] Killed process {pid} on port {port}")
+                        except:
+                            pass
+
+                return len(pids) > 0
+
+        except Exception as e:
+            print(f"[!] Error killing process on port {port}: {e}")
+            return False
 
     def stop(self):
         """Stop the proxy server"""
@@ -83,6 +166,12 @@ class InterceptingProxy(QObject):
     def _run_server(self):
         """Run the HTTP server"""
         proxy_instance = self
+
+        # Create a threading HTTP server for concurrent request handling
+        class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+            """Multi-threaded HTTP server to handle multiple requests simultaneously"""
+            daemon_threads = True  # Threads will not prevent program exit
+            pass
 
         class ProxyHandler(BaseHTTPRequestHandler):
             def do_GET(self):
@@ -534,14 +623,47 @@ class InterceptingProxy(QObject):
 
                     # Send response back to client
                     self.send_response(response['status_code'])
+
+                    # Track if we've sent Connection header
+                    sent_connection = False
+                    sent_content_length = False
+
                     for header, value in response['headers'].items():
-                        # Skip headers that cause issues
-                        if header.lower() not in ['transfer-encoding', 'content-encoding']:
+                        header_lower = header.lower()
+
+                        # Skip problematic headers
+                        if header_lower in ['transfer-encoding', 'content-encoding']:
+                            continue
+
+                        # Track Connection header
+                        if header_lower == 'connection':
+                            # Force close to avoid hanging
+                            self.send_header('Connection', 'close')
+                            sent_connection = True
+                        elif header_lower == 'content-length':
                             self.send_header(header, value)
+                            sent_content_length = True
+                        else:
+                            self.send_header(header, value)
+
+                    # Force Connection: close to prevent hanging
+                    if not sent_connection:
+                        self.send_header('Connection', 'close')
+
+                    # Ensure Content-Length is set
+                    if not sent_content_length and response.get('body'):
+                        body = response['body']
+                        if isinstance(body, str):
+                            body = body.encode('utf-8')
+                        self.send_header('Content-Length', str(len(body)))
+
                     self.end_headers()
 
                     if response['body']:
-                        self.wfile.write(response['body'])
+                        body = response['body']
+                        if isinstance(body, str):
+                            body = body.encode('utf-8')
+                        self.wfile.write(body)
 
                     # Signal GUI
                     proxy_instance.response_received.emit({
@@ -597,8 +719,8 @@ class InterceptingProxy(QObject):
         # Start server
         try:
             print(f"[+] Starting proxy server on 127.0.0.1:{self.port}")
-            self.server = HTTPServer(('127.0.0.1', self.port), ProxyHandler)
-            print(f"[+] Proxy server listening...")
+            self.server = ThreadingHTTPServer(('127.0.0.1', self.port), ProxyHandler)
+            print(f"[+] Proxy server listening (multi-threaded)...")
             self.server.serve_forever()
         except OSError as e:
             if e.errno == 10048:  # Address already in use on Windows
