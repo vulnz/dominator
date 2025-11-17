@@ -302,8 +302,14 @@ class InterceptingProxy(QObject):
                             # Emit request signal
                             proxy_instance.request_intercepted.emit(request_data)
 
+                            # Debug logging
+                            print(f"[HTTPS] {method} {url}")
+
                             # Forward request to destination
                             response = self._forward_https_request(request_data, host, port)
+
+                            # Debug response
+                            print(f"[HTTPS] <- {response['status_code']} ({len(response.get('body', b''))} bytes)")
 
                             # Passive scan
                             if proxy_instance.passive_scan_enabled:
@@ -333,23 +339,44 @@ class InterceptingProxy(QObject):
 
                             sent_content_length = False
                             sent_connection = False
+
+                            # Important headers that must be preserved
+                            important_headers = ['location', 'set-cookie', 'content-type']
+
                             for header, value in response['headers'].items():
                                 header_lower = header.lower()
+
+                                # Skip problematic headers
                                 if header_lower in ['transfer-encoding', 'content-encoding']:
                                     continue
+
+                                # Update Content-Length with actual body size
                                 if header_lower == 'content-length':
                                     ssl_client_socket.sendall(f"Content-Length: {len(response_body)}\r\n".encode())
                                     sent_content_length = True
-                                elif header_lower == 'connection':
-                                    # Force keep-alive for persistent connections
-                                    ssl_client_socket.sendall(b"Connection: keep-alive\r\n")
-                                    sent_connection = True
-                                else:
-                                    ssl_client_socket.sendall(f"{header}: {value}\r\n".encode())
 
+                                # Handle Connection header for keep-alive
+                                elif header_lower == 'connection':
+                                    # For redirects, use close; otherwise keep-alive
+                                    if response['status_code'] in [301, 302, 303, 307, 308]:
+                                        ssl_client_socket.sendall(b"Connection: keep-alive\r\n")
+                                    else:
+                                        ssl_client_socket.sendall(b"Connection: keep-alive\r\n")
+                                    sent_connection = True
+
+                                # Send all other headers as-is (including Location for redirects!)
+                                else:
+                                    try:
+                                        ssl_client_socket.sendall(f"{header}: {value}\r\n".encode())
+                                    except:
+                                        # Some headers might have encoding issues
+                                        pass
+
+                            # Ensure Content-Length is always set
                             if not sent_content_length:
                                 ssl_client_socket.sendall(f"Content-Length: {len(response_body)}\r\n".encode())
 
+                            # Ensure Connection header is set
                             if not sent_connection:
                                 ssl_client_socket.sendall(b"Connection: keep-alive\r\n")
 
