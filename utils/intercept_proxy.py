@@ -48,11 +48,20 @@ class InterceptingProxy(QObject):
         # Certificate manager for SSL interception
         self.cert_manager = get_cert_manager() if ssl_intercept_enabled else None
 
-        # Passive detectors
-        from passive_detectors.passive_scanner import PassiveScanner
-        from passive_detectors.sensitive_data_detector import SensitiveDataDetector
-        self.passive_scanner = PassiveScanner()
-        self.sensitive_detector = SensitiveDataDetector()
+        # Passive detectors (load lazily to avoid startup issues)
+        self.passive_scanner = None
+        self.sensitive_detector = None
+
+        # Try to load passive detectors, but don't fail if they're not available
+        try:
+            from passive_detectors.passive_scanner import PassiveScanner
+            from passive_detectors.sensitive_data_detector import SensitiveDataDetector
+            self.passive_scanner = PassiveScanner()
+            self.sensitive_detector = SensitiveDataDetector()
+            print("[+] Passive scanners loaded successfully")
+        except Exception as e:
+            print(f"[!] Warning: Could not load passive scanners: {e}")
+            print("[!] Proxy will work but passive scanning will be disabled")
 
     def start(self):
         """Start the proxy server"""
@@ -198,8 +207,9 @@ class InterceptingProxy(QObject):
 
                 client_to_server.start()
                 server_to_client.start()
-                client_to_server.join()
-                server_to_client.join()
+
+                # Don't use join() - it blocks forever!
+                # The daemon threads will clean up automatically
 
             def _handle_ssl_interception(self, host, port):
                 """Handle HTTPS with SSL interception (decrypt and inspect)"""
@@ -622,6 +632,10 @@ class InterceptingProxy(QObject):
 
     def _passive_scan(self, request, response):
         """Run passive scans on request/response"""
+        # Skip if passive scanners not available
+        if not self.passive_scanner or not self.sensitive_detector:
+            return
+
         try:
             url = request['url']
 
