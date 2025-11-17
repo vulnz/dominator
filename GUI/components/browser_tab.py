@@ -141,14 +141,16 @@ class BrowserTab(QWidget):
 
         # Request History Table
         history_group = self._create_history_table()
+        history_group.setMinimumHeight(400)  # Ensure good visibility
         splitter.addWidget(history_group)
 
         # Request/Response Details
         details_group = self._create_details_panel()
+        details_group.setMinimumHeight(200)
         splitter.addWidget(details_group)
 
-        # Set splitter sizes (60% history, 40% details)
-        splitter.setSizes([600, 400])
+        # Set splitter sizes (75% history, 25% details for better visibility)
+        splitter.setSizes([750, 250])
         proxy_layout.addWidget(splitter)
 
         # Bottom Findings Panel
