@@ -12,6 +12,7 @@ import subprocess
 from pathlib import Path
 import urllib.request
 import shutil
+from utils.cert_manager import get_cert_manager
 
 
 class ChromiumManager:
@@ -141,8 +142,48 @@ class ChromiumManager:
             return None
         return str(self.executable_path)
 
-    def launch(self, proxy_host='127.0.0.1', proxy_port=8080, additional_args=None):
-        """Launch Chromium with proxy configuration"""
+    def install_ca_certificate(self):
+        """Install CA certificate for HTTPS interception
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            cert_mgr = get_cert_manager()
+
+            # Install in system certificate store
+            if cert_mgr.install_ca_in_chromium(str(self.base_dir / "user_data")):
+                print("[+] CA certificate installed successfully")
+                return True
+            else:
+                print("[!] Failed to install CA certificate")
+                return False
+
+        except Exception as e:
+            print(f"[!] Error installing CA certificate: {e}")
+            return False
+
+    def get_ca_cert_path(self):
+        """Get path to CA certificate for manual installation
+
+        Returns:
+            str: Path to CA certificate file
+        """
+        cert_mgr = get_cert_manager()
+        return cert_mgr.get_ca_cert_path()
+
+    def launch(self, proxy_host='127.0.0.1', proxy_port=8080, additional_args=None, ssl_intercept=True):
+        """Launch Chromium with proxy configuration
+
+        Args:
+            proxy_host: Proxy host address
+            proxy_port: Proxy port number
+            additional_args: Additional command line arguments
+            ssl_intercept: Enable SSL certificate warnings bypass for interception
+
+        Returns:
+            subprocess.Popen: Chromium process
+        """
         executable = self.get_executable()
         if not executable:
             raise Exception("Chromium not installed. Please download first.")
@@ -163,9 +204,15 @@ class ChromiumManager:
             "--metrics-recording-only",
             "--disable-default-apps",
             "--mute-audio",
-            "--no-proxy-server",  # Disable system proxy
-            f"--proxy-server={proxy_host}:{proxy_port}",  # Set our proxy
         ]
+
+        # Add SSL interception flags if enabled
+        if ssl_intercept:
+            cmd.extend([
+                "--ignore-certificate-errors",  # Ignore SSL errors from our certs
+                "--ignore-certificate-errors-spki-list",  # Allow self-signed certs
+                "--allow-insecure-localhost",  # Allow local HTTPS
+            ])
 
         # Add additional arguments
         if additional_args:

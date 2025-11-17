@@ -78,3 +78,6 @@ TOP_10_NEW_MODULES.md
 *.old
 chrome_profile/
 chromium_portable/
+
+# SSL certificates (generated per-installation)
+certs/

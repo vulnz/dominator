@@ -6,12 +6,14 @@ Burp Suite-like functionality: intercept, modify, replay requests
 import socket
 import threading
 import time
+import ssl
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 import requests
 from PyQt5.QtCore import QObject, pyqtSignal
 import gzip
 import io
+from utils.cert_manager import get_cert_manager
 
 
 class InterceptingProxy(QObject):
@@ -22,11 +24,12 @@ class InterceptingProxy(QObject):
     response_received = pyqtSignal(dict)    # Response received
     passive_finding = pyqtSignal(dict)      # Passive scan finding
 
-    def __init__(self, port=8080):
+    def __init__(self, port=8080, ssl_intercept_enabled=True):
         super().__init__()
         self.port = port
         self.intercept_enabled = False
         self.passive_scan_enabled = True
+        self.ssl_intercept_enabled = ssl_intercept_enabled
         self.server = None
         self.thread = None
         self.running = False
@@ -41,6 +44,9 @@ class InterceptingProxy(QObject):
 
         # Auto-allow hosts (bypass interception for these hosts)
         self.auto_allow_hosts = set()
+
+        # Certificate manager for SSL interception
+        self.cert_manager = get_cert_manager() if ssl_intercept_enabled else None
 
         # Passive detectors
         from passive_detectors.passive_scanner import PassiveScanner
@@ -92,20 +98,190 @@ class InterceptingProxy(QObject):
                 self.handle_request('PATCH')
 
             def do_CONNECT(self):
-                """Handle HTTPS CONNECT tunnel for HTTPS traffic"""
+                """Handle HTTPS CONNECT - perform SSL interception if enabled"""
                 try:
                     # Parse host and port
                     host, port = self.path.split(':')
                     port = int(port)
 
-                    # Log HTTPS connection attempt
+                    if proxy_instance.ssl_intercept_enabled and proxy_instance.cert_manager:
+                        # SSL INTERCEPTION MODE - decrypt and inspect HTTPS traffic
+                        self._handle_ssl_interception(host, port)
+                    else:
+                        # TUNNEL MODE - simple encrypted passthrough (old behavior)
+                        self._handle_ssl_tunnel(host, port)
+
+                except Exception as e:
+                    try:
+                        self.send_error(502, f"Bad Gateway: {str(e)}")
+                    except:
+                        pass
+
+            def _handle_ssl_tunnel(self, host, port):
+                """Handle HTTPS as encrypted tunnel (no inspection)"""
+                # Log HTTPS connection attempt
+                request_data = {
+                    'id': proxy_instance.request_id_counter,
+                    'method': 'CONNECT',
+                    'url': f"https://{host}:{port}",
+                    'headers': dict(self.headers),
+                    'body': '[HTTPS - Encrypted]',
+                    'raw_body': b'',
+                    'timestamp': time.time(),
+                    'client_address': self.client_address[0]
+                }
+                proxy_instance.request_id_counter += 1
+
+                # Add to history
+                proxy_instance.history.append(request_data)
+                if len(proxy_instance.history) > proxy_instance.max_history:
+                    proxy_instance.history.pop(0)
+
+                # Connect to destination server
+                dest_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                dest_socket.settimeout(30)
+                dest_socket.connect((host, port))
+
+                # Send 200 Connection Established to client
+                self.send_response(200, 'Connection Established')
+                self.end_headers()
+
+                # Emit response signal (showing tunnel established)
+                response_data = {
+                    'request': request_data,
+                    'response': {
+                        'status_code': 200,
+                        'headers': {'Connection': 'Established'},
+                        'body': b'',
+                        'text': '[HTTPS Tunnel - Content Encrypted]'
+                    }
+                }
+                proxy_instance.response_received.emit(response_data)
+
+                # Bidirectional tunnel
+                client_socket = self.connection
+                client_socket.setblocking(False)
+                dest_socket.setblocking(False)
+
+                def forward_data(source, destination, name):
+                    try:
+                        while True:
+                            try:
+                                data = source.recv(8192)
+                                if not data:
+                                    break
+                                destination.sendall(data)
+                            except socket.error as e:
+                                if e.errno in (10035, 11):
+                                    time.sleep(0.01)
+                                    continue
+                                break
+                    except:
+                        pass
+                    finally:
+                        try:
+                            source.close()
+                            destination.close()
+                        except:
+                            pass
+
+                client_to_server = threading.Thread(
+                    target=forward_data,
+                    args=(client_socket, dest_socket, "client->server"),
+                    daemon=True
+                )
+                server_to_client = threading.Thread(
+                    target=forward_data,
+                    args=(dest_socket, client_socket, "server->client"),
+                    daemon=True
+                )
+
+                client_to_server.start()
+                server_to_client.start()
+                client_to_server.join()
+                server_to_client.join()
+
+            def _handle_ssl_interception(self, host, port):
+                """Handle HTTPS with SSL interception (decrypt and inspect)"""
+                # Send 200 Connection Established to client
+                self.send_response(200, 'Connection Established')
+                self.end_headers()
+
+                # Get client socket
+                client_socket = self.connection
+
+                try:
+                    # Wrap client socket with our SSL certificate
+                    ssl_client_socket = proxy_instance.cert_manager.wrap_client_socket(
+                        client_socket, host
+                    )
+
+                    # Create new HTTP handler for the SSL connection
+                    # This allows us to intercept individual HTTPS requests
+                    self._proxy_ssl_connection(ssl_client_socket, host, port)
+
+                except ssl.SSLError as e:
+                    print(f"[!] SSL error for {host}: {e}")
+                except Exception as e:
+                    print(f"[!] Error intercepting HTTPS for {host}: {e}")
+
+            def _proxy_ssl_connection(self, ssl_client_socket, host, port):
+                """Proxy individual HTTPS requests after SSL handshake"""
+                try:
+                    # Read HTTP request from SSL socket
+                    request_line = b''
+                    while b'\r\n' not in request_line:
+                        chunk = ssl_client_socket.recv(1)
+                        if not chunk:
+                            return
+                        request_line += chunk
+
+                    # Parse request line
+                    request_line = request_line.decode('utf-8').strip()
+                    if not request_line:
+                        return
+
+                    parts = request_line.split(' ')
+                    if len(parts) < 3:
+                        return
+
+                    method, path, http_version = parts[0], parts[1], parts[2]
+
+                    # Read headers
+                    headers = {}
+                    while True:
+                        line = b''
+                        while b'\r\n' not in line:
+                            chunk = ssl_client_socket.recv(1)
+                            if not chunk:
+                                break
+                            line += chunk
+
+                        line = line.decode('utf-8').strip()
+                        if not line:
+                            break
+
+                        if ':' in line:
+                            key, value = line.split(':', 1)
+                            headers[key.strip()] = value.strip()
+
+                    # Read body if present
+                    body = b''
+                    content_length = int(headers.get('Content-Length', 0))
+                    if content_length > 0:
+                        body = ssl_client_socket.recv(content_length)
+
+                    # Build full URL
+                    url = f"https://{host}{path}"
+
+                    # Create request data
                     request_data = {
                         'id': proxy_instance.request_id_counter,
-                        'method': 'CONNECT',
-                        'url': f"https://{self.path}",
-                        'headers': dict(self.headers),
-                        'body': '[HTTPS - Encrypted]',
-                        'raw_body': b'',
+                        'method': method,
+                        'url': url,
+                        'headers': headers,
+                        'body': body.decode('utf-8', errors='ignore') if body else '',
+                        'raw_body': body,
                         'timestamp': time.time(),
                         'client_address': self.client_address[0]
                     }
@@ -116,83 +292,78 @@ class InterceptingProxy(QObject):
                     if len(proxy_instance.history) > proxy_instance.max_history:
                         proxy_instance.history.pop(0)
 
-                    # Connect to destination server
-                    dest_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    dest_socket.settimeout(30)
-                    dest_socket.connect((host, port))
+                    # Forward request to destination
+                    response = self._forward_https_request(request_data, host, port)
 
-                    # Send 200 Connection Established to client
-                    self.send_response(200, 'Connection Established')
-                    self.end_headers()
+                    # Passive scan
+                    if proxy_instance.passive_scan_enabled:
+                        proxy_instance._passive_scan(request_data, response)
 
-                    # Emit response signal (showing tunnel established)
-                    response_data = {
+                    # Send response back through SSL socket
+                    response_line = f"HTTP/1.1 {response['status_code']} OK\r\n"
+                    ssl_client_socket.sendall(response_line.encode())
+
+                    for header, value in response['headers'].items():
+                        if header.lower() not in ['transfer-encoding', 'content-encoding']:
+                            ssl_client_socket.sendall(f"{header}: {value}\r\n".encode())
+
+                    ssl_client_socket.sendall(b'\r\n')
+
+                    if response['body']:
+                        ssl_client_socket.sendall(response['body'])
+
+                    # Emit signal
+                    proxy_instance.response_received.emit({
                         'request': request_data,
-                        'response': {
-                            'status_code': 200,
-                            'headers': {'Connection': 'Established'},
-                            'body': b'',
-                            'text': '[HTTPS Tunnel - Content Encrypted]'
-                        }
-                    }
-                    proxy_instance.response_received.emit(response_data)
-
-                    # Set sockets to non-blocking mode for Windows compatibility
-                    client_socket = self.connection
-                    client_socket.setblocking(False)
-                    dest_socket.setblocking(False)
-
-                    # Bidirectional tunnel using threads (Windows compatible)
-                    def forward_data(source, destination, name):
-                        """Forward data from source to destination"""
-                        try:
-                            while True:
-                                try:
-                                    data = source.recv(8192)
-                                    if not data:
-                                        break
-                                    destination.sendall(data)
-                                except socket.error as e:
-                                    # No data available (non-blocking)
-                                    if e.errno in (10035, 11):  # WSAEWOULDBLOCK or EAGAIN
-                                        time.sleep(0.01)
-                                        continue
-                                    break
-                        except Exception:
-                            pass
-                        finally:
-                            try:
-                                source.close()
-                                destination.close()
-                            except:
-                                pass
-
-                    # Create forwarding threads
-                    import threading
-                    client_to_server = threading.Thread(
-                        target=forward_data,
-                        args=(client_socket, dest_socket, "client->server"),
-                        daemon=True
-                    )
-                    server_to_client = threading.Thread(
-                        target=forward_data,
-                        args=(dest_socket, client_socket, "server->client"),
-                        daemon=True
-                    )
-
-                    # Start forwarding
-                    client_to_server.start()
-                    server_to_client.start()
-
-                    # Wait for both threads to complete
-                    client_to_server.join()
-                    server_to_client.join()
+                        'response': response
+                    })
 
                 except Exception as e:
+                    print(f"[!] Error proxying SSL connection: {e}")
+                finally:
                     try:
-                        self.send_error(502, f"Bad Gateway: {str(e)}")
+                        ssl_client_socket.close()
                     except:
                         pass
+
+            def _forward_https_request(self, request_data, host, port):
+                """Forward HTTPS request to destination server"""
+                try:
+                    # Make HTTPS request to real server
+                    response = requests.request(
+                        method=request_data['method'],
+                        url=request_data['url'],
+                        headers=request_data['headers'],
+                        data=request_data['raw_body'],
+                        allow_redirects=False,
+                        verify=False,
+                        timeout=30
+                    )
+
+                    # Decompress if needed
+                    body = response.content
+                    if response.headers.get('Content-Encoding') == 'gzip':
+                        try:
+                            body = gzip.decompress(body)
+                        except:
+                            pass
+
+                    return {
+                        'status_code': response.status_code,
+                        'headers': dict(response.headers),
+                        'body': body,
+                        'text': response.text,
+                        'timestamp': time.time()
+                    }
+
+                except Exception as e:
+                    return {
+                        'status_code': 502,
+                        'headers': {},
+                        'body': f"Proxy error: {str(e)}".encode(),
+                        'text': f"Proxy error: {str(e)}",
+                        'timestamp': time.time()
+                    }
 
             def handle_request(self, method):
                 """Handle HTTP request"""
