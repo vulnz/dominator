@@ -860,8 +860,15 @@ class BrowserTab(QWidget):
                 module_name = modules_choice.split()[0].lower()
                 modules = [module_name]
 
+            # Create config dict (backward compatible format)
+            config = {
+                'modules': modules,
+                'cookies': {},
+                'custom_headers': {}
+            }
+
             # Emit signal to main GUI
-            self.scan_page_requested.emit(url, modules)
+            self.scan_page_requested.emit(url, config)
 
             QMessageBox.information(
                 self,
