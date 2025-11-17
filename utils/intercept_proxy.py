@@ -228,48 +228,49 @@ class InterceptingProxy(QObject):
             def _proxy_ssl_connection(self, ssl_client_socket, host, port):
                 """Proxy individual HTTPS requests after SSL handshake"""
                 try:
-                    # Read HTTP request from SSL socket
-                    request_line = b''
-                    while b'\r\n' not in request_line:
-                        chunk = ssl_client_socket.recv(1)
+                    # Set socket timeout to prevent hanging
+                    ssl_client_socket.settimeout(30)
+
+                    # Read HTTP request from SSL socket (buffered read for performance)
+                    request_data_raw = b''
+                    while b'\r\n\r\n' not in request_data_raw:
+                        chunk = ssl_client_socket.recv(4096)
                         if not chunk:
                             return
-                        request_line += chunk
+                        request_data_raw += chunk
+                        if len(request_data_raw) > 1024 * 1024:  # 1MB limit for headers
+                            print(f"[!] Headers too large for {host}")
+                            return
+
+                    # Split headers and potential body
+                    header_end = request_data_raw.find(b'\r\n\r\n')
+                    header_data = request_data_raw[:header_end]
+                    body_data = request_data_raw[header_end + 4:]
 
                     # Parse request line
-                    request_line = request_line.decode('utf-8').strip()
-                    if not request_line:
+                    lines = header_data.decode('utf-8', errors='ignore').split('\r\n')
+                    if not lines or not lines[0]:
                         return
 
-                    parts = request_line.split(' ')
+                    parts = lines[0].split(' ')
                     if len(parts) < 3:
                         return
 
                     method, path, http_version = parts[0], parts[1], parts[2]
 
-                    # Read headers
+                    # Parse headers
                     headers = {}
-                    while True:
-                        line = b''
-                        while b'\r\n' not in line:
-                            chunk = ssl_client_socket.recv(1)
-                            if not chunk:
-                                break
-                            line += chunk
-
-                        line = line.decode('utf-8').strip()
-                        if not line:
-                            break
-
+                    for line in lines[1:]:
                         if ':' in line:
                             key, value = line.split(':', 1)
                             headers[key.strip()] = value.strip()
 
-                    # Read body if present
-                    body = b''
+                    # Read remaining body if needed
+                    body = body_data
                     content_length = int(headers.get('Content-Length', 0))
-                    if content_length > 0:
-                        body = ssl_client_socket.recv(content_length)
+                    if content_length > len(body):
+                        remaining = content_length - len(body)
+                        body += ssl_client_socket.recv(remaining)
 
                     # Build full URL
                     url = f"https://{host}{path}"
@@ -292,25 +293,56 @@ class InterceptingProxy(QObject):
                     if len(proxy_instance.history) > proxy_instance.max_history:
                         proxy_instance.history.pop(0)
 
+                    # Emit request signal
+                    proxy_instance.request_intercepted.emit(request_data)
+
                     # Forward request to destination
                     response = self._forward_https_request(request_data, host, port)
 
                     # Passive scan
                     if proxy_instance.passive_scan_enabled:
-                        proxy_instance._passive_scan(request_data, response)
+                        try:
+                            proxy_instance._passive_scan(request_data, response)
+                        except Exception as scan_err:
+                            print(f"[!] Passive scan error: {scan_err}")
+
+                    # Get status text
+                    status_texts = {
+                        200: 'OK', 201: 'Created', 204: 'No Content',
+                        301: 'Moved Permanently', 302: 'Found', 304: 'Not Modified',
+                        400: 'Bad Request', 401: 'Unauthorized', 403: 'Forbidden',
+                        404: 'Not Found', 500: 'Internal Server Error', 502: 'Bad Gateway',
+                        503: 'Service Unavailable'
+                    }
+                    status_text = status_texts.get(response['status_code'], 'OK')
 
                     # Send response back through SSL socket
-                    response_line = f"HTTP/1.1 {response['status_code']} OK\r\n"
+                    response_line = f"HTTP/1.1 {response['status_code']} {status_text}\r\n"
                     ssl_client_socket.sendall(response_line.encode())
 
+                    # Send headers (skip problematic ones and update Content-Length)
+                    response_body = response.get('body', b'')
+                    if isinstance(response_body, str):
+                        response_body = response_body.encode('utf-8')
+
+                    sent_content_length = False
                     for header, value in response['headers'].items():
-                        if header.lower() not in ['transfer-encoding', 'content-encoding']:
+                        header_lower = header.lower()
+                        if header_lower in ['transfer-encoding', 'content-encoding', 'connection']:
+                            continue
+                        if header_lower == 'content-length':
+                            ssl_client_socket.sendall(f"Content-Length: {len(response_body)}\r\n".encode())
+                            sent_content_length = True
+                        else:
                             ssl_client_socket.sendall(f"{header}: {value}\r\n".encode())
+
+                    if not sent_content_length:
+                        ssl_client_socket.sendall(f"Content-Length: {len(response_body)}\r\n".encode())
 
                     ssl_client_socket.sendall(b'\r\n')
 
-                    if response['body']:
-                        ssl_client_socket.sendall(response['body'])
+                    if response_body:
+                        ssl_client_socket.sendall(response_body)
 
                     # Emit signal
                     proxy_instance.response_received.emit({
@@ -318,8 +350,12 @@ class InterceptingProxy(QObject):
                         'response': response
                     })
 
+                except socket.timeout:
+                    print(f"[!] Timeout reading from {host}")
                 except Exception as e:
-                    print(f"[!] Error proxying SSL connection: {e}")
+                    print(f"[!] Error proxying SSL connection for {host}: {e}")
+                    import traceback
+                    traceback.print_exc()
                 finally:
                     try:
                         ssl_client_socket.close()
