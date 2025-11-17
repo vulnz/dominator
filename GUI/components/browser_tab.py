@@ -404,19 +404,26 @@ class BrowserTab(QWidget):
         """Start or stop the proxy server"""
         if self.proxy is None or not self.proxy.running:
             try:
+                print("[DEBUG] Starting proxy initialization...")
+
                 # Start proxy with SSL interception DISABLED (temporary for debugging)
                 from utils.intercept_proxy import InterceptingProxy
 
                 port = self.proxy_port_spin.value()
+                print(f"[DEBUG] Creating InterceptingProxy on port {port}")
                 self.proxy = InterceptingProxy(port=port, ssl_intercept_enabled=False)
+                print("[DEBUG] InterceptingProxy created successfully")
 
                 # Connect signals
                 self.proxy.request_intercepted.connect(self.on_request_intercepted)
                 self.proxy.response_received.connect(self.on_response_received)
                 self.proxy.passive_finding.connect(self.on_passive_finding)
+                print("[DEBUG] Signals connected")
 
                 # Start proxy
+                print("[DEBUG] Calling proxy.start()...")
                 message = self.proxy.start()
+                print(f"[DEBUG] Proxy started: {message}")
 
                 # Update UI
                 self.proxy_status_label.setText("🟢 Proxy: Running - SSL: TUNNEL MODE (debugging)")
