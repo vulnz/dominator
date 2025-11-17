@@ -215,6 +215,9 @@ class ChromiumManager:
                 "--ignore-certificate-errors",  # Ignore SSL errors from our certs
                 "--ignore-certificate-errors-spki-list",  # Allow self-signed certs
                 "--allow-insecure-localhost",  # Allow local HTTPS
+                "--disable-web-security",  # Disable web security features that may interfere
+                "--reduce-security-for-testing",  # Reduce security checks for testing
+                "--allow-running-insecure-content",  # Allow insecure content on HTTPS pages
             ])
 
         # Add additional arguments
