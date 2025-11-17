@@ -418,11 +418,8 @@ class BrowserTab(QWidget):
                 # Start proxy
                 message = self.proxy.start()
 
-                # Show SSL interception notice
-                self.status_label.setText(f"{message} - SSL Interception: ✓ ENABLED")
-
                 # Update UI
-                self.proxy_status_label.setText("🟢 Proxy: Running")
+                self.proxy_status_label.setText("🟢 Proxy: Running - SSL Interception: ✓ ENABLED")
                 self.proxy_status_label.setStyleSheet("color: green; font-weight: bold;")
                 self.start_proxy_btn.setText("⏹ Stop Proxy")
                 self.start_proxy_btn.setStyleSheet("background-color: #f44336; color: white; font-weight: bold;")
