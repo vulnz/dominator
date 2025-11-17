@@ -21,7 +21,7 @@ class BrowserTab(QWidget):
     """Browser integration tab with proxy and interception"""
 
     # Signal to communicate with main scanner
-    scan_page_requested = pyqtSignal(str, list)  # url, module_names
+    scan_page_requested = pyqtSignal(str, dict)  # url, config (modules, cookies, headers)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -343,6 +343,25 @@ class BrowserTab(QWidget):
         self.send_to_repeater_btn.clicked.connect(self.send_to_repeater)
         self.send_to_repeater_btn.setEnabled(False)
         actions_row.addWidget(self.send_to_repeater_btn)
+
+        self.send_to_scanner_btn = QPushButton("🔍 Send to Scanner")
+        self.send_to_scanner_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #FF9800;
+                color: white;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #F57C00;
+            }
+            QPushButton:disabled {
+                background-color: #cccccc;
+                color: #666666;
+            }
+        """)
+        self.send_to_scanner_btn.clicked.connect(self.send_to_scanner)
+        self.send_to_scanner_btn.setEnabled(False)
+        actions_row.addWidget(self.send_to_scanner_btn)
 
         actions_row.addStretch()
         layout.addLayout(actions_row)
@@ -696,6 +715,7 @@ class BrowserTab(QWidget):
             self.replay_btn.setEnabled(True)
             self.modify_replay_btn.setEnabled(True)
             self.send_to_repeater_btn.setEnabled(True)
+            self.send_to_scanner_btn.setEnabled(True)
 
     def send_to_repeater(self):
         """Send selected request to Repeater tab"""
@@ -716,6 +736,56 @@ class BrowserTab(QWidget):
                 self,
                 "Sent to Repeater",
                 f"Request sent to Repeater:\n{request['method']} {request['url']}"
+            )
+
+    def send_to_scanner(self):
+        """Send selected request to Scanner with auto-configured cookies and headers"""
+        selected = self.history_table.selectedItems()
+        if not selected:
+            return
+
+        row = selected[0].row()
+        data = self.history_table.item(row, 0).data(Qt.UserRole)
+
+        if not data:
+            return
+
+        request = data['request']
+
+        # Extract cookies and headers from request
+        cookies = {}
+        custom_headers = {}
+
+        for header, value in request.get('headers', {}).items():
+            if header.lower() == 'cookie':
+                # Parse cookie header
+                for cookie_pair in value.split(';'):
+                    if '=' in cookie_pair:
+                        cookie_name, cookie_value = cookie_pair.strip().split('=', 1)
+                        cookies[cookie_name] = cookie_value
+            elif header.lower() not in ['host', 'content-length', 'connection']:
+                # Add other important headers (skip standard ones)
+                custom_headers[header] = value
+
+        # Show scan configuration dialog
+        dialog = ScanConfigDialog(request, cookies, custom_headers, self)
+        result = dialog.exec_()
+
+        if result == QDialog.Accepted:
+            config = dialog.get_config()
+
+            # Emit signal to start scan with configuration
+            # The signal will be caught by the main GUI
+            self.scan_page_requested.emit(request['url'], config)
+
+            QMessageBox.information(
+                self,
+                "Scan Started",
+                f"Scan configured for: {request['url']}\n\n"
+                f"Modules: {', '.join(config['modules'])}\n"
+                f"Cookies: {len(cookies)} cookie(s)\n"
+                f"Custom Headers: {len(custom_headers)} header(s)\n\n"
+                "Check the Scan Configuration tab to start the scan."
             )
 
     def replay_selected_request(self):
@@ -1039,3 +1109,162 @@ class ModifyRequestDialog(QDialog):
         modified['raw_body'] = body.encode('utf-8')
 
         return modified
+
+class ScanConfigDialog(QDialog):
+    """Dialog for configuring scan from intercepted request"""
+
+    # Available scan modules
+    AVAILABLE_MODULES = [
+        'sqli', 'xss', 'xxe', 'ssti', 'cmdi', 'lfi', 'rfi',
+        'ssrf', 'redirect', 'csrf', 'idor', 'xpath', 'dirbrute',
+        'file_upload', 'weak_credentials', 'dom_xss', 'formula_injection',
+        'php_object_injection', 'git', 'env_secrets', 'oob_detection'
+    ]
+
+    def __init__(self, request, cookies, custom_headers, parent=None):
+        super().__init__(parent)
+        self.request = request
+        self.cookies = cookies
+        self.custom_headers = custom_headers
+        self.module_checkboxes = {}
+        self.init_ui()
+
+    def init_ui(self):
+        """Initialize scan config dialog UI"""
+        self.setWindowTitle("Configure Scan from Request")
+        self.resize(700, 600)
+
+        # Set light theme
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #f0f0f0;
+                color: black;
+            }
+            QLabel {
+                color: black;
+            }
+            QCheckBox {
+                color: black;
+            }
+            QGroupBox {
+                background-color: white;
+                color: black;
+                border: 2px solid #cccccc;
+                border-radius: 5px;
+                margin-top: 10px;
+                padding-top: 10px;
+                font-weight: bold;
+            }
+            QGroupBox::title {
+                color: black;
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+            }
+        """)
+
+        layout = QVBoxLayout()
+
+        # Request info
+        info_group = QGroupBox("Request Information")
+        info_layout = QVBoxLayout()
+        info_layout.addWidget(QLabel(f"<b>URL:</b> {self.request['url']}"))
+        info_layout.addWidget(QLabel(f"<b>Method:</b> {self.request['method']}"))
+        info_layout.addWidget(QLabel(f"<b>Cookies:</b> {len(self.cookies)} found"))
+        info_layout.addWidget(QLabel(f"<b>Custom Headers:</b> {len(self.custom_headers)} found"))
+        info_group.setLayout(info_layout)
+        layout.addWidget(info_group)
+
+        # Module selection
+        module_group = QGroupBox("Select Scan Modules")
+        module_layout = QVBoxLayout()
+
+        # Select All / Deselect All buttons
+        select_buttons = QHBoxLayout()
+        select_all_btn = QPushButton("Select All")
+        select_all_btn.clicked.connect(self.select_all_modules)
+        select_buttons.addWidget(select_all_btn)
+
+        deselect_all_btn = QPushButton("Deselect All")
+        deselect_all_btn.clicked.connect(self.deselect_all_modules)
+        select_buttons.addWidget(deselect_all_btn)
+
+        select_buttons.addStretch()
+        module_layout.addLayout(select_buttons)
+
+        # Module checkboxes in grid
+        from PyQt5.QtWidgets import QGridLayout
+        grid = QGridLayout()
+        row = 0
+        col = 0
+
+        for module in sorted(self.AVAILABLE_MODULES):
+            checkbox = QCheckBox(module.upper().replace('_', ' '))
+            checkbox.setChecked(True)  # Default: all selected
+            self.module_checkboxes[module] = checkbox
+            grid.addWidget(checkbox, row, col)
+            col += 1
+            if col >= 3:  # 3 columns
+                col = 0
+                row += 1
+
+        module_layout.addLayout(grid)
+        module_group.setLayout(module_layout)
+        layout.addWidget(module_group)
+
+        # Extracted data preview
+        data_group = QGroupBox("Extracted Data (will be auto-configured)")
+        data_layout = QVBoxLayout()
+
+        if self.cookies:
+            cookies_text = QLabel(f"<b>Cookies ({len(self.cookies)}):</b>")
+            data_layout.addWidget(cookies_text)
+            cookie_list = ", ".join([f"{k}={v[:20]}..." if len(v) > 20 else f"{k}={v}"
+                                     for k, v in list(self.cookies.items())[:5]])
+            if len(self.cookies) > 5:
+                cookie_list += f" ... and {len(self.cookies) - 5} more"
+            data_layout.addWidget(QLabel(cookie_list))
+
+        if self.custom_headers:
+            headers_text = QLabel(f"<b>Custom Headers ({len(self.custom_headers)}):</b>")
+            data_layout.addWidget(headers_text)
+            header_list = ", ".join(list(self.custom_headers.keys())[:5])
+            if len(self.custom_headers) > 5:
+                header_list += f" ... and {len(self.custom_headers) - 5} more"
+            data_layout.addWidget(QLabel(header_list))
+
+        data_group.setLayout(data_layout)
+        layout.addWidget(data_group)
+
+        # Buttons
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+        self.setLayout(layout)
+
+    def select_all_modules(self):
+        """Select all module checkboxes"""
+        for checkbox in self.module_checkboxes.values():
+            checkbox.setChecked(True)
+
+    def deselect_all_modules(self):
+        """Deselect all module checkboxes"""
+        for checkbox in self.module_checkboxes.values():
+            checkbox.setChecked(False)
+
+    def get_config(self):
+        """Get scan configuration"""
+        selected_modules = [
+            module for module, checkbox in self.module_checkboxes.items()
+            if checkbox.isChecked()
+        ]
+
+        return {
+            'modules': selected_modules,
+            'cookies': self.cookies,
+            'custom_headers': self.custom_headers,
+            'url': self.request['url'],
+            'method': self.request['method']
+        }

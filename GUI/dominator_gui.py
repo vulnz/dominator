@@ -3131,10 +3131,21 @@ class DominatorGUI(QMainWindow):
             }}
         """)
 
-    def on_scan_page_requested(self, url, modules):
-        """Handle scan page request from browser tab"""
+    def on_scan_page_requested(self, url, config):
+        """Handle scan page request from browser tab with auto-configured cookies and headers"""
         # Set the target URL
         self.target_input.setText(url)
+
+        # Get modules from config (could be list or dict)
+        if isinstance(config, dict):
+            modules = config.get('modules', [])
+            cookies = config.get('cookies', {})
+            custom_headers = config.get('custom_headers', {})
+        else:
+            # Backward compatibility - config is a list of modules
+            modules = config if config else []
+            cookies = {}
+            custom_headers = {}
 
         # Clear current module selection
         for i in range(self.module_list.count()):
@@ -3153,13 +3164,27 @@ class DominatorGUI(QMainWindow):
                 item = self.module_list.item(i)
                 item.setCheckState(Qt.Checked)
 
+        # Auto-configure cookies if provided
+        if cookies:
+            cookie_str = "; ".join([f"{k}={v}" for k, v in cookies.items()])
+            self.cookies_input.setText(cookie_str)
+
+        # Auto-configure custom headers if provided
+        if custom_headers:
+            headers_str = "\n".join([f"{k}: {v}" for k, v in custom_headers.items()])
+            self.headers_input.setPlainText(headers_str)
+
         # Switch to Scan Configuration tab
         self.tabs.setCurrentIndex(0)
 
         # Show message
         module_text = "all modules" if not modules else ", ".join(modules)
-        self.output_console.append(f"\n🌐 Browser Tab: Prepared scan for {url}")
+        self.output_console.append(f"\n🔍 Browser → Scanner: Configured scan for {url}")
         self.output_console.append(f"   Modules: {module_text}")
+        if cookies:
+            self.output_console.append(f"   Cookies: {len(cookies)} auto-configured ✓")
+        if custom_headers:
+            self.output_console.append(f"   Headers: {len(custom_headers)} auto-configured ✓")
         self.output_console.append(f"   Click 'Start Scan' to begin\n")
 
         # Optionally auto-start the scan
