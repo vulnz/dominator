@@ -515,11 +515,11 @@ class InterceptingProxy(QObject):
         """Run passive scans on request/response"""
         url = request['url']
 
-        # Run passive detectors
-        passive_results = self.passive_scanner.scan_response(
-            url,
+        # Run passive detectors (analyze_response returns dict with findings)
+        passive_results = self.passive_scanner.analyze_response(
+            response['headers'],
             response['text'],
-            response['headers']
+            url
         )
 
         sensitive_results = self.sensitive_detector.detect(
@@ -527,14 +527,20 @@ class InterceptingProxy(QObject):
             url
         )
 
-        # Emit findings
-        for finding in passive_results:
+        # Emit findings from all categories
+        all_findings = (
+            passive_results.get('security_issues', []) +
+            passive_results.get('sensitive_data', []) +
+            passive_results.get('version_disclosures', [])
+        )
+
+        for finding in all_findings:
             self.passive_finding.emit({
-                'type': finding['type'],
-                'severity': finding['severity'],
+                'type': finding.get('type', 'Unknown'),
+                'severity': finding.get('severity', 'Info'),
                 'url': url,
-                'evidence': finding['evidence'],
-                'description': finding['description']
+                'evidence': finding.get('evidence', ''),
+                'description': finding.get('description', '')
             })
 
         for finding in sensitive_results:
