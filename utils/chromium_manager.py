@@ -12,7 +12,6 @@ import subprocess
 from pathlib import Path
 import urllib.request
 import shutil
-from utils.cert_manager import get_cert_manager
 
 
 class ChromiumManager:
@@ -149,6 +148,8 @@ class ChromiumManager:
             bool: True if successful, False otherwise
         """
         try:
+            # Import here to avoid circular import
+            from utils.cert_manager import get_cert_manager
             cert_mgr = get_cert_manager()
 
             # Install in system certificate store
@@ -169,6 +170,8 @@ class ChromiumManager:
         Returns:
             str: Path to CA certificate file
         """
+        # Import here to avoid circular import
+        from utils.cert_manager import get_cert_manager
         cert_mgr = get_cert_manager()
         return cert_mgr.get_ca_cert_path()
 
