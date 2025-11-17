@@ -208,8 +208,14 @@ class InterceptingProxy(QObject):
                 client_to_server.start()
                 server_to_client.start()
 
-                # Don't use join() - it blocks forever!
-                # The daemon threads will clean up automatically
+                # Wait for at least one thread to finish (connection closed)
+                # This prevents the handler from closing sockets prematurely
+                # But we use a loop instead of join() to allow both threads to exit
+                while client_to_server.is_alive() and server_to_client.is_alive():
+                    time.sleep(0.1)
+
+                # Give both threads a moment to clean up
+                time.sleep(0.1)
 
             def _handle_ssl_interception(self, host, port):
                 """Handle HTTPS with SSL interception (decrypt and inspect)"""
