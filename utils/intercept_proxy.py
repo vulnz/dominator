@@ -37,7 +37,7 @@ class InterceptingProxy(QObject):
 
         # Request history
         self.history = []
-        self.max_history = 1000
+        self.max_history = 5000  # Increased limit for better history
 
         # Pending requests (waiting for user action)
         self.pending_requests = {}
@@ -45,6 +45,19 @@ class InterceptingProxy(QObject):
 
         # Auto-allow hosts (bypass interception for these hosts)
         self.auto_allow_hosts = set()
+
+        # Scope management (Burp Suite-like)
+        self.scope_enabled = False
+        self.in_scope_patterns = []  # Regex patterns for in-scope URLs
+        self.out_of_scope_patterns = []  # Regex patterns to explicitly exclude
+
+        # Ignore patterns (avoid logging static files, etc.)
+        self.ignore_enabled = True
+        self.ignore_extensions = {
+            '.css', '.js', '.jpg', '.jpeg', '.png', '.gif', '.svg', '.ico',
+            '.woff', '.woff2', '.ttf', '.eot', '.map', '.webp', '.bmp'
+        }
+        self.custom_ignore_patterns = []  # Additional regex patterns to ignore
 
         # Certificate manager for SSL interception
         self.cert_manager = get_cert_manager() if ssl_intercept_enabled else None
@@ -238,19 +251,33 @@ class InterceptingProxy(QObject):
                         'client_address': self.client_address[0]
                     }
                     proxy_instance.request_id_counter += 1
-                    proxy_instance.history.append(request_data)
-                    if len(proxy_instance.history) > proxy_instance.max_history:
-                        proxy_instance.history.pop(0)
 
-                    proxy_instance.response_received.emit({
-                        'request': request_data,
-                        'response': {
-                            'status_code': 200,
-                            'headers': {'Connection': 'Established'},
-                            'body': b'',
-                            'text': '[HTTPS Tunnel]'
-                        }
-                    })
+                    # Check scope and ignore patterns for HTTPS tunnels too
+                    url = request_data['url']
+                    should_log = True
+
+                    if proxy_instance.should_ignore(url):
+                        should_log = False
+
+                    if should_log and proxy_instance.scope_enabled:
+                        if not proxy_instance.is_in_scope(url):
+                            should_log = False
+
+                    # Only log if passes filters
+                    if should_log:
+                        proxy_instance.history.append(request_data)
+                        if len(proxy_instance.history) > proxy_instance.max_history:
+                            proxy_instance.history.pop(0)
+
+                        proxy_instance.response_received.emit({
+                            'request': request_data,
+                            'response': {
+                                'status_code': 200,
+                                'headers': {'Connection': 'Established'},
+                                'body': b'',
+                                'text': '[HTTPS Tunnel]'
+                            }
+                        })
 
                     # Set non-blocking
                     self.connection.setblocking(0)
@@ -665,11 +692,31 @@ class InterceptingProxy(QObject):
                             body = body.encode('utf-8')
                         self.wfile.write(body)
 
-                    # Signal GUI
-                    proxy_instance.response_received.emit({
-                        'request': request_data,
-                        'response': response
-                    })
+                    # Check scope and ignore patterns before logging
+                    url = request_data['url']
+                    should_log = True
+
+                    # Check if should be ignored (static files, etc.)
+                    if proxy_instance.should_ignore(url):
+                        should_log = False
+
+                    # Check scope (only if enabled)
+                    if should_log and proxy_instance.scope_enabled:
+                        if not proxy_instance.is_in_scope(url):
+                            should_log = False
+
+                    # Signal GUI (only if passes filters)
+                    if should_log:
+                        # Add to history
+                        proxy_instance.history.append(request_data)
+                        if len(proxy_instance.history) > proxy_instance.max_history:
+                            proxy_instance.history.pop(0)
+
+                        # Emit signal for GUI
+                        proxy_instance.response_received.emit({
+                            'request': request_data,
+                            'response': response
+                        })
 
                 except Exception as e:
                     self.send_error(502, f"Proxy error: {str(e)}")
@@ -846,3 +893,101 @@ class InterceptingProxy(QObject):
     def get_auto_allow_hosts(self):
         """Get list of auto-allowed hosts"""
         return list(self.auto_allow_hosts)
+
+    # Scope Management Methods
+    def add_to_scope(self, pattern):
+        """Add URL pattern to scope (regex)"""
+        if pattern not in self.in_scope_patterns:
+            self.in_scope_patterns.append(pattern)
+
+    def remove_from_scope(self, pattern):
+        """Remove URL pattern from scope"""
+        if pattern in self.in_scope_patterns:
+            self.in_scope_patterns.remove(pattern)
+
+    def add_to_exclude(self, pattern):
+        """Add URL pattern to exclude list (regex)"""
+        if pattern not in self.out_of_scope_patterns:
+            self.out_of_scope_patterns.append(pattern)
+
+    def remove_from_exclude(self, pattern):
+        """Remove URL pattern from exclude list"""
+        if pattern in self.out_of_scope_patterns:
+            self.out_of_scope_patterns.remove(pattern)
+
+    def is_in_scope(self, url):
+        """Check if URL is in scope"""
+        import re
+
+        # If scope is disabled, everything is in scope
+        if not self.scope_enabled:
+            return True
+
+        # Check exclude patterns first (higher priority)
+        for pattern in self.out_of_scope_patterns:
+            try:
+                if re.search(pattern, url):
+                    return False
+            except:
+                pass
+
+        # If no in-scope patterns, nothing is in scope
+        if not self.in_scope_patterns:
+            return False
+
+        # Check if matches any in-scope pattern
+        for pattern in self.in_scope_patterns:
+            try:
+                if re.search(pattern, url):
+                    return True
+            except:
+                pass
+
+        return False
+
+    def should_ignore(self, url):
+        """Check if URL should be ignored (static files, etc.)"""
+        import re
+        from urllib.parse import urlparse
+
+        if not self.ignore_enabled:
+            return False
+
+        # Check file extension
+        parsed = urlparse(url)
+        path = parsed.path.lower()
+        for ext in self.ignore_extensions:
+            if path.endswith(ext):
+                return True
+
+        # Check custom ignore patterns
+        for pattern in self.custom_ignore_patterns:
+            try:
+                if re.search(pattern, url):
+                    return True
+            except:
+                pass
+
+        return False
+
+    def add_ignore_extension(self, ext):
+        """Add file extension to ignore list"""
+        if not ext.startswith('.'):
+            ext = '.' + ext
+        self.ignore_extensions.add(ext.lower())
+
+    def remove_ignore_extension(self, ext):
+        """Remove file extension from ignore list"""
+        if not ext.startswith('.'):
+            ext = '.' + ext
+        self.ignore_extensions.discard(ext.lower())
+
+    def add_ignore_pattern(self, pattern):
+        """Add custom ignore pattern (regex)"""
+        if pattern not in self.custom_ignore_patterns:
+            self.custom_ignore_patterns.append(pattern)
+
+    def remove_ignore_pattern(self, pattern):
+        """Remove custom ignore pattern"""
+        if pattern in self.custom_ignore_patterns:
+            self.custom_ignore_patterns.remove(pattern)

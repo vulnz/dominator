@@ -416,7 +416,9 @@ class BrowserTab(QWidget):
 
                 port = self.proxy_port_spin.value()
                 print(f"[DEBUG] Creating InterceptingProxy on port {port}")
-                self.proxy = InterceptingProxy(port=port, ssl_intercept_enabled=True)
+                # SSL interception disabled - Chromium doesn't trust our certs even with --ignore-certificate-errors
+                # Using simple HTTPS tunnel mode instead (still captures CONNECT requests)
+                self.proxy = InterceptingProxy(port=port, ssl_intercept_enabled=False)
                 print("[DEBUG] InterceptingProxy created successfully")
 
                 # Connect signals
@@ -703,9 +705,24 @@ class BrowserTab(QWidget):
             status_item.setForeground(QColor('red'))
         self.history_table.setItem(row, 4, status_item)
 
-        # Length
-        length = len(response.get('body', b''))
-        self.history_table.setItem(row, 5, QTableWidgetItem(f"{length} B"))
+        # Length - handle both bytes and string body
+        body = response.get('body', b'')
+        if isinstance(body, str):
+            length = len(body.encode('utf-8'))
+        elif isinstance(body, bytes):
+            length = len(body)
+        else:
+            length = 0
+
+        # Format length nicely
+        if length >= 1024 * 1024:
+            length_str = f"{length / (1024 * 1024):.2f} MB"
+        elif length >= 1024:
+            length_str = f"{length / 1024:.2f} KB"
+        else:
+            length_str = f"{length} B"
+
+        self.history_table.setItem(row, 5, QTableWidgetItem(length_str))
 
         # Notes
         self.history_table.setItem(row, 6, QTableWidgetItem(""))

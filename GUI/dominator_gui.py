@@ -410,6 +410,17 @@ class DominatorGUI(QMainWindow):
         self.statusBar().showMessage("Ready to scan")
         self.statusBar().setStyleSheet("background-color: #2b2b2b; color: #00ff00; padding: 5px;")
 
+    def closeEvent(self, event):
+        """Handle application close - cleanup proxy and other resources"""
+        # Stop proxy if running
+        if hasattr(self, 'browser_tab') and self.browser_tab.proxy and self.browser_tab.proxy.running:
+            print("[*] Shutting down proxy...")
+            self.browser_tab.proxy.stop()
+            print("[+] Proxy stopped")
+
+        # Accept the close event
+        event.accept()
+
     def create_menu_bar(self):
         """Create menu bar"""
         menubar = self.menuBar()
