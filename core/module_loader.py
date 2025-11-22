@@ -14,17 +14,21 @@ logger = get_logger(__name__)
 class ModuleLoader:
     """Dynamically loads scanner modules"""
 
-    def __init__(self, modules_dir: str = "modules"):
+    def __init__(self, modules_dir: str = "modules", payload_limit: int = None):
         """
         Initialize module loader
 
         Args:
             modules_dir: Path to modules directory
+            payload_limit: Global payload limit for all modules (from --payload-limit CLI arg)
         """
         self.modules_dir = modules_dir
+        self.payload_limit = payload_limit
         self.available_modules = self._discover_modules()
 
         logger.info(f"Module loader initialized. Available modules: {len(self.available_modules)}")
+        if payload_limit:
+            logger.info(f"Global payload limit set to: {payload_limit}")
 
     def _discover_modules(self) -> Dict[str, str]:
         """
@@ -94,7 +98,7 @@ class ModuleLoader:
 
             # Get module instance
             if hasattr(module, 'get_module'):
-                module_instance = module.get_module(module_path)
+                module_instance = module.get_module(module_path, payload_limit=self.payload_limit)
                 logger.info(f"Successfully loaded module: {module_name}")
                 return module_instance
             else:

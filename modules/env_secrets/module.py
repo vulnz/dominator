@@ -99,9 +99,9 @@ class EnvSecretsModule(BaseModule):
         'URL with Credentials': r'(?i)https?://[a-zA-Z0-9_]+:[a-zA-Z0-9_]+@[a-zA-Z0-9\\-\\.]+',
     }
 
-    def __init__(self, module_path: str):
+    def __init__(self, module_path: str, payload_limit: int = None):
         """Initialize Environment Files scanner"""
-        super().__init__(module_path)
+        super().__init__(module_path, payload_limit=payload_limit)
 
         # Compile regex patterns for performance
         self.compiled_patterns = {
@@ -153,7 +153,7 @@ class EnvSecretsModule(BaseModule):
             logger.debug(f"Testing env files: {base_url}")
 
             # Test environment file paths
-            for env_file in self.payloads[:30]:  # Test top 30 files
+            for env_file in self.get_limited_payloads():  # Test top 30 files
                 test_url = urljoin(base_url, env_file.strip())
 
                 try:
@@ -304,6 +304,6 @@ class EnvSecretsModule(BaseModule):
         return False
 
 
-def get_module(module_path: str):
+def get_module(module_path: str, payload_limit: int = None):
     """Create module instance"""
-    return EnvSecretsModule(module_path)
+    return EnvSecretsModule(module_path, payload_limit=payload_limit)

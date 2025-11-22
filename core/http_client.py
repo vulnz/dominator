@@ -8,7 +8,16 @@ from typing import Dict, Optional, Any
 from dataclasses import dataclass
 import time
 import logging
+import gzip
+import zlib
 from utils.user_agents import UserAgentRotator  # ROTATION 9
+
+# Try to import brotli for br compression support
+try:
+    import brotli
+    BROTLI_AVAILABLE = True
+except ImportError:
+    BROTLI_AVAILABLE = False
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -35,14 +44,14 @@ class HTTPResponse:
 class HTTPClient:
     """Centralized HTTP client with rate limiting and error handling"""
 
-    def __init__(self, timeout: int = 20, headers: Optional[Dict[str, str]] = None,
+    def __init__(self, timeout: int = 8, headers: Optional[Dict[str, str]] = None,
                  cookies: Optional[Dict[str, str]] = None, rate_limit: Optional[int] = None,
                  rotate_agent: bool = False):
         """
         Initialize HTTP client
 
         Args:
-            timeout: Request timeout in seconds
+            timeout: Request timeout in seconds (reduced to 8 for faster scanning)
             headers: Default headers for all requests
             cookies: Default cookies for all requests
             rate_limit: Max requests per second (None = no limit)
@@ -132,7 +141,12 @@ class HTTPClient:
         # Merge headers
         headers = self.default_headers.copy()
         if kwargs.get('headers'):
-            headers.update(kwargs['headers'])
+            # Ensure headers is a dict before updating
+            custom_headers = kwargs['headers']
+            if isinstance(custom_headers, dict):
+                headers.update(custom_headers)
+            elif custom_headers is not None:
+                logger.warning(f"Invalid headers type: {type(custom_headers)}, expected dict")
 
         # ROTATION 9: Apply User-Agent rotation (if not already set by user)
         if 'User-Agent' not in headers and 'user-agent' not in headers:
@@ -156,13 +170,52 @@ class HTTPClient:
             response = self.session.request(method, url, **kwargs)
             response_time = time.time() - start_time
 
+            # Handle compressed responses
+            content_encoding = response.headers.get('Content-Encoding', '').lower()
+            if content_encoding:
+                try:
+                    if content_encoding in ['gzip', 'x-gzip']:
+                        # Check if content is actually gzipped (magic bytes: 1f 8b)
+                        if len(response.content) >= 2 and response.content[:2] == b'\x1f\x8b':
+                            decompressed = gzip.decompress(response.content)
+                        else:
+                            # Server sent wrong header, content isn't actually gzipped
+                            decompressed = response.content
+                    elif content_encoding == 'deflate':
+                        try:
+                            decompressed = zlib.decompress(response.content)
+                        except:
+                            # Try with raw deflate (no zlib header)
+                            try:
+                                decompressed = zlib.decompress(response.content, -zlib.MAX_WBITS)
+                            except:
+                                # Not actually deflated
+                                decompressed = response.content
+                    elif content_encoding == 'br' and BROTLI_AVAILABLE:
+                        decompressed = brotli.decompress(response.content)
+                    else:
+                        decompressed = response.content
+
+                    text = decompressed.decode('utf-8', errors='ignore')
+                except Exception:
+                    # Silently fall back to uncompressed content
+                    text = response.text
+            else:
+                text = response.text
+
+            # Safely convert headers to dict
+            try:
+                resp_headers = dict(response.headers) if response.headers else {}
+            except (TypeError, ValueError):
+                resp_headers = {}
+
             return HTTPResponse(
-                url=response.url,
+                url=str(response.url),
                 status_code=response.status_code,
-                text=response.text,
-                headers=dict(response.headers),
+                text=text,
+                headers=resp_headers,
                 response_time=response_time,
-                content_length=len(response.content)
+                content_length=len(response.content) if response.content else 0
             )
 
         except requests.exceptions.Timeout:

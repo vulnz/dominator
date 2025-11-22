@@ -20,9 +20,9 @@ logger = get_logger(__name__)
 class WeakCredentialsModule(BaseModule):
     """Weak credentials vulnerability scanner module"""
 
-    def __init__(self, module_path: str):
+    def __init__(self, module_path: str, payload_limit: int = None):
         """Initialize Weak Credentials module"""
-        super().__init__(module_path)
+        super().__init__(module_path, payload_limit=payload_limit)
 
         # Parse username:password format from payloads
         self.credentials = []
@@ -297,6 +297,6 @@ class WeakCredentialsModule(BaseModule):
         return found_bypasses
 
 
-def get_module(module_path: str):
+def get_module(module_path: str, payload_limit: int = None):
     """Create module instance"""
-    return WeakCredentialsModule(module_path)
+    return WeakCredentialsModule(module_path, payload_limit=payload_limit)

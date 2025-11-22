@@ -16,9 +16,9 @@ logger = get_logger(__name__)
 class XPathModule(BaseModule):
     """XPath Injection scanner module"""
 
-    def __init__(self, module_path: str):
+    def __init__(self, module_path: str, payload_limit: int = None):
         """Initialize XPath module"""
-        super().__init__(module_path)
+        super().__init__(module_path, payload_limit=payload_limit)
 
         # Load error patterns from TXT file
         self.error_patterns = self._load_txt_file("error_patterns.txt")
@@ -73,7 +73,7 @@ class XPathModule(BaseModule):
                 logger.debug(f"Testing XPath in parameter: {param_name} via {method}")
 
                 # Try payloads
-                for payload in self.payloads[:20]:  # Limit to 20
+                for payload in self.get_limited_payloads():  # Limit to 20
                     test_params = params.copy()
                     test_params[param_name] = payload
 
@@ -121,7 +121,12 @@ class XPathModule(BaseModule):
     def _detect_xpath(self, payload: str, response: Any,
                      baseline_text: str, baseline_length: int) -> tuple:
         """
-        Detect XPath injection
+        Detect XPath injection with baseline comparison and reflection filtering
+
+        CRITICAL: Prevents false positives from:
+        1. Reflected payloads
+        2. Pre-existing error messages
+        3. Generic patterns
 
         Returns:
             (detected: bool, confidence: float, evidence: str)
@@ -129,52 +134,103 @@ class XPathModule(BaseModule):
         response_text = getattr(response, 'text', '')
         response_length = len(response_text)
 
-        # METHOD 1: Error-based detection
+        # METHOD 1: Error-based detection with baseline comparison
         detected, matches = BaseDetector.check_multiple_patterns(
             response_text,
             self.error_patterns,
-            min_matches=1
+            min_matches=2  # CRITICAL: Require 2+ matches to reduce false positives
         )
 
         if detected and matches:
-            # XPath error found
-            confidence = 0.85
+            # CRITICAL: Filter out matches that were in baseline
+            new_matches = []
+            for match in matches:
+                if baseline_text and match in baseline_text:
+                    continue  # Was already there - not from our injection
+                # CRITICAL: Check if match is NOT just reflected payload
+                if match in payload:
+                    continue  # Match is part of our payload - reflection
+                new_matches.append(match)
 
-            # Validate it's not reflected payload
-            if payload in response_text and len(matches) == 1:
-                confidence = 0.60
+            # Still require 2+ NEW matches
+            if len(new_matches) >= 2:
+                confidence = 0.85
 
-            evidence = f"XPath error detected: {', '.join(matches[:2])}. "
-            evidence += BaseDetector.get_evidence(matches[0], response_text, context_size=150)
+                # Validate matches are close together (actual error output)
+                if self._matches_in_proximity(new_matches, response_text, max_distance=500):
+                    confidence = 0.90
 
-            return True, confidence, evidence
+                evidence = f"XPath error detected (NEW - not in baseline): {', '.join(new_matches[:2])}. "
+                evidence += f"These errors appeared AFTER injection.\n\n"
+                evidence += BaseDetector.get_evidence(new_matches[0], response_text, context_size=150)
+
+                return True, confidence, evidence
+
+            # Single NEW match - lower confidence, require additional validation
+            elif len(new_matches) == 1:
+                # Only report if we also have significant response change
+                len_diff = abs(response_length - baseline_length)
+                if len_diff > 100:
+                    confidence = 0.60
+                    evidence = f"XPath error detected: {new_matches[0]}. "
+                    evidence += f"Response changed by {len_diff} bytes. Manual verification recommended."
+                    return True, confidence, evidence
 
         # METHOD 2: Boolean-based detection (data disclosure)
-        # Check if "always true" payloads return more data
         if "' or '" in payload or "or 1=1" in payload:
             length_increase = response_length - baseline_length
 
-            # Significant increase in data
+            # Significant increase in data (at least 200 bytes)
             if length_increase > 200:
-                # Check for XML/data patterns
-                xml_patterns = ['<Coffee', '<Item', '<Record', '<td>', '<tr>']
-                xml_count = sum(1 for p in xml_patterns if p in response_text)
+                # Check for NEW XML/data patterns (not in baseline)
+                xml_patterns = ['<Coffee', '<Item', '<Record', '<User', '<Product', '<Node']
 
-                if xml_count > 0:
-                    confidence = 0.75
+                new_xml_count = 0
+                for p in xml_patterns:
+                    in_response = response_text.count(p)
+                    in_baseline = baseline_text.count(p) if baseline_text else 0
+                    if in_response > in_baseline:
+                        new_xml_count += (in_response - in_baseline)
 
-                    # More XML tags = higher confidence
-                    if xml_count >= 3:
-                        confidence = 0.90
+                # Also check for structural data patterns
+                structural_patterns = ['<td>', '<tr>', '</Item>', '</Record>']
+                for p in structural_patterns:
+                    in_response = response_text.count(p)
+                    in_baseline = baseline_text.count(p) if baseline_text else 0
+                    if in_response > in_baseline + 2:  # At least 3 more
+                        new_xml_count += 1
+
+                if new_xml_count > 0:
+                    confidence = 0.70
+
+                    # More NEW elements = higher confidence
+                    if new_xml_count >= 3:
+                        confidence = 0.85
 
                     evidence = f"Boolean-based XPath injection. Payload caused {length_increase} byte increase. "
-                    evidence += f"Response contains {xml_count} XML/data elements indicating data disclosure."
+                    evidence += f"Response contains {new_xml_count} NEW XML/data elements (not in baseline)."
 
                     return True, confidence, evidence
 
         return False, 0.0, ""
 
+    def _matches_in_proximity(self, matches: List[str], text: str, max_distance: int = 500) -> bool:
+        """Check if matches appear close to each other (indicates single error block)"""
+        if len(matches) < 2:
+            return True
 
-def get_module(module_path: str):
+        positions = []
+        for match in matches[:3]:
+            pos = text.find(match)
+            if pos != -1:
+                positions.append(pos)
+
+        if len(positions) < 2:
+            return True
+
+        return (max(positions) - min(positions)) < max_distance
+
+
+def get_module(module_path: str, payload_limit: int = None):
     """Create module instance"""
-    return XPathModule(module_path)
+    return XPathModule(module_path, payload_limit=payload_limit)

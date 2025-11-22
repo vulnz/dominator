@@ -1,0 +1,14 @@
+{
+    "name": "JavaScript Analysis",
+    "description": "Analyzes JS files for secrets, API keys, debug mode, and source maps",
+    "author": "Dominator",
+    "version": "1.0.0",
+    "category": "Information Disclosure",
+    "severity": "high",
+    "cwe": "CWE-200",
+    "owasp": "A01:2021",
+    "cvss": "7.5",
+    "enabled": true,
+    "passive": true,
+    "tags": ["javascript", "secrets", "api-keys", "source-maps", "debug", "react", "vue", "angular"]
+}

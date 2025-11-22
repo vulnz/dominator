@@ -208,11 +208,11 @@ class URLParser:
     def extract_forms(self, response_text: str) -> List[Dict[str, Any]]:
         """Extract forms from HTML"""
         forms = []
-        
+
         # Найдем все открывающие теги <form>
         form_start_pattern = r'<form[^>]*>'
         form_starts = []
-        
+
         for match in re.finditer(form_start_pattern, response_text, re.IGNORECASE):
             form_starts.append({
                 'start_pos': match.start(),
@@ -308,10 +308,10 @@ class URLParser:
                 for match in matches:
                     if match not in inputs:
                         inputs.append(match)
-            
+
             for input_html in inputs:
                 input_data = {}
-                
+
                 # Extract input attributes
                 name_patterns = [
                     r'name=["\']([^"\']+)["\']',
@@ -319,7 +319,7 @@ class URLParser:
                     r'NAME=["\']([^"\']+)["\']',
                     r'NAME=([^\s>]+)'
                 ]
-                
+
                 for pattern in name_patterns:
                     name_match = re.search(pattern, input_html, re.IGNORECASE)
                     if name_match:
@@ -379,9 +379,9 @@ class URLParser:
                 
                 if 'name' in input_data and input_data['name']:
                     form_data['inputs'].append(input_data)
-            
+
             forms.append(form_data)
-        
+
         return forms
     
     def is_valid_target(self, target: str) -> bool:

@@ -199,7 +199,7 @@ class OOBDetector:
         # CHECK 1: Requestbin.cn
         try:
             check_url = f"{self.callback_url}?inspect"
-            response = requests.get(check_url, timeout=10)
+            response = requests.get(check_url, timeout=30)
 
             if response.status_code == 200:
                 response_text = response.text.lower()
@@ -216,24 +216,27 @@ class OOBDetector:
         except Exception as e:
             logger.debug(f"Error checking Requestbin.cn: {e}")
 
-        # CHECK 2: Pipedream (check event logs)
-        try:
-            # Pipedream source API endpoint (uses OAuth client credentials)
-            # Note: This requires setting up Pipedream source API
-            # For now, we'll try a simple GET to the webhook to see if it logs
-            pipedream_check_url = f"{self.pipedream_webhook}?check={callback_id}"
+        # CHECK 2: Pipedream (check event logs) - OPTIONAL, prioritize Requestbin.cn
+        # Skip Pipedream check if Requestbin.cn already detected the callback
+        if not detected:
+            try:
+                # Pipedream source API endpoint (uses OAuth client credentials)
+                # Note: This requires setting up Pipedream source API
+                # For now, we'll try a simple GET to the webhook to see if it logs
+                pipedream_check_url = f"{self.pipedream_webhook}?check={callback_id}"
 
-            # Try checking with a GET request
-            response = requests.get(pipedream_check_url, timeout=10)
+                # Try checking with a shorter timeout since Pipedream is unreliable
+                response = requests.get(pipedream_check_url, timeout=5)
 
-            # Pipedream might return callback data in response
-            if response.status_code == 200 and callback_id.lower() in response.text.lower():
-                logger.info(f"✓ OOB callback received on Pipedream: {callback_id}")
-                detected = True
-                evidence_parts.append(f"[Pipedream] Callback ID '{callback_id}' detected")
+                # Pipedream might return callback data in response
+                if response.status_code == 200 and callback_id.lower() in response.text.lower():
+                    logger.info(f"✓ OOB callback received on Pipedream: {callback_id}")
+                    detected = True
+                    evidence_parts.append(f"[Pipedream] Callback ID '{callback_id}' detected")
 
-        except Exception as e:
-            logger.debug(f"Error checking Pipedream: {e}")
+            except Exception:
+                # Silently skip Pipedream if it fails - we prioritize Requestbin.cn
+                pass
 
         if detected:
             # Add proof URLs for manual verification

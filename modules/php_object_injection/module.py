@@ -20,9 +20,9 @@ logger = get_logger(__name__)
 class PHPObjectInjectionModule(BaseModule):
     """PHP Object Injection vulnerability scanner module"""
 
-    def __init__(self, module_path: str):
+    def __init__(self, module_path: str, payload_limit: int = None):
         """Initialize PHP Object Injection module"""
-        super().__init__(module_path)
+        super().__init__(module_path, payload_limit=payload_limit)
 
         # PHP unserialize error patterns
         self.error_patterns = [
@@ -93,7 +93,7 @@ class PHPObjectInjectionModule(BaseModule):
                 logger.debug(f"Testing PHP Object Injection in parameter: {param_name} via {method}")
 
                 # Try serialized payloads
-                for payload in self.payloads[:15]:  # Limit to 15 payloads
+                for payload in self.get_limited_payloads():  # Limit to 15 payloads
                     test_params = params.copy()
                     test_params[param_name] = payload
 
@@ -262,6 +262,6 @@ class PHPObjectInjectionModule(BaseModule):
         return False
 
 
-def get_module(module_path: str):
+def get_module(module_path: str, payload_limit: int = None):
     """Create module instance"""
-    return PHPObjectInjectionModule(module_path)
+    return PHPObjectInjectionModule(module_path, payload_limit=payload_limit)

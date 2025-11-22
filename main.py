@@ -21,7 +21,15 @@ if sys.platform.startswith('win'):
         sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'replace')
         sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'replace')
         # Set console code page to UTF-8 if possible
-        os.system('chcp 65001 >nul 2>&1')
+        # Use subprocess with CREATE_NO_WINDOW to avoid flashing console window
+        import subprocess
+        subprocess.run(
+            'chcp 65001',
+            shell=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)
+        )
     except Exception:
         pass
 

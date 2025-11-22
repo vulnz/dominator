@@ -1,0 +1,21 @@
+{
+    "name": "Prototype Pollution",
+    "description": "Client-side prototype pollution detection - finds vulnerable JS libraries and tests prototype chain pollution",
+    "author": "Dominator",
+    "version": "1.0.0",
+    "category": "Injection",
+    "severity": "high",
+    "cwe": "CWE-1321",
+    "cwe_name": "Improperly Controlled Modification of Object Prototype Attributes",
+    "owasp": "A03:2021",
+    "owasp_name": "Injection",
+    "cvss": "7.5",
+    "enabled": true,
+    "passive": false,
+    "tags": ["prototype-pollution", "javascript", "client-side", "xss", "gadgets"],
+    "confidence_threshold": 0.70,
+    "test_query_params": true,
+    "test_hash_params": true,
+    "test_json_body": true,
+    "detect_vulnerable_libs": true
+}

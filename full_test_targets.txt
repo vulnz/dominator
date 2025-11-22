@@ -1,3 +1,0 @@
-http://testphp.vulnweb.com
-http://testaspnet.vulnweb.com
-http://localhost/xvwa

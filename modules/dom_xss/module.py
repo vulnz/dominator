@@ -18,9 +18,9 @@ logger = get_logger(__name__)
 class DOMXSSModule(BaseModule):
     """DOM-based XSS vulnerability scanner module"""
 
-    def __init__(self, module_path: str):
+    def __init__(self, module_path: str, payload_limit: int = None):
         """Initialize DOM XSS module"""
-        super().__init__(module_path)
+        super().__init__(module_path, payload_limit=payload_limit)
 
         # Dangerous JavaScript sinks that can execute code
         self.dangerous_sinks = [
@@ -466,6 +466,6 @@ class DOMXSSModule(BaseModule):
             return "<script>alert('DOM_XSS')</script>"
 
 
-def get_module(module_path: str):
+def get_module(module_path: str, payload_limit: int = None):
     """Create module instance"""
-    return DOMXSSModule(module_path)
+    return DOMXSSModule(module_path, payload_limit=payload_limit)

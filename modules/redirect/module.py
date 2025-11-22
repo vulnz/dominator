@@ -15,9 +15,9 @@ logger = get_logger(__name__)
 class RedirectModule(BaseModule):
     """Open Redirect vulnerability scanner"""
 
-    def __init__(self, module_path: str):
+    def __init__(self, module_path: str, payload_limit: int = None):
         """Initialize Redirect module"""
-        super().__init__(module_path)
+        super().__init__(module_path, payload_limit=payload_limit)
         logger.info(f"Redirect module loaded: {len(self.payloads)} payloads")
 
     def scan(self, targets: List[Dict[str, Any]], http_client: Any) -> List[Dict[str, Any]]:
@@ -48,7 +48,7 @@ class RedirectModule(BaseModule):
                 logger.debug(f"Testing Open Redirect in parameter: {param_name}")
 
                 # Try payloads
-                for payload in self.payloads[:20]:  # Limit to 20 payloads
+                for payload in self.get_limited_payloads():  # Limit to 20 payloads
                     test_params = params.copy()
                     test_params[param_name] = payload
 
@@ -153,6 +153,6 @@ class RedirectModule(BaseModule):
         return False, 0.0, ""
 
 
-def get_module(module_path: str):
+def get_module(module_path: str, payload_limit: int = None):
     """Create module instance"""
-    return RedirectModule(module_path)
+    return RedirectModule(module_path, payload_limit=payload_limit)

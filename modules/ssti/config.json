@@ -6,7 +6,6 @@
   "cwe": "CWE-94",
   "owasp": "A03:2021",
   "cvss": "9.8",
-  "max_payloads": 25,
   "cwe_name": "Improper Control of Generation of Code ('Code Injection')",
   "owasp_name": "Injection",
   "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"

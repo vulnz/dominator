@@ -20,9 +20,9 @@ logger = get_logger(__name__)
 class SQLiModule(BaseModule):
     """Improved SQL Injection scanner module"""
 
-    def __init__(self, module_path: str):
+    def __init__(self, module_path: str, payload_limit: int = None):
         """Initialize SQLi module"""
-        super().__init__(module_path)
+        super().__init__(module_path, payload_limit=payload_limit)
 
         # Load error patterns from TXT file (instead of hardcoding!)
         self.error_patterns = self._load_txt_file("error_patterns.txt")
@@ -64,8 +64,11 @@ class SQLiModule(BaseModule):
             for param_name in params:
                 logger.debug(f"Testing SQLi in parameter: {param_name} via {method}")
 
+                # CRITICAL FIX: Get baseline response FIRST (without SQL payload)
+                baseline_text = self._get_baseline_response(url, params, method, http_client)
+
                 # Try payloads (limited)
-                for payload in self.payloads[:50]:  # Limit to 50 for better detection
+                for payload in self.get_limited_payloads():  # Limit to 50 for better detection
                     test_params = params.copy()
                     test_params[param_name] = payload
 
@@ -85,9 +88,9 @@ class SQLiModule(BaseModule):
                     # PASSIVE ANALYSIS: Check for path disclosure, DB errors in response
                     self.analyze_payload_response(response, url, payload)
 
-                    # IMPROVED DETECTION
+                    # IMPROVED DETECTION WITH BASELINE COMPARISON
                     detected, confidence, evidence = self._detect_sqli_improved(
-                        payload, response
+                        payload, response, baseline_text
                     )
 
                     if detected:
@@ -128,9 +131,34 @@ class SQLiModule(BaseModule):
         logger.info(f"SQLi scan complete: {len(results)} vulnerabilities found")
         return results
 
-    def _detect_sqli_improved(self, payload: str, response: Any) -> tuple:
+    def _get_baseline_response(self, url: str, params: dict, method: str, http_client: Any) -> str:
         """
-        Improved SQLi detection with multi-stage validation
+        Get baseline response WITHOUT SQL payload for comparison
+
+        CRITICAL: This allows us to detect if SQL errors are NEW (caused by payload)
+        or pre-existing on the page.
+
+        Returns:
+            Baseline response text
+        """
+        try:
+            if method == 'POST':
+                response = http_client.post(url, data=params)
+            else:
+                response = http_client.get(url, params=params)
+
+            if response:
+                return getattr(response, 'text', '')
+        except Exception as e:
+            logger.debug(f"Error getting SQLi baseline: {e}")
+
+        return ""
+
+    def _detect_sqli_improved(self, payload: str, response: Any, baseline_text: str = "") -> tuple:
+        """
+        Improved SQLi detection with multi-stage validation AND BASELINE COMPARISON
+
+        CRITICAL FIX: Verify SQL errors are NEW (not pre-existing on page)
 
         Returns:
             (detected: bool, confidence: float, evidence: str)
@@ -140,7 +168,7 @@ class SQLiModule(BaseModule):
             # Server error может быть, но нужно больше подтверждений
             pass
 
-        # STAGE 2: Check multiple error patterns (требуем минимум 1)
+        # STAGE 2: Check multiple error patterns (требуем минимум 2 for reliability)
         response_text = getattr(response, 'text', '')
 
         # Debug logging
@@ -151,13 +179,29 @@ class SQLiModule(BaseModule):
         detected, matches = BaseDetector.check_multiple_patterns(
             response_text,
             self.error_patterns,
-            min_matches=1  # Minimum 1 SQL error pattern
+            min_matches=2  # FIXED: Require 2+ patterns to reduce false positives
         )
 
         logger.debug(f"Pattern check: detected={detected}, matches={matches[:3] if matches else []}")
 
+        # CRITICAL FIX: Filter out patterns that were already in baseline
+        if detected and baseline_text:
+            new_matches = []
+            for match in matches:
+                if match not in baseline_text:
+                    new_matches.append(match)
+                else:
+                    logger.debug(f"SQLi pattern '{match}' already in baseline - skipping")
+
+            if len(new_matches) < 2:
+                logger.debug(f"Not enough NEW SQL errors (need 2, found {len(new_matches)})")
+                detected = False
+            else:
+                matches = new_matches
+                logger.debug(f"NEW SQL errors found: {matches[:3]}")
+
         if not detected:
-            # Try single strong pattern
+            # Try single strong pattern (but ONLY if NEW - not in baseline)
             strong_patterns = [
                 'You have an error in your SQL syntax',
                 'Warning: mysql_',
@@ -170,6 +214,10 @@ class SQLiModule(BaseModule):
 
             for pattern in strong_patterns:
                 if pattern in response.text:
+                    # CRITICAL: Check if this strong pattern is NEW (not in baseline)
+                    if baseline_text and pattern in baseline_text:
+                        logger.debug(f"Strong SQL pattern '{pattern}' already in baseline - skipping")
+                        continue
                     detected = True
                     matches = [pattern]
                     break
@@ -623,6 +671,6 @@ class SQLiModule(BaseModule):
         return results
 
 
-def get_module(module_path: str):
+def get_module(module_path: str, payload_limit: int = None):
     """Create module instance"""
-    return SQLiModule(module_path)
+    return SQLiModule(module_path, payload_limit=payload_limit)

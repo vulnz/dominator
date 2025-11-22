@@ -20,9 +20,9 @@ logger = get_logger(__name__)
 class FormulaInjectionModule(BaseModule):
     """Formula Injection vulnerability scanner module"""
 
-    def __init__(self, module_path: str):
+    def __init__(self, module_path: str, payload_limit: int = None):
         """Initialize Formula Injection module"""
-        super().__init__(module_path)
+        super().__init__(module_path, payload_limit=payload_limit)
 
         # Formula starters that spreadsheet apps execute
         self.formula_starters = ['=', '+', '-', '@', '|', '%']
@@ -96,7 +96,7 @@ class FormulaInjectionModule(BaseModule):
                 logger.debug(f"Testing Formula Injection in parameter: {param_name} via {method}")
 
                 # Try formula payloads
-                for payload in self.payloads[:10]:  # Test first 10 payloads
+                for payload in self.get_limited_payloads():  # Test first 10 payloads
                     test_params = params.copy()
                     test_params[param_name] = payload
 
@@ -308,6 +308,6 @@ class FormulaInjectionModule(BaseModule):
         return payload in response_text
 
 
-def get_module(module_path: str):
+def get_module(module_path: str, payload_limit: int = None):
     """Create module instance"""
-    return FormulaInjectionModule(module_path)
+    return FormulaInjectionModule(module_path, payload_limit=payload_limit)

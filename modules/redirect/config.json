@@ -6,7 +6,6 @@
   "cwe": "CWE-601",
   "owasp": "A01:2021",
   "cvss": "6.1",
-  "max_payloads": 30,
   "cwe_name": "URL Redirection to Untrusted Site ('Open Redirect')",
   "owasp_name": "Broken Access Control",
   "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N"

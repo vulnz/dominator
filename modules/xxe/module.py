@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 class XXEModule(BaseModule):
     """XXE vulnerability scanner with multiple detection methods"""
 
-    def __init__(self, module_path: str):
-        super().__init__(module_path)
+    def __init__(self, module_path: str, payload_limit: int = None):
+        super().__init__(module_path, payload_limit=payload_limit)
 
         # OOB detector for blind XXE
         self.oob_detector = OOBDetector()
@@ -55,17 +55,14 @@ class XXEModule(BaseModule):
 
     def scan(self, targets: List[Dict], http_client: Any) -> List[Dict]:
         """
-        Scan targets for XXE vulnerabilities using OOB-only detection.
-
-        OOB (Out-of-Band) is the ONLY reliable method for XXE detection because:
-        - Error-based detection has too many false positives
-        - File disclosure rarely works in modern apps
-        - OOB proves the vulnerability definitively
+        Scan targets for XXE vulnerabilities using multi-stage detection:
+        1. OOB (Out-of-Band) - Most reliable for blind XXE
+        2. Error-based - Fallback for when OOB is disabled
+        3. File disclosure - Definitive proof if file contents returned
         """
         results = []
 
-        logger.info(f"Starting XXE scan (OOB-only) on {len(targets)} targets")
-        logger.info("Using OOB callbacks for reliable blind XXE detection")
+        logger.info(f"Starting XXE scan on {len(targets)} targets")
 
         for target in targets:
             url = target['url']
@@ -76,54 +73,88 @@ class XXEModule(BaseModule):
             if not self._likely_accepts_xml(url, params):
                 continue
 
-            # Test each parameter with OOB payloads
+            # Get baseline response
+            baseline_response = self._send_request(http_client, url, method, params)
+            baseline_text = getattr(baseline_response, 'text', '') if baseline_response else ''
+
+            # Test each parameter
             for param_name in params.keys():
-                # OOB (Out-of-Band) detection for blind XXE
+                found_vuln = False
+
+                # STAGE 1: OOB (Out-of-Band) detection for blind XXE
                 if self.config.get('enable_oob', True):
-                    # Generate OOB payloads using the new API
                     oob_payloads = self.oob_detector.get_callback_payloads('xxe', url, param_name)
 
-                    if not oob_payloads:
-                        logger.warning("OOB detector unavailable - XXE detection requires OOB!")
+                    if oob_payloads:
+                        callback_id = oob_payloads[0]['callback_id']
+
+                        try:
+                            for payload_dict in oob_payloads:
+                                oob_payload = payload_dict['payload']
+                                modified_params = params.copy()
+                                modified_params[param_name] = oob_payload
+                                self._send_request(http_client, url, method, modified_params)
+
+                            # Check callback (wait 5 seconds)
+                            detected_oob, oob_evidence = self.oob_detector.check_callback(
+                                callback_id, wait_time=5
+                            )
+
+                            if detected_oob:
+                                result = self.create_result(
+                                    vulnerable=True,
+                                    url=url,
+                                    parameter=param_name,
+                                    payload=oob_payload,
+                                    evidence=f"Blind XXE CONFIRMED via OOB callback!\n\n{oob_evidence}",
+                                    description="Blind XXE vulnerability detected via out-of-band callback. "
+                                              "Application processes external XML entities.",
+                                    confidence=1.0,
+                                    severity='critical',
+                                    method=method
+                                )
+                                results.append(result)
+                                logger.info(f"XXE found via OOB: {url} (param: {param_name})")
+                                found_vuln = True
+                                break  # Move to next parameter
+
+                        except Exception as e:
+                            logger.debug(f"Error testing OOB XXE: {e}")
+
+                if found_vuln:
+                    continue
+
+                # STAGE 2: Error-based and File disclosure detection (fallback)
+                for payload in self.get_limited_payloads():
+                    modified_params = params.copy()
+                    modified_params[param_name] = payload
+
+                    response = self._send_request(http_client, url, method, modified_params)
+                    if not response:
                         continue
 
-                    # Get callback_id for verification
-                    callback_id = oob_payloads[0]['callback_id']
+                    # Check for file disclosure or XXE errors
+                    detected, confidence, evidence = self._detect_xxe_error(
+                        payload, response, baseline_text
+                    )
 
-                    try:
-                        # Test each XXE OOB payload
-                        for payload_dict in oob_payloads:
-                            oob_payload = payload_dict['payload']
-
-                            modified_params = params.copy()
-                            modified_params[param_name] = oob_payload
-
-                            response = self._send_request(http_client, url, method, modified_params)
-
-                        # Check if callback received (after testing all payloads)
-                        # Wait 5 seconds for blind XXE callback
-                        detected_oob, oob_evidence = self.oob_detector.check_callback(
-                            callback_id, wait_time=5
+                    if detected:
+                        result = self.create_result(
+                            vulnerable=True,
+                            url=url,
+                            parameter=param_name,
+                            payload=payload,
+                            evidence=evidence,
+                            description="XXE (XML External Entity) vulnerability detected. "
+                                      "Application processes external XML entities.",
+                            confidence=confidence,
+                            severity='high' if confidence > 0.8 else 'medium',
+                            method=method
                         )
-
-                        if detected_oob:
-                            result = self.create_result(
-                                vulnerable=True,
-                                url=url,
-                                parameter=param_name,
-                                payload=oob_payload,
-                                evidence=f"Blind XXE detected via OOB callback!\n\n{oob_evidence}",
-                                description="Blind XXE vulnerability detected via out-of-band callback. "
-                                          "Application processes external XML entities and makes outbound requests.",
-                                confidence=1.0,
-                                severity='critical',  # OOB confirms it's exploitable
-                                method=method
-                            )
-                            results.append(result)
-                            logger.info(f"XXE found via OOB: {url} (param: {param_name})")
-
-                    except Exception as e:
-                        logger.debug(f"Error testing OOB XXE on {url}: {e}")
+                        results.append(result)
+                        logger.info(f"XXE found: {url} (param: {param_name}, confidence: {confidence:.2f})")
+                        found_vuln = True
+                        break
 
         logger.info(f"XXE scan complete: {len(results)} vulnerabilities found")
         return results
@@ -150,41 +181,75 @@ class XXEModule(BaseModule):
 
         return True  # Test all by default (can be made more strict)
 
-    def _detect_xxe_error(self, payload: str, response: Any) -> tuple:
+    def _detect_xxe_error(self, payload: str, response: Any, baseline_text: str = "") -> tuple:
         """
-        Detect XXE via error messages or file disclosure
+        Detect XXE via error messages or file disclosure with baseline comparison
+
+        CRITICAL: Only report if indicators are NEW (not in baseline) and NOT reflected payload
 
         Returns:
             (detected, confidence, evidence)
         """
         response_text = getattr(response, 'text', '')
 
-        # Check for file disclosure (highest confidence)
-        if 'root:x:0:0:' in response_text:
-            confidence = 1.0
-            evidence = "File disclosure detected: /etc/passwd content found in response!\n\n"
-            evidence += BaseDetector.get_evidence('root:x:0:0:', response_text, context_size=300)
-            return True, confidence, evidence
+        # Check for file disclosure (highest confidence) - MUST be NEW
+        file_indicators = [
+            ('root:x:0:0:', '/etc/passwd', 'Linux'),
+            ('[boot loader]', 'boot.ini', 'Windows'),
+            ('[fonts]', 'win.ini', 'Windows'),
+            ('127.0.0.1\tlocalhost', '/etc/hosts', 'Linux'),
+        ]
 
-        if '[boot loader]' in response_text or '[fonts]' in response_text:
-            confidence = 1.0
-            evidence = "File disclosure detected: Windows system file content found!\n\n"
-            evidence += BaseDetector.get_evidence('[boot loader]', response_text, context_size=300)
-            return True, confidence, evidence
+        for indicator, file_name, os_type in file_indicators:
+            if indicator in response_text:
+                # CRITICAL: Check if it's NEW (not in baseline)
+                if baseline_text and indicator in baseline_text:
+                    continue  # Was already there, not from our injection
 
-        # Check for XXE error patterns
-        for pattern in self.error_patterns:
-            if re.search(pattern, response_text, re.IGNORECASE):
-                confidence = 0.75
+                # CRITICAL: Check if indicator is NOT just reflected payload
+                if indicator in payload:
+                    continue  # Indicator is part of our payload - reflection
 
-                # Higher confidence for specific errors
-                if 'entity' in pattern.lower() or 'xxe' in pattern.lower():
-                    confidence = 0.85
-
-                evidence = f"XXE error pattern detected: '{pattern}'\n\n"
-                evidence += BaseDetector.get_evidence(pattern, response_text, context_size=200)
-
+                confidence = 1.0
+                evidence = f"File disclosure CONFIRMED: {file_name} ({os_type}) content found!\n\n"
+                evidence += f"PROOF: Content '{indicator}' appeared AFTER injection (not in baseline).\n\n"
+                evidence += BaseDetector.get_evidence(indicator, response_text, context_size=300)
                 return True, confidence, evidence
+
+        # Check for XXE error patterns - with baseline comparison
+        matches_found = []
+        for pattern in self.error_patterns:
+            match = re.search(pattern, response_text, re.IGNORECASE)
+            if match:
+                matched_text = match.group(0)
+
+                # CRITICAL: Check if it's NEW (not in baseline)
+                if baseline_text and re.search(pattern, baseline_text, re.IGNORECASE):
+                    continue  # Error was already there
+
+                # CRITICAL: Skip if it looks like reflected payload
+                if any(p in payload for p in [matched_text[:20]] if len(matched_text) >= 20):
+                    continue
+
+                matches_found.append((pattern, matched_text))
+
+        # Require at least 1 NEW error pattern
+        if matches_found:
+            pattern, matched_text = matches_found[0]
+            confidence = 0.75
+
+            # Higher confidence for specific errors
+            if 'entity' in pattern.lower() or 'xxe' in pattern.lower():
+                confidence = 0.85
+
+            # Boost for multiple matches
+            if len(matches_found) >= 2:
+                confidence = min(0.95, confidence + 0.1)
+
+            evidence = f"XXE error pattern detected (NEW - not in baseline): '{matched_text}'\n\n"
+            evidence += BaseDetector.get_evidence(matched_text, response_text, context_size=200)
+
+            return True, confidence, evidence
 
         return False, 0.0, ""
 
@@ -208,6 +273,6 @@ class XXEModule(BaseModule):
             return http_client.get(url, params=params, headers=headers)
 
 
-def get_module(module_path: str):
+def get_module(module_path: str, payload_limit: int = None):
     """Create module instance"""
-    return XXEModule(module_path)
+    return XXEModule(module_path, payload_limit=payload_limit)

@@ -310,30 +310,95 @@ class SingleRepeaterWidget(QWidget):
         return group
 
     def _create_status_bar(self):
-        """Create status bar with history viewer"""
+        """Create status bar with improved history viewer"""
+        from PyQt5.QtWidgets import QTableWidget, QAbstractItemView, QHeaderView
+
         widget = QGroupBox("📋 Request History")
         layout = QVBoxLayout()
 
-        # History list
-        from PyQt5.QtWidgets import QListWidget
-        self.history_list = QListWidget()
-        self.history_list.setMaximumHeight(100)
-        self.history_list.itemDoubleClicked.connect(self.load_from_history)
-        self.history_list.setStyleSheet("""
-            QListWidget {
+        # History controls
+        history_controls = QHBoxLayout()
+
+        # Search/filter
+        self.history_search = QLineEdit()
+        self.history_search.setPlaceholderText("🔍 Filter history...")
+        self.history_search.textChanged.connect(self.filter_history)
+        self.history_search.setMaximumWidth(200)
+        history_controls.addWidget(self.history_search)
+
+        history_controls.addStretch()
+
+        # Clear history button
+        clear_history_btn = QPushButton("🗑 Clear History")
+        clear_history_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f44336;
+                color: white;
+                padding: 4px 8px;
+                border-radius: 3px;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #d32f2f;
+            }
+        """)
+        clear_history_btn.clicked.connect(self.clear_history)
+        history_controls.addWidget(clear_history_btn)
+
+        layout.addLayout(history_controls)
+
+        # History table (improved from list)
+        self.history_table = QTableWidget()
+        self.history_table.setColumnCount(6)
+        self.history_table.setHorizontalHeaderLabels(["#", "Time", "Method", "URL", "Status", "Duration"])
+        self.history_table.setMaximumHeight(150)
+        self.history_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.history_table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.history_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.history_table.setSortingEnabled(True)
+        self.history_table.doubleClicked.connect(self.load_from_history_table)
+        self.history_table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.history_table.customContextMenuRequested.connect(self.show_history_context_menu)
+
+        # Column sizes
+        header = self.history_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.Fixed)
+        header.resizeSection(0, 40)  # #
+        header.setSectionResizeMode(1, QHeaderView.Fixed)
+        header.resizeSection(1, 80)  # Time
+        header.setSectionResizeMode(2, QHeaderView.Fixed)
+        header.resizeSection(2, 60)  # Method
+        header.setSectionResizeMode(3, QHeaderView.Stretch)  # URL
+        header.setSectionResizeMode(4, QHeaderView.Fixed)
+        header.resizeSection(4, 60)  # Status
+        header.setSectionResizeMode(5, QHeaderView.Fixed)
+        header.resizeSection(5, 70)  # Duration
+
+        self.history_table.setStyleSheet("""
+            QTableWidget {
                 background-color: white;
                 color: black;
                 border: 1px solid #cccccc;
+                gridline-color: #e0e0e0;
+                font-size: 11px;
             }
-            QListWidget::item {
+            QTableWidget::item {
                 padding: 3px;
             }
-            QListWidget::item:selected {
+            QTableWidget::item:selected {
                 background-color: #e0e0ff;
                 color: black;
             }
+            QHeaderView::section {
+                background-color: #f0f0f0;
+                color: black;
+                padding: 4px;
+                border: 1px solid #cccccc;
+                font-weight: bold;
+                font-size: 10px;
+            }
         """)
-        layout.addWidget(self.history_list)
+        layout.addWidget(self.history_table)
 
         # Status row
         status_row = QHBoxLayout()
@@ -351,11 +416,89 @@ class SingleRepeaterWidget(QWidget):
         widget.setLayout(layout)
         return widget
 
-    def load_from_history(self, item):
-        """Load request from history when double-clicked"""
-        index = self.history_list.row(item)
-        if 0 <= index < len(self.request_history):
-            history_item = self.request_history[index]
+    def filter_history(self, text):
+        """Filter history table by search text"""
+        for row in range(self.history_table.rowCount()):
+            show = False
+            if not text:
+                show = True
+            else:
+                # Check URL and method columns
+                url_item = self.history_table.item(row, 3)
+                method_item = self.history_table.item(row, 2)
+                if url_item and text.lower() in url_item.text().lower():
+                    show = True
+                elif method_item and text.lower() in method_item.text().lower():
+                    show = True
+
+            self.history_table.setRowHidden(row, not show)
+
+    def clear_history(self):
+        """Clear request history"""
+        if self.history_table.rowCount() == 0:
+            return
+
+        reply = QMessageBox.question(
+            self, "Clear History",
+            "Are you sure you want to clear all history?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            self.history_table.setRowCount(0)
+            self.request_history = []
+            self.history_count.setText("History: 0")
+            self.status_message.setText("History cleared")
+
+    def show_history_context_menu(self, position):
+        """Show context menu for history table"""
+        item = self.history_table.itemAt(position)
+        if not item:
+            return
+
+        menu = QMenu()
+
+        # Reload action
+        reload_action = menu.addAction("🔄 Reload Request")
+        reload_action.triggered.connect(lambda: self.load_from_history_table(self.history_table.currentIndex()))
+
+        # Copy URL action
+        copy_url_action = menu.addAction("📋 Copy URL")
+        copy_url_action.triggered.connect(self.copy_history_url)
+
+        menu.addSeparator()
+
+        # Delete action
+        delete_action = menu.addAction("❌ Delete Entry")
+        delete_action.triggered.connect(self.delete_history_entry)
+
+        menu.exec_(self.history_table.viewport().mapToGlobal(position))
+
+    def copy_history_url(self):
+        """Copy URL from selected history entry"""
+        row = self.history_table.currentRow()
+        if row >= 0:
+            url_item = self.history_table.item(row, 3)
+            if url_item:
+                QApplication.clipboard().setText(url_item.text())
+                self.status_message.setText("URL copied to clipboard")
+
+    def delete_history_entry(self):
+        """Delete selected history entry"""
+        row = self.history_table.currentRow()
+        if row >= 0:
+            self.history_table.removeRow(row)
+            if row < len(self.request_history):
+                del self.request_history[row]
+            self.history_count.setText(f"History: {len(self.request_history)}")
+            self.status_message.setText("Entry deleted")
+
+    def load_from_history_table(self, index):
+        """Load request from history table when double-clicked"""
+        row = index.row() if hasattr(index, 'row') else index
+        if 0 <= row < len(self.request_history):
+            history_item = self.request_history[row]
 
             # Load the request
             self.url_input.setText(history_item.get('url', ''))
@@ -472,11 +615,63 @@ class SingleRepeaterWidget(QWidget):
             }
             self.request_history.append(history_item)
 
-            # Add to history list display
-            from PyQt5.QtWidgets import QListWidgetItem
-            history_text = f"{method} {url} - {response.status_code} ({elapsed:.2f}s)"
-            list_item = QListWidgetItem(history_text)
-            self.history_list.addItem(list_item)
+            # Add to history table display
+            from PyQt5.QtWidgets import QTableWidgetItem
+            row = self.history_table.rowCount()
+            self.history_table.insertRow(row)
+
+            # ID
+            id_item = QTableWidgetItem(str(row + 1))
+            id_item.setTextAlignment(Qt.AlignCenter)
+            self.history_table.setItem(row, 0, id_item)
+
+            # Time
+            time_str = datetime.now().strftime("%H:%M:%S")
+            time_item = QTableWidgetItem(time_str)
+            time_item.setTextAlignment(Qt.AlignCenter)
+            self.history_table.setItem(row, 1, time_item)
+
+            # Method
+            method_item = QTableWidgetItem(method)
+            method_item.setTextAlignment(Qt.AlignCenter)
+            # Color code methods
+            if method == "GET":
+                method_item.setForeground(QColor("#2196F3"))
+            elif method == "POST":
+                method_item.setForeground(QColor("#4CAF50"))
+            elif method == "DELETE":
+                method_item.setForeground(QColor("#f44336"))
+            elif method in ["PUT", "PATCH"]:
+                method_item.setForeground(QColor("#FF9800"))
+            self.history_table.setItem(row, 2, method_item)
+
+            # URL (truncated if too long)
+            url_display = url if len(url) < 80 else url[:77] + "..."
+            url_item = QTableWidgetItem(url_display)
+            url_item.setToolTip(url)  # Full URL on hover
+            self.history_table.setItem(row, 3, url_item)
+
+            # Status
+            status_item = QTableWidgetItem(str(response.status_code))
+            status_item.setTextAlignment(Qt.AlignCenter)
+            # Color code status
+            if 200 <= response.status_code < 300:
+                status_item.setForeground(QColor("#4CAF50"))
+            elif 300 <= response.status_code < 400:
+                status_item.setForeground(QColor("#2196F3"))
+            elif 400 <= response.status_code < 500:
+                status_item.setForeground(QColor("#FF9800"))
+            else:
+                status_item.setForeground(QColor("#f44336"))
+            self.history_table.setItem(row, 4, status_item)
+
+            # Duration
+            duration_item = QTableWidgetItem(f"{elapsed:.2f}s")
+            duration_item.setTextAlignment(Qt.AlignCenter)
+            self.history_table.setItem(row, 5, duration_item)
+
+            # Scroll to latest
+            self.history_table.scrollToBottom()
 
             self.history_count.setText(f"History: {len(self.request_history)}")
             self.status_message.setText(f"✅ {response.status_code} ({elapsed:.2f}s)")

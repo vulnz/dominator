@@ -1,0 +1,14 @@
+{
+  "name": "HTTP Request Smuggling",
+  "description": "Detects HTTP request smuggling vulnerabilities (CL.TE, TE.CL, TE.TE desync attacks)",
+  "enabled": true,
+  "severity": "Critical",
+  "cwe": "CWE-444",
+  "cvss": 9.1,
+  "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
+  "owasp": "A03:2021",
+  "payload_limit": 10,
+  "early_exit": true,
+  "time_based_detection": true,
+  "delay_threshold": 5
+}

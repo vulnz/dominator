@@ -91,6 +91,8 @@ Usage examples:
                        help='Maximum number of requests to make (default: 10000)')
     parser.add_argument('--payload-limit', type=int, default=0,
                        help='Limit number of payloads per module (0 = no limit, default: 0)')
+    parser.add_argument('--fast', action='store_true',
+                       help='Fast scan mode (auto-sets: --payload-limit 5, --threads 8, enables concurrent requests and early exit)')
     parser.add_argument('--user-agent', default='Dominator/1.0',
                        help='User-Agent string to use')
     parser.add_argument('--rotate-agent', action='store_true',
@@ -156,55 +158,114 @@ Usage examples:
     return parser
 
 def show_modules():
-    """Show all available modules"""
-    print("Available scanning modules:")
-    print("- xss: Cross-Site Scripting (Enhanced for testphp.vulnweb.com)")
-    print("- sqli: SQL Injection (Enhanced for testphp.vulnweb.com)")
-    print("- lfi: Local File Inclusion")
-    print("- rfi: Remote File Inclusion")
-    print("- xxe: XML External Entity")
-    print("- csrf: Cross-Site Request Forgery")
-    print("- idor: Insecure Direct Object Reference")
-    print("- ssrf: Server-Side Request Forgery")
-    print("- dirbrute: Directory and File Bruteforce")
-    print("- git: Git Repository Exposure")
-    print("- dirtraversal: Directory Traversal")
-    print("- secheaders: Security Headers and Cookie Flags")
-    print("- clickjacking: Clickjacking Protection")
-    print("- blindxss: Blind Cross-Site Scripting")
-    print("- passwordoverhttp: Password Over HTTP")
-    print("- outdatedsoftware: Outdated Software Detection with CVE Integration")
-    print("- databaseerrors: Database Error Messages")
-    print("- phpinfo: PHPInfo Exposure")
-    print("- ssltls: SSL/TLS Configuration")
-    print("- httponlycookies: HttpOnly Cookie Security")
-    print("- technology: Technology Detection")
-    print("- commandinjection: Command Injection")
-    print("- pathtraversal: Path Traversal")
-    print("- ldapinjection: LDAP Injection")
-    print("- nosqlinjection: NoSQL Injection")
-    print("- fileupload: File Upload Vulnerabilities")
-    print("- cors: CORS Misconfiguration")
-    print("- jwt: JWT Vulnerabilities")
-    print("- deserialization: Insecure Deserialization")
-    print("- responsesplitting: HTTP Response Splitting")
-    print("- ssti: Server-Side Template Injection")
-    print("- crlf: CRLF Injection")
-    print("- textinjection: Text Injection")
-    print("- htmlinjection: HTML Injection")
-    print("- hostheader: Host Header Injection")
-    print("- prototypepollution: Prototype Pollution")
-    print("- vhost: Virtual Host Discovery")
-    print("- infoleak: Information Leakage Detection")
-    print("- openredirect: Open Redirect Vulnerabilities")
-    print("\nEnhanced modules for testphp.vulnweb.com:")
-    print("- fileinclusionenhanced: Enhanced File Inclusion Detection (LFI/RFI/SSRF)")
-    print("- ssrfenhanced: Enhanced SSRF Detection")
-    print("- infoleakenhanced: Enhanced Information Disclosure Detection")
-    print("\nEnhanced modules for testphp.vulnweb.com:")
-    print("- fileinclusionenhanced: Enhanced File Inclusion Detection (LFI/RFI/SSRF)")
-    print("- ssrfenhanced: Enhanced SSRF Detection")
-    print("- infoleakenhanced: Enhanced Information Disclosure Detection")
+    """Show all available modules - DYNAMICALLY loaded from config.json files"""
+    import json
+    from pathlib import Path
+
+    # Find modules directory
+    script_dir = Path(__file__).parent
+    modules_dir = script_dir / "modules"
+
+    if not modules_dir.exists():
+        print("Modules directory not found!")
+        return
+
+    # Collect all modules with their config
+    modules_by_category = {}
+
+    for module_path in sorted(modules_dir.iterdir()):
+        if module_path.is_dir() and not module_path.name.startswith('_'):
+            config_file = module_path / "config.json"
+
+            # Default values
+            name = module_path.name
+            description = f"Module: {module_path.name}"
+            category = "Other"
+            severity = "medium"
+            enabled = True
+            passive = False
+
+            if config_file.exists():
+                try:
+                    with open(config_file, 'r', encoding='utf-8') as f:
+                        config = json.load(f)
+                        name = config.get('name', module_path.name)
+                        description = config.get('description', description)
+                        category = config.get('category', 'Other')
+                        severity = config.get('severity', 'medium')
+                        enabled = config.get('enabled', True)
+                        passive = config.get('passive', False)
+                except:
+                    pass
+
+            if category not in modules_by_category:
+                modules_by_category[category] = []
+
+            modules_by_category[category].append({
+                'folder': module_path.name,
+                'name': name,
+                'description': description,
+                'severity': severity,
+                'enabled': enabled,
+                'passive': passive
+            })
+
+    # Print header
+    print("\n" + "=" * 80)
+    print("                        AVAILABLE SCANNING MODULES")
+    print("=" * 80)
+
+    total_modules = 0
+    enabled_count = 0
+
+    # Print modules by category
+    category_order = ['Injection', 'Information Disclosure', 'Recon', 'Security', 'Other']
+
+    for category in category_order:
+        if category in modules_by_category:
+            modules = modules_by_category[category]
+            print(f"\n[{category.upper()}] ({len(modules)} modules)")
+            print("-" * 60)
+
+            for mod in sorted(modules, key=lambda x: x['folder']):
+                status = "✓" if mod['enabled'] else "✗"
+                passive_tag = " [PASSIVE]" if mod['passive'] else ""
+                severity_tag = f" [{mod['severity'].upper()}]" if mod['severity'] else ""
+
+                # Truncate description if too long
+                desc = mod['description'][:50] + "..." if len(mod['description']) > 50 else mod['description']
+
+                print(f"  {status} {mod['folder']:<20} {desc}{severity_tag}{passive_tag}")
+
+                total_modules += 1
+                if mod['enabled']:
+                    enabled_count += 1
+
+    # Print remaining categories
+    for category, modules in modules_by_category.items():
+        if category not in category_order:
+            print(f"\n[{category.upper()}] ({len(modules)} modules)")
+            print("-" * 60)
+
+            for mod in sorted(modules, key=lambda x: x['folder']):
+                status = "✓" if mod['enabled'] else "✗"
+                passive_tag = " [PASSIVE]" if mod['passive'] else ""
+                severity_tag = f" [{mod['severity'].upper()}]" if mod['severity'] else ""
+                desc = mod['description'][:50] + "..." if len(mod['description']) > 50 else mod['description']
+
+                print(f"  {status} {mod['folder']:<20} {desc}{severity_tag}{passive_tag}")
+
+                total_modules += 1
+                if mod['enabled']:
+                    enabled_count += 1
+
+    # Print summary
+    print("\n" + "=" * 80)
+    print(f"Total: {total_modules} modules | Enabled: {enabled_count} | Disabled: {total_modules - enabled_count}")
+    print("=" * 80)
+    print("\nUsage: python main.py -t <target> -m xss,sqli,cmdi")
+    print("       python main.py -t <target> --all  (use all enabled modules)")
+    print("")
 
 def process_args(args):
     """Process and validate command line arguments"""
@@ -288,5 +349,27 @@ def process_args(args):
         
         args.modules = ','.join(existing_modules)
         print("Enhanced scan mode enabled, including all standard and enhanced modules.")
+
+    # Handle --fast flag (ZAP-speed optimization)
+    if hasattr(args, 'fast') and args.fast:
+        print("\n[FAST MODE] ZAP-speed optimizations enabled:")
+
+        # Set payload limit if not already set
+        if not args.payload_limit or args.payload_limit == 0:
+            args.payload_limit = 5
+            print(f"  - Payload limit: {args.payload_limit}")
+        else:
+            print(f"  - Payload limit: {args.payload_limit} (user-specified)")
+
+        # Set threads if not already set higher
+        if args.threads < 8:
+            args.threads = 8
+            print(f"  - Threads: {args.threads}")
+        else:
+            print(f"  - Threads: {args.threads} (user-specified)")
+
+        print("  - Concurrent requests: enabled (10 per module)")
+        print("  - Early exit: enabled (stop on first vuln per parameter)")
+        print()
 
     return args

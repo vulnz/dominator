@@ -19,9 +19,9 @@ logger = get_logger(__name__)
 class RFIModule(BaseModule):
     """Remote File Inclusion vulnerability scanner"""
 
-    def __init__(self, module_path: str):
+    def __init__(self, module_path: str, payload_limit: int = None):
         """Initialize RFI module"""
-        super().__init__(module_path)
+        super().__init__(module_path, payload_limit=payload_limit)
 
         # OOB detector for callback verification
         self.oob_detector = OOBDetector()
@@ -282,6 +282,6 @@ class RFIModule(BaseModule):
         return base64.b64encode(data.encode()).decode()
 
 
-def get_module(module_path: str):
+def get_module(module_path: str, payload_limit: int = None):
     """Create module instance"""
-    return RFIModule(module_path)
+    return RFIModule(module_path, payload_limit=payload_limit)

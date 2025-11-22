@@ -72,138 +72,180 @@ class ReportGenerator:
 
     def _generate_txt(self, results: List[Dict[str, Any]], output_file: str,
                      scan_info: Dict[str, Any] = None) -> bool:
-        """Generate plain text report"""
+        """Generate detailed plain text report matching HTML format"""
         with open(output_file, 'w', encoding='utf-8') as f:
-            f.write("="*80 + "\n")
-            f.write("VULNERABILITY SCAN REPORT\n")
-            f.write("="*80 + "\n\n")
+            f.write("╔" + "═"*78 + "╗\n")
+            f.write("║" + " "*20 + "VULNERABILITY SCAN REPORT" + " "*33 + "║\n")
+            f.write("╚" + "═"*78 + "╝\n\n")
 
             if scan_info:
-                f.write("Scan Information:\n")
-                f.write(f"  Date: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write("┌─ Scan Information ─────────────────────────────────────────────────────────┐\n")
+                f.write(f"│ Date: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'):<71}│\n")
                 if scan_info.get('targets'):
-                    f.write(f"  Targets: {', '.join(scan_info['targets'])}\n")
+                    targets_str = ', '.join(scan_info['targets'][:3])
+                    if len(scan_info['targets']) > 3:
+                        targets_str += f" (+{len(scan_info['targets'])-3} more)"
+                    f.write(f"│ Targets: {targets_str:<68}│\n")
                 if scan_info.get('duration'):
-                    f.write(f"  Duration: {scan_info['duration']:.2f}s\n")
-                f.write("\n")
+                    f.write(f"│ Duration: {scan_info['duration']:.2f}s{' '*65}│\n")
+                f.write("└───────────────────────────────────────────────────────────────────────────────┘\n\n")
 
-            # Statistics
+            # Statistics Summary
             vulnerabilities = [r for r in results if r.get('vulnerability')]
-            f.write(f"Total Findings: {len(results)}\n")
-            f.write(f"Vulnerabilities: {len(vulnerabilities)}\n\n")
+            severity_counts = {
+                'Critical': len([r for r in vulnerabilities if r.get('severity') == 'Critical']),
+                'High': len([r for r in vulnerabilities if r.get('severity') == 'High']),
+                'Medium': len([r for r in vulnerabilities if r.get('severity') == 'Medium']),
+                'Low': len([r for r in vulnerabilities if r.get('severity') == 'Low']),
+                'Info': len([r for r in vulnerabilities if r.get('severity') == 'Info']),
+            }
 
-            # Group by severity
+            f.write("┌─ Summary ──────────────────────────────────────────────────────────────────────┐\n")
+            f.write(f"│  [CRITICAL] {severity_counts['Critical']:<5}  [HIGH] {severity_counts['High']:<5}  [MEDIUM] {severity_counts['Medium']:<5}  [LOW] {severity_counts['Low']:<5}  [INFO] {severity_counts['Info']:<5}│\n")
+            f.write(f"│  Total Vulnerabilities: {len(vulnerabilities):<53}│\n")
+            f.write("└───────────────────────────────────────────────────────────────────────────────┘\n\n")
+
+            # Detailed findings by severity
             severity_order = ['Critical', 'High', 'Medium', 'Low', 'Info']
+            severity_markers = {
+                'Critical': '🔴',
+                'High': '🟠',
+                'Medium': '🟡',
+                'Low': '🟢',
+                'Info': '🔵'
+            }
+
             for severity in severity_order:
                 severity_results = [r for r in vulnerabilities if r.get('severity') == severity]
                 if severity_results:
-                    f.write(f"\n{severity} Severity ({len(severity_results)}):\n")
-                    f.write("-"*80 + "\n\n")
+                    marker = severity_markers.get(severity, '•')
+                    f.write(f"\n{'='*80}\n")
+                    f.write(f"{marker} {severity.upper()} SEVERITY ({len(severity_results)} findings)\n")
+                    f.write(f"{'='*80}\n")
 
                     for i, result in enumerate(severity_results, 1):
-                        f.write(f"{i}. [{result.get('module', result.get('type', 'Unknown'))}]\n")
+                        module_name = result.get('module', result.get('type', 'Unknown'))
+                        f.write(f"\n┌─ [{i}] {module_name} {'─'*(60-len(module_name)-len(str(i)))}┐\n")
 
-                        # Basic info
-                        f.write(f"   URL: {result.get('url', 'N/A')}\n")
+                        # URL
+                        url = result.get('url', 'N/A')
+                        f.write(f"│ URL: {url}\n")
 
-                        # Method and clickable link / curl command
+                        # Method and Test command
                         method = result.get('method', 'GET').upper()
-                        url = result.get('url', '')
+                        f.write(f"│ Method: {method}\n")
 
-                        if method == 'GET':
-                            # For GET requests, add clickable link
-                            if result.get('parameter') and result.get('payload'):
-                                param = result.get('parameter')
-                                payload = result.get('payload')
-                                if '?' in url:
-                                    test_url = f"{url}&{param}={payload}"
-                                else:
-                                    test_url = f"{url}?{param}={payload}"
-                                f.write(f"   Test Link: {test_url}\n")
-                            else:
-                                f.write(f"   Test Link: {url}\n")
-
-                        elif method == 'POST':
-                            # For POST requests, generate curl command
-                            f.write(f"   Method: POST\n")
-                            if result.get('parameter') and result.get('payload'):
-                                param = result.get('parameter')
-                                payload = result.get('payload', '').replace("'", "'\\''")  # Escape single quotes
-                                f.write(f"   cURL Command:\n")
-                                f.write(f"     curl -X POST '{url}' -d '{param}={payload}'\n")
-
-                        # Parameters and payload
+                        # Parameter and Payload
                         if result.get('parameter'):
-                            f.write(f"   Parameter: {result.get('parameter')}\n")
+                            f.write(f"│ Parameter: {result.get('parameter')}\n")
                         if result.get('payload'):
-                            f.write(f"   Payload: {result.get('payload')}\n")
+                            payload = result.get('payload')
+                            if len(payload) > 70:
+                                f.write(f"│ Payload: {payload[:70]}...\n")
+                            else:
+                                f.write(f"│ Payload: {payload}\n")
 
-                        # OWASP / CWE / CVSS metadata
-                        if result.get('owasp'):
-                            f.write(f"   OWASP: {result.get('owasp')}")
-                            if result.get('owasp_name'):
-                                f.write(f" - {result.get('owasp_name')}")
-                            f.write("\n")
+                        # Confidence
+                        if result.get('confidence'):
+                            conf = float(result.get('confidence', 0)) * 100
+                            f.write(f"│ Confidence: {conf:.0f}%\n")
 
+                        # Classification (CWE, OWASP, CVSS)
+                        f.write("│\n│ ─── Classification ───\n")
                         if result.get('cwe'):
-                            f.write(f"   CWE: {result.get('cwe')}")
+                            cwe_str = f"{result.get('cwe')}"
                             if result.get('cwe_name'):
-                                f.write(f" - {result.get('cwe_name')}")
-                            f.write("\n")
+                                cwe_str += f" - {result.get('cwe_name')}"
+                            f.write(f"│ CWE: {cwe_str}\n")
+
+                        if result.get('owasp'):
+                            owasp_str = f"{result.get('owasp')}"
+                            if result.get('owasp_name'):
+                                owasp_str += f" - {result.get('owasp_name')}"
+                            f.write(f"│ OWASP: {owasp_str}\n")
 
                         if result.get('cvss'):
-                            f.write(f"   CVSS Score: {result.get('cvss')}")
+                            cvss_str = f"{result.get('cvss')}"
                             if result.get('cvss_vector'):
-                                f.write(f" ({result.get('cvss_vector')})")
-                            f.write("\n")
+                                cvss_str += f" ({result.get('cvss_vector')})"
+                            f.write(f"│ CVSS: {cvss_str}\n")
 
-                        # Evidence with context highlighting
+                        # Evidence (CRITICAL - always show)
                         if result.get('evidence'):
+                            f.write("│\n│ ─── Evidence (Proof) ───\n")
                             evidence = result.get('evidence')
-                            f.write(f"   Evidence: {evidence}\n")
-
-                        # Request/Response context
-                        if result.get('request'):
-                            f.write(f"   Request:\n")
-                            request_lines = result.get('request', '').split('\n')[:10]  # First 10 lines
-                            for line in request_lines:
-                                f.write(f"     {line}\n")
-
-                        if result.get('response_context'):
-                            # Show 100 chars before trigger + trigger + 50 chars after
-                            context = result.get('response_context')
-                            f.write(f"   Response Context:\n")
-                            f.write(f"     ...{context}...\n")
+                            # Wrap evidence to fit console
+                            evidence_lines = self._wrap_text(evidence, 75)
+                            for line in evidence_lines:
+                                f.write(f"│ {line}\n")
+                        else:
+                            f.write("│\n│ ─── Evidence ───\n")
+                            f.write("│ [!] No evidence captured - manual verification required\n")
 
                         # Description
                         if result.get('description'):
-                            desc = result.get('description')
-                            # Wrap description to 70 chars
-                            words = desc.split()
-                            line = "   Description: "
-                            for word in words:
-                                if len(line) + len(word) + 1 > 70:
-                                    f.write(line + "\n")
-                                    line = "                "
-                                line += word + " "
-                            f.write(line.strip() + "\n")
+                            f.write("│\n│ ─── Description ───\n")
+                            desc_lines = self._wrap_text(result.get('description'), 75)
+                            for line in desc_lines:
+                                f.write(f"│ {line}\n")
+
+                        # Reproduction Commands
+                        f.write("│\n│ ─── Reproduction ───\n")
+                        if method == 'GET' and result.get('parameter') and result.get('payload'):
+                            param = result.get('parameter')
+                            payload = result.get('payload')
+                            if '?' in url:
+                                test_url = f"{url}&{param}={payload}"
+                            else:
+                                test_url = f"{url}?{param}={payload}"
+                            f.write(f"│ Test URL:\n│   {test_url}\n")
+                            f.write(f"│\n│ curl command:\n")
+                            f.write(f"│   curl '{test_url}'\n")
+                        elif method == 'POST':
+                            f.write(f"│ curl command:\n")
+                            if result.get('parameter') and result.get('payload'):
+                                param = result.get('parameter')
+                                payload = result.get('payload', '').replace("'", "'\\''")
+                                f.write(f"│   curl -X POST '{url}' \\\n")
+                                f.write(f"│     -d '{param}={payload}'\n")
+                            else:
+                                f.write(f"│   curl -X POST '{url}'\n")
 
                         # Remediation
                         if result.get('remediation'):
-                            f.write(f"   Remediation:\n")
-                            remediation_lines = result.get('remediation', '').split('\n')
-                            for line in remediation_lines:
-                                if line.strip():
-                                    f.write(f"     {line}\n")
+                            f.write("│\n│ ─── Remediation ───\n")
+                            rem_lines = self._wrap_text(result.get('remediation'), 75)
+                            for line in rem_lines:
+                                f.write(f"│ {line}\n")
 
-                        f.write("\n")
+                        f.write(f"└{'─'*79}┘\n")
 
-            f.write("="*80 + "\n")
-            f.write("End of Report\n")
-            f.write("="*80 + "\n")
+            # End of report
+            f.write(f"\n{'='*80}\n")
+            f.write(f" END OF REPORT - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"{'='*80}\n")
 
         logger.info(f"TXT report saved to {output_file}")
         return True
+
+    def _wrap_text(self, text: str, width: int) -> List[str]:
+        """Wrap text to fit within specified width"""
+        words = text.replace('\n', ' ').split()
+        lines = []
+        current_line = ""
+
+        for word in words:
+            if len(current_line) + len(word) + 1 <= width:
+                current_line += (" " if current_line else "") + word
+            else:
+                if current_line:
+                    lines.append(current_line)
+                current_line = word
+
+        if current_line:
+            lines.append(current_line)
+
+        return lines if lines else [""]
 
     def _generate_xml(self, results: List[Dict[str, Any]], output_file: str,
                      scan_info: Dict[str, Any] = None) -> bool:

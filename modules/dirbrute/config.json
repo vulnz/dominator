@@ -1,7 +1,7 @@
 {
   "enabled": true,
-  "name": "Directory Brute Force",
-  "description": "Discovers hidden directories and files through brute force",
+  "name": "Directory Enumeration",
+  "description": "Discovers hidden directories, files, and directory listings through enumeration",
   "severity": "Medium",
   "cwe": "CWE-425",
   "owasp": "A01:2021",

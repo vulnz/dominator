@@ -261,6 +261,133 @@ class BaseDetector:
         return False
 
     @staticmethod
+    def is_payload_reflected_unencoded(payload: str, response_text: str) -> bool:
+        """
+        Check if payload is reflected WITHOUT HTML encoding (critical for XSS)
+
+        If < becomes &lt; or > becomes &gt;, the XSS is BLOCKED
+
+        Args:
+            payload: Injected payload
+            response_text: HTTP response
+
+        Returns:
+            True ONLY if payload is reflected without encoding
+        """
+        import html
+
+        if len(payload) < 5:
+            return False
+
+        # Check for exact unencoded match
+        if payload in response_text:
+            # Verify it's not just the encoded version appearing
+            # Check if the dangerous chars are actually unencoded
+            dangerous_chars = ['<', '>', '"', "'"]
+            for char in dangerous_chars:
+                if char in payload:
+                    # The char exists in payload - check if it appears unencoded in response
+                    if char in response_text:
+                        return True
+            # No dangerous chars, but payload reflected
+            return True
+
+        # Check if HTML-encoded version appears (meaning it's BLOCKED)
+        html_encoded = html.escape(payload)
+        if html_encoded in response_text and payload not in response_text:
+            # Payload is HTML-encoded - XSS is BLOCKED
+            return False
+
+        return False
+
+    @staticmethod
+    def is_html_encoded(payload: str, response_text: str) -> bool:
+        """
+        Check if payload's dangerous characters are HTML-encoded in response
+
+        Args:
+            payload: Original payload with special chars
+            response_text: HTTP response text
+
+        Returns:
+            True if dangerous chars are encoded (XSS is blocked)
+        """
+        import html
+
+        # Map of dangerous chars to their encoded versions
+        encoding_map = {
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#x27;',
+            '&': '&amp;'
+        }
+
+        # Check each dangerous char in payload
+        for char, encoded in encoding_map.items():
+            if char in payload:
+                # If encoded version appears but unencoded doesn't, it's blocked
+                # Need to check if the encoded version is in context of our payload
+                payload_encoded = html.escape(payload)
+                if payload_encoded in response_text and payload not in response_text:
+                    return True
+
+        return False
+
+    @staticmethod
+    def content_appears_new(indicator: str, baseline_text: str, response_text: str) -> bool:
+        """
+        Check if an indicator appears NEW in response (wasn't in baseline)
+
+        Critical for false positive reduction - content must be INTRODUCED by payload
+
+        Args:
+            indicator: Pattern/content to check
+            baseline_text: Response before payload injection
+            response_text: Response after payload injection
+
+        Returns:
+            True if indicator is new (wasn't in baseline)
+        """
+        indicator_lower = indicator.lower()
+        baseline_lower = baseline_text.lower() if baseline_text else ""
+        response_lower = response_text.lower()
+
+        # Content must exist in response but NOT in baseline
+        in_response = indicator_lower in response_lower
+        in_baseline = indicator_lower in baseline_lower
+
+        return in_response and not in_baseline
+
+    @staticmethod
+    def get_new_content(baseline_text: str, response_text: str, min_diff_length: int = 20) -> str:
+        """
+        Extract content that appears new in response (wasn't in baseline)
+
+        Args:
+            baseline_text: Response before payload injection
+            response_text: Response after payload injection
+            min_diff_length: Minimum length difference to consider
+
+        Returns:
+            New content string or empty string
+        """
+        if not baseline_text:
+            return ""
+
+        # Simple diff - find content in response not in baseline
+        baseline_set = set(baseline_text.split())
+        response_set = set(response_text.split())
+
+        new_words = response_set - baseline_set
+
+        if len(new_words) < 3:
+            return ""
+
+        # Return first significant new content
+        return " ".join(list(new_words)[:20])
+
+    @staticmethod
     def get_remediation_advice(vulnerability_type: str) -> str:
         """
         Get generic remediation advice for vulnerability type

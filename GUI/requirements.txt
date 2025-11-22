@@ -2,3 +2,6 @@
 # Install with: pip install -r requirements.txt
 
 PyQt5>=5.15.0
+PyQtWebEngine>=5.15.0
+reportlab>=3.6.0
+python-docx>=0.8.11

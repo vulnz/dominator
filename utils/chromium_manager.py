@@ -227,12 +227,17 @@ class ChromiumManager:
         if additional_args:
             cmd.extend(additional_args)
 
-        # Launch
+        # Launch - hide console window on Windows
+        creation_flags = 0
+        if sys.platform == 'win32':
+            # CREATE_NO_WINDOW hides the console window
+            creation_flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == 'win32' else 0
+            creationflags=creation_flags
         )
 
         return process
@@ -286,11 +291,16 @@ class ChromiumManager:
                 "--new-window"
             ]
 
+            # Hide console window on Windows
+            creation_flags = 0
+            if sys.platform == 'win32':
+                creation_flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == 'win32' else 0
+                creationflags=creation_flags
             )
 
             return process

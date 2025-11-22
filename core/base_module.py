@@ -4,9 +4,10 @@ Each module is completely independent and self-contained
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Callable
 import os
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -23,15 +24,17 @@ class BaseModule(ABC):
     4. Return standardized results
     """
 
-    def __init__(self, module_path: str):
+    def __init__(self, module_path: str, payload_limit: int = None):
         """
         Initialize module
 
         Args:
             module_path: Path to module directory (e.g., "modules/xss")
+            payload_limit: Global payload limit from CLI args (overrides config)
         """
         self.module_path = module_path
         self.name = os.path.basename(module_path)
+        self.payload_limit = payload_limit  # Store global limit
 
         # Load configuration
         self.config = self._load_config()
@@ -46,7 +49,11 @@ class BaseModule(ABC):
         self.passive_scanner = None
         self.payload_passive_findings = []
 
-        logger.info(f"Module '{self.name}' initialized: {len(self.payloads)} payloads, {len(self.patterns)} patterns")
+        # Performance optimization flags
+        self.early_exit = True  # Stop testing parameter after first vulnerability found
+        self.concurrent_requests = 10  # Number of concurrent requests
+
+        logger.info(f"Module '{self.name}' initialized: {len(self.payloads)} payloads (limit: {payload_limit or 'none'}), {len(self.patterns)} patterns")
 
     def _load_config(self) -> Dict[str, Any]:
         """Load module configuration from config.json"""
@@ -98,13 +105,39 @@ class BaseModule(ABC):
 
     def _load_payloads(self) -> List[str]:
         """Load payloads from payloads.txt"""
-        payloads = self._load_txt_file("payloads.txt")
+        return self._load_txt_file("payloads.txt")
 
-        # Limit payloads based on config
-        max_payloads = self.config.get("max_payloads", 100)
-        if len(payloads) > max_payloads:
-            logger.warning(f"Limiting payloads from {len(payloads)} to {max_payloads}")
-            payloads = payloads[:max_payloads]
+    def get_limited_payloads(self, custom_limit: int = None) -> List[str]:
+        """
+        Get payloads with limit applied (for performance optimization)
+
+        Priority order:
+        1. custom_limit parameter (if provided)
+        2. Global payload_limit from CLI --payload-limit
+        3. Module config max_payloads
+        4. No limit (all payloads)
+
+        Args:
+            custom_limit: Override limit for specific test cases
+
+        Returns:
+            Limited list of payloads
+        """
+        payloads = self.payloads
+
+        # Determine effective limit
+        if custom_limit is not None:
+            limit = custom_limit
+        elif self.payload_limit is not None and self.payload_limit > 0:
+            limit = self.payload_limit
+        elif self.config.get("max_payloads", 0) > 0:
+            limit = self.config.get("max_payloads")
+        else:
+            return payloads  # No limit
+
+        if len(payloads) > limit:
+            logger.debug(f"[{self.name}] Limiting payloads from {len(payloads)} to {limit}")
+            return payloads[:limit]
 
         return payloads
 
@@ -229,6 +262,70 @@ class BaseModule(ABC):
         """Get default severity level"""
         return self.config.get("severity", "Medium")
 
+    def get_oob_payloads(self) -> Dict[str, Any]:
+        """
+        Get Out-of-Band callback payloads for blind vulnerability testing.
+
+        This method retrieves OOB payloads from the global OOB manager,
+        allowing scan modules to inject callback URLs for detecting
+        blind vulnerabilities (SSRF, XXE, blind SQLi, etc.)
+
+        Returns:
+            Dictionary with OOB payload information:
+            {
+                'dns': 'identifier.oob-domain.com',
+                'http': 'http://identifier.oob-domain.com',
+                'https': 'https://identifier.oob-domain.com',
+                'domain': 'oob-domain.com',
+                'identifier': 'unique-identifier'
+            }
+            or None if OOB is not configured
+        """
+        try:
+            from GUI.components.oob_panel import get_oob_manager
+            oob_manager = get_oob_manager()
+
+            if not oob_manager.is_configured():
+                return None
+
+            return {
+                'dns': oob_manager.get_dns_payload(f"-{self.name}"),
+                'http': oob_manager.get_http_payload(f"-{self.name}"),
+                'https': oob_manager.get_https_payload(f"-{self.name}"),
+                'domain': oob_manager.oob_domain,
+                'identifier': oob_manager.oob_identifier
+            }
+        except ImportError:
+            logger.debug("OOB panel not available (GUI components not loaded)")
+            return None
+        except Exception as e:
+            logger.debug(f"Error getting OOB payloads: {e}")
+            return None
+
+    def inject_oob_payload(self, payload_template: str, oob_type: str = 'http') -> str:
+        """
+        Inject OOB callback URL into a payload template.
+
+        Use this to replace {{OOB}} placeholder in payloads with actual callback URLs.
+
+        Args:
+            payload_template: Payload string with {{OOB}} placeholder
+            oob_type: Type of OOB URL to inject ('dns', 'http', or 'https')
+
+        Returns:
+            Payload with OOB URL injected, or original payload if OOB not configured
+        """
+        if '{{OOB}}' not in payload_template:
+            return payload_template
+
+        oob_payloads = self.get_oob_payloads()
+        if not oob_payloads:
+            # Return payload with placeholder removed
+            return payload_template.replace('{{OOB}}', 'example.com')
+
+        oob_url = oob_payloads.get(oob_type, oob_payloads.get('http', ''))
+        return payload_template.replace('{{OOB}}', oob_url)
+
     def extract_response_context(self, response_text: str, trigger: str,
                                  chars_before: int = 100, chars_after: int = 50) -> str:
         """
@@ -342,6 +439,88 @@ class BaseModule(ABC):
         result.update(kwargs)
 
         return result
+
+    def test_payloads_concurrent(self,
+                                 payloads: List[str],
+                                 test_function: Callable,
+                                 max_workers: int = None) -> Any:
+        """
+        Test multiple payloads concurrently for performance (ZAP-speed optimization)
+
+        This method sends multiple HTTP requests in parallel, dramatically improving
+        scan speed. Uses early-exit strategy - stops testing as soon as a vulnerability
+        is found.
+
+        Args:
+            payloads: List of payloads to test
+            test_function: Function to test each payload.
+                          Should accept (payload) and return (found: bool, result: dict or None)
+            max_workers: Number of concurrent threads (default: self.concurrent_requests)
+
+        Returns:
+            First vulnerability result found, or None if no vulnerabilities
+
+        Example:
+            def test_single_payload(payload):
+                response = http_client.get(url, params={'id': payload})
+                if is_vulnerable(response):
+                    return True, create_result(...)
+                return False, None
+
+            result = self.test_payloads_concurrent(payloads, test_single_payload)
+        """
+        if max_workers is None:
+            max_workers = self.concurrent_requests
+
+        # Early exit flag - shared state to signal other threads to stop
+        found_vulnerability = False
+        vulnerability_result = None
+
+        def wrapper(payload):
+            """Wrapper to handle early exit"""
+            nonlocal found_vulnerability, vulnerability_result
+
+            # Skip if another thread already found a vulnerability
+            if found_vulnerability and self.early_exit:
+                return False, None
+
+            # Test the payload
+            try:
+                found, result = test_function(payload)
+
+                # If vulnerability found, set flag and save result
+                if found:
+                    found_vulnerability = True
+                    vulnerability_result = result
+                    return True, result
+
+                return False, None
+            except Exception as e:
+                logger.debug(f"Error testing payload {payload[:50]}: {e}")
+                return False, None
+
+        # Execute payloads concurrently
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all payload tests
+            futures = {executor.submit(wrapper, payload): payload for payload in payloads}
+
+            # Process results as they complete
+            for future in as_completed(futures):
+                try:
+                    found, result = future.result()
+
+                    # Early exit: stop as soon as we find a vulnerability
+                    if found and self.early_exit:
+                        # Cancel remaining futures
+                        for f in futures:
+                            f.cancel()
+                        return result
+
+                except Exception as e:
+                    payload = futures[future]
+                    logger.debug(f"Exception testing payload {payload[:50]}: {e}")
+
+        return vulnerability_result
 
     def _get_generic_remediation(self, cwe: str) -> str:
         """

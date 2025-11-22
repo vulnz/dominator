@@ -3,7 +3,6 @@
   "description": "OS Command Injection vulnerability detection",
   "severity": "Critical",
   "enabled": true,
-  "max_payloads": 200,
   "timeout": 20,
   "cwe": "CWE-78",
   "cwe_name": "Improper Neutralization of Special Elements used in an OS Command",

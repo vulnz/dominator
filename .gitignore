@@ -81,3 +81,6 @@ chromium_portable/
 
 # SSL certificates (generated per-installation)
 certs/
+
+# Trashbin for old/temporary files
+trashbin/

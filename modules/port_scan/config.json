@@ -1,0 +1,14 @@
+{
+    "name": "Port Scanner",
+    "description": "Scans for open ports with banner grabbing and service identification",
+    "author": "Dominator",
+    "version": "1.0.0",
+    "category": "Recon",
+    "severity": "info",
+    "cwe": "CWE-200",
+    "owasp": "A05:2021",
+    "cvss": "0.0",
+    "enabled": true,
+    "passive": false,
+    "tags": ["recon", "port-scan", "nmap", "banner", "service-detection"]
+}

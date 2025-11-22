@@ -1,0 +1,14 @@
+{
+    "name": "HTTP Methods Scanner",
+    "description": "Tests for dangerous HTTP methods (PUT, DELETE, TRACE, WebDAV)",
+    "author": "Dominator",
+    "version": "1.0.0",
+    "category": "Misconfiguration",
+    "severity": "high",
+    "cwe": "CWE-749",
+    "owasp": "A05:2021",
+    "cvss": "7.5",
+    "enabled": true,
+    "passive": false,
+    "tags": ["http-methods", "put", "delete", "trace", "webdav", "nikto"]
+}

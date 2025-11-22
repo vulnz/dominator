@@ -20,9 +20,9 @@ logger = get_logger(__name__)
 class XSSModule(BaseModule):
     """Improved XSS vulnerability scanner module"""
 
-    def __init__(self, module_path: str):
+    def __init__(self, module_path: str, payload_limit: int = None):
         """Initialize XSS module"""
-        super().__init__(module_path)
+        super().__init__(module_path, payload_limit=payload_limit)
 
         # Load XSS indicators from TXT file
         self.xss_indicators = BaseDetector.load_patterns_from_file('xss/indicators')
@@ -59,7 +59,7 @@ class XSSModule(BaseModule):
                 logger.debug(f"Testing XSS in parameter: {param_name} via {method}")
 
                 # Try each payload (limited)
-                for payload in self.payloads[:50]:  # Limit to 50 payloads for better detection
+                for payload in self.get_limited_payloads():  # Limit to 50 payloads for better detection
                     # Create test parameters
                     test_params = params.copy()
                     test_params[param_name] = payload
@@ -129,53 +129,137 @@ class XSSModule(BaseModule):
         """
         Improved XSS detection with multi-stage validation
 
+        CRITICAL: Checks for HTML encoding - if payload is encoded, XSS is BLOCKED
+
         Returns:
             (detected: bool, confidence: float, evidence: str)
         """
-        # STAGE 1: Check if payload is reflected
-        if not BaseDetector.is_payload_reflected(payload, response.text):
-            return False, 0.0, ""
+        response_text = response.text
 
-        # STAGE 2: Check for XSS indicators from TXT file
-        # IMPROVED: Require only 1 strong indicator (reduced from 2 to catch more real XSS)
-        detected, matches = BaseDetector.check_multiple_patterns(
-            response.text,
-            self.xss_indicators,
-            min_matches=1  # Minimum 1 strong XSS indicator
-        )
+        # STAGE 1: CRITICAL - Check if payload is reflected UNENCODED
+        # If < becomes &lt; or > becomes &gt;, the XSS is BLOCKED
+        if not BaseDetector.is_payload_reflected_unencoded(payload, response_text):
+            # Check if it's HTML-encoded (blocked)
+            if BaseDetector.is_html_encoded(payload, response_text):
+                logger.debug(f"XSS blocked: payload is HTML-encoded in response")
+                return False, 0.0, ""
+            # Not reflected at all
+            if not BaseDetector.is_payload_reflected(payload, response_text):
+                return False, 0.0, ""
 
-        if not detected:
-            return False, 0.0, ""
+        # STAGE 2: Verify dangerous characters are UNENCODED
+        # This is the most critical check for XSS
+        dangerous_chars = ['<', '>', '"', "'"]
+        has_unencoded_dangerous = False
 
-        # STAGE 3: Context validation
-        if not self._validate_xss_context(payload, response.text):
+        for char in dangerous_chars:
+            if char in payload and char in response_text:
+                # Check if the char near our payload context is unencoded
+                if self._is_char_unencoded_in_context(payload, char, response_text):
+                    has_unencoded_dangerous = True
+                    break
+
+        if not has_unencoded_dangerous:
+            # Double-check: is the EXACT payload reflected?
+            if payload not in response_text:
+                logger.debug(f"XSS blocked: dangerous characters are encoded")
+                return False, 0.0, ""
+
+        # STAGE 3: Context validation - is payload in executable context?
+        if not self._validate_xss_context(payload, response_text):
             logger.debug("XSS context validation failed")
             return False, 0.0, ""
 
-        # STAGE 4: Check for suspicious words
-        has_suspicious = BaseDetector.has_suspicious_words(response.text)
+        # STAGE 4: Calculate confidence
+        confidence = 0.7  # Base confidence for unencoded reflection in dangerous context
 
-        # STAGE 5: Calculate confidence
-        confidence = BaseDetector.calculate_confidence(
-            indicators_found=len(matches),
-            response_length=len(response.text),
-            has_suspicious_words=has_suspicious,
-            payload_reflected=True
-        )
+        # Boost for very dangerous contexts
+        if self._has_dangerous_context(payload, response_text):
+            confidence = 0.90
 
-        # Additional confidence boost for dangerous patterns
-        if self._has_dangerous_context(payload, response.text):
-            confidence += 0.2
-            confidence = min(1.0, confidence)
+        # Boost for exact payload match with script execution
+        if '<script>' in payload.lower() and '<script>' in response_text.lower():
+            confidence = 0.95
 
-        if confidence < 0.35:  # IMPROVED: Lowered threshold from 0.45 to catch more real XSS
+        # Check for suspicious words (might be documentation)
+        if BaseDetector.has_suspicious_words(response_text):
+            confidence -= 0.2
+
+        if confidence < 0.50:
             logger.debug(f"XSS confidence too low: {confidence:.2f}")
             return False, 0.0, ""
 
-        # Generate evidence
-        evidence = BaseDetector.get_evidence(payload, response.text, context_size=200)
+        # Generate detailed evidence
+        evidence = self._generate_xss_evidence(payload, response_text)
 
         return True, confidence, evidence
+
+    def _is_char_unencoded_in_context(self, payload: str, char: str, response_text: str) -> bool:
+        """
+        Check if a dangerous character appears unencoded near payload context
+
+        Args:
+            payload: Original payload
+            char: Dangerous character to check
+            response_text: Response text
+
+        Returns:
+            True if char is unencoded in payload context
+        """
+        # Find payload position
+        payload_pos = response_text.find(payload)
+        if payload_pos == -1:
+            # Try finding a unique part of the payload
+            for part in [payload[:20], payload[-20:]]:
+                if len(part) > 5 and part in response_text:
+                    payload_pos = response_text.find(part)
+                    break
+
+        if payload_pos == -1:
+            return False
+
+        # Check 100 chars around payload position
+        start = max(0, payload_pos - 50)
+        end = min(len(response_text), payload_pos + len(payload) + 50)
+        context = response_text[start:end]
+
+        # Check if the char appears unencoded in this context
+        return char in context
+
+    def _generate_xss_evidence(self, payload: str, response_text: str) -> str:
+        """
+        Generate detailed XSS evidence
+
+        Args:
+            payload: XSS payload
+            response_text: Response text
+
+        Returns:
+            Evidence string
+        """
+        evidence_parts = []
+
+        # Show where payload is reflected
+        snippet = BaseDetector.get_evidence(payload, response_text, context_size=200)
+        evidence_parts.append(f"Payload reflected: {snippet}")
+
+        # Determine XSS context
+        context_type = "unknown"
+        if '<script>' in payload.lower() and '<script>' in response_text.lower():
+            context_type = "script tag injection"
+        elif 'onerror=' in payload.lower() and 'onerror=' in response_text.lower():
+            context_type = "event handler injection"
+        elif '<img' in payload.lower() and '<img' in response_text.lower():
+            context_type = "HTML tag injection (img)"
+        elif '<svg' in payload.lower() and '<svg' in response_text.lower():
+            context_type = "HTML tag injection (svg)"
+        elif 'javascript:' in payload.lower() and 'javascript:' in response_text.lower():
+            context_type = "javascript: URI injection"
+
+        evidence_parts.append(f"XSS Type: {context_type}")
+        evidence_parts.append("CONFIRMED: Payload is reflected UNENCODED (< and > are not HTML-escaped)")
+
+        return " | ".join(evidence_parts)
 
     def _validate_xss_context(self, payload: str, response_text: str) -> bool:
         """
@@ -391,7 +475,7 @@ class XSSModule(BaseModule):
         return results
 
 
-def get_module(module_path: str):
+def get_module(module_path: str, payload_limit: int = None):
     """
     Factory function to create module instance
 
@@ -401,4 +485,4 @@ def get_module(module_path: str):
     Returns:
         XSSModule instance
     """
-    return XSSModule(module_path)
+    return XSSModule(module_path, payload_limit=payload_limit)

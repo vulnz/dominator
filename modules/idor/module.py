@@ -17,9 +17,9 @@ logger = get_logger(__name__)
 class IDORModule(BaseModule):
     """IDOR Scanner Module"""
 
-    def __init__(self, module_path: str):
+    def __init__(self, module_path: str, payload_limit: int = None):
         """Initialize IDOR module"""
-        super().__init__(module_path)
+        super().__init__(module_path, payload_limit=payload_limit)
 
         logger.info(f"IDOR module loaded: {len(self.payloads)} payloads")
 
@@ -94,7 +94,7 @@ class IDORModule(BaseModule):
                 # Test different IDs
                 different_responses = []
 
-                for payload in self.payloads[:10]:  # Limit to 10 IDs
+                for payload in self.get_limited_payloads():  # Limit to 10 IDs
                     # Skip if payload is same as original
                     if str(payload).strip() == str(original_value).strip():
                         continue
@@ -370,6 +370,6 @@ class IDORModule(BaseModule):
         return f"  {clean_data}"
 
 
-def get_module(module_path: str):
+def get_module(module_path: str, payload_limit: int = None):
     """Create module instance"""
-    return IDORModule(module_path)
+    return IDORModule(module_path, payload_limit=payload_limit)

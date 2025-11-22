@@ -1,0 +1,41 @@
+# Host Header Injection Payloads
+# Tests for password reset poisoning, cache poisoning, SSRF, and virtual host confusion
+
+# Basic malicious domains
+evil.com
+attacker.com
+malicious-site.com
+
+# Port manipulation
+evil.com:80
+target.com:@evil.com
+evil.com:@target.com
+
+# Authentication bypass attempts
+target.com@evil.com
+evil.com@target.com
+
+# Localhost variants (SSRF)
+localhost
+127.0.0.1
+0.0.0.0
+[::1]
+[::ffff:127.0.0.1]
+
+# Internal network ranges
+192.168.1.1
+10.0.0.1
+172.16.0.1
+
+# Cloud metadata endpoints
+169.254.169.254
+metadata.google.internal
+
+# Wildcard and subdomain tests
+*.evil.com
+subdomain.target.com
+
+# URL encoding variations
+%00evil.com
+evil.com%00
+evil.com%0d%0a

@@ -1,9 +1,19 @@
 {
-  "enabled": true,
-  "confidence_threshold": 0.70,
-  "max_payloads": 20,
-  "enable_oob": true,
-  "oob_wait_time": 3,
-  "test_file_upload_endpoints": true,
-  "test_api_endpoints": true
+    "name": "XXE Injection",
+    "description": "XML External Entity injection - reads local files and performs SSRF via XML parsing",
+    "author": "Dominator",
+    "version": "1.0.0",
+    "category": "Injection",
+    "severity": "high",
+    "cwe": "CWE-611",
+    "owasp": "A05:2021",
+    "cvss": "7.5",
+    "enabled": true,
+    "passive": false,
+    "tags": ["xxe", "xml", "injection", "file-read", "ssrf", "oob"],
+    "confidence_threshold": 0.70,
+    "enable_oob": true,
+    "oob_wait_time": 3,
+    "test_file_upload_endpoints": true,
+    "test_api_endpoints": true
 }

@@ -5,6 +5,8 @@ NO hardcoded vulnerability logic - modules handle everything
 
 from typing import List, Dict, Any
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock
 from core.http_client import HTTPClient
 from core.result_manager import ResultManager
 from core.report_generator import ReportGenerator
@@ -51,8 +53,12 @@ class ModularScanner:
         self.report_generator = ReportGenerator()
 
         # Load modules dynamically
-        self.module_loader = ModuleLoader()
+        payload_limit = getattr(config, 'payload_limit', None)
+        self.module_loader = ModuleLoader(payload_limit=payload_limit)
         self.modules = []
+
+        # Thread-safe result collection
+        self.result_lock = Lock()
 
         logger.info(f"Scanner initialized")
 
@@ -113,41 +119,48 @@ class ModularScanner:
                 logger.info(f"[RECON-ONLY MODE] Passive findings collected during crawl")
                 continue
 
-            # Run each module
-            for module in self.modules:
-                if self.stop_requested:
-                    break
+            # Run modules with multi-threading if configured
+            threads = getattr(self.config, 'threads', 1)
 
-                logger.info(f"\nRunning module: {module.get_name()}")
-                logger.info(f"Description: {module.get_description()}")
+            if threads > 1:
+                logger.info(f"\n[MULTI-THREADING] Using {threads} threads for faster scanning")
+                all_results.extend(self._run_modules_parallel(discovered_urls, threads))
+            else:
+                # Sequential execution (original behavior)
+                for module in self.modules:
+                    if self.stop_requested:
+                        break
 
-                try:
-                    # Module does everything itself!
-                    # - Loads payloads from TXT
-                    # - Loads patterns from TXT
-                    # - Performs scanning
-                    # - Returns results
-                    module_results = module.scan(discovered_urls, self.http_client)
+                    logger.info(f"\nRunning module: {module.get_name()}")
+                    logger.info(f"Description: {module.get_description()}")
 
-                    # Add results
-                    all_results.extend(module_results)
-                    self.result_manager.add_results(module_results)
+                    try:
+                        # Module does everything itself!
+                        # - Loads payloads from TXT
+                        # - Loads patterns from TXT
+                        # - Performs scanning
+                        # - Returns results
+                        module_results = module.scan(discovered_urls, self.http_client)
 
-                    vulnerabilities = len([r for r in module_results if r.get('vulnerability')])
-                    logger.info(f"Module '{module.get_name()}' completed: {len(module_results)} findings ({vulnerabilities} vulnerabilities)")
+                        # Add results
+                        all_results.extend(module_results)
+                        self.result_manager.add_results(module_results)
 
-                    # CRITICAL: Collect passive findings from payload responses
-                    # These are path disclosures, DB errors found when sending payloads
-                    payload_passive_findings = module.get_payload_passive_findings()
-                    if payload_passive_findings:
-                        logger.info(f"  → Payload testing triggered {len(payload_passive_findings)} passive findings (path disclosure, DB errors)")
-                        all_results.extend(payload_passive_findings)
-                        self.result_manager.add_results(payload_passive_findings)
+                        vulnerabilities = len([r for r in module_results if r.get('vulnerability')])
+                        logger.info(f"Module '{module.get_name()}' completed: {len(module_results)} findings ({vulnerabilities} vulnerabilities)")
 
-                except Exception as e:
-                    logger.error(f"Error in module '{module.get_name()}': {e}")
-                    import traceback
-                    traceback.print_exc()
+                        # CRITICAL: Collect passive findings from payload responses
+                        # These are path disclosures, DB errors found when sending payloads
+                        payload_passive_findings = module.get_payload_passive_findings()
+                        if payload_passive_findings:
+                            logger.info(f"  → Payload testing triggered {len(payload_passive_findings)} passive findings (path disclosure, DB errors)")
+                            all_results.extend(payload_passive_findings)
+                            self.result_manager.add_results(payload_passive_findings)
+
+                    except Exception as e:
+                        logger.error(f"Error in module '{module.get_name()}': {e}")
+                        import traceback
+                        traceback.print_exc()
 
         duration = time.time() - start_time
         logger.info(f"\n{'='*80}")
@@ -156,6 +169,70 @@ class ModularScanner:
 
         # Print statistics
         self.result_manager.print_summary()
+
+        return all_results
+
+    def _run_modules_parallel(self, discovered_urls: List[Dict[str, Any]], threads: int) -> List[Dict[str, Any]]:
+        """
+        Run modules in parallel using thread pool
+
+        Args:
+            discovered_urls: List of discovered URLs
+            threads: Number of threads to use
+
+        Returns:
+            List of all results from parallel execution
+        """
+        all_results = []
+
+        def run_single_module(module):
+            """Execute a single module and return results"""
+            if self.stop_requested:
+                return []
+
+            logger.info(f"\n[Thread] Running module: {module.get_name()}")
+            logger.info(f"[Thread] Description: {module.get_description()}")
+
+            try:
+                # Module does everything itself
+                module_results = module.scan(discovered_urls, self.http_client)
+
+                # Thread-safe result collection
+                with self.result_lock:
+                    self.result_manager.add_results(module_results)
+
+                vulnerabilities = len([r for r in module_results if r.get('vulnerability')])
+                logger.info(f"[Thread] Module '{module.get_name()}' completed: {len(module_results)} findings ({vulnerabilities} vulnerabilities)")
+
+                # Collect passive findings from payload responses
+                payload_passive_findings = module.get_payload_passive_findings()
+                if payload_passive_findings:
+                    logger.info(f"[Thread] → Payload testing triggered {len(payload_passive_findings)} passive findings")
+                    with self.result_lock:
+                        self.result_manager.add_results(payload_passive_findings)
+                    module_results.extend(payload_passive_findings)
+
+                return module_results
+
+            except Exception as e:
+                logger.error(f"[Thread] Error in module '{module.get_name()}': {e}")
+                import traceback
+                traceback.print_exc()
+                return []
+
+        # Execute modules in parallel
+        with ThreadPoolExecutor(max_workers=threads) as executor:
+            # Submit all module tasks
+            future_to_module = {executor.submit(run_single_module, module): module for module in self.modules}
+
+            # Collect results as they complete
+            for future in as_completed(future_to_module):
+                module = future_to_module[future]
+                try:
+                    results = future.result()
+                    all_results.extend(results)
+                except Exception as e:
+                    logger.error(f"Exception running module {module.get_name()}: {e}")
 
         return all_results
 
@@ -184,7 +261,21 @@ class ModularScanner:
         Returns:
             List of discovered URLs with parameters
         """
+        from urllib.parse import urlparse
         discovered = []
+
+        # Get target domain for scope checking
+        target_parsed = urlparse(target)
+        target_domain = target_parsed.netloc.lower()
+
+        def is_in_scope(url: str) -> bool:
+            """Check if URL is in target scope (same domain)"""
+            try:
+                url_parsed = urlparse(url)
+                url_domain = url_parsed.netloc.lower()
+                return url_domain == target_domain
+            except:
+                return False
 
         # Single URL mode - just parse the target
         if self.config.single_url:
@@ -215,6 +306,11 @@ class ModularScanner:
                 logger.info(f"Added {sum(len(v) for v in passive_findings.values())} passive findings to results")
 
             for page in pages:
+                # SCOPE CHECK: Skip external URLs
+                if not is_in_scope(page):
+                    logger.debug(f"Skipping out-of-scope page: {page}")
+                    continue
+
                 parsed = self.url_parser.parse(page)
                 if parsed:
                     discovered.append(parsed)
@@ -233,6 +329,11 @@ class ModularScanner:
                         form_target_url = urljoin(form_url, action)
                 else:
                     form_target_url = form_url
+
+                # SCOPE CHECK: Skip forms with external action URLs
+                if not is_in_scope(form_target_url):
+                    logger.debug(f"Skipping out-of-scope form: {form_target_url}")
+                    continue
 
                 # Create target dict for form
                 form_params = {}

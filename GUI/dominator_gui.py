@@ -17,6 +17,24 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Import GUI components
 from GUI.components.browser_tab import BrowserTab
+from GUI.components.project_manager import ProjectStartupDialog, ProjectManager
+from GUI.components.scan_wizard import ScanWizard
+from GUI.components.scheduler import SchedulerManager, get_scheduler_manager, check_due_scans
+from GUI.ui_tabs.scan_tab import ScanTabBuilder
+from GUI.ui_tabs.advanced_tab import AdvancedTabBuilder
+from GUI.ui_tabs.payloads_tab import PayloadsTabBuilder
+from GUI.ui_tabs.output_tab import OutputTabBuilder
+from GUI.ui_tabs.progress_tab import ProgressTabBuilder
+from GUI.ui_tabs.modules_tab import ModulesTabBuilder
+from GUI.ui_tabs.plugins_tab import PluginsTabBuilder
+from GUI.ui_tabs.scope_tab import ScopeTabBuilder
+from GUI.ui_tabs.results_tab import ResultsTabBuilder
+from GUI.scan_thread import ScanThread
+from GUI.theme_manager import ThemeManager
+from GUI.config_handler import ConfigHandler
+from GUI.results_handler import ResultsHandler
+from GUI.dialogs.options_dialog import OptionsDialog
+from GUI.utils.message_box import show_warning, show_question, show_information
 
 try:
     from PyQt5.QtWidgets import (
@@ -25,9 +43,10 @@ try:
         QGroupBox, QGridLayout, QTabWidget, QFileDialog, QSpinBox,
         QProgressBar, QListWidget, QSplitter, QScrollArea, QFrame, QMessageBox,
         QListWidgetItem, QMenuBar, QAction, QMenu, QTableWidget, QTableWidgetItem,
-        QHeaderView, QAbstractItemView, QActionGroup
+        QHeaderView, QAbstractItemView, QActionGroup, QToolButton, QSizePolicy,
+        QInputDialog
     )
-    from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl
+    from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl, QParallelAnimationGroup, QPropertyAnimation, QAbstractAnimation, QSize
     from PyQt5.QtGui import QFont, QColor, QPalette, QIcon, QTextCursor, QDesktopServices
 except ImportError:
     print("ERROR: PyQt5 is required for the GUI")
@@ -35,299 +54,98 @@ except ImportError:
     sys.exit(1)
 
 
-class ScanThread(QThread):
-    """Background thread for running scans"""
-    output_signal = pyqtSignal(str)
-    finished_signal = pyqtSignal(int)
-    progress_signal = pyqtSignal(int, str)
-    vulnerability_signal = pyqtSignal(str, str)  # (severity, description)
-    stats_signal = pyqtSignal(int, int, int)  # (total, modules_done, modules_total)
-    resource_signal = pyqtSignal(str, str, str, str)  # (type, value, extra, source)
-    scope_signal = pyqtSignal(str, str, str, str)  # (type, data1, data2, data3)
+class CollapsibleBox(QWidget):
+    """A collapsible box widget that can be expanded/collapsed"""
 
-    def __init__(self, command):
-        super().__init__()
-        self.command = command
-        self.process = None
-        self.total_modules = 20  # Total available modules
-        self.completed_modules = 0
-        self.total_vulns = 0
-        self.current_severity = 'MEDIUM'  # Track current severity section
+    def __init__(self, title="", parent=None):
+        super().__init__(parent)
 
-    def run(self):
-        """Run the scan command"""
-        try:
-            # Get parent directory (where main.py and modules/ are)
-            parent_dir = Path(__file__).parent.parent
+        self.toggle_button = QToolButton()
+        self.toggle_button.setStyleSheet("""
+            QToolButton {
+                border: 1px solid #cccccc;
+                background-color: #f5f5f5;
+                color: #333333;
+                font-weight: bold;
+                font-size: 12px;
+                padding: 8px;
+                text-align: left;
+            }
+            QToolButton:hover {
+                background-color: #e0e0e0;
+            }
+        """)
+        self.toggle_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.toggle_button.setArrowType(Qt.RightArrow)
+        self.toggle_button.setText(title)
+        self.toggle_button.setCheckable(True)
+        self.toggle_button.setChecked(False)
+        self.toggle_button.clicked.connect(self.on_toggle)
 
-            self.process = subprocess.Popen(
-                self.command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                universal_newlines=True,
-                encoding='utf-8',
-                errors='ignore',
-                cwd=str(parent_dir)  # Set working directory to scanner root
-            )
+        self.content_area = QWidget()
+        self.content_area.setMaximumHeight(0)
+        self.content_area.setMinimumHeight(0)
+        self.content_area.setStyleSheet("background-color: #fafafa; border-radius: 4px;")
 
-            for line in iter(self.process.stdout.readline, ''):
-                if line:
-                    line_clean = line.strip()
-                    self.output_signal.emit(line_clean)
+        self.content_layout = QVBoxLayout()
+        self.content_layout.setContentsMargins(10, 10, 10, 10)
+        self.content_area.setLayout(self.content_layout)
 
-                    # Parse different types of output
-                    self.parse_scan_output(line_clean)
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(0)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.addWidget(self.toggle_button)
+        main_layout.addWidget(self.content_area)
 
-            self.process.wait()
-            self.finished_signal.emit(self.process.returncode)
+        self.setLayout(main_layout)
 
-        except Exception as e:
-            self.output_signal.emit(f"ERROR: {str(e)}")
-            self.finished_signal.emit(-1)
+        self._collapsed_height = 0
+        self._content_height = 200  # Default height
 
-    def parse_scan_output(self, line):
-        """Parse scanner output for progress and findings"""
-        # Strip ANSI color codes for easier parsing
-        line_clean = line
-        if '[' in line and 'm' in line:
-            import re
-            line_clean = re.sub(r'\x1b\[[0-9;]*m', '', line)
+    def on_toggle(self, checked):
+        """Toggle the collapsible box"""
+        if checked:
+            self.toggle_button.setArrowType(Qt.DownArrow)
+            self.content_area.setMaximumHeight(16777215)  # QWIDGETSIZE_MAX
+            self.content_area.setMinimumHeight(self._content_height)
+        else:
+            self.toggle_button.setArrowType(Qt.RightArrow)
+            self.content_area.setMaximumHeight(0)
+            self.content_area.setMinimumHeight(0)
 
-        # Detect resources (emails, phones, social media, leaked keys)
-        self.detect_resources(line_clean)
+    def setContentLayout(self, layout):
+        """Set the layout for the content area"""
+        # Clear existing layout
+        while self.content_layout.count():
+            item = self.content_layout.takeAt(0)
+            if item.widget():
+                item.widget().setParent(None)
 
-        # Detect scope info (technologies, titles, IPs)
-        self.detect_scope_info(line_clean)
+        # Create a container widget for the new layout
+        container = QWidget()
+        container.setLayout(layout)
+        self.content_layout.addWidget(container)
 
-        # Track module execution
-        if 'Running module:' in line_clean:
-            module_name = line_clean.split('Running module:')[-1].strip()
-            self.progress_signal.emit(0, f"🔍 Testing: {module_name}")
+        # Calculate content height
+        self._content_height = layout.sizeHint().height() + 20
+        if self._content_height < 100:
+            self._content_height = 100
 
-        # Track module completion
-        elif 'Module' in line_clean and 'completed' in line_clean:
-            self.completed_modules += 1
-            progress = int((self.completed_modules / self.total_modules) * 100)
-            self.progress_signal.emit(progress, f"✓ Completed {self.completed_modules}/{self.total_modules} modules")
-            self.stats_signal.emit(self.total_vulns, self.completed_modules, self.total_modules)
+    def setContentHeight(self, height):
+        """Set the content height when expanded"""
+        self._content_height = height
+        if self.toggle_button.isChecked():
+            self.content_area.setMinimumHeight(height)
 
-        # Track crawling progress
-        elif 'Crawling:' in line_clean or 'Found page:' in line_clean or 'Form discovered:' in line_clean:
-            self.progress_signal.emit(0, "🕷️ Crawling target...")
+    def expand(self):
+        """Expand the collapsible box by default"""
+        self.toggle_button.setChecked(True)
+        self.on_toggle(True)
 
-        # Track target discovery
-        elif 'Page discovery complete:' in line_clean:
-            try:
-                targets = line_clean.split('Page discovery complete:')[-1].strip()
-                self.progress_signal.emit(0, f"📍 {targets}")
-            except:
-                pass
-
-        # Track vulnerabilities found - NEW: detect "✓ Found:" and severity sections
-        elif '✓ Found' in line_clean or 'Found:' in line_clean:
-            self.total_vulns += 1
-            # Try to determine severity from context (will be updated by severity line)
-            severity = 'MEDIUM'
-            self.vulnerability_signal.emit(severity, line_clean)
-            self.stats_signal.emit(self.total_vulns, self.completed_modules, self.total_modules)
-
-        # Detect severity section headers (Critical Severity, High Severity, etc.)
-        elif 'Severity (' in line_clean:
-            # Extract count from "Critical Severity (5):" format
-            try:
-                if 'Critical' in line_clean:
-                    self.current_severity = 'CRITICAL'
-                elif 'High' in line_clean:
-                    self.current_severity = 'HIGH'
-                elif 'Medium' in line_clean:
-                    self.current_severity = 'MEDIUM'
-                elif 'Low' in line_clean:
-                    self.current_severity = 'LOW'
-            except:
-                pass
-
-        # Detect vulnerability type lines like "[SQL Injection]"
-        elif line_clean.strip().startswith('[') and line_clean.strip().endswith(']'):
-            vuln_type = line_clean.strip()
-            if hasattr(self, 'current_severity'):
-                severity = self.current_severity
-            else:
-                severity = 'MEDIUM'
-            self.vulnerability_signal.emit(severity, vuln_type)
-
-        # Detect "Total vulnerabilities:" summary
-        elif 'Total vulnerabilities:' in line_clean:
-            try:
-                count = int(line_clean.split('Total vulnerabilities:')[-1].strip())
-                self.total_vulns = count
-                self.stats_signal.emit(self.total_vulns, self.completed_modules, self.total_modules)
-            except:
-                pass
-
-        # Track scan start
-        elif 'Target:' in line_clean and 'http' in line_clean:
-            target = line_clean.split('Target:')[-1].strip()
-            self.progress_signal.emit(0, f"🎯 Scanning: {target}")
-
-    def detect_resources(self, line):
-        """Detect emails, phones, social media, and leaked keys in output"""
-        import re
-
-        # Detect emails
-        email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
-        emails = re.findall(email_pattern, line)
-        for email in emails:
-            email_type = "Personal" if any(d in email.lower() for d in ['gmail', 'yahoo', 'hotmail', 'outlook']) else "Business"
-            self.resource_signal.emit("email", email, email_type, line[:100])
-
-        # Detect phone numbers (international formats)
-        phone_patterns = [
-            r'\+?\d{1,3}[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,9}',  # International
-            r'\(\d{3}\)\s?\d{3}-\d{4}',  # (123) 456-7890
-            r'\d{3}-\d{3}-\d{4}',  # 123-456-7890
-        ]
-        for pattern in phone_patterns:
-            phones = re.findall(pattern, line)
-            for phone in phones:
-                if len(phone.replace('-', '').replace(' ', '').replace('(', '').replace(')', '').replace('+', '')) >= 10:
-                    phone_format = "International" if '+' in phone else "US/Canada"
-                    self.resource_signal.emit("phone", phone, phone_format, line[:100])
-
-        # Detect social media links
-        social_media_patterns = {
-            'Facebook': r'(?:https?://)?(?:www\.)?facebook\.com/[A-Za-z0-9._-]+',
-            'Twitter/X': r'(?:https?://)?(?:www\.)?(?:twitter|x)\.com/[A-Za-z0-9._-]+',
-            'LinkedIn': r'(?:https?://)?(?:www\.)?linkedin\.com/(?:in|company)/[A-Za-z0-9._-]+',
-            'Instagram': r'(?:https?://)?(?:www\.)?instagram\.com/[A-Za-z0-9._-]+',
-            'GitHub': r'(?:https?://)?(?:www\.)?github\.com/[A-Za-z0-9._-]+',
-            'YouTube': r'(?:https?://)?(?:www\.)?youtube\.com/(?:c|channel|user)/[A-Za-z0-9._-]+',
-            'TikTok': r'(?:https?://)?(?:www\.)?tiktok\.com/@[A-Za-z0-9._-]+',
-        }
-        for platform, pattern in social_media_patterns.items():
-            matches = re.findall(pattern, line, re.IGNORECASE)
-            for match in matches:
-                self.resource_signal.emit("social", match, platform, line[:100])
-
-        # Detect leaked API keys and secrets
-        leaked_key_patterns = {
-            'AWS Access Key': r'AKIA[0-9A-Z]{16}',
-            'AWS Secret Key': r'aws_secret_access_key\s*=\s*[\'"]([A-Za-z0-9/+=]{40})[\'"]',
-            'Google API Key': r'AIza[0-9A-Za-z\-_]{35}',
-            'GitHub Token': r'gh[ps]_[A-Za-z0-9]{36}',
-            'Slack Token': r'xox[baprs]-[0-9]{10,12}-[0-9]{10,12}-[A-Za-z0-9]{24}',
-            'Stripe API Key': r'sk_live_[0-9a-zA-Z]{24}',
-            'PayPal Client ID': r'A[A-Z0-9]{80}',
-            'JWT Token': r'eyJ[A-Za-z0-9-_=]+\.eyJ[A-Za-z0-9-_=]+\.?[A-Za-z0-9-_.+/=]*',
-            'Private Key': r'-----BEGIN (?:RSA |OPENSSH )?PRIVATE KEY-----',
-            'Generic API Key': r'(?i)api[_-]?key["\']?\s*[:=]\s*["\']?([A-Za-z0-9_\-]{20,})["\']?',
-        }
-        for key_type, pattern in leaked_key_patterns.items():
-            matches = re.findall(pattern, line)
-            for match in matches:
-                # Truncate key preview for security
-                key_preview = str(match)[:20] + "..." if len(str(match)) > 20 else str(match)
-                severity = "CRITICAL" if any(k in key_type for k in ['AWS', 'Private Key', 'Secret']) else "HIGH"
-                self.resource_signal.emit("leaked_key", key_preview, f"{key_type}|{severity}", line[:100])
-
-    def detect_scope_info(self, line):
-        """Detect technologies, page titles, and IP information"""
-        import re
-
-        # Detect passive scanner technology detection output
-        # Format: "[PASSIVE] Detected technologies: Nginx, Nginx, PHP"
-        passive_tech_pattern = r'\[PASSIVE\]\s+Detected technologies:\s*(.+)'
-        passive_match = re.search(passive_tech_pattern, line, re.IGNORECASE)
-        if passive_match:
-            techs = passive_match.group(1).split(',')
-            seen_techs = set()  # Avoid duplicates
-            for tech in techs:
-                tech_name = tech.strip()
-                if tech_name and tech_name not in seen_techs:
-                    seen_techs.add(tech_name)
-                    category = self._get_tech_category(tech_name)
-                    self.scope_signal.emit("technology", tech_name, "", f"{category}|Passive Detection")
-
-        # Also detect from summary line: "Detected Technologies: PHP, Nginx"
-        summary_tech_pattern = r'^\s+Detected Technologies:\s*(.+)'
-        summary_match = re.search(summary_tech_pattern, line)
-        if summary_match:
-            techs = summary_match.group(1).split(',')
-            seen_techs = set()
-            for tech in techs:
-                tech_name = tech.strip()
-                if tech_name and tech_name not in seen_techs:
-                    seen_techs.add(tech_name)
-                    category = self._get_tech_category(tech_name)
-                    self.scope_signal.emit("technology", tech_name, "", f"{category}|Passive Summary")
-
-        # Detect technologies from headers/responses
-        tech_patterns = {
-            'PHP': r'(?:X-Powered-By|Server).*PHP/([0-9.]+)',
-            'Apache': r'Server.*Apache/([0-9.]+)',
-            'Nginx': r'Server.*nginx/([0-9.]+)',
-            'WordPress': r'(?:wp-content|wp-includes|WordPress/([0-9.]+))',
-            'jQuery': r'jquery[.-]([0-9.]+)\.(?:min\.)?js',
-            'React': r'react(?:-dom)?[.-]([0-9.]+)\.(?:min\.)?js',
-            'Vue.js': r'vue[.-]([0-9.]+)\.(?:min\.)?js',
-            'Angular': r'angular[.-]([0-9.]+)\.(?:min\.)?js',
-            'Bootstrap': r'bootstrap[.-]([0-9.]+)\.(?:min\.)?(?:css|js)',
-            'MySQL': r'MySQL/([0-9.]+)',
-            'PostgreSQL': r'PostgreSQL/([0-9.]+)',
-            'IIS': r'Server.*IIS/([0-9.]+)',
-            'ASP.NET': r'X-AspNet-Version.*([0-9.]+)',
-        }
-
-        for tech_name, pattern in tech_patterns.items():
-            matches = re.findall(pattern, line, re.IGNORECASE)
-            for version in matches:
-                category = self._get_tech_category(tech_name)
-                self.scope_signal.emit("technology", tech_name, version, f"{category}|{line[:80]}")
-
-        # Detect page titles
-        title_pattern = r'<title>([^<]+)</title>'
-        titles = re.findall(title_pattern, line, re.IGNORECASE)
-        for title in titles:
-            # Extract URL from line if present
-            url_match = re.search(r'https?://[^\s]+', line)
-            url = url_match.group(0) if url_match else "Unknown"
-            self.scope_signal.emit("title", title.strip(), url, "")
-
-        # Detect IP addresses and potential geo info
-        ip_pattern = r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b'
-        ips = re.findall(ip_pattern, line)
-        for ip in ips:
-            # Skip private IPs
-            if not (ip.startswith('192.168.') or ip.startswith('10.') or ip.startswith('172.') or ip.startswith('127.')):
-                # Extract domain from line if present
-                domain_match = re.search(r'(?:https?://)?([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', line)
-                domain = domain_match.group(1) if domain_match else ""
-                self.scope_signal.emit("ip", ip, domain, line[:80])
-
-    def _get_tech_category(self, tech_name):
-        """Categorize technology"""
-        categories = {
-            'PHP': 'Language',
-            'ASP.NET': 'Framework',
-            'Apache': 'Web Server',
-            'Nginx': 'Web Server',
-            'IIS': 'Web Server',
-            'WordPress': 'CMS',
-            'jQuery': 'JavaScript Library',
-            'React': 'Frontend Framework',
-            'Vue.js': 'Frontend Framework',
-            'Angular': 'Frontend Framework',
-            'Bootstrap': 'CSS Framework',
-            'MySQL': 'Database',
-            'PostgreSQL': 'Database',
-        }
-        return categories.get(tech_name, 'Other')
-
-    def stop(self):
-        """Stop the running scan"""
-        if self.process:
-            self.process.terminate()
+    def collapse(self):
+        """Collapse the collapsible box"""
+        self.toggle_button.setChecked(False)
+        self.on_toggle(False)
 
 
 class DominatorGUI(QMainWindow):
@@ -337,8 +155,304 @@ class DominatorGUI(QMainWindow):
         super().__init__()
         self.scan_thread = None
         self.vuln_counts = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0}
+        self.current_project_file = None  # Track current project file
+        self.project_manager = ProjectManager()  # Project management
+        self.theme_manager = ThemeManager(self)  # Theme management
+        self.config_handler = ConfigHandler(self)  # Configuration file handling
+        self.results_handler = ResultsHandler(self)  # Results/vulnerability handling
         self.init_ui()
-        self.apply_theme("hacker_green")  # Default theme
+        self.theme_manager.apply_theme("light")  # Default theme - white with black text
+
+    def show_startup_dialog(self):
+        """Show project selection dialog on startup"""
+        dialog = ProjectStartupDialog(self)
+
+        # Connect signals
+        dialog.new_project.connect(self.on_new_project)
+        dialog.open_project.connect(self.on_open_project)
+        dialog.temp_project.connect(self.on_temp_project)
+
+        return dialog.exec_() == dialog.Accepted
+
+    def on_new_project(self, name, path):
+        """Handle new project creation"""
+        self.project_manager.create_project(name, path)
+        self.update_window_title()
+        self.update_status_bar()
+        self.output_console.append(f"[+] Created new project: {name}")
+        self.output_console.append(f"    Location: {path}")
+        self.output_console.append(f"    Project structure created:")
+        self.output_console.append(f"    - reports/     (scan reports)")
+        self.output_console.append(f"    - findings/    (vulnerability findings)")
+        self.output_console.append(f"    - resources/   (discovered resources)")
+        self.output_console.append(f"    - logs/        (scan logs)")
+
+    def on_open_project(self, path):
+        """Handle opening existing project"""
+        self.project_manager.open_project(path)
+        self.update_window_title()
+        self.update_status_bar()
+        self.load_project_settings()
+        self.output_console.append(f"[+] Opened project: {self.project_manager.project_name}")
+        self.output_console.append(f"    Location: {path}")
+
+        # Show project info
+        info = self.project_manager.get_project_info()
+        scan_count = info.get('scan_count', 0)
+        if scan_count > 0:
+            self.output_console.append(f"    Previous scans: {scan_count}")
+
+    def on_temp_project(self):
+        """Handle temporary session"""
+        self.project_manager.is_temp = True
+        self.update_window_title()
+        self.update_status_bar()
+        self.output_console.append("Started temporary session - data will not be saved")
+
+    def update_window_title(self):
+        """Update window title with project name"""
+        if self.project_manager.is_temp:
+            self.setWindowTitle("Dominator Web Vulnerability Scanner - Temporary Session")
+        else:
+            self.setWindowTitle(f"Dominator - {self.project_manager.project_name}")
+
+    def update_status_bar(self):
+        """Update status bar with project path"""
+        if self.project_manager.is_temp:
+            self.statusBar().showMessage("Temporary Session - Ready to scan")
+        else:
+            self.statusBar().showMessage(f"Project: {self.project_manager.project_path}")
+
+    def new_project(self):
+        """Create a new project via dialog"""
+        from GUI.components.project_manager import ProjectStartupDialog
+        dialog = ProjectStartupDialog(self)
+        dialog.new_project.connect(self.on_new_project)
+        dialog.open_project.connect(self.on_open_project)
+        dialog.temp_project.connect(self.on_temp_project)
+        dialog.exec_()
+
+    def open_project_dialog(self):
+        """Open existing project via file dialog"""
+        folder = QFileDialog.getExistingDirectory(
+            self, "Select Project Folder"
+        )
+        if folder:
+            project_file = Path(folder) / "project.json"
+            if not project_file.exists():
+                show_warning(
+                    self, "Not a Project",
+                    "The selected folder doesn't contain a Dominator project (missing project.json)."
+                )
+                return
+            self.on_open_project(folder)
+            self.update_recent_projects_menu()
+
+    def save_project(self):
+        """Save current project"""
+        if self.project_manager.is_temp:
+            self.save_project_as()
+            return
+
+        # Save current settings
+        self.save_project_settings()
+
+        if self.project_manager.save_project():
+            self.statusBar().showMessage(f"Project saved: {self.project_manager.project_path}", 3000)
+            self.output_console.append(f"[+] Project saved to: {self.project_manager.project_path}")
+        else:
+            show_warning(self, "Error", "Failed to save project")
+
+    def save_project_as(self):
+        """Save project to new location"""
+        folder = QFileDialog.getExistingDirectory(
+            self, "Select New Project Location",
+            str(Path.home() / "Documents")
+        )
+        if not folder:
+            return
+
+        # Get project name
+        name, ok = QInputDialog.getText(
+            self, "Project Name",
+            "Enter project name:",
+            QLineEdit.Normal,
+            self.project_manager.project_name or "my-project"
+        )
+        if not ok or not name:
+            return
+
+        project_path = str(Path(folder) / name)
+
+        # Save current settings first
+        self.save_project_settings()
+
+        if self.project_manager.save_project_as(project_path, name):
+            self.update_window_title()
+            self.update_status_bar()
+            self.update_recent_projects_menu()
+            self.statusBar().showMessage(f"Project saved as: {project_path}", 3000)
+            self.output_console.append(f"[+] Project saved as: {project_path}")
+        else:
+            show_warning(self, "Error", "Failed to save project")
+
+    def export_project(self):
+        """Export project as ZIP file"""
+        if self.project_manager.is_temp:
+            show_warning(
+                self, "No Project",
+                "No project to export. Please save your project first."
+            )
+            return
+
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Export Project",
+            f"{self.project_manager.project_name}.zip",
+            "ZIP Files (*.zip)"
+        )
+        if filename:
+            result = self.project_manager.export_project(filename)
+            if result:
+                show_information(
+                    self, "Export Complete",
+                    f"Project exported to:\n{result}",
+                    setting_key="info_export_complete"
+                )
+            else:
+                show_warning(self, "Error", "Failed to export project")
+
+    def import_project(self):
+        """Import project from ZIP file"""
+        filename, _ = QFileDialog.getOpenFileName(
+            self, "Import Project",
+            "",
+            "ZIP Files (*.zip)"
+        )
+        if not filename:
+            return
+
+        # Select destination
+        folder = QFileDialog.getExistingDirectory(
+            self, "Select Import Destination",
+            str(Path.home() / "Documents" / "Dominator Projects")
+        )
+        if not folder:
+            return
+
+        # Create project folder
+        import zipfile
+        with zipfile.ZipFile(filename, 'r') as zf:
+            # Try to find project name from zip
+            project_name = Path(filename).stem
+
+        destination = str(Path(folder) / project_name)
+
+        if self.project_manager.import_project(filename, destination):
+            self.update_window_title()
+            self.update_status_bar()
+            self.load_project_settings()
+            self.update_recent_projects_menu()
+            show_information(
+                self, "Import Complete",
+                f"Project imported to:\n{destination}",
+                setting_key="info_import_complete"
+            )
+        else:
+            show_warning(self, "Error", "Failed to import project")
+
+    def close_project(self):
+        """Close current project"""
+        if self.project_manager.modified:
+            reply = show_question(
+                self, "Save Changes?",
+                "Do you want to save changes before closing?",
+                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+                QMessageBox.Cancel
+            )
+            if reply == QMessageBox.Cancel:
+                return
+            elif reply == QMessageBox.Yes:
+                self.save_project()
+
+        self.project_manager.close_project()
+        self.update_window_title()
+        self.update_status_bar()
+        self.new_scan()  # Reset GUI
+
+    def update_recent_projects_menu(self):
+        """Update the recent projects submenu"""
+        self.recent_projects_menu.clear()
+
+        # Load recent projects from settings
+        config_file = Path.home() / ".dominator" / "settings.json"
+        if config_file.exists():
+            try:
+                with open(config_file) as f:
+                    settings = json.load(f)
+
+                recent = settings.get("recent_projects", [])
+                for project in recent[:10]:
+                    if Path(project['path']).exists():
+                        action = QAction(f"{project['name']} - {project['path']}", self)
+                        action.setData(project['path'])
+                        action.triggered.connect(
+                            lambda checked, p=project['path']: self.open_recent_project(p)
+                        )
+                        self.recent_projects_menu.addAction(action)
+            except:
+                pass
+
+        if self.recent_projects_menu.isEmpty():
+            no_recent = QAction("No recent projects", self)
+            no_recent.setEnabled(False)
+            self.recent_projects_menu.addAction(no_recent)
+
+    def open_recent_project(self, path):
+        """Open a project from the recent list"""
+        if Path(path).exists():
+            self.on_open_project(path)
+            self.update_recent_projects_menu()
+        else:
+            show_warning(
+                self, "Project Not Found",
+                f"Project not found at:\n{path}"
+            )
+
+    def load_project_settings(self):
+        """Load settings from project"""
+        config = self.project_manager.get_scan_config()
+        if not config:
+            return
+
+        # Load target
+        if 'target' in config:
+            self.target_input.setPlainText(config['target'])
+
+        # Load modules
+        if 'modules' in config:
+            for module, cb in self.module_checkboxes.items():
+                cb.setChecked(module in config['modules'])
+
+        # Load other settings as needed
+        if 'threads' in config:
+            self.threads_spin.setValue(config['threads'])
+        if 'timeout' in config:
+            self.timeout_spin.setValue(config['timeout'])
+
+    def save_project_settings(self):
+        """Save current settings to project"""
+        if self.project_manager.is_temp:
+            return
+
+        config = {
+            'target': self.target_input.toPlainText(),
+            'modules': [name for name, cb in self.module_checkboxes.items() if cb.isChecked()],
+            'threads': self.threads_spin.value(),
+            'timeout': self.timeout_spin.value(),
+            'cookies': self.cookies_input.text(),
+            'headers': self.headers_input.toPlainText()
+        }
+        self.project_manager.save_scan_config(config)
 
     def init_ui(self):
         """Initialize the user interface"""
@@ -355,41 +469,29 @@ class DominatorGUI(QMainWindow):
         main_layout.setSpacing(10)
         main_layout.setContentsMargins(15, 15, 15, 15)
 
-        # Header
-        header = self.create_header()
-        main_layout.addWidget(header)
+        # Header removed to save space
 
         # Tab widget for different sections
         self.tabs = QTabWidget()
-        self.tabs.setStyleSheet("QTabWidget::pane { border: 1px solid #3a3a3a; }")
+        self.tabs.setStyleSheet("QTabWidget::pane { border: 1px solid #e0e0e0; }")
 
-        # Scan Configuration Tab
+        # Scan Configuration Tab (includes Advanced Options)
         scan_tab = self.create_scan_tab()
         self.tabs.addTab(scan_tab, "Scan Configuration")
-
-        # Advanced Options Tab
-        advanced_tab = self.create_advanced_tab()
-        self.tabs.addTab(advanced_tab, "Advanced Options")
 
         # Custom Payloads Tab
         payloads_tab = self.create_payloads_tab()
         self.tabs.addTab(payloads_tab, "Custom Payloads")
 
-        # Output Tab
-        output_tab = self.create_output_tab()
-        self.tabs.addTab(output_tab, "Scan Output")
+        # Output Tab - Create but don't add to tabs (needed for output_console widget)
+        # The scan output is now shown in Results > Scan Output subtab instead
+        # IMPORTANT: Store as instance variable to prevent garbage collection
+        self.output_tab = self.create_output_tab()
+        # self.tabs.addTab(self.output_tab, "Scan Output")  # REMOVED: Duplicate
 
-        # Progress & Plan Tab
-        progress_tab = self.create_progress_tab()
-        self.tabs.addTab(progress_tab, "Progress & Plan")
-
-        # Results Tab
+        # Results Tab (includes Progress subtab and Scan Output subtab)
         results_tab = self.create_results_tab()
         self.tabs.addTab(results_tab, "Results")
-
-        # Resources Tab
-        resources_tab = self.create_resources_tab()
-        self.tabs.addTab(resources_tab, "Resources")
 
         # Scope Tab
         scope_tab = self.create_scope_tab()
@@ -399,16 +501,23 @@ class DominatorGUI(QMainWindow):
         modules_tab = self.create_modules_tab()
         self.tabs.addTab(modules_tab, "Modules")
 
+        # Plugins Tab
+        plugins_tab = self.create_plugins_tab()
+        self.tabs.addTab(plugins_tab, "Plugins")
+
         # Browser Integration Tab
-        self.browser_tab = BrowserTab()
+        self.browser_tab = BrowserTab(main_gui=self)
         self.browser_tab.scan_page_requested.connect(self.on_scan_page_requested)
-        self.tabs.addTab(self.browser_tab, "🌐 Browser & Proxy")
+        self.tabs.addTab(self.browser_tab, "🌐 Interceptor")
 
         main_layout.addWidget(self.tabs)
 
+        # Set default tab to Scan Configuration (first tab)
+        self.tabs.setCurrentIndex(0)
+
         # Status bar
         self.statusBar().showMessage("Ready to scan")
-        self.statusBar().setStyleSheet("background-color: #2b2b2b; color: #00ff00; padding: 5px;")
+        self.statusBar().setStyleSheet("background-color: #f5f5f5; color: #4CAF50; padding: 5px; border-top: 1px solid #e0e0e0;")
 
     def closeEvent(self, event):
         """Handle application close - cleanup proxy and other resources"""
@@ -426,8 +535,8 @@ class DominatorGUI(QMainWindow):
         menubar = self.menuBar()
         menubar.setStyleSheet("""
             QMenuBar {
-                background-color: #2a2a2a;
-                color: white;
+                background-color: #f5f5f5;
+                color: #333333;
                 padding: 4px;
             }
             QMenuBar::item {
@@ -435,103 +544,164 @@ class DominatorGUI(QMainWindow):
                 padding: 6px 12px;
             }
             QMenuBar::item:selected {
-                background-color: #00ff88;
-                color: black;
+                background-color: #4CAF50;
+                color: white;
             }
             QMenu {
-                background-color: #2a2a2a;
-                color: white;
-                border: 1px solid #3a3a3a;
+                background-color: #ffffff;
+                color: #333333;
+                border: 1px solid #e0e0e0;
             }
             QMenu::item {
                 padding: 6px 30px 6px 20px;
             }
             QMenu::item:selected {
-                background-color: #00ff88;
-                color: black;
+                background-color: #4CAF50;
+                color: white;
             }
         """)
 
-        # File menu
-        file_menu = menubar.addMenu("📁 File")
+        # Project menu
+        project_menu = menubar.addMenu("Project")
 
-        new_scan_action = QAction("🆕 New Scan", self)
+        new_project_action = QAction("New Project...", self)
+        new_project_action.setShortcut("Ctrl+Shift+N")
+        new_project_action.triggered.connect(self.new_project)
+        project_menu.addAction(new_project_action)
+
+        open_project_action = QAction("Open Project...", self)
+        open_project_action.setShortcut("Ctrl+Shift+O")
+        open_project_action.triggered.connect(self.open_project_dialog)
+        project_menu.addAction(open_project_action)
+
+        project_menu.addSeparator()
+
+        save_project_action = QAction("Save Project", self)
+        save_project_action.setShortcut("Ctrl+Shift+S")
+        save_project_action.triggered.connect(self.save_project)
+        project_menu.addAction(save_project_action)
+
+        save_project_as_action = QAction("Save Project As...", self)
+        save_project_as_action.triggered.connect(self.save_project_as)
+        project_menu.addAction(save_project_as_action)
+
+        project_menu.addSeparator()
+
+        export_project_action = QAction("Export Project...", self)
+        export_project_action.triggered.connect(self.export_project)
+        project_menu.addAction(export_project_action)
+
+        import_project_action = QAction("Import Project...", self)
+        import_project_action.triggered.connect(self.import_project)
+        project_menu.addAction(import_project_action)
+
+        project_menu.addSeparator()
+
+        # Recent Projects submenu
+        self.recent_projects_menu = project_menu.addMenu("Recent Projects")
+        self.update_recent_projects_menu()
+
+        project_menu.addSeparator()
+
+        close_project_action = QAction("Close Project", self)
+        close_project_action.triggered.connect(self.close_project)
+        project_menu.addAction(close_project_action)
+
+        # File menu
+        file_menu = menubar.addMenu("File")
+
+        new_scan_action = QAction("New Scan", self)
         new_scan_action.setShortcut("Ctrl+N")
         new_scan_action.triggered.connect(self.new_scan)
         file_menu.addAction(new_scan_action)
 
-        load_config_action = QAction("📂 Load Configuration", self)
+        load_config_action = QAction("Load Configuration", self)
         load_config_action.setShortcut("Ctrl+O")
-        load_config_action.triggered.connect(self.load_configuration)
+        load_config_action.triggered.connect(self.config_handler.load_configuration)
         file_menu.addAction(load_config_action)
 
-        save_config_action = QAction("💾 Save Configuration", self)
+        save_config_action = QAction("Save Configuration", self)
         save_config_action.setShortcut("Ctrl+S")
-        save_config_action.triggered.connect(self.save_configuration)
+        save_config_action.triggered.connect(self.config_handler.save_configuration)
         file_menu.addAction(save_config_action)
 
         file_menu.addSeparator()
 
-        export_results_action = QAction("📤 Export Results", self)
-        export_results_action.triggered.connect(self.export_results)
+        export_results_action = QAction("Export Results", self)
+        export_results_action.triggered.connect(self.config_handler.export_results)
         file_menu.addAction(export_results_action)
 
         file_menu.addSeparator()
 
-        exit_action = QAction("🚪 Exit", self)
+        # Scan Wizard
+        wizard_action = QAction("Scan Wizard...", self)
+        wizard_action.setShortcut("Ctrl+W")
+        wizard_action.triggered.connect(self.show_scan_wizard)
+        file_menu.addAction(wizard_action)
+
+        file_menu.addSeparator()
+
+        exit_action = QAction("Exit", self)
         exit_action.setShortcut("Ctrl+Q")
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
 
         # Edit menu
-        edit_menu = menubar.addMenu("✏️ Edit")
+        edit_menu = menubar.addMenu("Edit")
 
-        clear_targets_action = QAction("🗑️ Clear Targets", self)
+        clear_targets_action = QAction("Clear Targets", self)
         clear_targets_action.triggered.connect(self.clear_targets)
         edit_menu.addAction(clear_targets_action)
 
-        clear_output_action = QAction("🧹 Clear Output", self)
+        clear_output_action = QAction("Clear Output", self)
         clear_output_action.triggered.connect(lambda: self.output_console.clear())
         edit_menu.addAction(clear_output_action)
 
-        clear_results_action = QAction("🔄 Clear Results", self)
-        clear_results_action.triggered.connect(self.clear_results)
+        clear_results_action = QAction("Clear Results", self)
+        clear_results_action.triggered.connect(self.results_handler.clear_results)
         edit_menu.addAction(clear_results_action)
 
         # View menu
-        view_menu = menubar.addMenu("👁️ View")
+        view_menu = menubar.addMenu("View")
 
         view_scan_tab_action = QAction("Scan Configuration", self)
         view_scan_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(0))
         view_menu.addAction(view_scan_tab_action)
 
-        view_advanced_tab_action = QAction("Advanced Options", self)
-        view_advanced_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(1))
-        view_menu.addAction(view_advanced_tab_action)
-
         view_payloads_tab_action = QAction("Custom Payloads", self)
-        view_payloads_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(2))
+        view_payloads_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(1))
         view_menu.addAction(view_payloads_tab_action)
 
-        view_output_tab_action = QAction("Scan Output", self)
-        view_output_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(3))
-        view_menu.addAction(view_output_tab_action)
-
         view_results_tab_action = QAction("Results", self)
-        view_results_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(4))
+        view_results_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(2))
         view_menu.addAction(view_results_tab_action)
 
-        view_resources_tab_action = QAction("Resources", self)
-        view_resources_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(5))
-        view_menu.addAction(view_resources_tab_action)
-
         view_scope_tab_action = QAction("Scope", self)
-        view_scope_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(6))
+        view_scope_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(3))
         view_menu.addAction(view_scope_tab_action)
 
         view_modules_tab_action = QAction("Modules", self)
-        view_modules_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(7))
+        view_modules_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(4))
         view_menu.addAction(view_modules_tab_action)
+
+        view_plugins_tab_action = QAction("Plugins", self)
+        view_plugins_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(5))
+        view_menu.addAction(view_plugins_tab_action)
+
+        view_interceptor_action = QAction("Interceptor", self)
+        view_interceptor_action.triggered.connect(lambda: self.tabs.setCurrentIndex(6))
+        view_menu.addAction(view_interceptor_action)
+
+        # Settings menu
+        settings_menu = menubar.addMenu("Settings")
+
+        notifications_action = QAction("Notifications...", self)
+        notifications_action.triggered.connect(self.open_notifications_dialog)
+        settings_menu.addAction(notifications_action)
+
+        reset_warnings_action = QAction("Reset All Warnings", self)
+        reset_warnings_action.triggered.connect(self.reset_all_warnings)
+        settings_menu.addAction(reset_warnings_action)
 
         # Themes menu
         themes_menu = menubar.addMenu("Themes")
@@ -541,6 +711,7 @@ class DominatorGUI(QMainWindow):
 
         # Define themes with checkable actions
         themes = [
+            ("Light", "light"),
             ("Hacker Green", "hacker_green"),
             ("Cyber Blue", "cyber_blue"),
             ("Purple Haze", "purple_haze"),
@@ -552,13 +723,28 @@ class DominatorGUI(QMainWindow):
             theme_action = QAction(theme_name, self)
             theme_action.setCheckable(True)
             theme_action.setData(theme_id)
-            theme_action.triggered.connect(lambda checked, tid=theme_id: self.apply_theme(tid))
+            theme_action.triggered.connect(lambda checked, tid=theme_id: self.theme_manager.apply_theme(tid))
             self.theme_group.addAction(theme_action)
             themes_menu.addAction(theme_action)
 
-            # Set Hacker Green as default
-            if theme_id == "hacker_green":
+            # Set Light as default
+            if theme_id == "light":
                 theme_action.setChecked(True)
+
+        # Tools menu
+        tools_menu = menubar.addMenu("Tools")
+
+        scheduler_action = QAction("Scheduler...", self)
+        scheduler_action.setShortcut("Ctrl+Shift+H")
+        scheduler_action.triggered.connect(self.show_scheduler)
+        tools_menu.addAction(scheduler_action)
+
+        tools_menu.addSeparator()
+
+        options_action = QAction("Options...", self)
+        options_action.setShortcut("Ctrl+,")
+        options_action.triggered.connect(self.show_options_dialog)
+        tools_menu.addAction(options_action)
 
         # Help menu
         help_menu = menubar.addMenu("Help")
@@ -602,1253 +788,49 @@ class DominatorGUI(QMainWindow):
 
     def create_scan_tab(self):
         """Create scan configuration tab"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-
-        # Target Configuration
-        target_group = QGroupBox("Target Configuration")
-        target_layout = QGridLayout()
-
-        # Target (supports URLs, domains, IPs, CIDR, ranges)
-        target_layout.addWidget(QLabel("Target:"), 0, 0)
-        self.target_input = QTextEdit()
-        self.target_input.setPlaceholderText(
-            "Enter targets (one per line). Supported formats:\n"
-            "• URLs: http://example.com, https://example.com:8080/path\n"
-            "• Domains: example.com, subdomain.example.com\n"
-            "• IP addresses: 192.168.1.1, 10.0.0.5\n"
-            "• CIDR ranges: 192.168.1.0/24\n"
-            "• IP ranges: 192.168.1.1-192.168.1.50\n\n"
-            "Mix and match different formats!"
-        )
-        self.target_input.setMaximumHeight(120)
-        self.target_input.setStyleSheet("""
-            QTextEdit {
-                background-color: #2a2a2a;
-                color: white;
-                border: 2px solid #3a3a3a;
-                border-radius: 4px;
-                padding: 6px;
-                font-family: 'Consolas', 'Courier New', monospace;
-            }
-        """)
-        target_layout.addWidget(self.target_input, 0, 1, 1, 2)
-
-        # Target File
-        target_layout.addWidget(QLabel("Or Target File:"), 1, 0)
-        self.target_file_input = QLineEdit()
-        self.target_file_input.setPlaceholderText("Path to file with targets (one per line - all formats supported)")
-        target_layout.addWidget(self.target_file_input, 1, 1)
-
-        browse_btn = QPushButton("Browse...")
-        browse_btn.clicked.connect(self.browse_target_file)
-        target_layout.addWidget(browse_btn, 1, 2)
-
-        target_group.setLayout(target_layout)
-        layout.addWidget(target_group)
-
-        # Module Selection
-        module_group = QGroupBox("🔧 Module Selection")
-        module_layout = QVBoxLayout()
-
-        # All modules checkbox
-        all_modules_layout = QHBoxLayout()
-        self.all_modules_cb = QCheckBox("All Modules (20)")
-        self.all_modules_cb.setChecked(True)
-        self.all_modules_cb.toggled.connect(self.toggle_module_selection)
-        all_modules_layout.addWidget(self.all_modules_cb)
-        all_modules_layout.addStretch()
-        module_layout.addLayout(all_modules_layout)
-
-        # Module grid
-        self.module_checkboxes = {}
-        module_grid = QGridLayout()
-        modules = [
-            "sqli", "xss", "csrf", "lfi", "rfi", "xxe",
-            "cmdi", "ssti", "xpath", "idor", "ssrf", "redirect",
-            "dom_xss", "file_upload", "weak_credentials", "dirbrute",
-            "git", "env_secrets", "php_object_injection"
-        ]
-
-        row, col = 0, 0
-        for module in modules:
-            cb = QCheckBox(module.upper())
-            cb.setEnabled(False)  # Disabled when "All" is checked
-            self.module_checkboxes[module] = cb
-            module_grid.addWidget(cb, row, col)
-            col += 1
-            if col > 3:
-                col = 0
-                row += 1
-
-        module_layout.addLayout(module_grid)
-        module_group.setLayout(module_layout)
-        layout.addWidget(module_group)
-
-        # Scan Settings
-        settings_group = QGroupBox("⚙️ Scan Settings")
-        settings_layout = QGridLayout()
-
-        # Threads
-        settings_layout.addWidget(QLabel("Threads:"), 0, 0)
-        self.threads_spin = QSpinBox()
-        self.threads_spin.setRange(1, 50)
-        self.threads_spin.setValue(10)
-        settings_layout.addWidget(self.threads_spin, 0, 1)
-
-        # Timeout
-        settings_layout.addWidget(QLabel("Timeout (seconds):"), 0, 2)
-        self.timeout_spin = QSpinBox()
-        self.timeout_spin.setRange(5, 300)
-        self.timeout_spin.setValue(15)
-        settings_layout.addWidget(self.timeout_spin, 0, 3)
-
-        # Max time
-        settings_layout.addWidget(QLabel("Max Scan Time (minutes):"), 1, 0)
-        self.max_time_spin = QSpinBox()
-        self.max_time_spin.setRange(1, 300)
-        self.max_time_spin.setValue(45)
-        settings_layout.addWidget(self.max_time_spin, 1, 1)
-
-        # Output format
-        settings_layout.addWidget(QLabel("Output Format:"), 1, 2)
-        self.format_combo = QComboBox()
-        self.format_combo.addItems(["html", "json", "txt", "html,json,txt"])
-        self.format_combo.setCurrentText("html,json,txt")
-        settings_layout.addWidget(self.format_combo, 1, 3)
-
-        settings_group.setLayout(settings_layout)
-        layout.addWidget(settings_group)
-
-        # Control Buttons
-        button_layout = QHBoxLayout()
-
-        self.start_btn = QPushButton("🚀 START SCAN")
-        self.start_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #00ff88;
-                color: #000000;
-                font-size: 16px;
-                font-weight: bold;
-                padding: 12px;
-                border-radius: 6px;
-            }
-            QPushButton:hover {
-                background-color: #00cc70;
-            }
-            QPushButton:disabled {
-                background-color: #555555;
-                color: #888888;
-            }
-        """)
-        self.start_btn.clicked.connect(self.start_scan)
-        button_layout.addWidget(self.start_btn)
-
-        self.stop_btn = QPushButton("⏹️ STOP SCAN")
-        self.stop_btn.setEnabled(False)
-        self.stop_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #ff4444;
-                color: #ffffff;
-                font-size: 16px;
-                font-weight: bold;
-                padding: 12px;
-                border-radius: 6px;
-            }
-            QPushButton:hover {
-                background-color: #cc0000;
-            }
-            QPushButton:disabled {
-                background-color: #555555;
-                color: #888888;
-            }
-        """)
-        self.stop_btn.clicked.connect(self.stop_scan)
-        button_layout.addWidget(self.stop_btn)
-
-        layout.addLayout(button_layout)
-        layout.addStretch()
-
-        return widget
+        builder = ScanTabBuilder(self, CollapsibleBox)
+        return builder.build()
 
     def create_advanced_tab(self):
         """Create advanced options tab"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-
-        # ROTATION 9 Features
-        rotation9_group = QGroupBox("🔥 ROTATION 9 Features")
-        rotation9_layout = QGridLayout()
-
-        self.recon_only_cb = QCheckBox("Recon Only Mode (Passive scanning only)")
-        rotation9_layout.addWidget(self.recon_only_cb, 0, 0, 1, 2)
-
-        self.rotate_agent_cb = QCheckBox("Rotate User-Agent (26 modern browsers)")
-        rotation9_layout.addWidget(self.rotate_agent_cb, 1, 0, 1, 2)
-
-        self.single_page_cb = QCheckBox("Single Page Mode (No crawling)")
-        rotation9_layout.addWidget(self.single_page_cb, 2, 0, 1, 2)
-
-        rotation9_group.setLayout(rotation9_layout)
-        layout.addWidget(rotation9_group)
-
-        # Authentication
-        auth_group = QGroupBox("Authentication")
-        auth_layout = QGridLayout()
-
-        auth_layout.addWidget(QLabel("Auth Type:"), 0, 0)
-        self.auth_type_combo = QComboBox()
-        self.auth_type_combo.addItems([
-            "None",
-            "Basic Auth",
-            "Digest Auth",
-            "NTLM Auth",
-            "Bearer Token",
-            "API Key",
-            "OAuth 2.0",
-            "Custom Header"
-        ])
-        self.auth_type_combo.currentTextChanged.connect(self.on_auth_type_changed)
-        auth_layout.addWidget(self.auth_type_combo, 0, 1, 1, 3)
-
-        # Username (for Basic, Digest, NTLM)
-        self.auth_username_label = QLabel("Username:")
-        auth_layout.addWidget(self.auth_username_label, 1, 0)
-        self.auth_username = QLineEdit()
-        self.auth_username.setPlaceholderText("Username for authentication")
-        auth_layout.addWidget(self.auth_username, 1, 1, 1, 3)
-
-        # Password (for Basic, Digest, NTLM)
-        self.auth_password_label = QLabel("Password:")
-        auth_layout.addWidget(self.auth_password_label, 2, 0)
-        self.auth_password = QLineEdit()
-        self.auth_password.setPlaceholderText("Password for authentication")
-        self.auth_password.setEchoMode(QLineEdit.Password)
-        auth_layout.addWidget(self.auth_password, 2, 1, 1, 3)
-
-        # Token/API Key (for Bearer, API Key, OAuth)
-        self.auth_token_label = QLabel("Token/Key:")
-        auth_layout.addWidget(self.auth_token_label, 3, 0)
-        self.auth_token = QLineEdit()
-        self.auth_token.setPlaceholderText("Bearer token, API key, or OAuth token")
-        auth_layout.addWidget(self.auth_token, 3, 1, 1, 3)
-
-        # Custom header name (for API Key, Custom Header)
-        self.auth_header_name_label = QLabel("Header Name:")
-        auth_layout.addWidget(self.auth_header_name_label, 4, 0)
-        self.auth_header_name = QLineEdit()
-        self.auth_header_name.setPlaceholderText("e.g., X-API-Key, Authorization")
-        auth_layout.addWidget(self.auth_header_name, 4, 1, 1, 3)
-
-        # Hide all fields initially
-        self.auth_username_label.hide()
-        self.auth_username.hide()
-        self.auth_password_label.hide()
-        self.auth_password.hide()
-        self.auth_token_label.hide()
-        self.auth_token.hide()
-        self.auth_header_name_label.hide()
-        self.auth_header_name.hide()
-
-        auth_group.setLayout(auth_layout)
-        layout.addWidget(auth_group)
-
-        # HTTP Configuration
-        http_group = QGroupBox("HTTP Configuration")
-        http_layout = QGridLayout()
-
-        http_layout.addWidget(QLabel("Custom Headers:"), 0, 0)
-        self.headers_input = QTextEdit()
-        self.headers_input.setPlaceholderText("Header1: Value1\nHeader2: Value2")
-        self.headers_input.setMaximumHeight(80)
-        http_layout.addWidget(self.headers_input, 0, 1)
-
-        http_layout.addWidget(QLabel("Cookies:"), 1, 0)
-        self.cookies_input = QLineEdit()
-        self.cookies_input.setPlaceholderText("session=abc123; token=xyz")
-        http_layout.addWidget(self.cookies_input, 1, 1)
-
-        http_group.setLayout(http_layout)
-        layout.addWidget(http_group)
-
-        # Crawler Settings
-        crawler_group = QGroupBox("Crawler Settings")
-        crawler_layout = QGridLayout()
-
-        crawler_layout.addWidget(QLabel("Max Crawl Pages:"), 0, 0)
-        self.max_crawl_spin = QSpinBox()
-        self.max_crawl_spin.setRange(1, 1000)
-        self.max_crawl_spin.setValue(100)
-        crawler_layout.addWidget(self.max_crawl_spin, 0, 1)
-
-        crawler_layout.addWidget(QLabel("Payload Limit:"), 0, 2)
-        self.payload_limit_spin = QSpinBox()
-        self.payload_limit_spin.setRange(1, 100)
-        self.payload_limit_spin.setValue(50)
-        crawler_layout.addWidget(self.payload_limit_spin, 0, 3)
-
-        # Forbidden Paths
-        crawler_layout.addWidget(QLabel("Forbidden Paths:"), 1, 0)
-        self.forbidden_paths_input = QLineEdit()
-        self.forbidden_paths_input.setPlaceholderText("/logout,/delete,/admin/critical (comma-separated)")
-        self.forbidden_paths_input.setToolTip("URLs/paths that should NOT be crawled or tested")
-        crawler_layout.addWidget(self.forbidden_paths_input, 1, 1, 1, 3)
-
-        crawler_group.setLayout(crawler_layout)
-        layout.addWidget(crawler_group)
-
-        layout.addStretch()
-        return widget
+        builder = AdvancedTabBuilder(self, CollapsibleBox)
+        return builder.build()
 
     def create_payloads_tab(self):
         """Create custom payloads tab"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-
-        # Instructions
-        info_label = QLabel("💡 Provide custom payloads to override default payloads for specific modules. Select target module(s) below.")
-        info_label.setStyleSheet("color: #00ff88; padding: 10px; background-color: #2a2a2a; border-radius: 5px;")
-        info_label.setWordWrap(True)
-        layout.addWidget(info_label)
-
-        # Module Selection for Custom Payloads
-        module_select_group = QGroupBox("🎯 Target Module(s)")
-        module_select_layout = QVBoxLayout()
-
-        module_help = QLabel("Select which module(s) should use these custom payloads:")
-        module_help.setStyleSheet("color: #888888; font-size: 10px;")
-        module_select_layout.addWidget(module_help)
-
-        # Module selector dropdown
-        module_selector_layout = QHBoxLayout()
-        module_selector_layout.addWidget(QLabel("Apply payloads to:"))
-
-        self.payload_target_module = QComboBox()
-        self.payload_target_module.addItems([
-            "All Modules",
-            "SQL Injection (sqli)",
-            "Cross-Site Scripting (xss)",
-            "Server-Side Template Injection (ssti)",
-            "Command Injection (cmdi)",
-            "LDAP Injection (ldap)",
-            "XPath Injection (xpath)",
-            "Local File Inclusion (lfi)",
-            "Remote File Inclusion (rfi)",
-            "XML External Entity (xxe)",
-            "Server-Side Request Forgery (ssrf)",
-            "PHP Object Injection (php_object_injection)"
-        ])
-        self.payload_target_module.setStyleSheet("""
-            QComboBox {
-                background-color: #2a2a2a;
-                color: white;
-                border: 2px solid #3a3a3a;
-                border-radius: 4px;
-                padding: 6px;
-                min-width: 300px;
-            }
-            QComboBox::drop-down {
-                border: none;
-                background-color: #3a3a3a;
-            }
-            QComboBox::down-arrow {
-                image: none;
-                border-left: 5px solid transparent;
-                border-right: 5px solid transparent;
-                border-top: 5px solid white;
-            }
-            QComboBox QAbstractItemView {
-                background-color: #2a2a2a;
-                color: white;
-                selection-background-color: #00ff88;
-                selection-color: black;
-            }
-        """)
-        module_selector_layout.addWidget(self.payload_target_module)
-        module_selector_layout.addStretch()
-
-        module_select_layout.addLayout(module_selector_layout)
-        module_select_group.setLayout(module_select_layout)
-        layout.addWidget(module_select_group)
-
-        # Custom Payloads File
-        file_group = QGroupBox("📁 Load Payloads from File")
-        file_layout = QGridLayout()
-
-        file_layout.addWidget(QLabel("Payloads File:"), 0, 0)
-        self.custom_payloads_file = QLineEdit()
-        self.custom_payloads_file.setPlaceholderText("Path to file with custom payloads (one per line)")
-        file_layout.addWidget(self.custom_payloads_file, 0, 1)
-
-        browse_payloads_btn = QPushButton("Browse...")
-        browse_payloads_btn.clicked.connect(self.browse_payloads_file)
-        file_layout.addWidget(browse_payloads_btn, 0, 2)
-
-        file_group.setLayout(file_layout)
-        layout.addWidget(file_group)
-
-        # Direct Payload Entry
-        direct_group = QGroupBox("✍️ Enter Payloads Directly")
-        direct_layout = QVBoxLayout()
-
-        help_text = QLabel("Enter custom payloads below (one per line). These will ONLY be used by the selected module above.")
-        help_text.setStyleSheet("color: #888888; font-size: 10px;")
-        help_text.setWordWrap(True)
-        direct_layout.addWidget(help_text)
-
-        # Dynamic help based on selected module
-        self.payload_example_label = QLabel()
-        self.payload_example_label.setStyleSheet("color: #00ff88; font-size: 10px; padding: 5px; background-color: #1a1a1a; border-radius: 3px;")
-        self.payload_example_label.setWordWrap(True)
-        direct_layout.addWidget(self.payload_example_label)
-
-        # Connect to update examples when module changes
-        self.payload_target_module.currentTextChanged.connect(self.update_payload_examples)
-
-        self.custom_payloads_text = QTextEdit()
-        self.custom_payloads_text.setPlaceholderText(
-            "Select a target module above to see example payloads...\n\n"
-            "Your custom payloads will be used INSTEAD of the default payloads\n"
-            "for the selected module during the scan.\n\n"
-            "Examples:\n"
-            "• SQL Injection: ' OR 1=1--, admin' --\n"
-            "• XSS: <script>alert(1)</script>, <img src=x onerror=alert(1)>\n"
-            "• SSTI: {{7*7}}, ${7*7}, {{config}}\n"
-            "• Command Injection: ;whoami, `whoami`, $(whoami)"
-        )
-        self.custom_payloads_text.setMinimumHeight(300)
-        self.custom_payloads_text.setStyleSheet("""
-            QTextEdit {
-                background-color: #0a0a0a;
-                color: #00ff00;
-                font-family: 'Consolas', 'Courier New', monospace;
-                font-size: 11px;
-                border: 2px solid #3a3a3a;
-                border-radius: 4px;
-                padding: 8px;
-            }
-        """)
-        direct_layout.addWidget(self.custom_payloads_text)
-
-        # Payload count
-        self.payload_count_label = QLabel("Payloads: 0")
-        self.payload_count_label.setStyleSheet("color: #00ff88; font-weight: bold;")
-        direct_layout.addWidget(self.payload_count_label)
-
-        # Update count when text changes
-        self.custom_payloads_text.textChanged.connect(self.update_payload_count)
-
-        # Action buttons
-        button_layout = QHBoxLayout()
-
-        clear_btn = QPushButton("🗑️ Clear All")
-        clear_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #ff4444;
-                color: white;
-                padding: 8px 16px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #cc0000;
-            }
-        """)
-        clear_btn.clicked.connect(lambda: self.custom_payloads_text.clear())
-        button_layout.addWidget(clear_btn)
-
-        save_btn = QPushButton("💾 Save to File")
-        save_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #00ff88;
-                color: black;
-                padding: 8px 16px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #00cc70;
-            }
-        """)
-        save_btn.clicked.connect(self.save_payloads_to_file)
-        button_layout.addWidget(save_btn)
-
-        view_existing_btn = QPushButton("👁️ View Existing Payloads")
-        view_existing_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4a4aff;
-                color: white;
-                padding: 8px 16px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #3838dd;
-            }
-        """)
-        view_existing_btn.setToolTip("Open Modules tab to view/edit existing payloads for each module")
-        view_existing_btn.clicked.connect(lambda: self.tabs.setCurrentIndex(7))
-        button_layout.addWidget(view_existing_btn)
-
-        button_layout.addStretch()
-        direct_layout.addLayout(button_layout)
-
-        direct_group.setLayout(direct_layout)
-        layout.addWidget(direct_group)
-
-        # Initialize with default examples
-        self.update_payload_examples("All Modules")
-
-        layout.addStretch()
-        return widget
+        builder = PayloadsTabBuilder(self, CollapsibleBox)
+        return builder.build()
 
     def create_output_tab(self):
         """Create output tab"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-
-        # Progress bar
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: 2px solid #3a3a3a;
-                border-radius: 5px;
-                text-align: center;
-                background-color: #1a1a1a;
-            }
-            QProgressBar::chunk {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #00ff88, stop:1 #00cc70);
-            }
-        """)
-        layout.addWidget(self.progress_bar)
-
-        # Current module label
-        self.current_module_label = QLabel("Ready to start scan...")
-        self.current_module_label.setStyleSheet("color: #00ff88; font-size: 14px; font-weight: bold;")
-        layout.addWidget(self.current_module_label)
-
-        # Output console
-        self.output_console = QTextEdit()
-        self.output_console.setReadOnly(True)
-        self.output_console.setFont(QFont("Consolas", 10))
-        self.output_console.setStyleSheet("""
-            QTextEdit {
-                background-color: #0a0a0a;
-                color: #00ff00;
-                border: 2px solid #3a3a3a;
-                border-radius: 5px;
-                padding: 10px;
-            }
-        """)
-        layout.addWidget(self.output_console)
-
-        # Clear button
-        clear_btn = QPushButton("Clear Output")
-        clear_btn.clicked.connect(self.output_console.clear)
-        layout.addWidget(clear_btn)
-
-        return widget
+        builder = OutputTabBuilder(self, CollapsibleBox)
+        return builder.build()
 
     def create_progress_tab(self):
         """Create Progress & Plan tab showing scan progress and time estimates"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-
-        # Current Progress Section
-        progress_group = QGroupBox("Current Progress")
-        progress_layout = QVBoxLayout()
-
-        # Progress details table
-        self.progress_table = QTableWidget(0, 2)
-        self.progress_table.setHorizontalHeaderLabels(["Item", "Status"])
-        self.progress_table.horizontalHeader().setStretchLastSection(True)
-        self.progress_table.setStyleSheet("""
-            QTableWidget {
-                background-color: #1a1a1a;
-                color: white;
-                border: 1px solid #3a3a3a;
-                gridline-color: #3a3a3a;
-            }
-            QHeaderView::section {
-                background-color: #2a2a2a;
-                color: #00ff88;
-                padding: 5px;
-                border: 1px solid #3a3a3a;
-                font-weight: bold;
-            }
-        """)
-        progress_layout.addWidget(self.progress_table)
-
-        progress_group.setLayout(progress_layout)
-        layout.addWidget(progress_group)
-
-        # Time Estimates Section
-        time_group = QGroupBox("Time Estimates")
-        time_layout = QGridLayout()
-
-        time_layout.addWidget(QLabel("Scan Start:"), 0, 0)
-        self.scan_start_label = QLabel("Not started")
-        self.scan_start_label.setStyleSheet("color: #00ff88;")
-        time_layout.addWidget(self.scan_start_label, 0, 1)
-
-        time_layout.addWidget(QLabel("Elapsed Time:"), 1, 0)
-        self.elapsed_time_label = QLabel("00:00:00")
-        self.elapsed_time_label.setStyleSheet("color: #00ff88; font-weight: bold; font-size: 16px;")
-        time_layout.addWidget(self.elapsed_time_label, 1, 1)
-
-        time_layout.addWidget(QLabel("Estimated Remaining:"), 2, 0)
-        self.estimated_time_label = QLabel("Calculating...")
-        self.estimated_time_label.setStyleSheet("color: #ffaa00; font-weight: bold; font-size: 16px;")
-        time_layout.addWidget(self.estimated_time_label, 2, 1)
-
-        time_layout.addWidget(QLabel("Estimated Completion:"), 3, 0)
-        self.completion_time_label = QLabel("Calculating...")
-        self.completion_time_label.setStyleSheet("color: #00ff88;")
-        time_layout.addWidget(self.completion_time_label, 3, 1)
-
-        time_group.setLayout(time_layout)
-        layout.addWidget(time_group)
-
-        # Scan Plan Section
-        plan_group = QGroupBox("Scan Plan")
-        plan_layout = QVBoxLayout()
-
-        # Plan table: Module | Status | Progress
-        self.plan_table = QTableWidget(0, 3)
-        self.plan_table.setHorizontalHeaderLabels(["Module", "Status", "Progress"])
-        self.plan_table.horizontalHeader().setStretchLastSection(True)
-        self.plan_table.setColumnWidth(0, 250)
-        self.plan_table.setColumnWidth(1, 120)
-        self.plan_table.setStyleSheet("""
-            QTableWidget {
-                background-color: #1a1a1a;
-                color: white;
-                border: 1px solid #3a3a3a;
-                gridline-color: #3a3a3a;
-            }
-            QHeaderView::section {
-                background-color: #2a2a2a;
-                color: #00ff88;
-                padding: 5px;
-                border: 1px solid #3a3a3a;
-                font-weight: bold;
-            }
-        """)
-        plan_layout.addWidget(self.plan_table)
-
-        plan_group.setLayout(plan_layout)
-        layout.addWidget(plan_group)
-
-        # Initialize timer for elapsed time updates
-        self.scan_start_time = None
-        self.time_update_timer = QTimer()
-        self.time_update_timer.timeout.connect(self.update_time_display)
-
-        return widget
+        builder = ProgressTabBuilder(self, CollapsibleBox)
+        return builder.build()
 
     def create_modules_tab(self):
         """Create modules tab for viewing/editing module configs and payloads"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(5, 5, 5, 5)  # Compact margins
+        builder = ModulesTabBuilder(self, CollapsibleBox)
+        return builder.build()
 
-        # Main horizontal splitter: Module list on left, editors on right
-        main_splitter = QSplitter(Qt.Horizontal)
-
-        # Left Panel: Module List
-        left_panel = QWidget()
-        left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-
-        # Search/Filter bar
-        search_layout = QHBoxLayout()
-        search_label = QLabel("Search:")
-        search_label.setStyleSheet("color: #00ff88; font-weight: bold;")
-        search_layout.addWidget(search_label)
-
-        self.module_search = QLineEdit()
-        self.module_search.setPlaceholderText("Filter modules...")
-        self.module_search.setStyleSheet("""
-            QLineEdit {
-                background-color: #2a2a2a;
-                color: white;
-                border: 2px solid #3a3a3a;
-                border-radius: 4px;
-                padding: 5px;
-            }
-            QLineEdit:focus {
-                border: 2px solid #00ff88;
-            }
-        """)
-        self.module_search.textChanged.connect(self.filter_modules)
-        search_layout.addWidget(self.module_search)
-
-        refresh_btn = QPushButton("Refresh")
-        refresh_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #2a2a2a;
-                color: #00ff88;
-                border: 2px solid #3a3a3a;
-                border-radius: 4px;
-                padding: 5px 10px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #3a3a3a;
-                border-color: #00ff88;
-            }
-        """)
-        refresh_btn.clicked.connect(self.load_modules_list)
-        search_layout.addWidget(refresh_btn)
-
-        left_layout.addLayout(search_layout)
-
-        # Module count label
-        self.module_count_label = QLabel("Modules: 0")
-        self.module_count_label.setStyleSheet("color: #888888; font-size: 10px; padding: 5px;")
-        left_layout.addWidget(self.module_count_label)
-
-        # Module list widget
-        self.module_list = QListWidget()
-        self.module_list.setStyleSheet("""
-            QListWidget {
-                background-color: #1a1a1a;
-                color: white;
-                border: 2px solid #3a3a3a;
-                border-radius: 4px;
-                outline: none;
-            }
-            QListWidget::item {
-                padding: 12px;
-                min-height: 70px;
-                border-bottom: 1px solid #2a2a2a;
-            }
-            QListWidget::item:hover {
-                background-color: #2a2a2a;
-            }
-            QListWidget::item:selected {
-                background-color: #00ff88;
-                color: black;
-            }
-        """)
-        self.module_list.itemClicked.connect(self.on_module_selected)
-        left_layout.addWidget(self.module_list)
-
-        main_splitter.addWidget(left_panel)
-
-        # Right Panel: Split view with Config on left, Payloads on right
-        right_splitter = QSplitter(Qt.Horizontal)
-
-        # Config Editor
-        config_group = QGroupBox("Module Configuration (config.json)")
-        config_layout = QVBoxLayout()
-
-        config_help = QLabel("View and edit module settings (name, severity, CWE, OWASP, etc.)")
-        config_help.setStyleSheet("color: #888888; font-size: 10px;")
-        config_layout.addWidget(config_help)
-
-        self.module_config_editor = QTextEdit()
-        self.module_config_editor.setStyleSheet("""
-            QTextEdit {
-                background-color: #0a0a0a;
-                color: #00ff88;
-                font-family: 'Consolas', 'Courier New', monospace;
-                font-size: 11px;
-                border: 2px solid #3a3a3a;
-                border-radius: 4px;
-                padding: 8px;
-            }
-        """)
-        config_layout.addWidget(self.module_config_editor)
-
-        config_btn_layout = QHBoxLayout()
-        save_config_btn = QPushButton("Save Config")
-        save_config_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #00ff88;
-                color: black;
-                padding: 8px 16px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #00cc70;
-            }
-        """)
-        save_config_btn.clicked.connect(self.save_module_config)
-        config_btn_layout.addWidget(save_config_btn)
-
-        reload_config_btn = QPushButton("Reload")
-        reload_config_btn.clicked.connect(self.reload_current_module)
-        config_btn_layout.addWidget(reload_config_btn)
-
-        config_btn_layout.addStretch()
-        config_layout.addLayout(config_btn_layout)
-
-        config_group.setLayout(config_layout)
-        right_splitter.addWidget(config_group)
-
-        # Payloads Editor
-        payloads_group = QGroupBox("Module Payloads (payloads.txt)")
-        payloads_layout = QVBoxLayout()
-
-        payloads_help = QLabel("View and edit payloads used by this module (one per line)")
-        payloads_help.setStyleSheet("color: #888888; font-size: 10px;")
-        payloads_layout.addWidget(payloads_help)
-
-        # Payload stats
-        self.payload_stats_label = QLabel("Payloads: 0 | Lines: 0")
-        self.payload_stats_label.setStyleSheet("color: #00ff88; font-weight: bold; padding: 5px;")
-        payloads_layout.addWidget(self.payload_stats_label)
-
-        self.module_payloads_editor = QTextEdit()
-        self.module_payloads_editor.setStyleSheet("""
-            QTextEdit {
-                background-color: #0a0a0a;
-                color: #00ff00;
-                font-family: 'Consolas', 'Courier New', monospace;
-                font-size: 11px;
-                border: 2px solid #3a3a3a;
-                border-radius: 4px;
-                padding: 8px;
-            }
-        """)
-        self.module_payloads_editor.textChanged.connect(self.update_payload_stats)
-        payloads_layout.addWidget(self.module_payloads_editor)
-
-        payload_btn_layout = QHBoxLayout()
-        save_payloads_btn = QPushButton("Save Payloads")
-        save_payloads_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #00ff88;
-                color: black;
-                padding: 8px 16px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #00cc70;
-            }
-        """)
-        save_payloads_btn.clicked.connect(self.save_module_payloads)
-        payload_btn_layout.addWidget(save_payloads_btn)
-
-        reload_payloads_btn = QPushButton("Reload")
-        reload_payloads_btn.clicked.connect(self.reload_current_module)
-        payload_btn_layout.addWidget(reload_payloads_btn)
-
-        export_payloads_btn = QPushButton("Export")
-        export_payloads_btn.clicked.connect(self.export_module_payloads)
-        payload_btn_layout.addWidget(export_payloads_btn)
-
-        payload_btn_layout.addStretch()
-        payloads_layout.addLayout(payload_btn_layout)
-
-        payloads_group.setLayout(payloads_layout)
-        right_splitter.addWidget(payloads_group)
-
-        right_splitter.setSizes([400, 400])
-        main_splitter.addWidget(right_splitter)
-
-        # Set splitter sizes: 300px for module list, rest for editors
-        main_splitter.setSizes([300, 700])
-        layout.addWidget(main_splitter)
-
-        # Load modules list
-        self.load_modules_list()
-
-        return widget
+    def create_plugins_tab(self):
+        """Create plugins tab for managing external plugins"""
+        builder = PluginsTabBuilder(self, CollapsibleBox)
+        return builder.build()
 
     def create_scope_tab(self):
         """Create scope tab with technology detection, IP info, titles, description"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-
-        # Project Description
-        desc_group = QGroupBox("📝 Project Information")
-        desc_layout = QVBoxLayout()
-
-        desc_label = QLabel("Project/Scan Description:")
-        desc_label.setStyleSheet("color: #00ff88; font-weight: bold;")
-        desc_layout.addWidget(desc_label)
-
-        self.project_description = QTextEdit()
-        self.project_description.setPlaceholderText(
-            "Enter project details, scope notes, or testing objectives...\n\n"
-            "Example:\n"
-            "- Client: Acme Corp\n"
-            "- Scope: Web application penetration test\n"
-            "- Authorized by: John Doe (john@acme.com)\n"
-            "- Testing window: Nov 14-18, 2025\n"
-            "- Special notes: Avoid production database"
-        )
-        self.project_description.setMaximumHeight(120)
-        self.project_description.setStyleSheet("""
-            QTextEdit {
-                background-color: #2a2a2a;
-                color: white;
-                border: 2px solid #3a3a3a;
-                border-radius: 4px;
-                padding: 8px;
-                font-family: 'Consolas', 'Courier New', monospace;
-            }
-        """)
-        desc_layout.addWidget(self.project_description)
-
-        desc_group.setLayout(desc_layout)
-        layout.addWidget(desc_group)
-
-        # Scope Management
-        scope_group = QGroupBox("🎯 Scan Scope")
-        scope_layout = QVBoxLayout()
-
-        scope_info = QLabel("Targets in scope will be scanned. Out-of-scope URLs will be ignored during crawling.")
-        scope_info.setStyleSheet("color: #888888; font-size: 10px;")
-        scope_info.setWordWrap(True)
-        scope_layout.addWidget(scope_info)
-
-        self.scope_table = QTableWidget()
-        self.scope_table.setColumnCount(4)
-        self.scope_table.setHorizontalHeaderLabels(["URL/Domain", "Status", "Title", "Technologies"])
-        self.scope_table.horizontalHeader().setStretchLastSection(True)
-        self.scope_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.scope_table.setStyleSheet("""
-            QTableWidget {
-                background-color: #1a1a1a;
-                color: white;
-                gridline-color: #3a3a3a;
-                border: 2px solid #3a3a3a;
-                border-radius: 5px;
-            }
-            QHeaderView::section {
-                background-color: #2a2a2a;
-                color: #00ff88;
-                padding: 8px;
-                border: 1px solid #3a3a3a;
-                font-weight: bold;
-            }
-            QTableWidget::item {
-                padding: 5px;
-            }
-            QTableWidget::item:selected {
-                background-color: #00ff88;
-                color: black;
-            }
-        """)
-        scope_layout.addWidget(self.scope_table)
-
-        scope_group.setLayout(scope_layout)
-        layout.addWidget(scope_group)
-
-        # Technology Detection
-        tech_group = QGroupBox("🔧 Detected Technologies")
-        tech_layout = QVBoxLayout()
-
-        self.tech_table = QTableWidget()
-        self.tech_table.setColumnCount(4)
-        self.tech_table.setHorizontalHeaderLabels(["Technology", "Version", "Category", "Found On"])
-        self.tech_table.horizontalHeader().setStretchLastSection(True)
-        self.tech_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.tech_table.setStyleSheet("""
-            QTableWidget {
-                background-color: #1a1a1a;
-                color: white;
-                gridline-color: #3a3a3a;
-                border: 2px solid #3a3a3a;
-                border-radius: 5px;
-            }
-            QHeaderView::section {
-                background-color: #2a2a2a;
-                color: #00ff88;
-                padding: 8px;
-                border: 1px solid #3a3a3a;
-                font-weight: bold;
-            }
-            QTableWidget::item {
-                padding: 5px;
-            }
-            QTableWidget::item:selected {
-                background-color: #00ff88;
-                color: black;
-            }
-        """)
-        tech_layout.addWidget(self.tech_table)
-
-        tech_group.setLayout(tech_layout)
-        layout.addWidget(tech_group)
-
-        # IP Geolocation
-        geo_group = QGroupBox("🌍 IP Geolocation")
-        geo_layout = QVBoxLayout()
-
-        self.geo_table = QTableWidget()
-        self.geo_table.setColumnCount(5)
-        self.geo_table.setHorizontalHeaderLabels(["IP Address", "Country", "City", "ISP", "Domain"])
-        self.geo_table.horizontalHeader().setStretchLastSection(True)
-        self.geo_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.geo_table.setStyleSheet("""
-            QTableWidget {
-                background-color: #1a1a1a;
-                color: white;
-                gridline-color: #3a3a3a;
-                border: 2px solid #3a3a3a;
-                border-radius: 5px;
-            }
-            QHeaderView::section {
-                background-color: #2a2a2a;
-                color: #00ff88;
-                padding: 8px;
-                border: 1px solid #3a3a3a;
-                font-weight: bold;
-            }
-            QTableWidget::item {
-                padding: 5px;
-            }
-            QTableWidget::item:selected {
-                background-color: #00ff88;
-                color: black;
-            }
-        """)
-        geo_layout.addWidget(self.geo_table)
-
-        geo_group.setLayout(geo_layout)
-        layout.addWidget(geo_group)
-
-        return widget
-
-    def create_resources_tab(self):
-        """Create resources tab with social media, emails, phones, leaked keys"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-
-        # Resources summary header
-        summary_label = QLabel("📦 Discovered Resources")
-        summary_label.setFont(QFont("Arial", 14, QFont.Bold))
-        summary_label.setStyleSheet("color: #00ff88; padding: 10px;")
-        layout.addWidget(summary_label)
-
-        # Social Media section
-        social_group = QGroupBox("🌐 Social Media Links")
-        social_layout = QVBoxLayout()
-
-        self.social_media_table = QTableWidget()
-        self.social_media_table.setColumnCount(3)
-        self.social_media_table.setHorizontalHeaderLabels(["Platform", "URL", "Found On"])
-        self.social_media_table.horizontalHeader().setStretchLastSection(True)
-        self.social_media_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.social_media_table.setStyleSheet("""
-            QTableWidget {
-                background-color: #1a1a1a;
-                color: white;
-                gridline-color: #3a3a3a;
-                border: 2px solid #3a3a3a;
-                border-radius: 5px;
-            }
-            QHeaderView::section {
-                background-color: #2a2a2a;
-                color: #00ff88;
-                padding: 8px;
-                border: 1px solid #3a3a3a;
-                font-weight: bold;
-            }
-            QTableWidget::item {
-                padding: 5px;
-            }
-            QTableWidget::item:selected {
-                background-color: #00ff88;
-                color: black;
-            }
-        """)
-        social_layout.addWidget(self.social_media_table)
-        social_group.setLayout(social_layout)
-        layout.addWidget(social_group)
-
-        # Emails section
-        emails_group = QGroupBox("📧 Email Addresses")
-        emails_layout = QVBoxLayout()
-
-        self.emails_table = QTableWidget()
-        self.emails_table.setColumnCount(3)
-        self.emails_table.setHorizontalHeaderLabels(["Email", "Type", "Found On"])
-        self.emails_table.horizontalHeader().setStretchLastSection(True)
-        self.emails_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.emails_table.setStyleSheet("""
-            QTableWidget {
-                background-color: #1a1a1a;
-                color: white;
-                gridline-color: #3a3a3a;
-                border: 2px solid #3a3a3a;
-                border-radius: 5px;
-            }
-            QHeaderView::section {
-                background-color: #2a2a2a;
-                color: #00ff88;
-                padding: 8px;
-                border: 1px solid #3a3a3a;
-                font-weight: bold;
-            }
-            QTableWidget::item {
-                padding: 5px;
-            }
-            QTableWidget::item:selected {
-                background-color: #00ff88;
-                color: black;
-            }
-        """)
-        emails_layout.addWidget(self.emails_table)
-        emails_group.setLayout(emails_layout)
-        layout.addWidget(emails_group)
-
-        # Phone Numbers section
-        phones_group = QGroupBox("📱 Phone Numbers")
-        phones_layout = QVBoxLayout()
-
-        self.phones_table = QTableWidget()
-        self.phones_table.setColumnCount(3)
-        self.phones_table.setHorizontalHeaderLabels(["Phone Number", "Format", "Found On"])
-        self.phones_table.horizontalHeader().setStretchLastSection(True)
-        self.phones_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.phones_table.setStyleSheet("""
-            QTableWidget {
-                background-color: #1a1a1a;
-                color: white;
-                gridline-color: #3a3a3a;
-                border: 2px solid #3a3a3a;
-                border-radius: 5px;
-            }
-            QHeaderView::section {
-                background-color: #2a2a2a;
-                color: #00ff88;
-                padding: 8px;
-                border: 1px solid #3a3a3a;
-                font-weight: bold;
-            }
-            QTableWidget::item {
-                padding: 5px;
-            }
-            QTableWidget::item:selected {
-                background-color: #00ff88;
-                color: black;
-            }
-        """)
-        phones_layout.addWidget(self.phones_table)
-        phones_group.setLayout(phones_layout)
-        layout.addWidget(phones_group)
-
-        # Leaked Keys section
-        keys_group = QGroupBox("🔑 Leaked API Keys & Secrets")
-        keys_layout = QVBoxLayout()
-
-        self.leaked_keys_table = QTableWidget()
-        self.leaked_keys_table.setColumnCount(4)
-        self.leaked_keys_table.setHorizontalHeaderLabels(["Key Type", "Key Preview", "Severity", "Found On"])
-        self.leaked_keys_table.horizontalHeader().setStretchLastSection(True)
-        self.leaked_keys_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.leaked_keys_table.setStyleSheet("""
-            QTableWidget {
-                background-color: #1a1a1a;
-                color: white;
-                gridline-color: #3a3a3a;
-                border: 2px solid #3a3a3a;
-                border-radius: 5px;
-            }
-            QHeaderView::section {
-                background-color: #2a2a2a;
-                color: #00ff88;
-                padding: 8px;
-                border: 1px solid #3a3a3a;
-                font-weight: bold;
-            }
-            QTableWidget::item {
-                padding: 5px;
-            }
-            QTableWidget::item:selected {
-                background-color: #00ff88;
-                color: black;
-            }
-        """)
-        keys_layout.addWidget(self.leaked_keys_table)
-        keys_group.setLayout(keys_layout)
-        layout.addWidget(keys_group)
-
-        # Export button
-        export_btn = QPushButton("📤 Export Resources to File")
-        export_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #00ff88;
-                color: black;
-                padding: 10px;
-                border-radius: 5px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #00cc70;
-            }
-        """)
-        export_btn.clicked.connect(self.export_resources)
-        layout.addWidget(export_btn)
-
-        return widget
+        builder = ScopeTabBuilder(self, CollapsibleBox)
+        return builder.build()
 
     def create_results_tab(self):
         """Create results tab"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-
-        # Results summary
-        summary_group = QGroupBox("📊 Scan Summary")
-        summary_layout = QGridLayout()
-
-        self.total_vulns_label = QLabel("Total Vulnerabilities: 0")
-        self.total_vulns_label.setStyleSheet("color: #ff4444; font-size: 14px; font-weight: bold;")
-        summary_layout.addWidget(self.total_vulns_label, 0, 0)
-
-        self.critical_label = QLabel("Critical: 0")
-        self.critical_label.setStyleSheet("color: #ff0000; font-size: 13px;")
-        summary_layout.addWidget(self.critical_label, 0, 1)
-
-        self.high_label = QLabel("High: 0")
-        self.high_label.setStyleSheet("color: #ff8800; font-size: 13px;")
-        summary_layout.addWidget(self.high_label, 0, 2)
-
-        self.medium_label = QLabel("Medium: 0")
-        self.medium_label.setStyleSheet("color: #ffff00; font-size: 13px;")
-        summary_layout.addWidget(self.medium_label, 0, 3)
-
-        summary_group.setLayout(summary_layout)
-        layout.addWidget(summary_group)
-
-        # Vulnerability list
-        vulns_group = QGroupBox("🔍 Found Vulnerabilities")
-        vulns_layout = QVBoxLayout()
-
-        self.vulns_list = QListWidget()
-        self.vulns_list.setStyleSheet("""
-            QListWidget {
-                background-color: #1a1a1a;
-                border: 2px solid #3a3a3a;
-                border-radius: 5px;
-            }
-            QListWidget::item {
-                padding: 8px;
-                border-bottom: 1px solid #2a2a2a;
-            }
-            QListWidget::item:hover {
-                background-color: #2a2a2a;
-            }
-        """)
-        vulns_layout.addWidget(self.vulns_list)
-
-        vulns_group.setLayout(vulns_layout)
-        layout.addWidget(vulns_group)
-
-        # Open report button
-        open_report_btn = QPushButton("📄 Open HTML Report")
-        open_report_btn.clicked.connect(self.open_report)
-        layout.addWidget(open_report_btn)
-
-        return widget
+        builder = ResultsTabBuilder(self, CollapsibleBox)
+        self.results_tab_builder = builder  # Store reference for Site Tree and Debug access
+        return builder.build()
 
     def toggle_module_selection(self, checked):
         """Toggle individual module selection"""
@@ -1856,6 +838,22 @@ class DominatorGUI(QMainWindow):
             cb.setEnabled(not checked)
             if checked:
                 cb.setChecked(False)
+
+    def filter_modules(self, search_text):
+        """Filter modules based on search text"""
+        search_text = search_text.lower().strip()
+
+        for module_name, cb in self.module_checkboxes.items():
+            # Check module name and description
+            name_match = search_text in module_name.lower()
+            desc = self.module_descriptions.get(module_name, "")
+            desc_match = search_text in desc.lower()
+
+            # Show/hide based on match
+            if search_text == "" or name_match or desc_match:
+                cb.show()
+            else:
+                cb.hide()
 
     def browse_target_file(self):
         """Browse for target file"""
@@ -1917,9 +915,21 @@ class DominatorGUI(QMainWindow):
                 with open(filename, 'w', encoding='utf-8') as f:
                     f.write(self.custom_payloads_text.toPlainText())
                 self.custom_payloads_file.setText(filename)
-                QMessageBox.information(self, "Success", f"Payloads saved to:\n{filename}")
+                show_information(self, "Success", f"Payloads saved to:\n{filename}", setting_key="info_payloads_saved")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to save payloads:\n{e}")
+
+    def open_notifications_dialog(self):
+        """Open the notifications configuration dialog"""
+        from GUI.dialogs.notifications_dialog import NotificationsDialog
+        dialog = NotificationsDialog(self)
+        dialog.exec_()
+
+    def reset_all_warnings(self):
+        """Reset all 'do not show again' warnings"""
+        from GUI.utils.message_box import reset_all_warnings
+        reset_all_warnings()
+        QMessageBox.information(self, "Warnings Reset", "All warning dialogs have been reset.\nThey will show again next time.")
 
     def on_auth_type_changed(self, auth_type):
         """Handle authentication type change - hide/show fields dynamically"""
@@ -2076,83 +1086,163 @@ class DominatorGUI(QMainWindow):
 
         return command
 
+    def show_scan_wizard(self):
+        """Show the scan wizard dialog"""
+        wizard = ScanWizard(self)
+        wizard.scan_configured.connect(self.apply_wizard_config)
+        wizard.exec_()
+
+    def apply_wizard_config(self, config):
+        """Apply configuration from scan wizard"""
+        # Set target
+        if config.get('target'):
+            self.target_input.setPlainText(config['target'])
+
+        # Set modules based on scan type and selection
+        if config.get('modules'):
+            # Uncheck "All Modules" to enable individual selection
+            self.all_modules_cb.setChecked(False)
+
+            # Set individual module checkboxes
+            for module_key, checkbox in self.module_checkboxes.items():
+                checkbox.setChecked(module_key in config['modules'])
+
+        # Set performance settings
+        if config.get('threads'):
+            self.threads_spin.setValue(config['threads'])
+        if config.get('timeout'):
+            self.timeout_spin.setValue(config['timeout'])
+        if config.get('max_time'):
+            self.max_time_spin.setValue(config['max_time'])
+
+        # Set output format
+        if config.get('format'):
+            format_map = {
+                'html': 'html',
+                'json': 'json',
+                'txt': 'txt',
+                'all formats': 'html,json,txt'
+            }
+            format_text = format_map.get(config['format'], 'html,json,txt')
+            index = self.format_combo.findText(format_text)
+            if index >= 0:
+                self.format_combo.setCurrentIndex(index)
+
+        # Switch to Scan Configuration tab
+        self.tabs.setCurrentIndex(0)
+
+        # Show confirmation
+        show_information(
+            self, "Wizard Complete",
+            "Scan configuration has been applied.\n\n"
+            "Click 'Start' to begin scanning.",
+            setting_key="info_wizard_complete"
+        )
+
     def start_scan(self):
         """Start the vulnerability scan"""
-        command = self.build_command()
-        if not command:
-            self.output_console.append("ERROR: Please specify a target URL or file")
+        try:
+            command = self.build_command()
+            if not command:
+                self.output_console.append("[!] ERROR: Please specify a target URL or file")
+                self.statusBar().showMessage("Error: No target specified", 5000)
+                from PyQt5.QtWidgets import QMessageBox
+                QMessageBox.warning(self, "No Target", "Please specify a target URL or file before starting the scan.")
+                return
+        except Exception as e:
+            self.output_console.append(f"[!] ERROR building command: {str(e)}")
+            self.statusBar().showMessage(f"Error: {str(e)}", 5000)
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "Error", f"Failed to build scan command:\n\n{str(e)}")
+            import traceback
+            traceback.print_exc()
             return
 
         # Handle custom payloads entered directly in text area
-        payloads_text = self.custom_payloads_text.toPlainText().strip()
-        temp_payload_file = None
+        try:
+            payloads_text = self.custom_payloads_text.toPlainText().strip()
+            temp_payload_file = None
 
-        if payloads_text:
-            # Create temporary file with custom payloads
-            import tempfile
-            try:
-                temp_payload_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt', encoding='utf-8')
-                temp_payload_file.write(payloads_text)
-                temp_payload_file.close()
-
-                # Add to command
-                command.extend(["--custom-payloads", temp_payload_file.name])
-                self.output_console.append(f"[*] Using {len(payloads_text.split(chr(10)))} custom payloads from text editor\n")
-            except Exception as e:
-                self.output_console.append(f"[!] Error creating temporary payloads file: {e}\n")
-                if temp_payload_file:
+            if payloads_text:
+                # Create temporary file with custom payloads
+                import tempfile
+                try:
+                    temp_payload_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt', encoding='utf-8')
+                    temp_payload_file.write(payloads_text)
                     temp_payload_file.close()
-                return
 
-        # Update UI
-        self.start_btn.setEnabled(False)
-        self.stop_btn.setEnabled(True)
-        self.output_console.clear()
-        self.output_console.append(f"[*] Starting scan with command:\n{' '.join(command)}\n")
-        self.statusBar().showMessage("Scan running...")
-        self.progress_bar.setValue(0)
-        self.current_module_label.setText("Initializing scan...")
+                    # Add to command
+                    command.extend(["--custom-payloads", temp_payload_file.name])
+                    self.output_console.append(f"[*] Using {len(payloads_text.split(chr(10)))} custom payloads from text editor\n")
+                except Exception as e:
+                    self.output_console.append(f"[!] Error creating temporary payloads file: {e}\n")
+                    if temp_payload_file:
+                        temp_payload_file.close()
+                    return
 
-        # Reset vulnerability counters and list
-        self.vuln_counts = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0}
-        self.update_vuln_display()
-        self.vulns_list.clear()
-        # Reset results tab color
-        self.tabs.tabBar().setTabTextColor(4, QColor('white'))  # Results tab (index 4)
+            # Update UI
+            self.start_btn.setEnabled(False)
+            self.stop_btn.setEnabled(True)
+            self.pause_btn.setEnabled(True)
+            self.output_console.clear()
+            self.output_console.append(f"[*] Starting scan with command:\n{' '.join(command)}\n")
+            self.statusBar().showMessage("Scan running...")
+            self.progress_bar.setValue(0)
+            self.current_module_label.setText("Initializing scan...")
 
-        # Clear resources tables
-        self.social_media_table.setRowCount(0)
-        self.emails_table.setRowCount(0)
-        self.phones_table.setRowCount(0)
-        self.leaked_keys_table.setRowCount(0)
+            # Reset vulnerability counters and list
+            self.vuln_counts = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0}
+            self.results_handler.update_vuln_display()
+            self.vulns_list.clear()
+            # Reset results tab color
+            self.tabs.tabBar().setTabTextColor(2, QColor('white'))  # Results tab (index 2)
 
-        # Clear scope tables
-        self.scope_table.setRowCount(0)
-        self.tech_table.setRowCount(0)
-        self.geo_table.setRowCount(0)
+            # Clear resources tables
+            self.social_media_table.setRowCount(0)
+            self.emails_table.setRowCount(0)
+            self.phones_table.setRowCount(0)
+            self.leaked_keys_table.setRowCount(0)
 
-        # Initialize Progress & Plan tab
-        import datetime
-        self.scan_start_time = datetime.datetime.now()
-        self.scan_start_label.setText(self.scan_start_time.strftime("%Y-%m-%d %H:%M:%S"))
-        self.time_update_timer.start(1000)  # Update every second
+            # Clear scope tables
+            self.scope_table.setRowCount(0)
+            self.tech_table.setRowCount(0)
+            self.geo_table.setRowCount(0)
 
-        # Populate scan plan based on selected modules
-        self.populate_scan_plan(command)
+            # Initialize Progress & Plan tab
+            import datetime
+            self.scan_start_time = datetime.datetime.now()
+            self.scan_start_label.setText(self.scan_start_time.strftime("%Y-%m-%d %H:%M:%S"))
+            self.time_update_timer.start(1000)  # Update every second
 
-        # Start scan thread
-        self.scan_thread = ScanThread(command)
-        self.scan_thread.output_signal.connect(self.append_output)
-        self.scan_thread.finished_signal.connect(self.scan_finished)
-        self.scan_thread.progress_signal.connect(self.update_progress)
-        self.scan_thread.vulnerability_signal.connect(self.add_vulnerability)
-        self.scan_thread.stats_signal.connect(self.update_stats)
-        self.scan_thread.resource_signal.connect(self.add_resource)
-        self.scan_thread.scope_signal.connect(self.add_scope_info)
-        self.scan_thread.start()
+            # Populate scan plan based on selected modules
+            self.populate_scan_plan(command)
 
-        # Switch to output tab to show progress
-        self.tabs.setCurrentIndex(3)  # Switch to "Scan Output" tab (index 3 after adding Custom Payloads tab)
+            # Start scan thread
+            self.scan_thread = ScanThread(command)
+            self.scan_thread.output_signal.connect(self.append_output)
+            self.scan_thread.finished_signal.connect(self.scan_finished)
+            self.scan_thread.progress_signal.connect(self.update_progress)
+            self.scan_thread.vulnerability_signal.connect(self.results_handler.add_vulnerability)
+            self.scan_thread.stats_signal.connect(self.results_handler.update_stats)
+            self.scan_thread.resource_signal.connect(self.results_handler.add_resource)
+            self.scan_thread.scope_signal.connect(self.results_handler.add_scope_info)
+            self.scan_thread.report_signal.connect(self.results_handler.set_current_report)
+            self.scan_thread.start()
+
+            # Switch to Results tab to show progress and findings
+            self.tabs.setCurrentIndex(2)  # Switch to "Results" tab (index 2)
+
+        except Exception as e:
+            self.output_console.append(f"[!] ERROR starting scan: {str(e)}")
+            self.statusBar().showMessage(f"Error: {str(e)}", 5000)
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "Scan Error", f"Failed to start scan:\n\n{str(e)}")
+            import traceback
+            traceback.print_exc()
+            # Re-enable start button
+            self.start_btn.setEnabled(True)
+            self.stop_btn.setEnabled(False)
+            self.pause_btn.setEnabled(False)
 
     def stop_scan(self):
         """Stop the running scan"""
@@ -2161,8 +1251,52 @@ class DominatorGUI(QMainWindow):
             self.output_console.append("\n[!] Scan stopped by user")
             self.scan_finished(-1)
 
+    def toggle_pause_scan(self):
+        """Toggle pause/resume for the running scan"""
+        if self.scan_thread:
+            if hasattr(self.scan_thread, 'paused') and self.scan_thread.paused:
+                # Resume
+                self.scan_thread.resume()
+                self.pause_btn.setText("Pause")
+                self.pause_btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #FF9800;
+                        color: white;
+                        font-size: 12px;
+                        font-weight: bold;
+                        padding: 8px 16px;
+                        border-radius: 4px;
+                        border: none;
+                    }
+                    QPushButton:hover {
+                        background-color: #F57C00;
+                    }
+                """)
+                self.output_console.append("\n[>] Scan resumed")
+                self.statusBar().showMessage("Scan resumed")
+            else:
+                # Pause
+                self.scan_thread.pause()
+                self.pause_btn.setText("Resume")
+                self.pause_btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #2196F3;
+                        color: white;
+                        font-size: 12px;
+                        font-weight: bold;
+                        padding: 8px 16px;
+                        border-radius: 4px;
+                        border: none;
+                    }
+                    QPushButton:hover {
+                        background-color: #1976D2;
+                    }
+                """)
+                self.output_console.append("\n[||] Scan paused")
+                self.statusBar().showMessage("Scan paused")
+
     def append_output(self, text):
-        """Append text to output console"""
+        """Append text to output console and scan output table"""
         # Strip ANSI color codes for clean display
         import re
         text_clean = re.sub(r'\x1b\[[0-9;]*m', '', text)
@@ -2188,270 +1322,136 @@ class DominatorGUI(QMainWindow):
         # Auto-scroll to bottom
         self.output_console.moveCursor(QTextCursor.End)
 
+        # Also send to scan output table and debug tab via results_tab_builder
+        if hasattr(self, 'results_tab_builder') and text_clean.strip():
+            self.results_tab_builder.add_scan_output_line(text_clean)
+
     def update_progress(self, value, message):
         """Update progress bar and status"""
         if value > 0:
             self.progress_bar.setValue(value)
         self.current_module_label.setText(message)
 
+        # Update the new progress tab builder if available
+        if hasattr(self, 'progress_tab_builder'):
+            # Update dashboard
+            self.progress_tab_builder.update_dashboard_stats(
+                current_module=message,
+                vulns=sum(self.vuln_counts.values()) if hasattr(self, 'vuln_counts') else 0
+            )
+
+            # Add activity log
+            if "Testing:" in message or "Running module:" in message:
+                module_name = message.replace("Testing:", "").replace("Running module:", "").strip()
+                self.progress_tab_builder.add_activity_log(f"Started: {module_name}", "info")
+                self.progress_tab_builder.update_module_status(module_name, "running")
+            elif "Completed" in message:
+                self.progress_tab_builder.add_activity_log(message, "success")
+            elif "Crawling" in message:
+                self.progress_tab_builder.add_activity_log(message, "info")
+
     def scan_finished(self, return_code):
         """Handle scan completion"""
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
+        self.pause_btn.setEnabled(False)
+        self.pause_btn.setText("Pause")
 
         # Stop time update timer
         self.time_update_timer.stop()
 
+        # Update progress tab builder
+        if hasattr(self, 'progress_tab_builder'):
+            self.progress_tab_builder.enable_controls(False)
+
         if return_code == 0:
             self.statusBar().showMessage("Scan completed successfully")
-            self.output_console.append("\n[✓] Scan completed successfully!")
+            self.output_console.append("\n[+] Scan completed successfully!")
             self.progress_bar.setValue(100)
             self.current_module_label.setText("Scan complete!")
+
+            # Update progress tab builder
+            if hasattr(self, 'progress_tab_builder'):
+                self.progress_tab_builder.add_activity_log("Scan completed successfully!", "success")
+                self.progress_tab_builder.update_dashboard_stats(
+                    current_module="Scan complete!",
+                    vulns=sum(self.vuln_counts.values()) if hasattr(self, 'vuln_counts') else 0
+                )
+
+            # Auto-save project if not temporary
+            if not self.project_manager.is_temp:
+                self.save_project_settings()
+                # Add scan to history
+                scan_info = {
+                    'target': self.target_input.toPlainText(),
+                    'modules': [name for name, cb in self.module_checkboxes.items() if cb.isChecked()],
+                    'vulnerabilities_found': sum(self.vuln_counts.values())
+                }
+                self.project_manager.add_scan_to_history(scan_info)
+                self.output_console.append(f"[+] Project auto-saved to: {self.project_manager.project_path}")
+
             # Switch to results tab
-            self.tabs.setCurrentIndex(4)  # Results tab (index 4 after adding Custom Payloads tab)
+            self.tabs.setCurrentIndex(3)  # Results tab (index 3 after consolidating tabs)
+
+            # Send notifications
+            self._send_scan_notifications("Scan Completed", True)
         else:
             self.statusBar().showMessage("Scan failed or was stopped")
-            self.output_console.append("\n[✗] Scan failed or was stopped")
+            self.output_console.append("\n[!] Scan failed or was stopped")
 
-    def add_vulnerability(self, severity, description):
-        """Add vulnerability to the results list"""
-        # Update counters
-        if severity in self.vuln_counts:
-            self.vuln_counts[severity] += 1
+            # Update progress tab builder
+            if hasattr(self, 'progress_tab_builder'):
+                self.progress_tab_builder.add_activity_log("Scan failed or was stopped", "error")
 
-        # Update display
-        self.update_vuln_display()
+            # Send notifications for stopped/failed scan
+            self._send_scan_notifications("Scan Stopped", False)
 
-        # Add to list with color coding
-        color = '#ff0000' if severity == 'CRITICAL' else '#ff8800' if severity == 'HIGH' else '#ffff00'
-        item = QListWidgetItem(f"[{severity}] {description}")
-        item.setForeground(QColor(color))
-        self.vulns_list.addItem(item)
+    def _send_scan_notifications(self, title, success):
+        """Send notifications about scan completion"""
+        try:
+            from GUI.utils.notification_manager import get_notification_manager
 
-        # Flash results tab to show new finding
-        self.tabs.tabBar().setTabTextColor(4, QColor('#ff0000'))  # Results tab (index 4)
+            manager = get_notification_manager()
 
-    def update_stats(self, total_vulns, modules_done, modules_total):
-        """Update scan statistics"""
-        # Update status bar
-        self.statusBar().showMessage(f"Scan running... | {modules_done}/{modules_total} modules | {total_vulns} vulnerabilities")
+            # Check if any notifications are enabled
+            if not any([
+                manager.settings.get('telegram_enabled'),
+                manager.settings.get('email_enabled'),
+                manager.settings.get('slack_enabled')
+            ]):
+                return
 
-    def update_vuln_display(self):
-        """Update vulnerability count displays"""
-        total = sum(self.vuln_counts.values())
-        self.total_vulns_label.setText(f"Total Vulnerabilities: {total}")
-        self.critical_label.setText(f"Critical: {self.vuln_counts['CRITICAL']}")
-        self.high_label.setText(f"High: {self.vuln_counts['HIGH']}")
-        self.medium_label.setText(f"Medium: {self.vuln_counts['MEDIUM']}")
+            # Build message
+            target = self.target_input.toPlainText().split('\n')[0][:50]
+            if len(self.target_input.toPlainText()) > 50:
+                target += "..."
 
-    def add_resource(self, resource_type, value, extra, source):
-        """Add discovered resource to appropriate table"""
-        if resource_type == "email":
-            # Check if already exists
-            for row in range(self.emails_table.rowCount()):
-                if self.emails_table.item(row, 0) and self.emails_table.item(row, 0).text() == value:
-                    return  # Already added
+            if success:
+                message = f"Scan completed for: {target}"
+            else:
+                message = f"Scan was stopped for: {target}"
 
-            row = self.emails_table.rowCount()
-            self.emails_table.insertRow(row)
-            self.emails_table.setItem(row, 0, QTableWidgetItem(value))
-            self.emails_table.setItem(row, 1, QTableWidgetItem(extra))  # Type (Personal/Business)
-            self.emails_table.setItem(row, 2, QTableWidgetItem(source))
+            # Build summary
+            results_summary = {
+                'critical': self.vuln_counts.get('CRITICAL', 0),
+                'high': self.vuln_counts.get('HIGH', 0),
+                'medium': self.vuln_counts.get('MEDIUM', 0),
+                'low': self.vuln_counts.get('LOW', 0),
+                'total': sum(self.vuln_counts.values())
+            }
 
-        elif resource_type == "phone":
-            # Check if already exists
-            for row in range(self.phones_table.rowCount()):
-                if self.phones_table.item(row, 0) and self.phones_table.item(row, 0).text() == value:
-                    return
+            # Send notifications
+            results = manager.send_notification(title, message, results_summary)
 
-            row = self.phones_table.rowCount()
-            self.phones_table.insertRow(row)
-            self.phones_table.setItem(row, 0, QTableWidgetItem(value))
-            self.phones_table.setItem(row, 1, QTableWidgetItem(extra))  # Format
-            self.phones_table.setItem(row, 2, QTableWidgetItem(source))
+            # Log results
+            for provider, sent, msg in results:
+                if sent:
+                    self.output_console.append(f"[+] {provider} notification sent")
+                else:
+                    self.output_console.append(f"[!] {provider} notification failed: {msg}")
 
-        elif resource_type == "social":
-            # Check if already exists
-            for row in range(self.social_media_table.rowCount()):
-                if self.social_media_table.item(row, 1) and self.social_media_table.item(row, 1).text() == value:
-                    return
-
-            row = self.social_media_table.rowCount()
-            self.social_media_table.insertRow(row)
-            self.social_media_table.setItem(row, 0, QTableWidgetItem(extra))  # Platform
-            self.social_media_table.setItem(row, 1, QTableWidgetItem(value))  # URL
-            self.social_media_table.setItem(row, 2, QTableWidgetItem(source))
-
-        elif resource_type == "leaked_key":
-            # Check if already exists
-            for row in range(self.leaked_keys_table.rowCount()):
-                if self.leaked_keys_table.item(row, 1) and self.leaked_keys_table.item(row, 1).text() == value:
-                    return
-
-            row = self.leaked_keys_table.rowCount()
-            self.leaked_keys_table.insertRow(row)
-
-            # Parse extra: "KeyType|Severity"
-            parts = extra.split('|')
-            key_type = parts[0] if len(parts) > 0 else "Unknown"
-            severity = parts[1] if len(parts) > 1 else "HIGH"
-
-            self.leaked_keys_table.setItem(row, 0, QTableWidgetItem(key_type))
-            self.leaked_keys_table.setItem(row, 1, QTableWidgetItem(value))
-
-            # Color-code severity
-            severity_item = QTableWidgetItem(severity)
-            if severity == "CRITICAL":
-                severity_item.setForeground(QColor('#ff0000'))
-            elif severity == "HIGH":
-                severity_item.setForeground(QColor('#ff8800'))
-            self.leaked_keys_table.setItem(row, 2, severity_item)
-
-            self.leaked_keys_table.setItem(row, 3, QTableWidgetItem(source))
-
-    def export_resources(self):
-        """Export discovered resources to a file"""
-        if (self.social_media_table.rowCount() == 0 and
-            self.emails_table.rowCount() == 0 and
-            self.phones_table.rowCount() == 0 and
-            self.leaked_keys_table.rowCount() == 0):
-            QMessageBox.information(self, "No Resources", "No resources to export!")
-            return
-
-        filename, _ = QFileDialog.getSaveFileName(
-            self, "Export Resources", "resources_report.txt", "Text Files (*.txt);;CSV Files (*.csv);;All Files (*)"
-        )
-        if filename:
-            try:
-                with open(filename, 'w', encoding='utf-8') as f:
-                    f.write("="*80 + "\n")
-                    f.write(" DOMINATOR - DISCOVERED RESOURCES REPORT\n")
-                    f.write("="*80 + "\n\n")
-
-                    # Social Media
-                    if self.social_media_table.rowCount() > 0:
-                        f.write(f"\n🌐 SOCIAL MEDIA LINKS ({self.social_media_table.rowCount()})\n")
-                        f.write("-"*80 + "\n")
-                        for row in range(self.social_media_table.rowCount()):
-                            platform = self.social_media_table.item(row, 0).text()
-                            url = self.social_media_table.item(row, 1).text()
-                            source = self.social_media_table.item(row, 2).text()
-                            f.write(f"  {platform:15s} | {url}\n")
-                            f.write(f"  Found on: {source}\n\n")
-
-                    # Emails
-                    if self.emails_table.rowCount() > 0:
-                        f.write(f"\n📧 EMAIL ADDRESSES ({self.emails_table.rowCount()})\n")
-                        f.write("-"*80 + "\n")
-                        for row in range(self.emails_table.rowCount()):
-                            email = self.emails_table.item(row, 0).text()
-                            email_type = self.emails_table.item(row, 1).text()
-                            source = self.emails_table.item(row, 2).text()
-                            f.write(f"  {email:30s} | Type: {email_type}\n")
-                            f.write(f"  Found on: {source}\n\n")
-
-                    # Phones
-                    if self.phones_table.rowCount() > 0:
-                        f.write(f"\n📱 PHONE NUMBERS ({self.phones_table.rowCount()})\n")
-                        f.write("-"*80 + "\n")
-                        for row in range(self.phones_table.rowCount()):
-                            phone = self.phones_table.item(row, 0).text()
-                            phone_format = self.phones_table.item(row, 1).text()
-                            source = self.phones_table.item(row, 2).text()
-                            f.write(f"  {phone:20s} | Format: {phone_format}\n")
-                            f.write(f"  Found on: {source}\n\n")
-
-                    # Leaked Keys
-                    if self.leaked_keys_table.rowCount() > 0:
-                        f.write(f"\n🔑 LEAKED API KEYS & SECRETS ({self.leaked_keys_table.rowCount()})\n")
-                        f.write("-"*80 + "\n")
-                        f.write("⚠️  WARNING: These keys should be rotated immediately!\n\n")
-                        for row in range(self.leaked_keys_table.rowCount()):
-                            key_type = self.leaked_keys_table.item(row, 0).text()
-                            key_preview = self.leaked_keys_table.item(row, 1).text()
-                            severity = self.leaked_keys_table.item(row, 2).text()
-                            source = self.leaked_keys_table.item(row, 3).text()
-                            f.write(f"  [{severity}] {key_type}\n")
-                            f.write(f"  Preview: {key_preview}\n")
-                            f.write(f"  Found on: {source}\n\n")
-
-                    f.write("="*80 + "\n")
-                    f.write("End of Resources Report\n")
-                    f.write("="*80 + "\n")
-
-                QMessageBox.information(self, "Success", f"Resources exported to:\n{filename}")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to export resources:\n{e}")
-
-    def add_scope_info(self, info_type, data1, data2, data3):
-        """Add scope information (technologies, titles, IPs) to appropriate tables"""
-        if info_type == "technology":
-            # Check if already exists
-            for row in range(self.tech_table.rowCount()):
-                if (self.tech_table.item(row, 0) and self.tech_table.item(row, 0).text() == data1 and
-                    self.tech_table.item(row, 1) and self.tech_table.item(row, 1).text() == data2):
-                    return
-
-            row = self.tech_table.rowCount()
-            self.tech_table.insertRow(row)
-
-            # data1 = tech_name, data2 = version, data3 = "category|source"
-            parts = data3.split('|', 1)
-            category = parts[0] if len(parts) > 0 else "Other"
-            source = parts[1] if len(parts) > 1 else ""
-
-            self.tech_table.setItem(row, 0, QTableWidgetItem(data1))  # Technology
-            self.tech_table.setItem(row, 1, QTableWidgetItem(data2))  # Version
-            self.tech_table.setItem(row, 2, QTableWidgetItem(category))  # Category
-            self.tech_table.setItem(row, 3, QTableWidgetItem(source))  # Found On
-
-        elif info_type == "title":
-            # Check if already exists
-            for row in range(self.scope_table.rowCount()):
-                if (self.scope_table.item(row, 0) and self.scope_table.item(row, 0).text() == data2 and
-                    self.scope_table.item(row, 2) and self.scope_table.item(row, 2).text() == data1):
-                    return
-
-            row = self.scope_table.rowCount()
-            self.scope_table.insertRow(row)
-
-            # data1 = title, data2 = url, data3 = unused
-            self.scope_table.setItem(row, 0, QTableWidgetItem(data2))  # URL
-            self.scope_table.setItem(row, 1, QTableWidgetItem("In Scope"))  # Status
-            self.scope_table.setItem(row, 2, QTableWidgetItem(data1))  # Title
-            self.scope_table.setItem(row, 3, QTableWidgetItem(""))  # Technologies (will be updated)
-
-        elif info_type == "ip":
-            # Check if already exists
-            for row in range(self.geo_table.rowCount()):
-                if self.geo_table.item(row, 0) and self.geo_table.item(row, 0).text() == data1:
-                    return
-
-            row = self.geo_table.rowCount()
-            self.geo_table.insertRow(row)
-
-            # data1 = IP, data2 = domain, data3 = source
-            # For now, we don't have actual geo lookup, so we'll mark as "Pending"
-            self.geo_table.setItem(row, 0, QTableWidgetItem(data1))  # IP
-            self.geo_table.setItem(row, 1, QTableWidgetItem("Lookup Pending"))  # Country (placeholder)
-            self.geo_table.setItem(row, 2, QTableWidgetItem("-"))  # City (placeholder)
-            self.geo_table.setItem(row, 3, QTableWidgetItem("-"))  # ISP (placeholder)
-            self.geo_table.setItem(row, 4, QTableWidgetItem(data2))  # Domain
-
-    def open_report(self):
-        """Open the generated HTML report"""
-        # Look for latest HTML report
-        parent_dir = Path(__file__).parent.parent
-        reports = list(parent_dir.glob("scan_report_*.html"))
-
-        if not reports:
-            self.output_console.append("[!] No reports found")
-            return
-
-        # Get latest report
-        latest = max(reports, key=lambda p: p.stat().st_mtime)
-        os.startfile(str(latest))  # Windows
-        self.output_console.append(f"[*] Opening report: {latest.name}")
+        except Exception as e:
+            self.output_console.append(f"[!] Failed to send notifications: {e}")
 
     # Menu action handlers
     def new_scan(self):
@@ -2461,113 +1461,29 @@ class DominatorGUI(QMainWindow):
         self.output_console.clear()
         self.vulns_list.clear()
         self.vuln_counts = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0}
-        self.update_vuln_display()
+        self.results_handler.update_vuln_display()
         self.progress_bar.setValue(0)
         self.current_module_label.setText("")
         self.tabs.setCurrentIndex(0)
-        self.statusBar().showMessage("Ready to scan")
 
-    def load_configuration(self):
-        """Load scan configuration from JSON file"""
-        filename, _ = QFileDialog.getOpenFileName(
-            self, "Load Configuration", "", "JSON Files (*.json);;All Files (*)"
-        )
-        if filename:
-            try:
-                with open(filename, 'r', encoding='utf-8') as f:
-                    config = json.load(f)
+        # Reset project file and window title
+        self.current_project_file = None
+        self.setWindowTitle("Dominator Web Vulnerability Scanner")
 
-                # Load settings
-                if 'target' in config:
-                    self.target_input.setPlainText(config['target'])
-                if 'threads' in config:
-                    self.threads_spin.setValue(config['threads'])
-                if 'timeout' in config:
-                    self.timeout_spin.setValue(config['timeout'])
-                if 'modules' in config:
-                    for module in config['modules']:
-                        if module in self.module_checkboxes:
-                            self.module_checkboxes[module].setChecked(True)
+        # Clear HTTP config
+        self.headers_input.clear()
+        self.cookies_input.clear()
 
-                QMessageBox.information(self, "Success", f"Configuration loaded from:\n{filename}")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to load configuration:\n{e}")
+        # Clear custom payloads
+        self.custom_payloads_text.clear()
 
-    def save_configuration(self):
-        """Save current scan configuration to JSON file"""
-        filename, _ = QFileDialog.getSaveFileName(
-            self, "Save Configuration", "scan_config.json", "JSON Files (*.json);;All Files (*)"
-        )
-        if filename:
-            try:
-                config = {
-                    'target': self.target_input.toPlainText(),
-                    'target_file': self.target_file_input.text(),
-                    'threads': self.threads_spin.value(),
-                    'timeout': self.timeout_spin.value(),
-                    'max_time': self.max_time_spin.value(),
-                    'format': self.format_combo.currentText(),
-                    'modules': [name for name, cb in self.module_checkboxes.items() if cb.isChecked()],
-                    'all_modules': self.all_modules_cb.isChecked(),
-                    'recon_only': self.recon_only_cb.isChecked(),
-                    'rotate_agent': self.rotate_agent_cb.isChecked(),
-                    'single_page': self.single_page_cb.isChecked(),
-                }
-
-                with open(filename, 'w', encoding='utf-8') as f:
-                    json.dump(config, f, indent=2)
-
-                QMessageBox.information(self, "Success", f"Configuration saved to:\n{filename}")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to save configuration:\n{e}")
-
-    def export_results(self):
-        """Export scan results to CSV"""
-        if not self.vulns_list.count():
-            QMessageBox.information(self, "No Results", "No vulnerabilities to export!")
-            return
-
-        filename, _ = QFileDialog.getSaveFileName(
-            self, "Export Results", "vulnerabilities.txt", "Text Files (*.txt);;CSV Files (*.csv);;All Files (*)"
-        )
-        if filename:
-            try:
-                with open(filename, 'w', encoding='utf-8') as f:
-                    f.write("DOMINATOR SCAN RESULTS\n")
-                    f.write("=" * 80 + "\n\n")
-                    f.write(f"Total Vulnerabilities: {self.vulns_list.count()}\n")
-                    f.write(f"Critical: {self.vuln_counts['CRITICAL']}\n")
-                    f.write(f"High: {self.vuln_counts['HIGH']}\n")
-                    f.write(f"Medium: {self.vuln_counts['MEDIUM']}\n\n")
-                    f.write("=" * 80 + "\n\n")
-
-                    for i in range(self.vulns_list.count()):
-                        item = self.vulns_list.item(i)
-                        f.write(f"{item.text()}\n")
-
-                QMessageBox.information(self, "Success", f"Results exported to:\n{filename}")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to export results:\n{e}")
+        self.statusBar().showMessage("Ready for new project")
 
     def clear_targets(self):
         """Clear target input"""
         self.target_input.clear()
         self.target_file_input.clear()
         self.statusBar().showMessage("Targets cleared")
-
-    def clear_results(self):
-        """Clear all scan results"""
-        reply = QMessageBox.question(
-            self, "Clear Results",
-            "Are you sure you want to clear all results?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        if reply == QMessageBox.Yes:
-            self.vulns_list.clear()
-            self.vuln_counts = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0}
-            self.update_vuln_display()
-            self.output_console.append("[*] Results cleared")
 
     def load_modules_list(self):
         """Load and display all modules in the list"""
@@ -2616,33 +1532,39 @@ class DominatorGUI(QMainWindow):
 
         # Add to list
         for module in module_data:
-            # Create plain text display (QListWidget doesn't render HTML properly)
-            severity_icon = {
-                'Critical': '●',
-                'High': '●',
-                'Medium': '●',
-                'Low': '●',
-                'Info': '●'
-            }.get(module['severity'], '●')
+            # Create enhanced display with severity badge
+            severity_markers = {
+                'Critical': '[!!!]',
+                'High': '[!!]',
+                'Medium': '[!]',
+                'Low': '[i]',
+                'Info': '[i]'
+            }
+            severity_marker = severity_markers.get(module['severity'], '[?]')
 
-            # Format: Name | Description | [Severity] (folder)
-            desc_preview = module['description'][:60] + '...' if len(module['description']) > 60 else module['description']
-            item_text = f"{module['name']}\n{desc_preview}\n{severity_icon} {module['severity']} | {module['folder']}"
+            # Format: Name on first line, description on second, severity/status on third
+            desc_preview = module['description'][:50] + '...' if len(module['description']) > 50 else module['description']
+
+            # Check if enabled
+            parent_dir_check = Path(__file__).parent.parent
+            config_file_check = parent_dir_check / "modules" / module['folder'] / "config.json"
+            enabled = True
+            if config_file_check.exists():
+                try:
+                    with open(config_file_check, 'r', encoding='utf-8') as f:
+                        config_check = json.load(f)
+                        enabled = config_check.get('enabled', True)
+                except:
+                    pass
+
+            status_icon = "ON" if enabled else "OFF"
+            item_text = f"{module['name']}\n{desc_preview}\n{severity_marker} {module['severity']} | {status_icon}"
 
             item = QListWidgetItem(item_text)
             item.setData(Qt.UserRole, module['folder'])  # Store folder name
 
-            # Set item colors based on severity
-            severity_color = {
-                'Critical': QColor(255, 0, 0),
-                'High': QColor(255, 102, 0),
-                'Medium': QColor(255, 170, 0),
-                'Low': QColor(0, 255, 0),
-                'Info': QColor(0, 170, 255)
-            }.get(module['severity'], QColor(136, 136, 136))
-
-            # Set foreground color for the icon
-            item.setForeground(QColor(255, 255, 255))  # White text
+            # Set bigger size hint for better readability
+            item.setSizeHint(QSize(280, 75))
 
             self.module_list.addItem(item)
 
@@ -2678,6 +1600,11 @@ class DominatorGUI(QMainWindow):
 
         module_folder = item.data(Qt.UserRole)
         self.load_module_data(module_folder)
+
+        # Update the info panel if it exists
+        from GUI.ui_tabs.modules_tab import update_module_info_panel
+        if hasattr(self, 'module_info_name'):
+            update_module_info_panel(self, module_folder)
 
     def load_module_data(self, module_name):
         """Load module configuration and payloads"""
@@ -2721,7 +1648,7 @@ class DominatorGUI(QMainWindow):
         """Save module configuration"""
         current_item = self.module_list.currentItem()
         if not current_item:
-            QMessageBox.warning(self, "No Module", "Please select a module first")
+            show_warning(self, "No Module", "Please select a module first")
             return
 
         module_name = current_item.data(Qt.UserRole)
@@ -2798,6 +1725,66 @@ class DominatorGUI(QMainWindow):
 
         self.payload_stats_label.setText(f"Payloads: {payload_count} | Total Lines: {total_lines}")
 
+    def show_options_dialog(self):
+        """Show the options dialog"""
+        dialog = OptionsDialog(self)
+        if dialog.exec_() == dialog.Accepted:
+            # Apply any immediate settings changes
+            # Theme change
+            theme = dialog.settings.get("theme", "Light")
+            if theme == "Light":
+                self.theme_manager.apply_theme("light")
+            elif theme == "Dark":
+                self.theme_manager.apply_theme("hacker_green")
+
+            self.statusBar().showMessage("Settings saved", 3000)
+
+    def show_scheduler(self):
+        """Show the scheduler dialog"""
+        if not hasattr(self, 'scheduler_manager') or self.scheduler_manager is None:
+            self.scheduler_manager = SchedulerManager(self)
+            self.scheduler_manager.scheduler_updated.connect(self.update_scheduler_status)
+
+        self.scheduler_manager.show()
+        self.scheduler_manager.raise_()
+        self.scheduler_manager.activateWindow()
+
+    def update_scheduler_status(self):
+        """Update status bar with scheduler info"""
+        if hasattr(self, 'scheduler_manager') and self.scheduler_manager:
+            status = self.scheduler_manager.get_scheduler_status()
+            if status:
+                self.statusBar().showMessage(status)
+
+    def check_scheduled_scans_on_startup(self):
+        """Check for due scheduled scans on startup"""
+        due_tasks = check_due_scans()
+        if due_tasks:
+            msg = f"The following scheduled scans are due:\n\n"
+            msg += "\n".join(f"- {task}" for task in due_tasks[:5])
+            if len(due_tasks) > 5:
+                msg += f"\n... and {len(due_tasks) - 5} more"
+            msg += "\n\nOpen Scheduler to run them?"
+
+            reply = QMessageBox.question(
+                self, "Scheduled Scans Due",
+                msg,
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if reply == QMessageBox.Yes:
+                self.show_scheduler()
+
+    def start_scheduler_background(self):
+        """Start the background scheduler thread"""
+        if not hasattr(self, 'scheduler_manager') or self.scheduler_manager is None:
+            self.scheduler_manager = SchedulerManager(self)
+            self.scheduler_manager.scheduler_updated.connect(self.update_scheduler_status)
+
+        # Update status bar periodically
+        self.scheduler_status_timer = QTimer()
+        self.scheduler_status_timer.timeout.connect(self.update_scheduler_status)
+        self.scheduler_status_timer.start(60000)  # Update every minute
+
     def show_about(self):
         """Show about dialog"""
         about_text = """
@@ -2827,9 +1814,6 @@ class DominatorGUI(QMainWindow):
 
     def populate_scan_plan(self, command):
         """Populate the scan plan table based on command arguments"""
-        self.plan_table.setRowCount(0)
-        self.progress_table.setRowCount(0)
-
         # Extract modules from command
         modules = []
         if "--all" in command:
@@ -2844,44 +1828,12 @@ class DominatorGUI(QMainWindow):
                 module_str = command[m_index + 1]
                 modules = [m.strip() for m in module_str.split(',')]
 
-        # Populate plan table
-        for module in modules:
-            row = self.plan_table.rowCount()
-            self.plan_table.insertRow(row)
-
-            name_item = QTableWidgetItem(module)
-            name_item.setForeground(QColor(255, 255, 255))
-
-            status_item = QTableWidgetItem("Pending")
-            status_item.setForeground(QColor(200, 200, 200))
-
-            progress_item = QTableWidgetItem("0%")
-            progress_item.setForeground(QColor(200, 200, 200))
-
-            self.plan_table.setItem(row, 0, name_item)
-            self.plan_table.setItem(row, 1, status_item)
-            self.plan_table.setItem(row, 2, progress_item)
-
-        # Add progress items
-        progress_items = [
-            ("Crawler", "Pending"),
-            ("Passive Analysis", "Pending"),
-            ("Active Scanning", "Pending"),
-            ("Report Generation", "Pending")
-        ]
-
-        for item, status in progress_items:
-            row = self.progress_table.rowCount()
-            self.progress_table.insertRow(row)
-
-            item_widget = QTableWidgetItem(item)
-            item_widget.setForeground(QColor(255, 255, 255))
-
-            status_widget = QTableWidgetItem(status)
-            status_widget.setForeground(QColor(200, 200, 200))
-
-            self.progress_table.setItem(row, 0, item_widget)
-            self.progress_table.setItem(row, 1, status_widget)
+        # Update the new progress tab builder if available
+        if hasattr(self, 'progress_tab_builder'):
+            self.progress_tab_builder.populate_module_grid(modules)
+            self.progress_tab_builder.reset_dashboard()
+            self.progress_tab_builder.enable_controls(True)
+            self.progress_tab_builder.add_activity_log(f"Scan started with {len(modules)} modules", "info")
 
     def update_time_display(self):
         """Update elapsed time and estimates"""
@@ -2926,221 +1878,15 @@ class DominatorGUI(QMainWindow):
 
     def update_plan_status(self, module_name, status, progress=None):
         """Update module status in plan table"""
-        # Find module in plan table
-        for row in range(self.plan_table.rowCount()):
-            name_item = self.plan_table.item(row, 0)
-            if name_item and module_name.lower() in name_item.text().lower():
-                # Update status
-                status_item = QTableWidgetItem(status)
-                if status == "Running":
-                    status_item.setForeground(QColor(0, 255, 136))  # Green
-                elif status == "Complete":
-                    status_item.setForeground(QColor(0, 200, 255))  # Blue
-                elif status == "Failed":
-                    status_item.setForeground(QColor(255, 0, 85))  # Red
-                else:
-                    status_item.setForeground(QColor(200, 200, 200))  # Gray
+        # Update the new progress tab builder if available
+        if hasattr(self, 'progress_tab_builder'):
+            self.progress_tab_builder.update_module_status(module_name, status, progress)
 
-                self.plan_table.setItem(row, 1, status_item)
-
-                # Update progress
-                if progress is not None:
-                    progress_item = QTableWidgetItem(f"{progress}%")
-                    progress_item.setForeground(QColor(0, 255, 136))
-                    self.plan_table.setItem(row, 2, progress_item)
-                break
-
-    def apply_theme(self, theme_id="hacker_green"):
-        """Apply selected theme to the application"""
-
-        # Theme configurations: (bg_main, bg_alt, accent_color, accent_name)
-        themes = {
-            "hacker_green": {
-                "bg_main": "#1a1a1a",
-                "bg_alt": "#2a2a2a",
-                "bg_input": "#2a2a2a",
-                "bg_button": "#3a3a3a",
-                "accent": "#00ff88",
-                "accent_rgb": "0, 255, 136"
-            },
-            "cyber_blue": {
-                "bg_main": "#0a0a1a",
-                "bg_alt": "#1a1a2a",
-                "bg_input": "#1a1a2a",
-                "bg_button": "#2a2a3a",
-                "accent": "#00d4ff",
-                "accent_rgb": "0, 212, 255"
-            },
-            "purple_haze": {
-                "bg_main": "#1a0a1a",
-                "bg_alt": "#2a1a2a",
-                "bg_input": "#2a1a2a",
-                "bg_button": "#3a2a3a",
-                "accent": "#c77dff",
-                "accent_rgb": "199, 125, 255"
-            },
-            "blood_red": {
-                "bg_main": "#1a0a0a",
-                "bg_alt": "#2a1a1a",
-                "bg_input": "#2a1a1a",
-                "bg_button": "#3a2a2a",
-                "accent": "#ff0055",
-                "accent_rgb": "255, 0, 85"
-            },
-            "matrix": {
-                "bg_main": "#000000",
-                "bg_alt": "#0d0d0d",
-                "bg_input": "#0d0d0d",
-                "bg_button": "#1a1a1a",
-                "accent": "#00ff00",
-                "accent_rgb": "0, 255, 0"
-            }
-        }
-
-        theme = themes.get(theme_id, themes["hacker_green"])
-
-        # Apply palette
-        palette = QPalette()
-        palette.setColor(QPalette.Window, QColor(theme["bg_main"]))
-        palette.setColor(QPalette.WindowText, Qt.white)
-        palette.setColor(QPalette.Base, QColor(theme["bg_input"]))
-        palette.setColor(QPalette.AlternateBase, QColor(theme["bg_alt"]))
-        palette.setColor(QPalette.ToolTipBase, Qt.white)
-        palette.setColor(QPalette.ToolTipText, Qt.white)
-        palette.setColor(QPalette.Text, Qt.white)
-        palette.setColor(QPalette.Button, QColor(theme["bg_button"]))
-        palette.setColor(QPalette.ButtonText, Qt.white)
-        palette.setColor(QPalette.BrightText, Qt.red)
-        palette.setColor(QPalette.Link, QColor(theme["accent"]))
-        palette.setColor(QPalette.Highlight, QColor(theme["accent"]))
-        palette.setColor(QPalette.HighlightedText, Qt.black)
-
-        self.setPalette(palette)
-
-        # Store current theme for dynamic elements
-        self.current_theme = theme
-
-        # Additional stylesheet with theme colors
-        self.setStyleSheet(f"""
-            QMainWindow {{
-                background-color: {theme['bg_main']};
-                color: white;
-            }}
-            QWidget {{
-                color: white;
-            }}
-            QLabel {{
-                color: white;
-            }}
-            QGroupBox {{
-                font-weight: bold;
-                border: 2px solid {theme['bg_button']};
-                border-radius: 8px;
-                margin-top: 10px;
-                padding: 15px;
-                color: {theme['accent']};
-            }}
-            QGroupBox::title {{
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                padding: 5px 10px;
-                color: {theme['accent']};
-            }}
-            QPushButton {{
-                background-color: {theme['bg_button']};
-                color: white;
-                border: none;
-                padding: 8px 15px;
-                border-radius: 4px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background-color: {theme['bg_alt']};
-            }}
-            QPushButton:pressed {{
-                background-color: {theme['bg_input']};
-            }}
-            QLineEdit, QSpinBox, QComboBox {{
-                background-color: {theme['bg_input']};
-                border: 2px solid {theme['bg_button']};
-                border-radius: 4px;
-                padding: 6px;
-                color: white;
-            }}
-            QLineEdit:focus, QSpinBox:focus, QComboBox:focus {{
-                border: 2px solid {theme['accent']};
-            }}
-            QComboBox::drop-down {{
-                border: none;
-                background-color: {theme['bg_button']};
-            }}
-            QComboBox::down-arrow {{
-                image: none;
-                border-left: 5px solid transparent;
-                border-right: 5px solid transparent;
-                border-top: 5px solid white;
-                margin-right: 5px;
-            }}
-            QComboBox QAbstractItemView {{
-                background-color: {theme['bg_input']};
-                color: white;
-                selection-background-color: {theme['accent']};
-                selection-color: black;
-                border: 2px solid {theme['bg_button']};
-            }}
-            QSpinBox::up-button, QSpinBox::down-button {{
-                background-color: {theme['bg_button']};
-                border: none;
-            }}
-            QSpinBox::up-arrow, QSpinBox::down-arrow {{
-                width: 7px;
-                height: 7px;
-            }}
-            QCheckBox {{
-                spacing: 8px;
-                color: white;
-            }}
-            QCheckBox::indicator {{
-                width: 18px;
-                height: 18px;
-                border: 2px solid {theme['bg_button']};
-                border-radius: 3px;
-                background-color: {theme['bg_input']};
-            }}
-            QCheckBox::indicator:checked {{
-                background-color: {theme['accent']};
-                border-color: {theme['accent']};
-            }}
-            QTabWidget::pane {{
-                border: 2px solid {theme['bg_button']};
-                border-radius: 4px;
-                background-color: {theme['bg_main']};
-            }}
-            QTabBar::tab {{
-                background-color: {theme['bg_alt']};
-                color: white;
-                padding: 10px 20px;
-                border: 2px solid {theme['bg_button']};
-                border-bottom: none;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
-                margin-right: 2px;
-            }}
-            QTabBar::tab:selected {{
-                background-color: {theme['bg_main']};
-                color: {theme['accent']};
-                border-bottom: 2px solid {theme['accent']};
-            }}
-            QTabBar::tab:hover {{
-                background-color: {theme['bg_button']};
-            }}
-            QTextEdit {{
-                color: white;
-            }}
-            QListWidget {{
-                color: white;
-            }}
-        """)
+            # Log status changes
+            if status == "Complete":
+                self.progress_tab_builder.add_activity_log(f"Completed: {module_name}", "success")
+            elif status == "Failed":
+                self.progress_tab_builder.add_activity_log(f"Failed: {module_name}", "error")
 
     def on_scan_page_requested(self, url, config):
         """Handle scan page request from browser tab with auto-configured cookies and headers"""
@@ -3185,12 +1931,18 @@ class DominatorGUI(QMainWindow):
             headers_str = "\n".join([f"{k}: {v}" for k, v in custom_headers.items()])
             self.headers_input.setPlainText(headers_str)
 
+        # IMPORTANT: Enable single-page mode to scan ONLY the selected URL
+        # This prevents the scanner from crawling the entire site
+        self.single_page_cb.setChecked(True)
+        self.max_crawl_spin.setValue(1)  # Set max crawl pages to 1
+
         # Switch to Scan Configuration tab
         self.tabs.setCurrentIndex(0)
 
         # Show message
         module_text = "all modules" if not modules else ", ".join(modules)
         self.output_console.append(f"\n🔍 Browser → Scanner: Configured scan for {url}")
+        self.output_console.append(f"   Mode: SINGLE PAGE (no crawling) ✓")
         self.output_console.append(f"   Modules: {module_text}")
         if cookies:
             self.output_console.append(f"   Cookies: {len(cookies)} auto-configured ✓")
@@ -3211,7 +1963,19 @@ def main():
     # app.setWindowIcon(QIcon("icon.png"))
 
     window = DominatorGUI()
+
+    # Show project selection dialog
+    if not window.show_startup_dialog():
+        # User cancelled, exit
+        sys.exit(0)
+
     window.show()
+
+    # Start background scheduler
+    window.start_scheduler_background()
+
+    # Check for due scheduled scans after window is shown
+    QTimer.singleShot(1000, window.check_scheduled_scans_on_startup)
 
     sys.exit(app.exec_())
 

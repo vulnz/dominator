@@ -1,0 +1,14 @@
+{
+  "name": "GraphQL Security",
+  "description": "Tests GraphQL endpoints for introspection, DoS, batch query abuse, and injection vulnerabilities",
+  "enabled": true,
+  "severity": "High",
+  "cwe": "CWE-89",
+  "cvss": 7.5,
+  "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+  "owasp": "A03:2021",
+  "payload_limit": 15,
+  "early_exit": false,
+  "max_depth": 20,
+  "batch_query_limit": 100
+}

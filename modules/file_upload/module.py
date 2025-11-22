@@ -20,9 +20,9 @@ logger = get_logger(__name__)
 class FileUploadModule(BaseModule):
     """File Upload vulnerability scanner module"""
 
-    def __init__(self, module_path: str):
+    def __init__(self, module_path: str, payload_limit: int = None):
         """Initialize File Upload module"""
-        super().__init__(module_path)
+        super().__init__(module_path, payload_limit=payload_limit)
 
         # Dangerous extensions that should be blocked
         self.dangerous_extensions = [
@@ -341,6 +341,6 @@ class FileUploadModule(BaseModule):
         return ""
 
 
-def get_module(module_path: str):
+def get_module(module_path: str, payload_limit: int = None):
     """Create module instance"""
-    return FileUploadModule(module_path)
+    return FileUploadModule(module_path, payload_limit=payload_limit)

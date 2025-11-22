@@ -1,12 +1,13 @@
 """
-Directory Brute Force Scanner Module
+Directory Enumeration Scanner Module
 
-Discovers hidden directories and files through brute force by:
+Discovers hidden directories and files through enumeration by:
 1. Extracting base URLs from discovered targets
 2. Testing common directory and file names
 3. Detecting interesting HTTP status codes (200, 301, 302, 401, 403)
 4. Testing with common file extensions (.php, .txt, .bak, etc.)
 5. Identifying sensitive files and backup files
+6. Detecting directory listing vulnerabilities
 """
 
 from typing import List, Dict, Any
@@ -15,16 +16,17 @@ from core.logger import get_logger
 from urllib.parse import urlparse, urljoin
 import concurrent.futures
 import time
+import re
 
 logger = get_logger(__name__)
 
 
-class DirectoryBruteForceModule(BaseModule):
-    """Directory Brute Force scanner module"""
+class DirectoryEnumerationModule(BaseModule):
+    """Directory Enumeration scanner module"""
 
-    def __init__(self, module_path: str):
-        """Initialize Directory Brute Force module"""
-        super().__init__(module_path)
+    def __init__(self, module_path: str, payload_limit: int = None):
+        """Initialize Directory Enumeration module"""
+        super().__init__(module_path, payload_limit=payload_limit)
 
         # Interesting status codes that indicate something exists
         self.interesting_codes = self.config.get('interesting_status_codes', [200, 301, 302, 401, 403])
@@ -34,12 +36,26 @@ class DirectoryBruteForceModule(BaseModule):
         # Real 404 detection - cache baseline responses per base URL
         self.baseline_404_responses = {}  # {base_url: {'status': int, 'size': int, 'content_hash': str}}
 
-        logger.info(f"Directory Brute Force module loaded: {len(self.payloads)} paths, "
+        # Directory listing detection patterns
+        self.dir_listing_patterns = [
+            r'<title>Index of /',              # Apache default
+            r'<title>Directory listing',       # Various servers
+            r'Parent Directory</a>',           # Apache
+            r'<a href="\.\./?">\[Parent',      # Various servers
+            r'<h1>Directory listing for',      # Python SimpleHTTPServer
+            r'Directory Listing For',          # IIS
+            r'<pre>.*<a href="',               # Directory listing with links
+            r'<td valign="top"><img src="/icons/',  # Apache icons
+            r'Alt="\\[DIR\\]"',                # Apache directory icon
+            r'<img src="/icons/folder.gif"',   # Apache folder icon
+        ]
+
+        logger.info(f"Directory Enumeration module loaded: {len(self.payloads)} paths, "
                    f"{len(self.interesting_extensions)} extensions")
 
     def scan(self, targets: List[Dict[str, Any]], http_client: Any) -> List[Dict[str, Any]]:
         """
-        Scan for hidden directories and files
+        Scan for hidden directories, files, and directory listings
 
         Args:
             targets: List of URLs with parameters
@@ -50,9 +66,26 @@ class DirectoryBruteForceModule(BaseModule):
         """
         results = []
 
-        logger.info(f"Starting Directory Brute Force scan")
+        logger.info(f"Starting Directory Enumeration scan")
 
-        # Extract unique base URLs
+        # Determine scope from ALL target URLs (collect unique domains)
+        scope_domains = set()
+        for target in targets:
+            url = target.get('url')
+            if url:
+                parsed = urlparse(url)
+                domain = parsed.netloc.lower()
+                # Only add non-external domains (skip if clearly external like google, facebook, etc.)
+                external_domains = {'google.com', 'www.google.com', 'facebook.com', 'www.facebook.com',
+                                   'twitter.com', 'cdn.', 'googleapis.com', 'gstatic.com'}
+                if not any(ext in domain for ext in external_domains):
+                    scope_domains.add(domain)
+
+        if not scope_domains:
+            logger.warning("No valid in-scope domains found in targets")
+            return results
+
+        # Extract unique base URLs (only from targets in scope)
         base_urls = set()
         for target in targets:
             url = target.get('url')
@@ -61,6 +94,12 @@ class DirectoryBruteForceModule(BaseModule):
 
             # Parse URL to get base
             parsed = urlparse(url)
+
+            # CRITICAL: Skip external URLs (not in scope)
+            if parsed.netloc.lower() not in scope_domains:
+                logger.debug(f"Skipping out-of-scope URL: {url}")
+                continue
+
             base_url = f"{parsed.scheme}://{parsed.netloc}/"
             base_urls.add(base_url)
 
@@ -86,12 +125,17 @@ class DirectoryBruteForceModule(BaseModule):
 
         logger.info(f"Testing {len(base_urls)} base URLs")
 
-        # Test each base URL
+        # FIRST: Check for directory listing vulnerabilities
+        for base_url in list(base_urls)[:15]:
+            dir_listing_results = self._detect_directory_listing(base_url, http_client)
+            results.extend(dir_listing_results)
+
+        # SECOND: Test each base URL for hidden paths
         for base_url in list(base_urls)[:10]:  # Limit to 10 base URLs
-            logger.info(f"Brute forcing: {base_url}")
+            logger.info(f"Enumerating: {base_url}")
 
             # Test paths
-            found_paths = self._brute_force_url(base_url, http_client)
+            found_paths = self._enumerate_paths(base_url, http_client)
 
             for path_info in found_paths:
                 result = self.create_result(
@@ -111,8 +155,98 @@ class DirectoryBruteForceModule(BaseModule):
 
                 results.append(result)
 
-        logger.info(f"Directory Brute Force scan complete: {len(results)} paths found")
+        logger.info(f"Directory Enumeration scan complete: {len(results)} findings")
         return results
+
+    def _detect_directory_listing(self, base_url: str, http_client: Any) -> List[Dict[str, Any]]:
+        """
+        Detect directory listing vulnerability on a URL
+
+        Args:
+            base_url: URL to check
+            http_client: HTTP client
+
+        Returns:
+            List of findings if directory listing is enabled
+        """
+        results = []
+
+        try:
+            response = http_client.get(base_url, allow_redirects=False)
+            if not response or response.status_code != 200:
+                return results
+
+            response_text = getattr(response, 'text', '')
+
+            # Check for directory listing patterns
+            for pattern in self.dir_listing_patterns:
+                if re.search(pattern, response_text, re.IGNORECASE):
+                    # Extract some listed files for evidence
+                    listed_files = self._extract_listed_files(response_text)
+
+                    evidence = f"Directory listing enabled at {base_url}. "
+                    if listed_files:
+                        evidence += f"Exposed files/directories: {', '.join(listed_files[:10])}"
+
+                    result = self.create_result(
+                        vulnerable=True,
+                        url=base_url,
+                        payload="Directory listing",
+                        evidence=evidence,
+                        description="Directory listing is enabled. This exposes all files and directories, "
+                                  "potentially revealing sensitive information, backup files, or source code.",
+                        confidence=0.95
+                    )
+
+                    result['cwe'] = 'CWE-548'  # Information Exposure Through Directory Listing
+                    result['owasp'] = 'A01:2021'
+                    result['cvss'] = '5.3'
+                    result['status_code'] = 200
+                    result['finding_type'] = 'directory_listing'
+
+                    results.append(result)
+                    logger.info(f"✓ Directory listing found: {base_url}")
+                    break
+
+        except Exception as e:
+            logger.debug(f"Error checking directory listing at {base_url}: {e}")
+
+        return results
+
+    def _extract_listed_files(self, html_content: str) -> List[str]:
+        """
+        Extract listed files/directories from directory listing HTML
+
+        Args:
+            html_content: HTML content of directory listing
+
+        Returns:
+            List of file/directory names
+        """
+        files = []
+
+        # Common patterns for extracting file links
+        patterns = [
+            r'<a href="([^"]+)"[^>]*>([^<]+)</a>',  # Standard link
+            r'href="([^"]+)"',  # Just href
+        ]
+
+        for pattern in patterns:
+            matches = re.findall(pattern, html_content, re.IGNORECASE)
+            for match in matches:
+                filename = match[0] if isinstance(match, tuple) else match
+                # Filter out parent directory links and special chars
+                if filename not in ['../', '../', './', '/', '?', '#'] and not filename.startswith('?'):
+                    # Clean up filename
+                    filename = filename.rstrip('/')
+                    if filename and len(filename) < 100:
+                        files.append(filename)
+
+            if files:
+                break
+
+        # Return unique files
+        return list(set(files))
 
     def _establish_404_baseline(self, base_url: str, http_client: Any) -> Dict[str, Any]:
         """
@@ -212,9 +346,9 @@ class DirectoryBruteForceModule(BaseModule):
 
         return False
 
-    def _brute_force_url(self, base_url: str, http_client: Any) -> List[Dict[str, Any]]:
+    def _enumerate_paths(self, base_url: str, http_client: Any) -> List[Dict[str, Any]]:
         """
-        Brute force a single base URL
+        Enumerate paths on a single base URL
 
         Args:
             base_url: Base URL to test
@@ -235,7 +369,7 @@ class DirectoryBruteForceModule(BaseModule):
         start_time = time.time()
 
         # Limit paths to test (to avoid too many requests)
-        paths_to_test = self.payloads[:100]  # Test first 100 paths
+        paths_to_test = self.get_limited_payloads()  # Test first 100 paths
 
         logger.debug(f"Testing {len(paths_to_test)} paths against {base_url}")
 
@@ -421,6 +555,6 @@ class DirectoryBruteForceModule(BaseModule):
         return confidence, severity, description
 
 
-def get_module(module_path: str):
+def get_module(module_path: str, payload_limit: int = None):
     """Create module instance"""
-    return DirectoryBruteForceModule(module_path)
+    return DirectoryEnumerationModule(module_path, payload_limit=payload_limit)

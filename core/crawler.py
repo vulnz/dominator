@@ -25,12 +25,13 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class WebCrawler:
     """Web crawler for finding pages with parameters"""
-    
+
     def __init__(self, config):
         """Initialize crawler"""
         self.config = config
         self.url_parser = URLParser()
         self.visited_urls: Set[str] = set()
+        self.analyzed_urls: Set[str] = set()  # Track URLs that have been passively analyzed
         self.found_forms: List[Dict[str, Any]] = []
         self.ajax_endpoints: List[str] = []
         self.js_urls: List[str] = []
@@ -38,7 +39,7 @@ class WebCrawler:
         self.robots_urls: List[str] = []
         self.discovered_directories: Set[str] = set()
         self.detected_wafs: Set[str] = set()
-        
+
         # Passive detection results
         self.passive_findings: List[Dict[str, Any]] = []
         self.security_issues: List[Dict[str, Any]] = []
@@ -121,21 +122,22 @@ class WebCrawler:
                 # First pass - collect URLs with parameters
                 for i, url in enumerate(normalized_urls):
                     try:
-                        print(f"    [CRAWLER] Checking URL {i+1}/{len(normalized_urls)}: {url}")
-                        
+                        # OPTIMIZATION: Reduce logging for performance
+                        if (i+1) % 10 == 0 or (i+1) == len(normalized_urls):
+                            print(f"    [CRAWLER] Checked {i+1}/{len(normalized_urls)} URLs...")
+
+                        # NOTE: Don't mark as visited yet - we haven't actually crawled the page
+                        # The deep crawl needs to visit these pages to extract forms
+
                         parsed = self.url_parser.parse(url)
-                        print(f"    [CRAWLER] Parsed parameters: {list(parsed['query_params'].keys())}")
-                        
+
                         # Check if URL has parameters
                         if parsed['query_params'] and url not in found_urls:
                             found_urls.append(url)
-                            print(f"    [CRAWLER] Found page with parameters: {url}")
-                            print(f"    [CRAWLER] Parameters: {list(parsed['query_params'].keys())}")
-                        elif not parsed['query_params']:
-                            print(f"    [CRAWLER] No parameters in URL: {url}")
-                            
+                            print(f"    [CRAWLER] Found page with parameters: {url} ({list(parsed['query_params'].keys())})")
+
                     except Exception as e:
-                        print(f"    [CRAWLER] Error parsing URL {url}: {e}")
+                        # OPTIMIZATION: Only log errors in verbose mode
                         continue
                 
                 # Second pass - crawl individual pages to find more URLs
@@ -152,7 +154,8 @@ class WebCrawler:
         # If still no URLs with parameters found, try deep crawling
         if not found_urls:
             print(f"    [CRAWLER] No parameters found, starting deep crawl...")
-            found_urls = self._deep_crawl(base_url, max_pages)
+            # FIX: Pass discovered URLs to deep crawl so it can extract forms from them
+            found_urls = self._deep_crawl(base_url, max_pages, initial_urls=normalized_urls)
         
         print(f"    [CRAWLER] Found {len(found_urls)} pages with parameters")
         print(f"    [CRAWLER] Found {len(self.found_forms)} forms")
@@ -508,13 +511,17 @@ class WebCrawler:
         
         return found_urls
     
-    def _deep_crawl(self, base_url: str, max_pages: int) -> List[str]:
+    def _deep_crawl(self, base_url: str, max_pages: int, initial_urls: List[str] = None) -> List[str]:
         """Perform deep crawling when no parameters found initially"""
         found_urls = []
-        crawl_queue = [base_url]
+        # FIX: Start with discovered URLs if provided, otherwise just base URL
+        if initial_urls:
+            crawl_queue = [base_url] + initial_urls[:max_pages]
+            print(f"    [CRAWLER] Starting deep crawl with {len(crawl_queue)} initial URLs...")
+        else:
+            crawl_queue = [base_url]
+            print(f"    [CRAWLER] Starting deep crawl...")
         crawled_count = 0
-        
-        print(f"    [CRAWLER] Starting deep crawl...")
         
         while crawl_queue and crawled_count < max_pages:
             current_url = crawl_queue.pop(0)
@@ -538,17 +545,24 @@ class WebCrawler:
                 if response.status_code == 200:
                     # Run passive analysis on deep crawled pages
                     self._run_passive_analysis(response.headers, response.text, current_url)
-                    
+
+                    # FIX: Extract and store forms from this deep crawled page
+                    forms = self.url_parser.extract_forms(response.text)
+                    for form in forms:
+                        form['url'] = current_url  # Add source URL
+                        self.found_forms.append(form)
+                        print(f"    [CRAWLER] Found form: {form['method']} {form.get('action', '(same page)')} with {len(form['inputs'])} inputs")
+
                     # Check for directory listing
                     if self._detect_directory_listing(response.text):
                         print(f"    [CRAWLER] Directory listing detected during deep crawl: {current_url}")
                         # Extract directory listing URLs
                         dir_urls = self._extract_directory_listing_urls(response.text, current_url)
                         found_urls.extend(dir_urls)
-                    
+
                     # Extract JavaScript endpoints
                     self._extract_js_endpoints(response.text, current_url)
-                    
+
                     # Extract all URLs
                     page_urls = self._extract_all_urls(response.text, current_url)
                     
@@ -721,7 +735,7 @@ class WebCrawler:
     def _run_passive_analysis(self, headers: Dict[str, str], response_text: str, url: str):
         """
         Run all passive detectors on the response
-        
+
         How it works:
         1. Analyzes each HTTP response during crawling
         2. Runs multiple passive detectors simultaneously
@@ -729,6 +743,12 @@ class WebCrawler:
         4. Stores results for later reporting
         """
         try:
+            # OPTIMIZATION: Skip if already analyzed (prevent duplicate work)
+            if url in self.analyzed_urls:
+                print(f"    [PASSIVE] Skipping {url} (already analyzed)")
+                return
+
+            self.analyzed_urls.add(url)
             print(f"    [PASSIVE] Running passive analysis on {url}")
             
             # WAF Detection

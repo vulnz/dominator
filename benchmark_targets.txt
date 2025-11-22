@@ -1,0 +1,42 @@
+# XSS Benchmark (5001)
+http://127.0.0.1:5001/reflected-get?name=test&search=test
+http://127.0.0.1:5001/reflected-post
+http://127.0.0.1:5001/stored
+http://127.0.0.1:5001/dom
+http://127.0.0.1:5001/attribute
+
+# SQLi Benchmark (5002)
+http://127.0.0.1:5002/search?q=test
+http://127.0.0.1:5002/user?id=1
+http://127.0.0.1:5002/login
+http://127.0.0.1:5002/order?sort=name
+
+# Command Injection (5003)
+http://127.0.0.1:5003/ping?host=localhost
+http://127.0.0.1:5003/dns?domain=test.com
+http://127.0.0.1:5003/exec
+
+# LFI (5004)
+http://127.0.0.1:5004/read?file=test.txt
+http://127.0.0.1:5004/include?page=home
+http://127.0.0.1:5004/download?path=file.txt
+
+# SSRF (5005)
+http://127.0.0.1:5005/fetch?url=http://example.com
+http://127.0.0.1:5005/proxy?target=http://example.com
+http://127.0.0.1:5005/image?src=http://example.com/img.png
+
+# SSTI (5006)
+http://127.0.0.1:5006/render?template=test
+http://127.0.0.1:5006/preview?name=test
+http://127.0.0.1:5006/greeting?user=test
+
+# Open Redirect (5007)
+http://127.0.0.1:5007/redirect?url=http://example.com
+http://127.0.0.1:5007/goto?next=http://example.com
+http://127.0.0.1:5007/login?return=http://example.com
+
+# IDOR (5008)
+http://127.0.0.1:5008/user?id=1
+http://127.0.0.1:5008/document?doc_id=1
+http://127.0.0.1:5008/order?order_id=1

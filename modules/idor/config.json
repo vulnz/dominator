@@ -8,6 +8,5 @@
   "owasp": "A01:2021",
   "owasp_name": "Broken Access Control",
   "cvss": "7.5",
-  "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
-  "max_payloads": 15
+  "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
 }

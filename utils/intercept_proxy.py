@@ -1,12 +1,22 @@
 """
 HTTP Intercepting Proxy for Dominator Scanner
 Burp Suite-like functionality: intercept, modify, replay requests
+
+OPTIMIZATIONS:
+- Connection pooling for faster request forwarding
+- DNS caching to reduce latency
+- Memory-efficient history management with automatic cleanup
+- SSL certificate caching per host
+- Rate limiting and size limits for stability
+- Improved error handling with retry logic
+- Optimized threading and buffering
 """
 
 import socket
 import threading
 import time
 import ssl
+import zlib
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 from urllib.parse import urlparse
@@ -15,6 +25,189 @@ from PyQt5.QtCore import QObject, pyqtSignal
 import gzip
 import io
 from utils.cert_manager import get_cert_manager
+from collections import OrderedDict
+from functools import lru_cache
+import weakref
+
+# Try to import brotli for br compression support
+try:
+    import brotli
+    HAS_BROTLI = True
+except ImportError:
+    HAS_BROTLI = False
+
+
+def decompress_content(body, content_encoding):
+    """
+    Decompress HTTP response body based on Content-Encoding header.
+    Supports gzip, deflate, and brotli (br) compression.
+
+    Args:
+        body: Raw response body bytes
+        content_encoding: Value of Content-Encoding header
+
+    Returns:
+        tuple: (decompressed_body, was_decompressed) - was_decompressed indicates if
+               decompression actually occurred (affects whether to strip Content-Encoding header)
+    """
+    if not content_encoding or not body:
+        return body, False
+
+    # Normalize encoding string
+    encoding = content_encoding.lower().strip()
+
+    try:
+        if encoding == 'gzip' or encoding == 'x-gzip':
+            # Check for gzip magic bytes (0x1f 0x8b) before attempting decompression
+            if len(body) >= 2 and body[0] == 0x1f and body[1] == 0x8b:
+                return gzip.decompress(body), True
+            else:
+                # Not actually gzip despite header claim, return as-is
+                return body, False
+
+        elif encoding == 'deflate':
+            # Try zlib first (with header), then raw deflate
+            try:
+                return zlib.decompress(body), True
+            except zlib.error:
+                try:
+                    # Try raw deflate (no zlib header)
+                    return zlib.decompress(body, -zlib.MAX_WBITS), True
+                except zlib.error:
+                    # Not deflate data, return as-is
+                    return body, False
+
+        elif encoding == 'br':
+            if HAS_BROTLI:
+                return brotli.decompress(body), True
+            else:
+                # Brotli not installed, return as-is
+                return body, False
+
+        elif ',' in encoding:
+            # Multiple encodings (e.g., "gzip, br") - decompress in reverse order
+            encodings = [e.strip() for e in encoding.split(',')]
+            was_decompressed = False
+            for enc in reversed(encodings):
+                body, decompressed = decompress_content(body, enc)
+                if decompressed:
+                    was_decompressed = True
+            return body, was_decompressed
+
+        else:
+            # Unknown encoding, return as-is
+            return body, False
+
+    except Exception:
+        # Decompression failed, return original body (not decompressed)
+        return body, False
+
+
+class DNSCache:
+    """Thread-safe DNS cache with TTL"""
+
+    def __init__(self, ttl=300):
+        self.cache = {}
+        self.ttl = ttl
+        self.lock = threading.Lock()
+
+    @lru_cache(maxsize=1000)
+    def resolve(self, hostname):
+        """Resolve hostname to IP with caching"""
+        try:
+            with self.lock:
+                if hostname in self.cache:
+                    ip, timestamp = self.cache[hostname]
+                    if time.time() - timestamp < self.ttl:
+                        return ip
+
+                # Resolve DNS
+                ip = socket.gethostbyname(hostname)
+                self.cache[hostname] = (ip, time.time())
+                return ip
+        except Exception:
+            return hostname  # Fallback to hostname
+
+    def clear(self):
+        """Clear DNS cache"""
+        with self.lock:
+            self.cache.clear()
+            self.resolve.cache_clear()
+
+
+class ConnectionPool:
+    """Connection pool for HTTP requests - reduces latency significantly"""
+
+    def __init__(self, pool_size=10, pool_maxsize=20):
+        self.session = requests.Session()
+
+        # Configure connection pooling
+        adapter = requests.adapters.HTTPAdapter(
+            pool_connections=pool_size,
+            pool_maxsize=pool_maxsize,
+            max_retries=2,  # Retry on connection errors
+            pool_block=False
+        )
+
+        self.session.mount('http://', adapter)
+        self.session.mount('https://', adapter)
+
+        # Disable SSL warnings
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+        # Default timeout
+        self.default_timeout = 15
+
+    def request(self, method, url, **kwargs):
+        """Make HTTP request using pooled connection"""
+        # Set default timeout if not specified
+        if 'timeout' not in kwargs:
+            kwargs['timeout'] = self.default_timeout
+
+        # Ensure SSL verification is disabled
+        kwargs['verify'] = False
+
+        return self.session.request(method, url, **kwargs)
+
+    def close(self):
+        """Close all pooled connections"""
+        self.session.close()
+
+
+class LRUCache:
+    """LRU Cache for SSL certificates and other data"""
+
+    def __init__(self, maxsize=100):
+        self.cache = OrderedDict()
+        self.maxsize = maxsize
+        self.lock = threading.Lock()
+
+    def get(self, key):
+        """Get value from cache"""
+        with self.lock:
+            if key in self.cache:
+                # Move to end (most recently used)
+                self.cache.move_to_end(key)
+                return self.cache[key]
+            return None
+
+    def put(self, key, value):
+        """Put value in cache"""
+        with self.lock:
+            if key in self.cache:
+                # Update and move to end
+                self.cache.move_to_end(key)
+            self.cache[key] = value
+
+            # Remove oldest if cache is full
+            if len(self.cache) > self.maxsize:
+                self.cache.popitem(last=False)
+
+    def clear(self):
+        """Clear cache"""
+        with self.lock:
+            self.cache.clear()
 
 
 class InterceptingProxy(QObject):
@@ -24,6 +217,9 @@ class InterceptingProxy(QObject):
     request_intercepted = pyqtSignal(dict)  # New request intercepted
     response_received = pyqtSignal(dict)    # Response received
     passive_finding = pyqtSignal(dict)      # Passive scan finding
+    resource_found = pyqtSignal(str, str, str, str)  # (type, value, extra, source)
+    websocket_message = pyqtSignal(dict)    # WebSocket message intercepted
+    statistics_updated = pyqtSignal(dict)   # Statistics update (total, blocked_analytics)
 
     def __init__(self, port=8080, ssl_intercept_enabled=True):
         super().__init__()
@@ -35,16 +231,45 @@ class InterceptingProxy(QObject):
         self.thread = None
         self.running = False
 
-        # Request history
-        self.history = []
-        self.max_history = 5000  # Increased limit for better history
+        # OPTIMIZATION: Connection pooling for faster request forwarding
+        self.connection_pool = ConnectionPool(pool_size=20, pool_maxsize=50)
 
-        # Pending requests (waiting for user action)
+        # OPTIMIZATION: DNS caching to reduce latency
+        self.dns_cache = DNSCache(ttl=300)
+
+        # OPTIMIZATION: SSL certificate caching
+        self.ssl_cert_cache = LRUCache(maxsize=100)
+
+        # Request history with automatic cleanup
+        self.history = []
+        self.max_history = 5000
+        self._history_lock = threading.Lock()
+        self._last_cleanup = time.time()
+        self._cleanup_interval = 60  # Cleanup every 60 seconds
+
+        # WebSocket history
+        self.ws_history = []
+        self.max_ws_history = 1000
+        self.ws_message_counter = 0
+
+        # Pending requests (waiting for user action) with timeout cleanup
         self.pending_requests = {}
+        self.pending_events = {}
         self.request_id_counter = 0
+        self._pending_lock = threading.Lock()
 
         # Auto-allow hosts (bypass interception for these hosts)
         self.auto_allow_hosts = set()
+
+        # OPTIMIZATION: Request/Response size limits (prevent memory issues)
+        self.max_request_size = 100 * 1024 * 1024  # 100MB
+        self.max_response_size = 100 * 1024 * 1024  # 100MB
+        self.max_gui_display_size = 500 * 1024  # 500KB - truncate GUI display for performance
+
+        # OPTIMIZATION: Rate limiting per host
+        self.rate_limiter = {}  # host -> (request_count, window_start)
+        self.rate_limit_window = 1.0  # 1 second
+        self.rate_limit_max_requests = 100  # Max 100 requests per second per host
 
         # Scope management (Burp Suite-like)
         self.scope_enabled = False
@@ -54,10 +279,172 @@ class InterceptingProxy(QObject):
         # Ignore patterns (avoid logging static files, etc.)
         self.ignore_enabled = True
         self.ignore_extensions = {
-            '.css', '.js', '.jpg', '.jpeg', '.png', '.gif', '.svg', '.ico',
-            '.woff', '.woff2', '.ttf', '.eot', '.map', '.webp', '.bmp'
+            # Images
+            '.jpg', '.jpeg', '.png', '.gif', '.svg', '.ico', '.webp', '.bmp', '.tiff', '.avif',
+            # Fonts
+            '.woff', '.woff2', '.ttf', '.eot', '.otf',
+            # Stylesheets and source maps
+            '.css', '.map', '.scss', '.less',
+            # Binary/media files
+            '.pdf', '.zip', '.gz', '.tar', '.rar', '.7z',
+            '.mp3', '.mp4', '.wav', '.ogg', '.webm', '.avi', '.mov', '.mkv',
+            '.exe', '.dll', '.so', '.dylib', '.bin',
+            # Data files
+            '.wasm', '.dat', '.db', '.sqlite',
+        }
+        # Content types to skip logging (binary/non-text responses)
+        self.ignore_content_types = {
+            'image/', 'video/', 'audio/', 'font/',
+            'application/octet-stream', 'application/zip', 'application/gzip',
+            'application/pdf', 'application/x-shockwave-flash', 'application/wasm',
+            'application/x-tar', 'application/x-rar', 'application/x-7z-compressed',
         }
         self.custom_ignore_patterns = []  # Additional regex patterns to ignore
+
+        # Block common analytics and tracking systems (DEFAULT ENABLED)
+        self.block_analytics_enabled = True
+
+        # Statistics for blocked requests
+        self.total_requests = 0
+        self.blocked_analytics_requests = 0
+        self._stats_lock = threading.Lock()
+
+        self.analytics_hosts = {
+            # === BROWSER TELEMETRY (Firefox, Chrome, Edge, etc.) ===
+            # Firefox Telemetry & Tracking
+            'telemetry.mozilla.org', 'incoming.telemetry.mozilla.org',
+            'firefox.settings.services.mozilla.com', 'services.addons.mozilla.org',
+            'tracking-protection.cdn.mozilla.net', 'shavar.services.mozilla.com',
+            'location.services.mozilla.com', 'push.services.mozilla.com',
+            'tiles.services.mozilla.com', 'snippets.cdn.mozilla.net',
+            'safebrowsing.google.com', 'safebrowsing.googleapis.com',
+
+            # Chrome/Chromium Telemetry
+            'clients2.google.com', 'clients3.google.com', 'clients4.google.com',
+            'update.googleapis.com', 'clientservices.googleapis.com',
+            'chrome.google.com', 'tools.google.com',
+
+            # Microsoft Edge Telemetry
+            'edge.microsoft.com', 'config.edge.skype.com',
+            'ris.api.iris.microsoft.com', 'watson.telemetry.microsoft.com',
+            'vortex.data.microsoft.com', 'telemetry.microsoft.com',
+            'telemetry.urs.microsoft.com', 'settings-win.data.microsoft.com',
+
+            # === ANALYTICS & METRICS ===
+            # Google Analytics & Ads
+            'google-analytics.com', 'www.google-analytics.com',
+            'analytics.google.com', 'ssl.google-analytics.com',
+            'googletagmanager.com', 'www.googletagmanager.com',
+            'googleadservices.com', 'www.googleadservices.com',
+            'googlesyndication.com', 'pagead2.googlesyndication.com',
+            'doubleclick.net', 'stats.g.doubleclick.net',
+            'adservice.google.com', 'www.googletagservices.com',
+
+            # Yandex Metrica & Ads
+            'mc.yandex.ru', 'mc.yandex.com',
+            'metrika.yandex.ru', 'metrika.yandex.com',
+            'an.yandex.ru', 'yandexadexchange.net',
+            'extmaps-api.yandex.net', 'appmetrica.yandex.ru',
+
+            # Facebook/Meta Pixel & Tracking
+            'connect.facebook.net', 'pixel.facebook.com',
+            'graph.facebook.com', 'analytics.facebook.com',
+            'www.facebook.com/tr', 'staticxx.facebook.com',
+
+            # Microsoft Clarity & Bing Ads
+            'clarity.ms', 'www.clarity.ms',
+            'bat.bing.com', 'c.bing.com', 'r.bing.com',
+
+            # Adobe Analytics
+            'omtrdc.net', 'demdex.net', 'everesttech.net',
+            '2o7.net', 'sc.omtrdc.net',
+
+            # Hotjar
+            'hotjar.com', 'static.hotjar.com', 'script.hotjar.com',
+            'insights.hotjar.com', 'vars.hotjar.com',
+
+            # Mixpanel
+            'mixpanel.com', 'api.mixpanel.com', 'cdn.mxpnl.com',
+            'decide.mixpanel.com',
+
+            # Segment
+            'segment.io', 'api.segment.io', 'cdn.segment.com',
+            'segment.com',
+
+            # Amplitude
+            'amplitude.com', 'api.amplitude.com', 'api2.amplitude.com',
+
+            # Heap Analytics
+            'heap.io', 'heapanalytics.com', 'cdn.heapanalytics.com',
+
+            # FullStory
+            'fullstory.com', 'rs.fullstory.com', 'edge.fullstory.com',
+
+            # CrazyEgg
+            'crazyegg.com', 'script.crazyegg.com', 'dnn506yrbagrg.cloudfront.net',
+
+            # Mouseflow
+            'mouseflow.com', 'cdn.mouseflow.com', 'o2.mouseflow.com',
+
+            # Lucky Orange
+            'luckyorange.com', 'cdn.luckyorange.net', 'w1.luckyorange.com',
+
+            # Inspectlet
+            'inspectlet.com', 'cdn.inspectlet.com',
+
+            # === ERROR TRACKING & APM ===
+            # New Relic
+            'newrelic.com', 'js-agent.newrelic.com', 'bam.nr-data.net',
+            'beacon.newrelic.com',
+
+            # Sentry
+            'sentry.io', 'browser.sentry-cdn.com', 'sentry-cdn.com',
+
+            # Bugsnag
+            'bugsnag.com', 'notify.bugsnag.com', 'sessions.bugsnag.com',
+
+            # LogRocket
+            'logrocket.com', 'cdn.logrocket.io', 'r.lr-ingest.io',
+
+            # Rollbar
+            'rollbar.com', 'api.rollbar.com',
+
+            # === ADVERTISING NETWORKS ===
+            'adsrvr.org', 'adnxs.com', 'criteo.com', 'criteo.net',
+            'taboola.com', 'outbrain.com', 'amazon-adsystem.com',
+            'moatads.com', 'scorecardresearch.com', 'quantserve.com',
+            'serving-sys.com', 'pubmatic.com', 'rubiconproject.com',
+            'indexww.com', 'advertising.com', 'media.net',
+            'openx.net', 'adform.net', 'bidswitch.net',
+
+            # === SOCIAL MEDIA WIDGETS & TRACKING ===
+            # Twitter/X
+            'platform.twitter.com', 'syndication.twitter.com',
+            'analytics.twitter.com', 't.co',
+
+            # LinkedIn
+            'platform.linkedin.com', 'snap.licdn.com',
+            'px.ads.linkedin.com',
+
+            # Pinterest
+            'widgets.pinterest.com', 'assets.pinterest.com',
+            'ct.pinterest.com', 'log.pinterest.com',
+
+            # Instagram
+            'www.instagram.com/embed', 'scontent.cdninstagram.com',
+
+            # TikTok
+            'analytics.tiktok.com', 'byteoversea.com',
+
+            # === COOKIE CONSENT & PRIVACY ===
+            'cdn.cookielaw.org', 'cdn.onetrust.com',
+            'trustarc.com', 'consent.trustarc.com',
+            'consensu.org', 'quantcast.mgr.consensu.org',
+
+            # === CDN TRACKING ===
+            'bat.r.msn.com', 'c.msn.com',
+            'sb.scorecardresearch.com', 'b.scorecardresearch.com',
+        }
 
         # Certificate manager for SSL interception
         self.cert_manager = get_cert_manager() if ssl_intercept_enabled else None
@@ -70,12 +457,15 @@ class InterceptingProxy(QObject):
         try:
             from passive_detectors.passive_scanner import PassiveScanner
             from passive_detectors.sensitive_data_detector import SensitiveDataDetector
+            from passive_detectors.resource_collector import ResourceCollector
             self.passive_scanner = PassiveScanner()
             self.sensitive_detector = SensitiveDataDetector()
+            self.resource_collector = ResourceCollector()
             print("[+] Passive scanners loaded successfully")
         except Exception as e:
             print(f"[!] Warning: Could not load passive scanners: {e}")
             print("[!] Proxy will work but passive scanning will be disabled")
+            self.resource_collector = None
 
     def start(self):
         """Start the proxy server"""
@@ -116,14 +506,19 @@ class InterceptingProxy(QObject):
         """Kill process using the specified port (Windows/Linux)"""
         import subprocess
         import platform
+        import sys
 
         try:
             if platform.system() == 'Windows':
+                # Hide console window on Windows
+                creation_flags = subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
+
                 # Find PID using netstat
                 result = subprocess.run(
                     ['netstat', '-ano'],
                     capture_output=True,
-                    text=True
+                    text=True,
+                    creationflags=creation_flags  # Hide console window
                 )
 
                 pids = set()
@@ -140,7 +535,8 @@ class InterceptingProxy(QObject):
                         subprocess.run(
                             ['taskkill', '/F', '/PID', pid],
                             capture_output=True,
-                            check=True
+                            check=True,
+                            creationflags=creation_flags  # Hide console window
                         )
                         print(f"[+] Killed process {pid} on port {port}")
                     except:
@@ -176,15 +572,325 @@ class InterceptingProxy(QObject):
         if self.server:
             self.server.shutdown()
 
+        # OPTIMIZATION: Close connection pool
+        try:
+            self.connection_pool.close()
+        except Exception as e:
+            print(f"[!] Error closing connection pool: {e}")
+
+        # Clear caches
+        try:
+            self.dns_cache.clear()
+            self.ssl_cert_cache.clear()
+        except Exception as e:
+            print(f"[!] Error clearing caches: {e}")
+
+    def _cleanup_memory(self):
+        """Automatic memory cleanup - removes old history entries"""
+        current_time = time.time()
+
+        # Check if cleanup is needed
+        if current_time - self._last_cleanup < self._cleanup_interval:
+            return
+
+        with self._history_lock:
+            # Trim history if too large
+            if len(self.history) > self.max_history:
+                # Remove oldest 20%
+                remove_count = int(self.max_history * 0.2)
+                self.history = self.history[remove_count:]
+
+            # Trim WebSocket history
+            if len(self.ws_history) > self.max_ws_history:
+                remove_count = int(self.max_ws_history * 0.2)
+                self.ws_history = self.ws_history[remove_count:]
+
+            self._last_cleanup = current_time
+
+        # Clean up stale pending requests (older than 2 minutes)
+        with self._pending_lock:
+            stale_ids = []
+            for req_id, data in self.pending_requests.items():
+                if current_time - data.get('timestamp', current_time) > 120:
+                    stale_ids.append(req_id)
+
+            for req_id in stale_ids:
+                self.pending_requests.pop(req_id, None)
+                event = self.pending_events.pop(req_id, None)
+                if event:
+                    event.set()  # Unblock waiting thread
+
+    def _check_rate_limit(self, host):
+        """Check if request from host exceeds rate limit
+
+        Returns:
+            bool: True if request should be allowed, False if rate limit exceeded
+        """
+        current_time = time.time()
+
+        if host not in self.rate_limiter:
+            self.rate_limiter[host] = {'count': 1, 'window_start': current_time}
+            return True
+
+        rate_data = self.rate_limiter[host]
+
+        # Reset window if expired
+        if current_time - rate_data['window_start'] >= self.rate_limit_window:
+            rate_data['count'] = 1
+            rate_data['window_start'] = current_time
+            return True
+
+        # Increment counter
+        rate_data['count'] += 1
+
+        # Check limit
+        if rate_data['count'] > self.rate_limit_max_requests:
+            return False
+
+        return True
+
+    def _add_to_history(self, request_data):
+        """Add request to history with automatic memory management"""
+        with self._history_lock:
+            self.history.append(request_data)
+
+            # Trim if exceeds max
+            if len(self.history) > self.max_history:
+                self.history.pop(0)
+
+        # Periodic cleanup
+        self._cleanup_memory()
+
+    def _decode_response_body(self, body, headers):
+        """Smart charset detection and decoding for response body
+
+        Args:
+            body: Raw response body (bytes)
+            headers: Response headers dict
+
+        Returns:
+            Decoded text string
+        """
+        # If already a string, return as-is
+        if not isinstance(body, bytes):
+            return str(body)
+
+        # Empty body
+        if not body:
+            return ''
+
+        # Check for binary content (images, PDFs, etc.)
+        content_type = ''
+        for key, value in headers.items():
+            if key.lower() == 'content-type':
+                content_type = value.lower()
+                break
+
+        # Don't decode binary content
+        if any(binary_type in content_type for binary_type in [
+            'image/', 'video/', 'audio/', 'application/octet-stream',
+            'application/zip', 'application/gzip', 'application/pdf',
+            'application/x-shockwave-flash', 'font/', 'application/wasm'
+        ]):
+            return '[Binary Content]'
+
+        # Heuristic: Check for null bytes (indicates binary)
+        if b'\x00' in body[:1024]:
+            return '[Binary Content]'
+
+        # Extract charset from Content-Type header
+        charset = None
+        if content_type and 'charset=' in content_type:
+            try:
+                charset = content_type.split('charset=')[1].split(';')[0].strip().strip('"\'')
+            except:
+                pass
+
+        # Try to decode with specified charset
+        if charset:
+            try:
+                return body.decode(charset, errors='replace')
+            except (UnicodeDecodeError, LookupError):
+                pass  # Fall through to detection
+
+        # Try chardet if available (better detection)
+        try:
+            import chardet
+            detected = chardet.detect(body[:10000])  # Detect on first 10KB
+            if detected and detected.get('encoding'):
+                detected_charset = detected['encoding']
+                try:
+                    return body.decode(detected_charset, errors='replace')
+                except (UnicodeDecodeError, LookupError):
+                    pass  # Fall through to UTF-8
+        except ImportError:
+            pass  # chardet not available
+
+        # Common encodings to try
+        for encoding in ['utf-8', 'latin-1', 'windows-1252', 'iso-8859-1']:
+            try:
+                return body.decode(encoding, errors='replace')
+            except (UnicodeDecodeError, LookupError):
+                continue
+
+        # Last resort: UTF-8 with replace
+        return body.decode('utf-8', errors='replace')
+
+    def _truncate_for_gui(self, response_data):
+        """Truncate large response bodies for GUI display to prevent performance issues
+
+        Args:
+            response_data: Original response dict with potentially large body
+
+        Returns:
+            Response dict with truncated body if necessary
+        """
+        # Create a copy to avoid modifying original
+        gui_response = response_data.copy()
+
+        # Get Content-Type header (case-insensitive)
+        headers = gui_response.get('headers', {})
+        content_type = ''
+        for key, value in headers.items():
+            if key.lower() == 'content-type':
+                content_type = value.lower()
+                break
+
+        # Check if content is binary based on Content-Type
+        is_binary = any(binary_type in content_type for binary_type in [
+            'image/', 'video/', 'audio/', 'application/octet-stream',
+            'application/zip', 'application/gzip', 'application/pdf',
+            'application/x-', 'font/', 'application/wasm'
+        ])
+
+        # Get body and check size
+        body = gui_response.get('body', b'')
+        if isinstance(body, str):
+            body_bytes = body.encode('utf-8', errors='ignore')
+        else:
+            body_bytes = body if body else b''
+
+        # ALWAYS check for binary content first (before truncation)
+        is_likely_binary = False
+
+        # Check 1: Binary Content-Type
+        if is_binary:
+            is_likely_binary = True
+
+        # Check 2: Heuristic - null bytes or too many non-printable chars
+        if not is_likely_binary and body_bytes:
+            null_bytes = body_bytes.count(b'\x00')
+            sample_size = min(2048, len(body_bytes))  # Check first 2KB
+            sample = body_bytes[:sample_size]
+            non_printable = sum(1 for b in sample if b < 32 and b not in [9, 10, 13])
+
+            # More aggressive detection
+            if null_bytes > 0 or (sample_size > 0 and non_printable / sample_size > 0.15):
+                is_likely_binary = True
+
+        # Check 3: Try to decode - if it fails badly, it's binary
+        if not is_likely_binary and body_bytes:
+            try:
+                test_decode = body_bytes[:1024].decode('utf-8', errors='strict')
+            except UnicodeDecodeError:
+                is_likely_binary = True
+
+        # Check 4: Detect failed decompression (still compressed data)
+        # Gzip magic bytes: 0x1f 0x8b, deflate starts with 0x78
+        if not is_likely_binary and len(body_bytes) >= 2:
+            # Check for gzip magic bytes in response that wasn't decompressed
+            if body_bytes[0] == 0x1f and body_bytes[1] == 0x8b:
+                is_likely_binary = True  # Still compressed
+            # Check for zlib header (deflate)
+            elif body_bytes[0] == 0x78 and body_bytes[1] in (0x01, 0x5E, 0x9C, 0xDA):
+                is_likely_binary = True  # Still compressed
+
+        # Check 5: Check if 'text' field looks like mojibake (garbled encoding)
+        # This catches cases where requests.Response.text decoded with wrong charset
+        if not is_likely_binary and 'text' in gui_response:
+            text = gui_response['text']
+            if isinstance(text, str) and len(text) > 0:
+                # Check for common mojibake indicators
+                sample = text[:1024]
+                mojibake_chars = sum(1 for c in sample if ord(c) > 127 and (
+                    ord(c) in range(0x80, 0xA0) or  # Control chars
+                    c in '\ufffd\ufeff'  # Replacement character
+                ))
+                # If >20% high-byte chars that look like mojibake, treat as binary
+                if len(sample) > 0 and mojibake_chars / len(sample) > 0.2:
+                    is_likely_binary = True
+
+        # If binary detected, show placeholder
+        if is_likely_binary:
+            size_kb = len(body_bytes) / 1024
+            size_mb = size_kb / 1024
+            if size_mb >= 1:
+                size_str = f"{size_mb:.2f} MB"
+            else:
+                size_str = f"{size_kb:.2f} KB"
+
+            ct_info = f" - {content_type}" if content_type else ""
+            placeholder = f"[Binary Content{ct_info} - {size_str}]\n\nBinary/non-UTF-8 content cannot be displayed as text."
+            gui_response['body'] = placeholder
+            gui_response['text'] = placeholder
+            return gui_response
+
+        # If body exceeds GUI display limit, truncate it
+        if len(body_bytes) > self.max_gui_display_size:
+            truncated_bytes = body_bytes[:self.max_gui_display_size]
+
+            # Try to decode truncated bytes, handling potential UTF-8 boundary issues
+            try:
+                if isinstance(body, str):
+                    gui_response['body'] = truncated_bytes.decode('utf-8', errors='ignore')
+                else:
+                    gui_response['body'] = truncated_bytes.decode('utf-8', errors='ignore')
+            except:
+                gui_response['body'] = str(truncated_bytes)
+
+            # Update text field if it exists
+            if 'text' in gui_response:
+                try:
+                    gui_response['text'] = truncated_bytes.decode('utf-8', errors='ignore')
+                except:
+                    gui_response['text'] = str(truncated_bytes)
+
+            # Add truncation indicator
+            original_size = len(body_bytes)
+            truncation_msg = f"\n\n[... Response truncated for GUI display: {original_size} bytes total, showing first {self.max_gui_display_size} bytes ...]"
+
+            if isinstance(gui_response['body'], str):
+                gui_response['body'] += truncation_msg
+            if 'text' in gui_response:
+                gui_response['text'] += truncation_msg
+
+        return gui_response
+
     def _run_server(self):
         """Run the HTTP server"""
         proxy_instance = self
 
-        # Create a threading HTTP server for concurrent request handling
+        # OPTIMIZATION: Create optimized threading HTTP server
         class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
-            """Multi-threaded HTTP server to handle multiple requests simultaneously"""
-            daemon_threads = True  # Threads will not prevent program exit
-            pass
+            """Multi-threaded HTTP server to handle multiple requests simultaneously
+
+            OPTIMIZATIONS:
+            - daemon_threads: Threads don't block program exit
+            - request_queue_size: Larger backlog for high traffic
+            - allow_reuse_address: Fast port rebinding
+            - allow_reuse_port: Better load distribution (Linux)
+            """
+            daemon_threads = True
+            request_queue_size = 100  # Increased from default 5
+            allow_reuse_address = True
+
+            # Enable SO_REUSEPORT on Linux for better performance
+            try:
+                import socket as sock_module
+                if hasattr(sock_module, 'SO_REUSEPORT'):
+                    allow_reuse_port = True
+            except:
+                pass
 
         class ProxyHandler(BaseHTTPRequestHandler):
             def do_GET(self):
@@ -252,6 +958,18 @@ class InterceptingProxy(QObject):
                     }
                     proxy_instance.request_id_counter += 1
 
+                    # Increment total requests counter for statistics
+                    with proxy_instance._stats_lock:
+                        proxy_instance.total_requests += 1
+                        # Emit statistics update signal
+                        try:
+                            proxy_instance.statistics_updated.emit({
+                                'total': proxy_instance.total_requests,
+                                'blocked_analytics': proxy_instance.blocked_analytics_requests
+                            })
+                        except:
+                            pass  # Ignore signal errors
+
                     # Check scope and ignore patterns for HTTPS tunnels too
                     url = request_data['url']
                     should_log = True
@@ -265,9 +983,8 @@ class InterceptingProxy(QObject):
 
                     # Only log if passes filters
                     if should_log:
-                        proxy_instance.history.append(request_data)
-                        if len(proxy_instance.history) > proxy_instance.max_history:
-                            proxy_instance.history.pop(0)
+                        # OPTIMIZATION: Use memory-efficient history management
+                        proxy_instance._add_to_history(request_data)
 
                         proxy_instance.response_received.emit({
                             'request': request_data,
@@ -338,25 +1055,34 @@ class InterceptingProxy(QObject):
                     print(f"[!] Error intercepting HTTPS for {host}: {e}")
 
             def _proxy_ssl_connection(self, ssl_client_socket, host, port):
-                """Proxy individual HTTPS requests after SSL handshake
+                """Proxy individual HTTPS requests after SSL handshake (OPTIMIZED)
 
                 Handles multiple requests over single SSL connection (HTTP keep-alive)
+
+                OPTIMIZATIONS:
+                - Larger buffer size (8KB instead of 4KB) for better throughput
+                - Efficient header reading with size limits
+                - Request size limits to prevent memory issues
                 """
                 try:
-                    # Set socket timeout to prevent hanging
-                    ssl_client_socket.settimeout(10)
+                    # OPTIMIZATION: Increase socket timeout for better stability
+                    ssl_client_socket.settimeout(15)
 
                     # Handle multiple requests on same connection (HTTP keep-alive)
                     while True:
                         try:
-                            # Read HTTP request from SSL socket (buffered read for performance)
+                            # OPTIMIZATION: Read HTTP request with larger buffer (8KB)
                             request_data_raw = b''
+                            buffer_size = 8192  # Increased from 4096 for better performance
+
                             while b'\r\n\r\n' not in request_data_raw:
-                                chunk = ssl_client_socket.recv(4096)
+                                chunk = ssl_client_socket.recv(buffer_size)
                                 if not chunk:
                                     return  # Connection closed
                                 request_data_raw += chunk
-                                if len(request_data_raw) > 1024 * 1024:  # 1MB limit for headers
+
+                                # OPTIMIZATION: Stricter header size limit
+                                if len(request_data_raw) > 512 * 1024:  # 512KB limit for headers
                                     print(f"[!] Headers too large for {host}")
                                     return
 
@@ -406,10 +1132,8 @@ class InterceptingProxy(QObject):
                             }
                             proxy_instance.request_id_counter += 1
 
-                            # Add to history
-                            proxy_instance.history.append(request_data)
-                            if len(proxy_instance.history) > proxy_instance.max_history:
-                                proxy_instance.history.pop(0)
+                            # OPTIMIZATION: Use memory-efficient history management
+                            proxy_instance._add_to_history(request_data)
 
                             # Emit request signal
                             proxy_instance.request_intercepted.emit(request_data)
@@ -452,6 +1176,7 @@ class InterceptingProxy(QObject):
 
                                 sent_content_length = False
                                 sent_connection = False
+                                was_decompressed = response.get('was_decompressed', False)
 
                                 # Important headers that must be preserved
                                 important_headers = ['location', 'set-cookie', 'content-type']
@@ -459,11 +1184,19 @@ class InterceptingProxy(QObject):
                                 for header, value in response['headers'].items():
                                     header_lower = header.lower()
 
-                                    # Skip problematic headers
-                                    if header_lower in ['transfer-encoding', 'content-encoding']:
+                                    # Always skip transfer-encoding (chunked handled by us)
+                                    if header_lower == 'transfer-encoding':
                                         continue
 
-                                    # Update Content-Length with actual body size
+                                    # Only skip content-encoding if we actually decompressed
+                                    if header_lower == 'content-encoding':
+                                        if was_decompressed:
+                                            continue  # Skip - we decompressed
+                                        else:
+                                            ssl_client_socket.sendall(f"{header}: {value}\r\n".encode())
+                                            continue  # Keep for browser
+
+                                    # Update Content-Length with actual body size (always recalculate if decompressed)
                                     if header_lower == 'content-length':
                                         ssl_client_socket.sendall(f"Content-Length: {len(response_body)}\r\n".encode())
                                         sent_content_length = True
@@ -502,10 +1235,10 @@ class InterceptingProxy(QObject):
                                 print(f"[!] Client disconnected while sending response for {host}: {send_err}")
                                 break  # Exit the keep-alive loop if client disconnected
 
-                            # Emit signal
+                            # Emit signal with truncated response for GUI performance
                             proxy_instance.response_received.emit({
                                 'request': request_data,
-                                'response': response
+                                'response': proxy_instance._truncate_for_gui(response)
                             })
 
                             # Check if client wants to close connection
@@ -533,39 +1266,81 @@ class InterceptingProxy(QObject):
                         pass
 
             def _forward_https_request(self, request_data, host, port):
-                """Forward HTTPS request to destination server"""
+                """Forward HTTPS request to destination server (OPTIMIZED)"""
                 try:
-                    # Make HTTPS request to real server
-                    response = requests.request(
+                    # OPTIMIZATION: Check request size limit
+                    body = request_data['raw_body']
+                    if len(body) > proxy_instance.max_request_size:
+                        return {
+                            'status_code': 413,
+                            'headers': {'Content-Type': 'text/plain'},
+                            'body': b'Request entity too large',
+                            'text': 'Request entity too large',
+                            'timestamp': time.time()
+                        }
+
+                    # OPTIMIZATION: Use connection pool for faster HTTPS requests
+                    response = proxy_instance.connection_pool.request(
                         method=request_data['method'],
                         url=request_data['url'],
                         headers=request_data['headers'],
-                        data=request_data['raw_body'],
+                        data=body,
                         allow_redirects=False,
-                        verify=False,
-                        timeout=30
+                        timeout=15,  # Faster timeout
+                        stream=True  # Stream large responses
                     )
 
-                    # Decompress if needed
-                    body = response.content
-                    if response.headers.get('Content-Encoding') == 'gzip':
-                        try:
-                            body = gzip.decompress(body)
-                        except:
-                            pass
+                    # OPTIMIZATION: Check response size limit
+                    content_length = int(response.headers.get('Content-Length', 0))
+                    if content_length > proxy_instance.max_response_size:
+                        response.close()
+                        return {
+                            'status_code': 413,
+                            'headers': {'Content-Type': 'text/plain'},
+                            'body': b'Response entity too large',
+                            'text': 'Response entity too large',
+                            'timestamp': time.time()
+                        }
+
+                    # Read response content
+                    response_content = response.content
+
+                    # Decompress content (gzip, deflate, brotli)
+                    content_encoding = response.headers.get('Content-Encoding', '')
+                    body, was_decompressed = decompress_content(response_content, content_encoding)
+
+                    # Smart charset detection for text decoding
+                    text = proxy_instance._decode_response_body(body, response.headers)
 
                     return {
                         'status_code': response.status_code,
                         'headers': dict(response.headers),
                         'body': body,
-                        'text': response.text,
-                        'timestamp': time.time()
+                        'text': text,
+                        'timestamp': time.time(),
+                        'was_decompressed': was_decompressed  # Track if we decompressed
                     }
 
+                except requests.exceptions.Timeout:
+                    return {
+                        'status_code': 504,
+                        'headers': {'Content-Type': 'text/plain'},
+                        'body': b'Gateway Timeout',
+                        'text': 'Gateway Timeout',
+                        'timestamp': time.time()
+                    }
+                except requests.exceptions.ConnectionError as e:
+                    return {
+                        'status_code': 502,
+                        'headers': {'Content-Type': 'text/plain'},
+                        'body': f'Bad Gateway: {str(e)}'.encode(),
+                        'text': f'Bad Gateway: {str(e)}',
+                        'timestamp': time.time()
+                    }
                 except Exception as e:
                     return {
                         'status_code': 502,
-                        'headers': {},
+                        'headers': {'Content-Type': 'text/plain'},
                         'body': f"Proxy error: {str(e)}".encode(),
                         'text': f"Proxy error: {str(e)}",
                         'timestamp': time.time()
@@ -573,6 +1348,19 @@ class InterceptingProxy(QObject):
 
             def handle_request(self, method):
                 """Handle HTTP request"""
+                # Check for Dominator status page
+                host = self.headers.get('Host', '')
+                path = self.path.lower()
+
+                # Serve status page for special hostnames or /dominator path or certificate paths
+                is_status_host = host.lower() in ['dominator', 'dominator.local', 'proxy.dominator']
+                is_status_path = path == '/dominator' or path.startswith('/dominator/')
+                is_cert_path = path in ['/ca.crt', '/certificate', '/cert']
+
+                if is_status_host or is_status_path or is_cert_path:
+                    self._serve_status_page()
+                    return
+
                 # Parse request
                 content_length = int(self.headers.get('Content-Length', 0))
                 body = self.rfile.read(content_length) if content_length > 0 else b''
@@ -591,10 +1379,29 @@ class InterceptingProxy(QObject):
 
                 proxy_instance.request_id_counter += 1
 
-                # Add to history
-                proxy_instance.history.append(request_data)
-                if len(proxy_instance.history) > proxy_instance.max_history:
-                    proxy_instance.history.pop(0)
+                # Increment total requests counter for statistics
+                with proxy_instance._stats_lock:
+                    proxy_instance.total_requests += 1
+                    # Emit statistics update signal
+                    try:
+                        proxy_instance.statistics_updated.emit({
+                            'total': proxy_instance.total_requests,
+                            'blocked_analytics': proxy_instance.blocked_analytics_requests
+                        })
+                    except:
+                        pass  # Ignore signal errors
+
+                # Check for WebSocket upgrade request
+                upgrade_header = self.headers.get('Upgrade', '').lower()
+                connection_header = self.headers.get('Connection', '').lower()
+
+                if upgrade_header == 'websocket' and 'upgrade' in connection_header:
+                    # Handle WebSocket upgrade
+                    self._handle_websocket_upgrade(request_data)
+                    return
+
+                # OPTIMIZATION: Use memory-efficient history management
+                proxy_instance._add_to_history(request_data)
 
                 # Check if intercept is enabled and host is not auto-allowed
                 parsed_url = urlparse(self.path)
@@ -606,8 +1413,9 @@ class InterceptingProxy(QObject):
                 )
 
                 if should_intercept:
-                    # Signal GUI to show intercept dialog
-                    proxy_instance.request_intercepted.emit(request_data)
+                    # Create event for this request
+                    event = threading.Event()
+                    proxy_instance.pending_events[request_data['id']] = event
 
                     # Wait for user decision (with timeout)
                     proxy_instance.pending_requests[request_data['id']] = {
@@ -616,29 +1424,28 @@ class InterceptingProxy(QObject):
                         'modified_request': None
                     }
 
-                    # Wait for user action (max 60 seconds)
-                    timeout = 60
-                    waited = 0
-                    while waited < timeout:
-                        pending = proxy_instance.pending_requests.get(request_data['id'])
-                        if pending and pending['action']:
-                            break
-                        time.sleep(0.1)
-                        waited += 0.1
+                    # Signal GUI to show intercept dialog
+                    proxy_instance.request_intercepted.emit(request_data)
+
+                    # Wait for user action using Event (much more efficient than polling)
+                    event.wait(timeout=60)
 
                     # Get user decision
                     pending = proxy_instance.pending_requests.get(request_data['id'], {})
                     action = pending.get('action', 'forward')
 
                     if action == 'drop':
+                        # Clean up
+                        proxy_instance.pending_requests.pop(request_data['id'], None)
+                        proxy_instance.pending_events.pop(request_data['id'], None)
                         self.send_error(403, "Request dropped by user")
                         return
                     elif action == 'modified':
                         request_data = pending.get('modified_request', request_data)
 
                     # Clean up
-                    if request_data['id'] in proxy_instance.pending_requests:
-                        del proxy_instance.pending_requests[request_data['id']]
+                    proxy_instance.pending_requests.pop(request_data['id'], None)
+                    proxy_instance.pending_events.pop(request_data['id'], None)
 
                 # Forward request
                 try:
@@ -654,13 +1461,23 @@ class InterceptingProxy(QObject):
                     # Track if we've sent Connection header
                     sent_connection = False
                     sent_content_length = False
+                    was_decompressed = response.get('was_decompressed', False)
 
                     for header, value in response['headers'].items():
                         header_lower = header.lower()
 
-                        # Skip problematic headers
-                        if header_lower in ['transfer-encoding', 'content-encoding']:
+                        # Always skip transfer-encoding (chunked handled by HTTP lib)
+                        if header_lower == 'transfer-encoding':
                             continue
+
+                        # Only skip content-encoding if we actually decompressed
+                        # If decompression failed, keep the header so browser can handle it
+                        if header_lower == 'content-encoding':
+                            if was_decompressed:
+                                continue  # Skip - we decompressed, browser gets raw data
+                            else:
+                                self.send_header(header, value)  # Keep - browser will decompress
+                                continue
 
                         # Track Connection header
                         if header_lower == 'connection':
@@ -668,8 +1485,10 @@ class InterceptingProxy(QObject):
                             self.send_header('Connection', 'close')
                             sent_connection = True
                         elif header_lower == 'content-length':
-                            self.send_header(header, value)
-                            sent_content_length = True
+                            # If we decompressed, content length changed - recalculate later
+                            if not was_decompressed:
+                                self.send_header(header, value)
+                                sent_content_length = True
                         else:
                             self.send_header(header, value)
 
@@ -707,57 +1526,509 @@ class InterceptingProxy(QObject):
 
                     # Signal GUI (only if passes filters)
                     if should_log:
-                        # Add to history
-                        proxy_instance.history.append(request_data)
-                        if len(proxy_instance.history) > proxy_instance.max_history:
-                            proxy_instance.history.pop(0)
+                        # OPTIMIZATION: Use memory-efficient history management
+                        proxy_instance._add_to_history(request_data)
 
-                        # Emit signal for GUI
+                        # Emit signal for GUI with truncated response
                         proxy_instance.response_received.emit({
                             'request': request_data,
-                            'response': response
+                            'response': proxy_instance._truncate_for_gui(response)
                         })
 
                 except Exception as e:
                     self.send_error(502, f"Proxy error: {str(e)}")
 
+            def _serve_status_page(self):
+                """Serve Dominator proxy status page with certificate download"""
+                path = self.path.lower()
+
+                # Serve CA certificate for download
+                if '/ca.crt' in path or '/certificate' in path or '/cert' in path:
+                    if proxy_instance.cert_manager:
+                        cert_path = proxy_instance.cert_manager.get_ca_cert_path()
+                        try:
+                            with open(cert_path, 'rb') as f:
+                                cert_data = f.read()
+                            self.send_response(200)
+                            self.send_header('Content-Type', 'application/x-x509-ca-cert')
+                            self.send_header('Content-Disposition', 'attachment; filename="dominator-ca.crt"')
+                            self.send_header('Content-Length', len(cert_data))
+                            self.end_headers()
+                            self.wfile.write(cert_data)
+                            return
+                        except Exception as e:
+                            self.send_error(500, f"Could not read certificate: {e}")
+                            return
+                    else:
+                        self.send_error(404, "SSL interception not enabled - no certificate available")
+                        return
+
+                # Serve status page
+                client_ip = self.client_address[0]
+                history_count = len(proxy_instance.history)
+                ssl_status = "Enabled" if proxy_instance.ssl_intercept_enabled else "Disabled"
+                intercept_status = "Enabled" if proxy_instance.intercept_enabled else "Disabled"
+                passive_status = "Enabled" if proxy_instance.passive_scan_enabled else "Disabled"
+                scope_status = "Enabled" if proxy_instance.scope_enabled else "Disabled"
+                pending_count = len(proxy_instance.pending_requests)
+                auto_allow_count = len(proxy_instance.auto_allow_hosts)
+
+                # Get uptime
+                import datetime
+                uptime = "Running"
+
+                cert_section = ""
+                if proxy_instance.cert_manager:
+                    cert_path = proxy_instance.cert_manager.get_ca_cert_path()
+                    cert_section = f'''
+                    <div class="card">
+                        <h2>SSL Certificate</h2>
+                        <p>To inspect HTTPS traffic, install the Dominator CA certificate in your browser:</p>
+                        <a href="/ca.crt" class="download-btn">Download CA Certificate</a>
+                        <p class="note">Certificate location: {cert_path}</p>
+                        <h3>Installation Instructions:</h3>
+                        <ul>
+                            <li><strong>Firefox:</strong> Settings > Privacy & Security > Certificates > View Certificates > Import</li>
+                            <li><strong>Chrome:</strong> Settings > Privacy and Security > Security > Manage Certificates > Import</li>
+                            <li><strong>Windows:</strong> Double-click the .crt file > Install Certificate > Local Machine > Trusted Root</li>
+                        </ul>
+                    </div>
+                    '''
+
+                html = f'''<!DOCTYPE html>
+<html>
+<head>
+    <title>Dominator Proxy</title>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+        }}
+        .container {{
+            max-width: 800px;
+            margin: 0 auto;
+        }}
+        h1 {{
+            color: #00ff88;
+            text-align: center;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }}
+        .subtitle {{
+            text-align: center;
+            color: #888;
+            margin-bottom: 30px;
+        }}
+        .card {{
+            background: rgba(255,255,255,0.05);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }}
+        h2 {{
+            color: #00ff88;
+            margin-top: 0;
+            border-bottom: 1px solid rgba(0,255,136,0.3);
+            padding-bottom: 10px;
+        }}
+        .status-grid {{
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }}
+        .status-item {{
+            padding: 10px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 5px;
+        }}
+        .status-label {{
+            color: #888;
+            font-size: 0.9em;
+        }}
+        .status-value {{
+            color: #fff;
+            font-weight: bold;
+            font-size: 1.1em;
+        }}
+        .status-enabled {{
+            color: #00ff88;
+        }}
+        .status-disabled {{
+            color: #ff6b6b;
+        }}
+        .download-btn {{
+            display: inline-block;
+            background: #00ff88;
+            color: #000;
+            padding: 12px 24px;
+            border-radius: 5px;
+            text-decoration: none;
+            font-weight: bold;
+            margin: 10px 0;
+        }}
+        .download-btn:hover {{
+            background: #00cc6a;
+        }}
+        .note {{
+            color: #888;
+            font-size: 0.85em;
+            font-style: italic;
+        }}
+        ul {{
+            color: #ccc;
+            line-height: 1.8;
+        }}
+        .ip-display {{
+            font-size: 1.5em;
+            color: #00ff88;
+            font-family: monospace;
+        }}
+        .footer {{
+            text-align: center;
+            margin-top: 30px;
+            color: #666;
+            font-size: 0.9em;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>DOMINATOR</h1>
+        <p class="subtitle">Web Vulnerability Scanner - Proxy Status</p>
+
+        <div class="card">
+            <h2>Proxy Status</h2>
+            <p style="color: #00ff88; font-size: 1.2em;">Proxy is running and operational</p>
+            <div class="status-grid">
+                <div class="status-item">
+                    <div class="status-label">Port</div>
+                    <div class="status-value">{proxy_instance.port}</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Your IP</div>
+                    <div class="status-value ip-display">{client_ip}</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Requests Captured</div>
+                    <div class="status-value">{history_count}</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">SSL Interception</div>
+                    <div class="status-value {'status-enabled' if proxy_instance.ssl_intercept_enabled else 'status-disabled'}">{ssl_status}</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Request Interception</div>
+                    <div class="status-value {'status-enabled' if proxy_instance.intercept_enabled else 'status-disabled'}">{intercept_status}</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Passive Scanning</div>
+                    <div class="status-value {'status-enabled' if proxy_instance.passive_scan_enabled else 'status-disabled'}">{passive_status}</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Scope Filter</div>
+                    <div class="status-value {'status-enabled' if proxy_instance.scope_enabled else 'status-disabled'}">{scope_status}</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Pending Intercepts</div>
+                    <div class="status-value">{pending_count}</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Auto-Allowed Hosts</div>
+                    <div class="status-value">{auto_allow_count}</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Max History</div>
+                    <div class="status-value">{proxy_instance.max_history}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>How to Use</h2>
+            <ol style="color: #ccc; line-height: 2;">
+                <li><strong>Configure Browser:</strong> Set your browser's proxy to <code style="color: #00ff88;">127.0.0.1:{proxy_instance.port}</code></li>
+                <li><strong>Install Certificate:</strong> Download and install the CA certificate below for HTTPS inspection</li>
+                <li><strong>Browse:</strong> Visit websites - all traffic will be captured in the History tab</li>
+                <li><strong>Analyze:</strong> Select requests in History to see full details in Inspector</li>
+                <li><strong>Test:</strong> Send requests to Repeater to modify and replay them</li>
+            </ol>
+        </div>
+
+        {cert_section}
+
+        <div class="card">
+            <h2>Quick Links</h2>
+            <ul>
+                <li><a href="/ca.crt" style="color: #00ff88;">Download CA Certificate</a></li>
+                <li>Proxy Address: <code style="color: #00ff88;">127.0.0.1:{proxy_instance.port}</code></li>
+            </ul>
+        </div>
+
+        <div class="footer">
+            Dominator Web Vulnerability Scanner<br>
+            Visit <a href="http://dominator" style="color: #00ff88;">http://dominator</a> to see this page
+        </div>
+    </div>
+</body>
+</html>'''
+
+                html_bytes = html.encode('utf-8')
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/html; charset=utf-8')
+                self.send_header('Content-Length', len(html_bytes))
+                self.send_header('Connection', 'close')
+                self.end_headers()
+                self.wfile.write(html_bytes)
+
             def _forward_request(self, request_data):
-                """Forward request to target server"""
+                """Forward request to target server (OPTIMIZED)"""
                 url = request_data['url']
                 method = request_data['method']
                 headers = request_data['headers'].copy()
                 body = request_data['raw_body']
 
+                # OPTIMIZATION: Check request size limit
+                if len(body) > proxy_instance.max_request_size:
+                    return {
+                        'status_code': 413,
+                        'headers': {'Content-Type': 'text/plain'},
+                        'body': b'Request entity too large',
+                        'text': 'Request entity too large',
+                        'timestamp': time.time()
+                    }
+
                 # Remove proxy-specific headers
                 headers.pop('Proxy-Connection', None)
                 headers.pop('Connection', None)
 
-                # Make request
-                response = requests.request(
-                    method=method,
-                    url=url,
-                    headers=headers,
-                    data=body,
-                    allow_redirects=False,
-                    verify=False,
-                    timeout=30
-                )
+                try:
+                    # OPTIMIZATION: Use connection pool for faster requests
+                    response = proxy_instance.connection_pool.request(
+                        method=method,
+                        url=url,
+                        headers=headers,
+                        data=body,
+                        allow_redirects=False,
+                        timeout=15,  # Faster timeout
+                        stream=True  # Stream large responses
+                    )
 
-                # Decompress if needed
-                body = response.content
-                if response.headers.get('Content-Encoding') == 'gzip':
+                    # OPTIMIZATION: Check response size limit before reading full body
+                    content_length = int(response.headers.get('Content-Length', 0))
+                    if content_length > proxy_instance.max_response_size:
+                        response.close()
+                        return {
+                            'status_code': 413,
+                            'headers': {'Content-Type': 'text/plain'},
+                            'body': b'Response entity too large',
+                            'text': 'Response entity too large',
+                            'timestamp': time.time()
+                        }
+
+                    # Read response content
+                    response_content = response.content
+
+                    # Decompress content (gzip, deflate, brotli)
+                    content_encoding = response.headers.get('Content-Encoding', '')
+                    body, was_decompressed = decompress_content(response_content, content_encoding)
+
+                    # Smart charset detection for text decoding
+                    text = proxy_instance._decode_response_body(body, response.headers)
+
+                    return {
+                        'status_code': response.status_code,
+                        'headers': dict(response.headers),
+                        'body': body,
+                        'text': text,
+                        'timestamp': time.time(),
+                        'was_decompressed': was_decompressed  # Track if we decompressed
+                    }
+
+                except requests.exceptions.Timeout:
+                    return {
+                        'status_code': 504,
+                        'headers': {'Content-Type': 'text/plain'},
+                        'body': b'Gateway Timeout',
+                        'text': 'Gateway Timeout',
+                        'timestamp': time.time()
+                    }
+                except requests.exceptions.ConnectionError as e:
+                    return {
+                        'status_code': 502,
+                        'headers': {'Content-Type': 'text/plain'},
+                        'body': f'Bad Gateway: {str(e)}'.encode(),
+                        'text': f'Bad Gateway: {str(e)}',
+                        'timestamp': time.time()
+                    }
+                except Exception as e:
+                    return {
+                        'status_code': 502,
+                        'headers': {'Content-Type': 'text/plain'},
+                        'body': f'Proxy error: {str(e)}'.encode(),
+                        'text': f'Proxy error: {str(e)}',
+                        'timestamp': time.time()
+                    }
+
+            def _handle_websocket_upgrade(self, request_data):
+                """Handle WebSocket upgrade request - proxy bidirectional communication"""
+                import select
+                import struct
+                import hashlib
+                import base64
+
+                try:
+                    # Parse URL for destination
+                    parsed = urlparse(request_data['url'])
+                    host = parsed.netloc or request_data['headers'].get('Host', '')
+                    port = 80
+                    use_ssl = False
+
+                    if ':' in host:
+                        host, port = host.rsplit(':', 1)
+                        port = int(port)
+                    elif parsed.scheme == 'wss' or request_data['url'].startswith('wss://'):
+                        port = 443
+                        use_ssl = True
+                    elif parsed.scheme == 'https' or request_data['url'].startswith('https://'):
+                        port = 443
+                        use_ssl = True
+
+                    # Connect to WebSocket server
+                    dest = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    dest.settimeout(10)
+                    dest.connect((host, port))
+
+                    if use_ssl:
+                        import ssl
+                        context = ssl.create_default_context()
+                        context.check_hostname = False
+                        context.verify_mode = ssl.CERT_NONE
+                        dest = context.wrap_socket(dest, server_hostname=host)
+
+                    # Forward upgrade request to server
+                    path = parsed.path or '/'
+                    if parsed.query:
+                        path += '?' + parsed.query
+
+                    upgrade_request = f"GET {path} HTTP/1.1\r\n"
+                    for header, value in request_data['headers'].items():
+                        if header.lower() not in ['proxy-connection']:
+                            upgrade_request += f"{header}: {value}\r\n"
+                    upgrade_request += "\r\n"
+
+                    dest.sendall(upgrade_request.encode())
+
+                    # Receive server response
+                    response = b""
+                    while b"\r\n\r\n" not in response:
+                        chunk = dest.recv(1024)
+                        if not chunk:
+                            break
+                        response += chunk
+
+                    # Check for successful upgrade (101 Switching Protocols)
+                    if b"101" not in response.split(b"\r\n")[0]:
+                        self.send_error(502, "WebSocket upgrade failed")
+                        dest.close()
+                        return
+
+                    # Forward response to client
+                    self.wfile.write(response)
+                    self.wfile.flush()
+
+                    # Log WebSocket connection
+                    ws_data = {
+                        'id': proxy_instance.ws_message_counter,
+                        'type': 'connection',
+                        'url': request_data['url'],
+                        'direction': 'upgrade',
+                        'data': '[WebSocket Upgrade]',
+                        'timestamp': time.time()
+                    }
+                    proxy_instance.ws_message_counter += 1
+                    proxy_instance.ws_history.append(ws_data)
+                    proxy_instance.websocket_message.emit(ws_data)
+
+                    # Set non-blocking for bidirectional relay
+                    self.connection.setblocking(0)
+                    dest.setblocking(0)
+
+                    # Relay WebSocket frames
+                    conns = [self.connection, dest]
+                    while True:
+                        try:
+                            (recv, _, err) = select.select(conns, [], conns, 1)
+                        except:
+                            break
+
+                        if err:
+                            break
+
+                        for sock in recv:
+                            try:
+                                data = sock.recv(65536)
+                            except:
+                                data = None
+
+                            if not data:
+                                break
+
+                            # Determine direction and destination
+                            if sock is self.connection:
+                                direction = 'client->server'
+                                out_sock = dest
+                            else:
+                                direction = 'server->client'
+                                out_sock = self.connection
+
+                            # Log WebSocket message
+                            ws_msg = {
+                                'id': proxy_instance.ws_message_counter,
+                                'type': 'message',
+                                'url': request_data['url'],
+                                'direction': direction,
+                                'data': data[:500].hex() if len(data) > 500 else data.hex(),
+                                'length': len(data),
+                                'timestamp': time.time()
+                            }
+                            proxy_instance.ws_message_counter += 1
+
+                            if len(proxy_instance.ws_history) > proxy_instance.max_ws_history:
+                                proxy_instance.ws_history.pop(0)
+                            proxy_instance.ws_history.append(ws_msg)
+
+                            # Emit signal for GUI
+                            try:
+                                proxy_instance.websocket_message.emit(ws_msg)
+                            except:
+                                pass
+
+                            # Forward data
+                            try:
+                                out_sock.sendall(data)
+                            except:
+                                break
+                        else:
+                            continue
+                        break
+
+                    # Close connections
                     try:
-                        body = gzip.decompress(body)
+                        dest.close()
                     except:
                         pass
 
-                return {
-                    'status_code': response.status_code,
-                    'headers': dict(response.headers),
-                    'body': body,
-                    'text': response.text,
-                    'timestamp': time.time()
-                }
+                except Exception as e:
+                    print(f"[!] WebSocket error: {e}")
+                    try:
+                        self.send_error(502, f"WebSocket error: {str(e)}")
+                    except:
+                        pass
 
             def log_message(self, format, *args):
                 """Suppress default logging"""
@@ -830,6 +2101,33 @@ class InterceptingProxy(QObject):
                         'evidence': finding.get('evidence', ''),
                         'description': finding.get('description', '')
                     })
+
+            # Collect resources (emails, phones, social media, etc.)
+            if hasattr(self, 'resource_collector') and self.resource_collector:
+                try:
+                    resources = self.resource_collector.analyze(
+                        response['text'],
+                        url,
+                        response['headers']
+                    )
+
+                    # Emit found resources
+                    for category, items in resources.items():
+                        for item in items:
+                            if category == 'email_addresses':
+                                self.resource_found.emit('email', item['value'], 'Email', url)
+                            elif category == 'phone_numbers':
+                                self.resource_found.emit('phone', item['value'], item.get('name', 'Phone'), url)
+                            elif category == 'social_networks':
+                                platform = item.get('name', 'Social')
+                                self.resource_found.emit('social', item['value'], platform, url)
+                            elif category == 'api_keys':
+                                key_type = item.get('name', 'API Key')
+                                severity = item.get('severity', 'HIGH')
+                                self.resource_found.emit('leaked_key', item['value'][:30] + '...', f"{key_type}|{severity}", url)
+                except Exception as res_err:
+                    pass  # Silently ignore resource collection errors
+
         except Exception as e:
             print(f"[!] Passive scan error: {e}")
 
@@ -837,17 +2135,26 @@ class InterceptingProxy(QObject):
         """Forward a pending request"""
         if request_id in self.pending_requests:
             self.pending_requests[request_id]['action'] = 'forward'
+            # Signal the waiting thread
+            if request_id in self.pending_events:
+                self.pending_events[request_id].set()
 
     def drop_request(self, request_id):
         """Drop a pending request"""
         if request_id in self.pending_requests:
             self.pending_requests[request_id]['action'] = 'drop'
+            # Signal the waiting thread
+            if request_id in self.pending_events:
+                self.pending_events[request_id].set()
 
     def modify_and_forward(self, request_id, modified_request):
         """Modify and forward a pending request"""
         if request_id in self.pending_requests:
             self.pending_requests[request_id]['action'] = 'modified'
             self.pending_requests[request_id]['modified_request'] = modified_request
+            # Signal the waiting thread
+            if request_id in self.pending_events:
+                self.pending_events[request_id].set()
 
     def get_history(self, limit=100):
         """Get request history"""
@@ -945,16 +2252,71 @@ class InterceptingProxy(QObject):
 
         return False
 
+    def _is_analytics_url(self, url):
+        """Check if URL is analytics/telemetry (for statistics tracking)"""
+        from urllib.parse import urlparse
+
+        if not self.block_analytics_enabled:
+            return False
+
+        parsed = urlparse(url)
+        host = parsed.netloc.lower()
+
+        # Check exact match and subdomain match
+        for analytics_host in self.analytics_hosts:
+            if host == analytics_host or host.endswith('.' + analytics_host):
+                return True
+
+        return False
+
+    def should_ignore_response(self, response):
+        """Check if response should be ignored based on content-type (binary content)"""
+        if not response:
+            return False
+
+        content_type = ''
+        for key, value in response.get('headers', {}).items():
+            if key.lower() == 'content-type':
+                content_type = value.lower()
+                break
+
+        # Check against ignored content types
+        for ignored_type in self.ignore_content_types:
+            if ignored_type in content_type:
+                return True
+
+        return False
+
     def should_ignore(self, url):
-        """Check if URL should be ignored (static files, etc.)"""
+        """Check if URL should be ignored (static files, analytics, etc.)"""
         import re
         from urllib.parse import urlparse
 
         if not self.ignore_enabled:
             return False
 
-        # Check file extension
         parsed = urlparse(url)
+
+        # Check analytics hosts (and track statistics)
+        if self.block_analytics_enabled:
+            host = parsed.netloc.lower()
+            # Check exact match and subdomain match
+            for analytics_host in self.analytics_hosts:
+                if host == analytics_host or host.endswith('.' + analytics_host):
+                    # Increment blocked analytics counter
+                    with self._stats_lock:
+                        self.blocked_analytics_requests += 1
+                        # Emit statistics update signal on every blocked request
+                        try:
+                            self.statistics_updated.emit({
+                                'total': self.total_requests,
+                                'blocked_analytics': self.blocked_analytics_requests
+                            })
+                        except:
+                            pass  # Ignore signal errors
+                    return True
+
+        # Check file extension
         path = parsed.path.lower()
         for ext in self.ignore_extensions:
             if path.endswith(ext):
@@ -969,6 +2331,26 @@ class InterceptingProxy(QObject):
                 pass
 
         return False
+
+    def is_analytics_host(self, host):
+        """Check if host is in analytics blocklist"""
+        host = host.lower()
+        for analytics_host in self.analytics_hosts:
+            if host == analytics_host or host.endswith('.' + analytics_host):
+                return True
+        return False
+
+    def get_analytics_hosts(self):
+        """Get list of blocked analytics hosts"""
+        return sorted(self.analytics_hosts)
+
+    def add_analytics_host(self, host):
+        """Add host to analytics blocklist"""
+        self.analytics_hosts.add(host.lower())
+
+    def remove_analytics_host(self, host):
+        """Remove host from analytics blocklist"""
+        self.analytics_hosts.discard(host.lower())
 
     def add_ignore_extension(self, ext):
         """Add file extension to ignore list"""

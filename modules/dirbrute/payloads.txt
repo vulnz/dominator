@@ -243,8 +243,5 @@ sys
 root
 base
 main
-home
-index
 default
-welcome
 start

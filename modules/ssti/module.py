@@ -16,9 +16,9 @@ logger = get_logger(__name__)
 class SSTIModule(BaseModule):
     """SSTI Scanner Module"""
 
-    def __init__(self, module_path: str):
+    def __init__(self, module_path: str, payload_limit: int = None):
         """Initialize SSTI module"""
-        super().__init__(module_path)
+        super().__init__(module_path, payload_limit=payload_limit)
 
         # Expected results for math payloads
         self.math_checks = {
@@ -255,6 +255,6 @@ class SSTIModule(BaseModule):
         return False
 
 
-def get_module(module_path: str):
+def get_module(module_path: str, payload_limit: int = None):
     """Create module instance"""
-    return SSTIModule(module_path)
+    return SSTIModule(module_path, payload_limit=payload_limit)

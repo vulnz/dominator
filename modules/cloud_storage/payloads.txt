@@ -1,0 +1,95 @@
+# Firebase Realtime Database URLs
+FIREBASE:DOMAIN-default-rtdb.firebaseio.com
+FIREBASE:DOMAIN.firebaseio.com
+FIREBASE:DOMAIN-prod.firebaseio.com
+FIREBASE:DOMAIN-dev.firebaseio.com
+FIREBASE:DOMAIN-staging.firebaseio.com
+FIREBASE:DOMAIN-test.firebaseio.com
+
+# Firebase Storage URLs
+FIREBASE_STORAGE:DOMAIN.appspot.com
+FIREBASE_STORAGE:DOMAIN-default.appspot.com
+FIREBASE_STORAGE:DOMAIN-prod.appspot.com
+FIREBASE_STORAGE:DOMAIN-dev.appspot.com
+
+# Firebase Firestore
+FIRESTORE:firestore.googleapis.com/v1/projects/DOMAIN/databases/(default)/documents
+
+# AWS S3 Buckets
+S3:DOMAIN.s3.amazonaws.com
+S3:s3.amazonaws.com/DOMAIN
+S3:DOMAIN-backup.s3.amazonaws.com
+S3:DOMAIN-backups.s3.amazonaws.com
+S3:DOMAIN-dev.s3.amazonaws.com
+S3:DOMAIN-prod.s3.amazonaws.com
+S3:DOMAIN-staging.s3.amazonaws.com
+S3:DOMAIN-test.s3.amazonaws.com
+S3:DOMAIN-assets.s3.amazonaws.com
+S3:DOMAIN-uploads.s3.amazonaws.com
+S3:DOMAIN-files.s3.amazonaws.com
+S3:DOMAIN-public.s3.amazonaws.com
+S3:DOMAIN-private.s3.amazonaws.com
+
+# AWS S3 with regions
+S3:DOMAIN.s3.us-east-1.amazonaws.com
+S3:DOMAIN.s3.us-west-2.amazonaws.com
+S3:DOMAIN.s3.eu-west-1.amazonaws.com
+S3:DOMAIN.s3.ap-southeast-1.amazonaws.com
+
+# Azure Blob Storage
+AZURE:DOMAIN.blob.core.windows.net
+AZURE:DOMAIN-backup.blob.core.windows.net
+AZURE:DOMAIN-dev.blob.core.windows.net
+AZURE:DOMAIN-prod.blob.core.windows.net
+AZURE:DOMAIN-staging.blob.core.windows.net
+AZURE:DOMAIN-assets.blob.core.windows.net
+
+# Google Cloud Storage
+GCS:storage.googleapis.com/DOMAIN
+GCS:storage.googleapis.com/DOMAIN-backup
+GCS:storage.googleapis.com/DOMAIN-dev
+GCS:storage.googleapis.com/DOMAIN-prod
+GCS:storage.googleapis.com/DOMAIN-staging
+GCS:storage.googleapis.com/DOMAIN-assets
+GCS:DOMAIN.storage.googleapis.com
+
+# DigitalOcean Spaces
+DO:DOMAIN.nyc3.digitaloceanspaces.com
+DO:DOMAIN.sfo2.digitaloceanspaces.com
+DO:DOMAIN.ams3.digitaloceanspaces.com
+DO:DOMAIN.sgp1.digitaloceanspaces.com
+
+# Backblaze B2
+B2:f000.backblazeb2.com/file/DOMAIN
+B2:s3.us-west-000.backblazeb2.com/DOMAIN
+
+# Wasabi
+WASABI:s3.wasabisys.com/DOMAIN
+WASABI:s3.us-east-1.wasabisys.com/DOMAIN
+WASABI:s3.us-west-1.wasabisys.com/DOMAIN
+
+# Common bucket name patterns
+PATTERN:backup
+PATTERN:backups
+PATTERN:dev
+PATTERN:development
+PATTERN:prod
+PATTERN:production
+PATTERN:staging
+PATTERN:test
+PATTERN:assets
+PATTERN:uploads
+PATTERN:files
+PATTERN:public
+PATTERN:private
+PATTERN:data
+PATTERN:images
+PATTERN:media
+PATTERN:documents
+PATTERN:downloads
+PATTERN:static
+PATTERN:storage
+PATTERN:archive
+PATTERN:logs
+PATTERN:config
+PATTERN:configuration

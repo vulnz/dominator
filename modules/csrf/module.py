@@ -16,9 +16,9 @@ logger = get_logger(__name__)
 class CSRFModule(BaseModule):
     """CSRF Scanner Module"""
 
-    def __init__(self, module_path: str):
+    def __init__(self, module_path: str, payload_limit: int = None):
         """Initialize CSRF module"""
-        super().__init__(module_path)
+        super().__init__(module_path, payload_limit=payload_limit)
 
         # Common CSRF token field names
         self.token_names = [
@@ -261,6 +261,6 @@ class CSRFModule(BaseModule):
         return False, 0.0, ""
 
 
-def get_module(module_path: str):
+def get_module(module_path: str, payload_limit: int = None):
     """Create module instance"""
-    return CSRFModule(module_path)
+    return CSRFModule(module_path, payload_limit=payload_limit)
