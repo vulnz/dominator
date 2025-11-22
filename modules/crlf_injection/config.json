@@ -1,0 +1,18 @@
+{
+    "name": "CRLF Injection Scanner",
+    "description": "Detects CRLF injection vulnerabilities allowing HTTP header injection and response splitting",
+    "author": "Dominator Team",
+    "version": "1.0",
+    "category": "injection",
+    "severity": "Medium",
+    "enabled": true,
+    "passive": false,
+    "cwe": "CWE-93",
+    "owasp": "A03:2021",
+    "cvss": 6.1,
+    "tags": ["crlf", "header-injection", "response-splitting", "http-smuggling"],
+    "references": [
+        "https://owasp.org/www-community/vulnerabilities/CRLF_Injection",
+        "https://book.hacktricks.xyz/pentesting-web/crlf-0d-0a"
+    ]
+}

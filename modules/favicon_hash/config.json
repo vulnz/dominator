@@ -1,0 +1,18 @@
+{
+    "name": "Favicon Hash Fingerprinter",
+    "description": "Identifies web technologies by computing MMH3 hash of favicon and matching against known fingerprints",
+    "author": "Dominator Team",
+    "version": "1.0",
+    "category": "reconnaissance",
+    "severity": "Info",
+    "enabled": true,
+    "passive": true,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021",
+    "cvss": 0,
+    "tags": ["favicon", "fingerprint", "reconnaissance", "technology", "mmh3", "shodan"],
+    "references": [
+        "https://github.com/Shodan/favicon-hashtool",
+        "https://blog.shodan.io/deep-dive-http-favicon/"
+    ]
+}

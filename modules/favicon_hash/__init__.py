@@ -1,0 +1,1 @@
+# Favicon Hash Fingerprinting Module

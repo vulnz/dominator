@@ -84,3 +84,54 @@ certs/
 
 # Trashbin for old/temporary files
 trashbin/
+
+# Firefox/Chrome portables
+firefox_portable/
+firefox_portable_app/
+
+# Markdown files (except README)
+*.md
+!README.md
+
+# HTML reports generated during scans
+scan_*.html
+
+# Corrupted/temporary module folders (typos from failed operations)
+modulescmdi/
+modulesdirbrute/
+passive_detectorsapi_detector/
+
+# Local benchmark and test targets
+benchmark_targets.txt
+full_test_targets.txt
+scan_targets.txt
+
+# Utility/helper scripts (not part of core scanner)
+analyze_results.py
+create_multi_target_report.py
+multi_target_scan.py
+serve_live_report.py
+update_modules.py
+update_payload_usage.py
+create_new_modules.py
+cleanup.py
+cleanup.bat
+run_gui_debug.bat
+
+# Backup files
+*.backup
+*.bkp
+
+# Windows artifacts
+nul
+Thumbs.db
+desktop.ini
+
+# Analysis folder (local analysis results)
+analysis/
+
+# Binary tools (downloaded per-installation)
+bin/
+
+# Benchmark servers (local testing only)
+benchmark/

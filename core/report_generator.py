@@ -301,7 +301,9 @@ class ReportGenerator:
             return self._generate_html_simple(results, output_file, scan_info)
 
         # FULL detailed HTML report (default)
-        vulnerabilities = [r for r in results if r.get('vulnerability')]
+        # Preprocess: group security headers and enhance vulnerability names
+        raw_vulns = [r for r in results if r.get('vulnerability')]
+        vulnerabilities = self._preprocess_findings(raw_vulns)
 
         # Count by severity
         severity_counts = {
@@ -986,3 +988,122 @@ class ReportGenerator:
         clickable_text = url_pattern.sub(make_link, escaped_text)
 
         return clickable_text
+
+    def _preprocess_findings(self, findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Preprocess findings:
+        1. Group security headers per URL into single finding
+        2. Enhance XSS titles with type (Reflected/Stored/DOM)
+        3. Ensure full vulnerability names
+        4. Ensure response content is captured
+        """
+        processed = []
+        security_headers_by_url = {}
+
+        # Full vulnerability name mappings
+        vuln_names = {
+            'XSS': 'Cross-Site Scripting (XSS)',
+            'xss': 'Cross-Site Scripting (XSS)',
+            'SQLi': 'SQL Injection',
+            'sqli': 'SQL Injection',
+            'CMDi': 'Command Injection',
+            'cmdi': 'Command Injection',
+            'LFI': 'Local File Inclusion (LFI)',
+            'lfi': 'Local File Inclusion (LFI)',
+            'RFI': 'Remote File Inclusion (RFI)',
+            'rfi': 'Remote File Inclusion (RFI)',
+            'SSRF': 'Server-Side Request Forgery (SSRF)',
+            'ssrf': 'Server-Side Request Forgery (SSRF)',
+            'SSTI': 'Server-Side Template Injection (SSTI)',
+            'ssti': 'Server-Side Template Injection (SSTI)',
+            'XXE': 'XML External Entity Injection (XXE)',
+            'xxe': 'XML External Entity Injection (XXE)',
+            'IDOR': 'Insecure Direct Object Reference (IDOR)',
+            'idor': 'Insecure Direct Object Reference (IDOR)',
+            'CSRF': 'Cross-Site Request Forgery (CSRF)',
+            'csrf': 'Cross-Site Request Forgery (CSRF)',
+            'redirect': 'Open Redirect',
+            'Open Redirect': 'Open Redirect',
+        }
+
+        for finding in findings:
+            vuln_type = finding.get('type', finding.get('module', ''))
+
+            # Group security headers by URL
+            if vuln_type in ['missing_security_header', 'security_header', 'Missing Security Header']:
+                url = finding.get('url', 'unknown')
+                if url not in security_headers_by_url:
+                    security_headers_by_url[url] = {
+                        'url': url,
+                        'type': 'Missing Security Headers',
+                        'module': 'Security Headers',
+                        'severity': finding.get('severity', 'Medium'),
+                        'vulnerability': True,
+                        'headers': [],
+                        'description': 'Multiple security headers are missing from the response.',
+                        'recommendation': 'Add the following security headers to improve protection.',
+                        'response': finding.get('response', ''),
+                    }
+                # Add header info
+                desc = finding.get('description', '')
+                security_headers_by_url[url]['headers'].append(desc)
+                continue
+
+            # Enhance XSS type in title
+            if vuln_type.upper() == 'XSS' or 'XSS' in vuln_type.upper():
+                xss_type = 'Reflected'  # Default
+                evidence = finding.get('evidence', '').lower()
+                desc = finding.get('description', '').lower()
+
+                if 'stored' in evidence or 'stored' in desc:
+                    xss_type = 'Stored'
+                elif 'dom' in evidence or 'dom-based' in desc or 'dom based' in desc:
+                    xss_type = 'DOM-Based'
+                elif 'reflected' in evidence or 'reflected' in desc:
+                    xss_type = 'Reflected'
+
+                finding['type'] = f'{xss_type} Cross-Site Scripting (XSS)'
+                finding['xss_type'] = xss_type
+
+            # Enhance vulnerability names
+            elif vuln_type in vuln_names:
+                finding['type'] = vuln_names[vuln_type]
+
+            # Ensure response content exists (use evidence if no response)
+            if not finding.get('response') and finding.get('evidence'):
+                finding['response'] = finding.get('evidence')
+
+            processed.append(finding)
+
+        # Add grouped security headers
+        for url, header_finding in security_headers_by_url.items():
+            headers = header_finding['headers']
+            header_finding['evidence'] = 'Missing headers:\\n' + '\\n'.join(f'  - {h}' for h in headers)
+            header_finding['description'] = f'{len(headers)} security headers missing: ' + ', '.join(
+                h.split(':')[0].replace('Missing ', '') for h in headers if h
+            )
+            processed.append(header_finding)
+
+        return processed
+
+    def _get_full_vuln_title(self, result: Dict[str, Any]) -> str:
+        """Get full vulnerability title with type specification"""
+        vuln_type = result.get('type', result.get('module', 'Unknown Vulnerability'))
+
+        # Already enhanced by preprocessor
+        if 'Cross-Site Scripting' in vuln_type or 'Injection' in vuln_type:
+            return vuln_type
+
+        # Fallback mappings
+        title_map = {
+            'XSS': 'Cross-Site Scripting (XSS)',
+            'SQLi': 'SQL Injection',
+            'CMDi': 'Command Injection',
+            'LFI': 'Local File Inclusion (LFI)',
+            'SSRF': 'Server-Side Request Forgery (SSRF)',
+            'SSTI': 'Server-Side Template Injection (SSTI)',
+            'XXE': 'XML External Entity (XXE)',
+            'IDOR': 'Insecure Direct Object Reference (IDOR)',
+        }
+
+        return title_map.get(vuln_type.upper(), vuln_type)
