@@ -534,7 +534,9 @@ class ReportGenerator:
 
                 for result in severity_results:
                     # HTML escape all user-controlled data to prevent XSS payloads from breaking the report
-                    vuln_type = html.escape(result.get('type', result.get('module', 'Unknown Vulnerability')))
+                    raw_type = result.get('type', result.get('module', 'Unknown Vulnerability'))
+                    # Format type: replace underscores with spaces and title case
+                    vuln_type = html.escape(raw_type.replace('_', ' ').title())
                     raw_url = result.get('url', 'N/A')
 
                     # Make URL clickable
@@ -838,7 +840,11 @@ class ReportGenerator:
         http_request = self._generate_http_request(url, method, parameter, payload)
 
         # Get response preview (from evidence or create placeholder)
-        response_preview = result.get('response', result.get('evidence', 'Response data not captured'))
+        # Handle empty strings - use 'or' to fall through to next option
+        # Also check 'description' and 'value' for passive scanner findings
+        response_preview = (result.get('response') or result.get('evidence') or
+                           result.get('description') or result.get('value') or
+                           'Response data not captured')
         if len(response_preview) > 2000:
             response_preview = response_preview[:2000] + '\n\n... (truncated, showing first 2000 chars)'
 

@@ -4,223 +4,166 @@ Attempts to bypass 403 responses using header and path manipulation
 Limited attempts per scan to avoid excessive requests
 """
 
-from typing import Dict, List, Any, Optional
-from urllib.parse import urlparse, urljoin
+from typing import List, Dict, Any
+from urllib.parse import urlparse
 from core.base_module import BaseModule
+from core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
-class Module(BaseModule):
+class ForbiddenBypassModule(BaseModule):
     """403 Forbidden bypass scanner"""
 
-    def __init__(self, http_client=None, config: Optional[Dict] = None):
-        super().__init__(http_client, config)
-        self.name = "403 Forbidden Bypass Scanner"
-        self.description = "Bypasses 403 Forbidden using various techniques"
-        self.scan_count = 0
-        self.max_scans_per_session = 3  # Limit to prevent excessive requests
-        self.tested_urls = set()
+    # Class-level counters to limit across instances
+    _scan_count = 0
+    _tested_urls = set()
+    MAX_SCANS = 3
 
-    def run(self, target: str, params: Optional[Dict] = None) -> List[Dict[str, Any]]:
-        """Run 403 bypass scan - only on 403 responses, limited times"""
-        results = []
+    def __init__(self, module_path: str, payload_limit: int = None):
+        """Initialize 403 Bypass module"""
+        super().__init__(module_path, payload_limit=payload_limit)
 
-        # Check if we've hit the limit for this session
-        if self.scan_count >= self.max_scans_per_session:
-            return results
-
-        # Skip if already tested this URL
-        parsed = urlparse(target)
-        url_key = f"{parsed.netloc}{parsed.path}"
-        if url_key in self.tested_urls:
-            return results
-
-        # First, check if the URL actually returns 403
-        try:
-            baseline = self.http_client.get(target)
-            if not baseline or baseline.status_code != 403:
-                return results  # Only scan 403 pages
-        except Exception:
-            return results
-
-        self.tested_urls.add(url_key)
-        self.scan_count += 1
-
-        # Header-based bypasses (most effective)
-        header_results = self._test_header_bypasses(target)
-        results.extend(header_results)
-
-        # Path-based bypasses
-        path_results = self._test_path_bypasses(target)
-        results.extend(path_results)
-
-        # Method-based bypasses
-        method_results = self._test_method_bypasses(target)
-        results.extend(method_results)
-
-        return results
-
-    def _test_header_bypasses(self, url: str) -> List[Dict]:
-        """Test header-based bypass techniques"""
-        results = []
-
-        # Key bypass headers (limited selection for efficiency)
-        bypass_headers = [
-            # IP spoofing
+        self.bypass_headers = [
+            {'X-Original-URL': '/'},
+            {'X-Rewrite-URL': '/'},
             {'X-Forwarded-For': '127.0.0.1'},
-            {'X-Forwarded-For': '::1'},
-            {'X-Original-URL': urlparse(url).path},
-            {'X-Rewrite-URL': urlparse(url).path},
-            {'X-Originating-IP': '127.0.0.1'},
+            {'X-Forwarded-Host': 'localhost'},
+            {'X-Custom-IP-Authorization': '127.0.0.1'},
+            {'X-Real-IP': '127.0.0.1'},
             {'X-Remote-IP': '127.0.0.1'},
             {'X-Client-IP': '127.0.0.1'},
-            {'X-Real-IP': '127.0.0.1'},
-            {'X-Forwarded-Host': 'localhost'},
             {'X-Host': 'localhost'},
-            # Override headers
-            {'X-Custom-IP-Authorization': '127.0.0.1'},
-            {'X-Forwarded-Proto': 'https'},
-            {'Forwarded': 'for=127.0.0.1'},
+            {'X-Originating-IP': '127.0.0.1'},
         ]
 
-        for headers in bypass_headers:
+        logger.info("403 Forbidden Bypass module loaded")
+
+    def scan(self, targets: List[Dict[str, Any]], http_client: Any) -> List[Dict[str, Any]]:
+        """Scan for 403 bypass opportunities"""
+        results = []
+
+        for target in targets:
+            url = target.get('url')
+            parsed = urlparse(url)
+            url_key = f"{parsed.netloc}{parsed.path}"
+
+            # Check limits
+            if ForbiddenBypassModule._scan_count >= ForbiddenBypassModule.MAX_SCANS:
+                break
+            if url_key in ForbiddenBypassModule._tested_urls:
+                continue
+
+            # First check if URL returns 403
             try:
-                response = self.http_client.get(url, headers=headers)
+                baseline = http_client.get(url)
+                if not baseline or baseline.status_code != 403:
+                    continue  # Only test 403 pages
+            except Exception:
+                continue
+
+            ForbiddenBypassModule._tested_urls.add(url_key)
+            ForbiddenBypassModule._scan_count += 1
+
+            # Test header bypasses
+            header_results = self._test_header_bypasses(url, http_client)
+            results.extend(header_results)
+
+            # Test path bypasses
+            path_results = self._test_path_bypasses(url, http_client)
+            results.extend(path_results)
+
+        return results
+
+    def _test_header_bypasses(self, url: str, http_client) -> List[Dict]:
+        """Test header-based 403 bypasses"""
+        results = []
+
+        for header_dict in self.bypass_headers[:5]:  # Limit tests
+            try:
+                response = http_client.get(url, headers=header_dict)
 
                 if response and response.status_code == 200:
-                    header_name = list(headers.keys())[0]
-                    header_value = list(headers.values())[0]
+                    header_name = list(header_dict.keys())[0]
+                    header_value = list(header_dict.values())[0]
 
-                    results.append({
-                        'vulnerability': True,
-                        'type': '403 Bypass',
-                        'severity': 'Medium',
-                        'url': url,
-                        'parameter': header_name,
-                        'payload': f'{header_name}: {header_value}',
-                        'method': 'GET',
-                        'injection_type': 'Header-based Bypass',
-                        'evidence': f"403 bypassed with header '{header_name}: {header_value}'. Status: 200",
-                        'description': f"403 Forbidden was bypassed using the {header_name} header. Access control can be circumvented.",
-                        'recommendation': 'Implement proper access control at the application layer, not just based on headers. Validate authorization server-side.',
-                        'cwe': 'CWE-284',
-                        'owasp': 'A01:2021',
-                        'cvss': 5.3,
-                        'response': response.text[:500] if response.text else ''
-                    })
-                    return results  # Found bypass, return immediately
+                    results.append(self.create_result(
+                        vulnerable=True,
+                        url=url,
+                        parameter=header_name,
+                        payload=header_value,
+                        evidence=f"403 bypassed using header {header_name}: {header_value}",
+                        severity='High',
+                        method='GET',
+                        additional_info={
+                            'injection_type': '403 Bypass',
+                            'bypass_type': 'Header',
+                            'header': header_dict,
+                            'cwe': 'CWE-284',
+                            'owasp': 'A01:2021',
+                            'cvss': 7.5
+                        }
+                    ))
+                    return results  # Found bypass, stop
 
             except Exception:
                 continue
 
         return results
 
-    def _test_path_bypasses(self, url: str) -> List[Dict]:
-        """Test path-based bypass techniques"""
+    def _test_path_bypasses(self, url: str, http_client) -> List[Dict]:
+        """Test path-based 403 bypasses"""
         results = []
         parsed = urlparse(url)
-        path = parsed.path.rstrip('/')
-        base = f"{parsed.scheme}://{parsed.netloc}"
+        path = parsed.path
 
-        # Path variations to try
-        path_variations = [
-            f"{path}/",
-            f"{path}//",
-            f"{path}/.",
-            f"{path}/..",
-            f"{path}..;/",
-            f"{path};/",
-            f"{path}%20",
-            f"{path}%09",
-            f"{path}%00",
-            f"{path}?",
-            f"{path}??",
-            f"{path}#",
-            f"{path}/*",
-            f"{path}.json",
-            f"{path}.html",
-            f"/{path.lstrip('/')}",  # Ensure leading slash
-            f"//{path.lstrip('/')}",  # Double slash
+        # Path variations
+        variations = [
+            path + '/',
+            path + '/.',
+            path + '/./',
+            path + '/..;/',
+            '/' + path.lstrip('/'),
+            path.upper(),
+            path + '%20',
+            path + '%09',
+            path + '?',
+            path + '#',
         ]
 
-        for variation in path_variations[:10]:  # Limit variations
-            try:
-                test_url = base + variation
-                if parsed.query:
-                    test_url += f"?{parsed.query}"
+        base = f"{parsed.scheme}://{parsed.netloc}"
 
-                response = self.http_client.get(test_url)
+        for var_path in variations[:5]:  # Limit tests
+            try:
+                test_url = base + var_path
+                response = http_client.get(test_url)
 
                 if response and response.status_code == 200:
-                    results.append({
-                        'vulnerability': True,
-                        'type': '403 Bypass',
-                        'severity': 'Medium',
-                        'url': url,
-                        'parameter': 'URL path',
-                        'payload': variation,
-                        'method': 'GET',
-                        'injection_type': 'Path-based Bypass',
-                        'evidence': f"403 bypassed with path variation '{variation}'. Status: 200",
-                        'description': f"403 Forbidden was bypassed using path modification. Original: {path}, Bypass: {variation}",
-                        'recommendation': 'Normalize URL paths before access control checks. Use strict path matching.',
-                        'cwe': 'CWE-284',
-                        'owasp': 'A01:2021',
-                        'cvss': 5.3,
-                        'response': response.text[:500] if response.text else ''
-                    })
-                    return results  # Found bypass, return immediately
+                    results.append(self.create_result(
+                        vulnerable=True,
+                        url=test_url,
+                        parameter='path',
+                        payload=var_path,
+                        evidence=f"403 bypassed using path variation: {var_path}",
+                        severity='High',
+                        method='GET',
+                        additional_info={
+                            'injection_type': '403 Bypass',
+                            'bypass_type': 'Path',
+                            'original_path': path,
+                            'cwe': 'CWE-284',
+                            'owasp': 'A01:2021',
+                            'cvss': 7.5
+                        }
+                    ))
+                    return results  # Found bypass, stop
 
             except Exception:
                 continue
 
         return results
 
-    def _test_method_bypasses(self, url: str) -> List[Dict]:
-        """Test HTTP method bypass techniques"""
-        results = []
 
-        # Alternative methods to try
-        methods = ['POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD', 'TRACE']
-
-        for method in methods[:4]:  # Limit methods
-            try:
-                if method == 'POST':
-                    response = self.http_client.post(url, data={})
-                elif method == 'PUT':
-                    response = self.http_client.put(url, data={})
-                elif method == 'OPTIONS':
-                    response = self.http_client.options(url)
-                elif method == 'HEAD':
-                    response = self.http_client.head(url)
-                else:
-                    continue
-
-                if response and response.status_code == 200:
-                    results.append({
-                        'vulnerability': True,
-                        'type': '403 Bypass',
-                        'severity': 'Medium',
-                        'url': url,
-                        'parameter': 'HTTP Method',
-                        'payload': method,
-                        'method': method,
-                        'injection_type': 'Method-based Bypass',
-                        'evidence': f"403 bypassed using HTTP {method} method. Status: 200",
-                        'description': f"403 Forbidden was bypassed using {method} instead of GET. Access control only applies to certain methods.",
-                        'recommendation': 'Apply access control consistently across all HTTP methods.',
-                        'cwe': 'CWE-284',
-                        'owasp': 'A01:2021',
-                        'cvss': 5.3,
-                        'response': response.text[:500] if hasattr(response, 'text') and response.text else ''
-                    })
-                    return results  # Found bypass
-
-            except Exception:
-                continue
-
-        return results
-
-    def reset_scan_count(self):
-        """Reset scan count for new session"""
-        self.scan_count = 0
-        self.tested_urls.clear()
+def get_module(module_path: str, payload_limit: int = None):
+    """Factory function to create module instance"""
+    return ForbiddenBypassModule(module_path, payload_limit)

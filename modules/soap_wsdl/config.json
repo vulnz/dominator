@@ -1,0 +1,18 @@
+{
+    "name": "SOAP/WSDL/DTD Discovery Scanner",
+    "description": "Discovers WSDL endpoints, SOAP services, DTD files, and analyzes XML-based service configurations",
+    "author": "Dominator Team",
+    "version": "1.0",
+    "category": "discovery",
+    "severity": "Medium",
+    "enabled": true,
+    "passive": true,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021",
+    "cvss": 5.3,
+    "tags": ["wsdl", "soap", "dtd", "xml", "webservice", "api", "discovery"],
+    "references": [
+        "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/10-Business_Logic_Testing/01-Test_Business_Logic_Data_Validation",
+        "https://book.hacktricks.xyz/pentesting-web/xxe-xee-xml-external-entity"
+    ]
+}

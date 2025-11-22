@@ -1,0 +1,18 @@
+{
+    "name": "CSP Bypass Analyzer",
+    "description": "Analyzes Content-Security-Policy for bypass vectors including JSONP endpoints, Angular/React gadgets, and vulnerable CDN whitelists",
+    "author": "Dominator Team",
+    "version": "1.0",
+    "category": "misconfiguration",
+    "severity": "High",
+    "enabled": true,
+    "passive": true,
+    "cwe": "CWE-79",
+    "owasp": "A05:2021",
+    "cvss": 7.2,
+    "tags": ["csp", "bypass", "xss", "jsonp", "angular", "cdn", "policy"],
+    "references": [
+        "https://cspbypass.com",
+        "https://book.hacktricks.xyz/pentesting-web/content-security-policy-csp-bypass"
+    ]
+}

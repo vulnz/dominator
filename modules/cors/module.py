@@ -3,52 +3,60 @@ CORS Misconfiguration Scanner Module
 Detects insecure CORS configurations
 """
 
-import re
-from typing import Dict, List, Any, Optional
+from typing import List, Dict, Any
 from urllib.parse import urlparse
 from core.base_module import BaseModule
+from core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
-class Module(BaseModule):
+class CORSModule(BaseModule):
     """CORS Misconfiguration vulnerability scanner"""
 
-    def __init__(self, http_client=None, config: Optional[Dict] = None):
-        super().__init__(http_client, config)
-        self.name = "CORS Misconfiguration Scanner"
-        self.description = "Detects CORS policy misconfigurations"
+    def __init__(self, module_path: str, payload_limit: int = None):
+        """Initialize CORS module"""
+        super().__init__(module_path, payload_limit=payload_limit)
+        logger.info("CORS Misconfiguration module loaded")
 
-    def run(self, target: str, params: Optional[Dict] = None) -> List[Dict[str, Any]]:
-        """Run CORS misconfiguration scan"""
+    def scan(self, targets: List[Dict[str, Any]], http_client: Any) -> List[Dict[str, Any]]:
+        """Scan for CORS misconfigurations"""
         results = []
-        parsed = urlparse(target)
-        target_domain = parsed.netloc
+        tested_hosts = set()
 
-        # Test origins to try
-        test_origins = [
-            'https://evil.com',
-            'https://attacker.com',
-            f'https://{target_domain}.evil.com',  # Subdomain bypass
-            f'https://evil{target_domain}',  # Suffix bypass
-            f'https://{target_domain}evil.com',  # Prefix bypass
-            'null',  # Null origin
-            f'https://{target_domain}',  # Same origin (baseline)
-        ]
+        for target in targets:
+            url = target.get('url')
+            parsed = urlparse(url)
+            host_key = parsed.netloc
 
-        for origin in test_origins:
-            result = self._test_origin(target, origin, target_domain)
-            if result:
-                results.append(result)
-                # Found a vulnerability, no need to test more
-                if result.get('severity') in ['Critical', 'High']:
-                    break
+            # Only test once per host
+            if host_key in tested_hosts:
+                continue
+            tested_hosts.add(host_key)
+
+            target_domain = parsed.netloc
+
+            # Test origins
+            test_origins = [
+                ('https://evil.com', 'Arbitrary Origin'),
+                ('https://attacker.com', 'Arbitrary Origin'),
+                (f'https://{target_domain}.evil.com', 'Subdomain Bypass'),
+                ('null', 'Null Origin'),
+            ]
+
+            for origin, origin_type in test_origins:
+                result = self._test_origin(url, origin, origin_type, target_domain, http_client)
+                if result:
+                    results.append(result)
+                    break  # Found vulnerability, stop testing this host
 
         return results
 
-    def _test_origin(self, url: str, origin: str, target_domain: str) -> Optional[Dict]:
+    def _test_origin(self, url: str, origin: str, origin_type: str, target_domain: str, http_client) -> Dict:
         """Test if a specific origin is allowed"""
         try:
             headers = {'Origin': origin}
-            response = self.http_client.get(url, headers=headers)
+            response = http_client.get(url, headers=headers)
 
             if not response:
                 return None
@@ -56,115 +64,49 @@ class Module(BaseModule):
             acao = response.headers.get('Access-Control-Allow-Origin', '')
             acac = response.headers.get('Access-Control-Allow-Credentials', '').lower()
 
-            # Check for vulnerabilities
+            # Check for dangerous CORS configurations
             if not acao:
-                return None  # No CORS headers
+                return None
 
-            is_evil_origin = 'evil' in origin.lower() or 'attacker' in origin.lower()
-            is_null = origin == 'null'
+            # Origin reflected
+            if acao == origin or acao == '*':
+                # Determine severity
+                if acac == 'true' and acao == origin:
+                    severity = 'Critical'
+                    desc = f"Origin '{origin}' reflected with credentials allowed. Full CORS bypass."
+                elif acao == '*':
+                    severity = 'Medium' if acac != 'true' else 'High'
+                    desc = f"Wildcard CORS policy. Any origin can read responses."
+                else:
+                    severity = 'Medium'
+                    desc = f"Origin '{origin}' ({origin_type}) is reflected in ACAO header."
 
-            # Critical: Reflects arbitrary origin with credentials
-            if acao == origin and is_evil_origin and acac == 'true':
-                return {
-                    'vulnerability': True,
-                    'type': 'CORS Misconfiguration',
-                    'severity': 'Critical',
-                    'url': url,
-                    'parameter': 'Origin header',
-                    'payload': origin,
-                    'method': 'GET',
-                    'injection_type': 'Origin Reflection with Credentials',
-                    'evidence': f"ACAO: {acao}, ACAC: {acac}",
-                    'description': f"Server reflects arbitrary Origin header ({origin}) and allows credentials. Attacker can steal sensitive data cross-origin.",
-                    'recommendation': 'Implement a strict whitelist of allowed origins. Do not dynamically reflect the Origin header.',
-                    'cwe': 'CWE-942',
-                    'owasp': 'A05:2021',
-                    'cvss': 8.1,
-                    'response': str(response.headers)
-                }
-
-            # High: Reflects arbitrary origin without credentials
-            if acao == origin and is_evil_origin:
-                return {
-                    'vulnerability': True,
-                    'type': 'CORS Misconfiguration',
-                    'severity': 'High',
-                    'url': url,
-                    'parameter': 'Origin header',
-                    'payload': origin,
-                    'method': 'GET',
-                    'injection_type': 'Origin Reflection',
-                    'evidence': f"ACAO: {acao}",
-                    'description': f"Server reflects arbitrary Origin header ({origin}). May allow reading responses cross-origin.",
-                    'recommendation': 'Use a whitelist of trusted origins instead of reflecting the Origin header.',
-                    'cwe': 'CWE-942',
-                    'owasp': 'A05:2021',
-                    'cvss': 6.5,
-                    'response': str(response.headers)
-                }
-
-            # Medium: Null origin allowed with credentials
-            if acao == 'null' and is_null and acac == 'true':
-                return {
-                    'vulnerability': True,
-                    'type': 'CORS Misconfiguration',
-                    'severity': 'High',
-                    'url': url,
-                    'parameter': 'Origin header',
-                    'payload': 'null',
-                    'method': 'GET',
-                    'injection_type': 'Null Origin Allowed',
-                    'evidence': f"ACAO: null, ACAC: true",
-                    'description': "Server allows 'null' origin with credentials. Sandboxed iframes can exploit this.",
-                    'recommendation': 'Do not allow null origin. Use explicit whitelist of trusted origins.',
-                    'cwe': 'CWE-942',
-                    'owasp': 'A05:2021',
-                    'cvss': 7.1,
-                    'response': str(response.headers)
-                }
-
-            # Medium: Wildcard with credentials attempt (invalid but check)
-            if acao == '*':
-                # Wildcard doesn't work with credentials, but still a misconfiguration
-                return {
-                    'vulnerability': True,
-                    'type': 'CORS Misconfiguration',
-                    'severity': 'Low',
-                    'url': url,
-                    'parameter': 'Origin header',
-                    'payload': origin,
-                    'method': 'GET',
-                    'injection_type': 'Wildcard Origin',
-                    'evidence': f"ACAO: * (wildcard)",
-                    'description': "Server uses wildcard (*) for Access-Control-Allow-Origin. Any site can read responses.",
-                    'recommendation': 'Avoid wildcard CORS policies. Use specific trusted origins.',
-                    'cwe': 'CWE-942',
-                    'owasp': 'A05:2021',
-                    'cvss': 4.3,
-                    'response': str(response.headers)
-                }
-
-            # Check for subdomain/prefix/suffix bypass
-            if acao == origin and target_domain in origin and origin != f'https://{target_domain}':
-                return {
-                    'vulnerability': True,
-                    'type': 'CORS Misconfiguration',
-                    'severity': 'Medium',
-                    'url': url,
-                    'parameter': 'Origin header',
-                    'payload': origin,
-                    'method': 'GET',
-                    'injection_type': 'Origin Validation Bypass',
-                    'evidence': f"ACAO: {acao} - weak origin validation",
-                    'description': f"Server accepts origin '{origin}' which bypasses domain validation. Regex or string matching is too permissive.",
-                    'recommendation': 'Use exact origin matching instead of substring/regex matching.',
-                    'cwe': 'CWE-942',
-                    'owasp': 'A05:2021',
-                    'cvss': 5.3,
-                    'response': str(response.headers)
-                }
+                return self.create_result(
+                    vulnerable=True,
+                    url=url,
+                    parameter='Origin',
+                    payload=origin,
+                    evidence=f"ACAO: {acao}, ACAC: {acac}",
+                    severity=severity,
+                    method='GET',
+                    additional_info={
+                        'injection_type': 'CORS Misconfiguration',
+                        'bypass_type': origin_type,
+                        'acao_header': acao,
+                        'credentials_allowed': acac == 'true',
+                        'description': desc,
+                        'cwe': 'CWE-942',
+                        'owasp': 'A05:2021',
+                        'cvss': 8.6 if severity == 'Critical' else 6.5
+                    }
+                )
 
         except Exception:
             pass
 
         return None
+
+
+def get_module(module_path: str, payload_limit: int = None):
+    """Factory function to create module instance"""
+    return CORSModule(module_path, payload_limit)
