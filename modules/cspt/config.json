@@ -1,0 +1,15 @@
+{
+    "name": "CSPT Scanner",
+    "description": "Detects Client-Side Path Traversal vulnerabilities in JavaScript",
+    "author": "Dominator Team",
+    "version": "1.0",
+    "category": "Client-Side",
+    "severity": "Medium",
+    "cwe": "CWE-22",
+    "owasp": "A01:2021",
+    "tags": ["cspt", "path-traversal", "client-side", "javascript"],
+    "references": [
+        "https://github.com/nickcano/csptrecon",
+        "https://www.doyensec.com/resources/Doyensec_CSPT_CSSB.pdf"
+    ]
+}

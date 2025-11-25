@@ -432,6 +432,7 @@ class BaseModule(ABC):
             'cvss': cvss,
             'cvss_vector': cvss_vector,
             'remediation': remediation,
+            'exploitation_steps': kwargs.get('exploitation_steps', []),  # Step-by-step exploit guide
             'timestamp': datetime.now().isoformat()
         }
 

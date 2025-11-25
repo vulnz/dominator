@@ -1,0 +1,12 @@
+# Module Configuration (TOML format)
+
+name = "Sensitive Data Scanner"
+description = "Detects exposed sensitive data like emails, phones, credit cards, and hashes"
+author = "Dominator Team"
+version = "1.0"
+category = "Information Disclosure"
+severity = "varies"
+cwe = "CWE-200"
+owasp = "A01:2021"
+tags = ["pii", "sensitive-data", "email", "credit-card", "hash", "info-disclosure"]
+references = ["https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/11-Client-side_Testing/13-Testing_for_Sensitive_Information_Exposed_in_Client-side_Code"]

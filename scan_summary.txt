@@ -1,0 +1,176 @@
+================================================================================
+                  DOMINATOR SCAN SUMMARY REPORT
+================================================================================
+Scan Date: 2025-11-24
+Duration: ~6.5 hours (started 02:54)
+
+TARGETS:
+--------
+[+] http://testphp.vulnweb.com - SCANNED (accessible)
+[!] http://xvwa.yourweb.local - NOT ACCESSIBLE (connection refused)
+
+MODULES EXECUTED: 61 modules
+TOTAL HTTP REQUESTS: 22,174
+TOTAL FINDINGS: 186 (180 vulnerabilities)
+
+================================================================================
+                        SEVERITY BREAKDOWN
+================================================================================
+
+CRITICAL:  28   |████████████████████████████
+HIGH:      44   |████████████████████████████████████████████
+MEDIUM:    57   |█████████████████████████████████████████████████████████
+LOW:       24   |████████████████████████
+INFO:      12   |████████████
+
+================================================================================
+                       CRITICAL FINDINGS (28)
+================================================================================
+
+[CRITICAL] PHP Object Injection (Insecure Deserialization)
+---------------------------------------------------------
+- CWE: CWE-502 (Deserialization of Untrusted Data)
+- OWASP: A08:2021 (Software and Data Integrity Failures)
+- CVSS: 9.8 (Critical)
+- Found on: Multiple endpoints on testphp.vulnweb.com
+- Evidence: stdClass deserialization indicators detected in responses
+- Impact: Remote Code Execution (RCE) possible
+- Remediation: Avoid deserializing untrusted data. Use JSON instead.
+              Implement HMAC integrity checks. Use class allowlists.
+
+================================================================================
+                         HIGH FINDINGS (44)
+================================================================================
+
+[HIGH] Hardcoded Passwords (2)
+------------------------------
+- URLs: login.php, userinfo.php
+- Found in: Response Content
+- Impact: Credential exposure
+- Remediation: Remove sensitive information from public responses
+
+[HIGH] NoSQL Injection (Multiple)
+---------------------------------
+- CWE: CWE-943
+- OWASP: A03:2021 (Injection)
+- CVSS: 8.6
+- Evidence: NoSQL operator injection detected ($ne operator)
+- Affected params: test, cat, and others
+- Impact: Database bypass, data exfiltration
+- Remediation: Use parameterized queries, validate input types
+
+================================================================================
+                        MEDIUM FINDINGS (57)
+================================================================================
+
+[MEDIUM] Missing Security Headers (4)
+-------------------------------------
+- X-Frame-Options: Missing (Clickjacking risk)
+- X-Content-Type-Options: Missing (MIME sniffing risk)
+- Strict-Transport-Security: Missing (No HTTPS enforcement)
+- Content-Security-Policy: Missing (XSS/Injection risk)
+
+[MEDIUM] Information Disclosure (Multiple)
+------------------------------------------
+- Server version disclosure in headers
+- Development comments in HTML source
+- Email addresses exposed (multiple pages)
+- Phone numbers exposed (multiple pages)
+
+[MEDIUM] HTTP Parameter Pollution (Multiple)
+--------------------------------------------
+- HPP vulnerabilities detected on various endpoints
+
+[MEDIUM] Base64 Encoded Data (10)
+---------------------------------
+- Potentially sensitive data encoded in base64 found in responses
+
+================================================================================
+                         LOW FINDINGS (24)
+================================================================================
+
+- Email disclosure in public pages
+- Phone disclosure in public pages
+- Development/debug comments in HTML
+
+================================================================================
+                         INFO FINDINGS (12)
+================================================================================
+
+- Version disclosure
+- Technology fingerprinting
+- Non-security related discoveries
+
+================================================================================
+                    MODULES WITH NO FINDINGS
+================================================================================
+
+The following modules completed but found no vulnerabilities:
+- SQL Injection (sqli) - 0 findings
+- XSS Scanner - 0 findings
+- LFI Scanner - 0 findings
+- Command Injection (cmdi) - 0 findings
+- SSRF Scanner - 0 findings
+- SSTI Scanner - 0 findings
+- XXE Injection - 0 findings
+- CORS Misconfiguration - 0 findings
+- CSRF Scanner - 0 findings
+- GraphQL - 0 findings
+- Git Exposure - 0 findings
+- DOM XSS - 0 findings
+- 403 Forbidden Bypass - 0 findings
+- API Rate Limit - 0 findings
+- CGI Scanner - 0 findings
+- CSP Bypass - 0 findings
+
+================================================================================
+                    WHY SCAN TOOK SO LONG
+================================================================================
+
+1. ALL 61 MODULES ENABLED
+   - Each module runs sequentially or with limited parallelism
+   - Some modules (dirbrute, backup_files) have 300+ payloads each
+
+2. EXTENSIVE CRAWLING
+   - Crawler discovered 22+ target URLs from forms
+   - Each URL was tested by multiple modules
+
+3. HIGH REQUEST COUNT: 22,174 requests
+   - Each module tests multiple payloads
+   - Each payload = 1 HTTP request
+   - With rate limiting to avoid blocks
+
+4. ONE TARGET UNREACHABLE
+   - xvwa.yourweb.local was not accessible
+   - Scan retried connections multiple times
+
+5. THREAD COUNT: 10 threads
+   - Conservative to avoid overloading target
+   - More threads = faster but less reliable
+
+6. TIMEOUT SETTINGS
+   - Module timeout: varies per module
+   - Connection retries on failures
+
+================================================================================
+                         FULL REPORTS
+================================================================================
+
+HTML Report: reports/scan_report_http___testphp.vulnweb.com_http___xvwa.yourweb.local_20251124_025400.html
+JSON Report: reports/scan_report_http___testphp.vulnweb.com_http___xvwa.yourweb.local_20251124_025400.json
+TXT Report:  reports/scan_report_http___testphp.vulnweb.com_http___xvwa.yourweb.local_20251124_025400.txt
+
+================================================================================
+                        RECOMMENDATIONS
+================================================================================
+
+1. [URGENT] Fix PHP Object Injection - Critical severity, RCE possible
+2. [URGENT] Fix NoSQL Injection - High severity, data leak risk
+3. Remove hardcoded credentials from responses
+4. Implement all missing security headers
+5. Remove debug/development comments from production
+6. Mask or remove sensitive data (emails, phones) from public pages
+
+================================================================================
+                              END OF REPORT
+================================================================================

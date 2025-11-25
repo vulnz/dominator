@@ -1,0 +1,14 @@
+{
+    "name": "Base64 Detector",
+    "description": "Detects Base64 encoded data that may contain sensitive information",
+    "author": "Dominator Team",
+    "version": "1.0",
+    "category": "Information Disclosure",
+    "severity": "Info",
+    "cwe": "CWE-200",
+    "owasp": "A01:2021",
+    "tags": ["base64", "encoding", "info-disclosure", "obfuscation"],
+    "references": [
+        "https://owasp.org/www-community/vulnerabilities/Information_exposure_through_an_error_message"
+    ]
+}

@@ -1,0 +1,19 @@
+{
+    "name": "API Rate Limit Scanner",
+    "description": "Detects missing or weak rate limiting on API endpoints",
+    "version": "1.0",
+    "author": "Dominator Team",
+    "category": "API Testing",
+    "severity": "medium",
+    "cwe": "CWE-770",
+    "owasp": "API4:2023",
+    "cvss": "5.3",
+    "enabled": true,
+    "passive": false,
+    "api_only": true,
+    "tags": ["api", "rate-limit", "dos", "brute-force", "owasp-api-top10"],
+    "references": [
+        "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/",
+        "https://cwe.mitre.org/data/definitions/770.html"
+    ]
+}

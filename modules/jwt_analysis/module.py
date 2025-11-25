@@ -37,8 +37,18 @@ class JWTModule(BaseModule):
         tested_tokens = set()
 
         for target in targets:
-            url = target.get('url')
-            headers = target.get('headers', {})
+            # Handle both dict and string targets
+            if isinstance(target, str):
+                url = target
+                headers = {}
+            elif isinstance(target, dict):
+                url = target.get('url', '')
+                headers = target.get('headers', {})
+                # Ensure headers is a dict
+                if not isinstance(headers, dict):
+                    headers = {}
+            else:
+                continue
 
             # Check Authorization header for JWT
             auth_header = headers.get('Authorization', '') or headers.get('authorization', '')

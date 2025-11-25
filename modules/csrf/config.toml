@@ -1,0 +1,12 @@
+# Module Configuration (TOML format)
+
+enabled = true
+name = "CSRF Scanner"
+description = "Detects Cross-Site Request Forgery vulnerabilities"
+severity = "Medium"
+cwe = "CWE-352"
+cwe_name = "Cross-Site Request Forgery (CSRF)"
+owasp = "A01:2021"
+owasp_name = "Broken Access Control"
+cvss = "6.5"
+cvss_vector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:H/A:N"

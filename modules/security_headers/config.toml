@@ -1,0 +1,14 @@
+# Module Configuration (TOML format)
+
+name = "Security Headers Scanner"
+description = "Analyzes HTTP security headers (CSP, HSTS, X-Frame-Options, etc.)"
+author = "Dominator"
+version = "1.0.0"
+category = "Information Disclosure"
+severity = "medium"
+cwe = "CWE-16"
+owasp = "A05:2021"
+cvss = "5.0"
+enabled = true
+passive = true
+tags = ["headers", "csp", "hsts", "clickjacking", "xss", "drheader"]

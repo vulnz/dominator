@@ -137,19 +137,34 @@ class SchedulerThread(QThread):
 
         def run_subprocess():
             try:
-                # Hide console window on Windows
+                # Hide console window on Windows - use multiple methods
                 creation_flags = 0
+                startupinfo = None
+                cmd = list(command)
+
                 if sys.platform == 'win32':
                     # CREATE_NO_WINDOW = 0x08000000
                     creation_flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)
 
+                    # Also use startupinfo to hide window
+                    startupinfo = subprocess.STARTUPINFO()
+                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    startupinfo.wShowWindow = 0  # SW_HIDE
+
+                    # Replace python.exe with pythonw.exe if available
+                    if cmd and 'python.exe' in cmd[0].lower():
+                        pythonw = cmd[0].replace('python.exe', 'pythonw.exe')
+                        if Path(pythonw).exists():
+                            cmd[0] = pythonw
+
                 proc = subprocess.Popen(
-                    command,
+                    cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
                     bufsize=1,
-                    creationflags=creation_flags  # Hide console window
+                    creationflags=creation_flags,  # Hide console window
+                    startupinfo=startupinfo
                 )
 
                 with self.lock:

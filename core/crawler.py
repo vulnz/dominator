@@ -66,8 +66,12 @@ class WebCrawler:
                 verify=False
             )
             
-            if response.status_code == 200:
-                print(f"    [CRAWLER] Successfully connected to {base_url}")
+            no_ping = getattr(self.config, 'no_ping', False)
+            if response.status_code == 200 or no_ping:
+                if response.status_code != 200 and no_ping:
+                    print(f"    [CRAWLER] Target returned {response.status_code} but --no-ping enabled, continuing...")
+                else:
+                    print(f"    [CRAWLER] Successfully connected to {base_url}")
                     
                 # Check for directory listing on main page first
                 if self._detect_directory_listing(response.text):

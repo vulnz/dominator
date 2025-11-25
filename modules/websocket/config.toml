@@ -1,0 +1,15 @@
+# Module Configuration (TOML format)
+
+name = "WebSocket Security Scanner"
+description = "Detects WebSocket endpoints and checks for common WebSocket vulnerabilities including CSWSH, missing origin validation, and insecure connections"
+author = "Dominator Team"
+version = "1.0"
+category = "discovery"
+severity = "Medium"
+enabled = true
+passive = true
+cwe = "CWE-1385"
+owasp = "A07:2021"
+cvss = 6.5
+tags = ["websocket", "ws", "wss", "realtime", "cswsh", "hijacking"]
+references = ["https://portswigger.net/web-security/websockets", "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/11-Client-side_Testing/10-Testing_WebSockets"]

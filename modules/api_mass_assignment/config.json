@@ -1,0 +1,19 @@
+{
+    "name": "API Mass Assignment Scanner",
+    "description": "Detects Mass Assignment vulnerabilities allowing unauthorized field modification",
+    "version": "1.0",
+    "author": "Dominator Team",
+    "category": "API Testing",
+    "severity": "high",
+    "cwe": "CWE-915",
+    "owasp": "API6:2023",
+    "cvss": "7.5",
+    "enabled": true,
+    "passive": false,
+    "api_only": true,
+    "tags": ["api", "mass-assignment", "privilege-escalation", "owasp-api-top10"],
+    "references": [
+        "https://owasp.org/API-Security/editions/2023/en/0xa6-unrestricted-access-to-sensitive-business-flows/",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Mass_Assignment_Cheat_Sheet.html"
+    ]
+}

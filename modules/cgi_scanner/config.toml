@@ -1,0 +1,12 @@
+# Module Configuration (TOML format)
+
+name = "CGI Scanner"
+description = "Discovers and tests vulnerable CGI scripts for information disclosure and RCE"
+author = "Dominator Team"
+version = "1.0"
+category = "Discovery"
+severity = "varies"
+cwe = "CWE-78"
+owasp = "A05:2021"
+tags = ["cgi", "rce", "nikto", "info-disclosure", "backdoor"]
+references = ["https://owasp.org/www-community/attacks/Command_Injection", "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2012-1823"]

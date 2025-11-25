@@ -1,0 +1,74 @@
+# Dominator Modules Registry
+# Auto-generated list of all available modules
+
+[modules]
+
+api_bola = { enabled = true, status = "active", config = "toml" }
+api_excessive_data = { enabled = true, status = "active", config = "toml" }
+api_mass_assignment = { enabled = true, status = "active", config = "toml" }
+api_rate_limit = { enabled = true, status = "active", config = "toml" }
+api_security = { enabled = true, status = "active", config = "toml" }
+backup_files = { enabled = true, status = "active", config = "toml" }
+base64_detect = { enabled = true, status = "active", config = "toml" }
+cgi_scanner = { enabled = true, status = "active", config = "toml" }
+cloud_storage = { enabled = true, status = "active", config = "toml" }
+cmdi = { enabled = true, status = "active", config = "toml" }
+cors = { enabled = true, status = "active", config = "toml" }
+crlf = { enabled = true, status = "active", config = "toml" }
+csp_bypass = { enabled = true, status = "active", config = "toml" }
+cspt = { enabled = true, status = "active", config = "toml" }
+csrf = { enabled = true, status = "active", config = "toml" }
+dirbrute = { enabled = true, status = "active", config = "toml" }
+dom_xss = { enabled = true, status = "active", config = "toml" }
+env_secrets = { enabled = true, status = "active", config = "toml" }
+favicon_hash = { enabled = true, status = "active", config = "toml" }
+file_upload = { enabled = true, status = "active", config = "toml" }
+forbidden_bypass = { enabled = true, status = "active", config = "toml" }
+formula_injection = { enabled = true, status = "active", config = "toml" }
+git = { enabled = true, status = "active", config = "toml" }
+graphql = { enabled = true, status = "active", config = "toml" }
+header_injection = { enabled = true, status = "active", config = "toml" }
+host_header = { enabled = true, status = "active", config = "toml" }
+hpp = { enabled = true, status = "active", config = "toml" }
+http_methods = { enabled = true, status = "active", config = "toml" }
+http_smuggling = { enabled = true, status = "active", config = "toml" }
+idor = { enabled = true, status = "active", config = "toml" }
+iis_config = { enabled = true, status = "active", config = "toml" }
+js_analysis = { enabled = true, status = "active", config = "toml" }
+jwt_analysis = { enabled = true, status = "active", config = "toml" }
+lfi = { enabled = true, status = "active", config = "toml" }
+nosql_injection = { enabled = true, status = "active", config = "toml" }
+oob_detection = { enabled = true, status = "utility", config = "toml" }
+package_files = { enabled = true, status = "active", config = "toml" }
+param_miner = { enabled = true, status = "active", config = "toml" }
+php_object_injection = { enabled = true, status = "active", config = "toml" }
+port_scan = { enabled = true, status = "active", config = "toml" }
+prototype_pollution = { enabled = true, status = "active", config = "toml" }
+redirect = { enabled = true, status = "active", config = "toml" }
+request_smuggling = { enabled = true, status = "active", config = "toml" }
+rfi = { enabled = true, status = "active", config = "toml" }
+robots_txt = { enabled = true, status = "active", config = "toml" }
+security_headers = { enabled = true, status = "active", config = "toml" }
+sensitive_data = { enabled = true, status = "active", config = "toml" }
+session = { enabled = true, status = "active", config = "toml" }
+soap_wsdl = { enabled = true, status = "active", config = "toml" }
+sqli = { enabled = true, status = "active", config = "toml" }
+ssi = { enabled = true, status = "active", config = "toml" }
+ssl_tls = { enabled = true, status = "active", config = "toml" }
+ssrf = { enabled = true, status = "active", config = "toml" }
+ssti = { enabled = true, status = "active", config = "toml" }
+subdomain = { enabled = true, status = "active", config = "toml" }
+tabnabbing = { enabled = true, status = "active", config = "toml" }
+type_juggling = { enabled = true, status = "active", config = "toml" }
+weak_credentials = { enabled = true, status = "active", config = "toml" }
+websocket = { enabled = true, status = "active", config = "toml" }
+xpath = { enabled = true, status = "active", config = "toml" }
+xss = { enabled = true, status = "active", config = "toml" }
+xxe = { enabled = true, status = "active", config = "toml" }
+
+[categories]
+injection = ["sqli", "xss", "cmdi", "ssti", "xxe", "nosql_injection", "xpath", "lfi", "rfi", "ssrf"]
+authentication = ["weak_credentials", "session", "jwt_analysis", "csrf"]
+configuration = ["security_headers", "cors", "ssl_tls", "http_methods", "robots_txt"]
+information_disclosure = ["git", "env_secrets", "backup_files", "sensitive_data", "js_analysis"]
+api = ["api_security", "api_bola", "api_mass_assignment", "api_rate_limit", "api_excessive_data", "graphql"]

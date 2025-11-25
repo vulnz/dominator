@@ -1,0 +1,13 @@
+# Module Configuration (TOML format)
+
+name = "SQL Injection Scanner"
+description = "SQL Injection vulnerability detection via error-based and time-based blind techniques"
+severity = "Critical"
+enabled = true
+timeout = 20
+cwe = "CWE-89"
+cwe_name = "Improper Neutralization of Special Elements used in an SQL Command"
+owasp = "A03:2021"
+owasp_name = "Injection"
+cvss = "9.8"
+cvss_vector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"

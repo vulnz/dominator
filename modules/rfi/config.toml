@@ -1,0 +1,18 @@
+# Module Configuration (TOML format)
+
+name = "Remote File Inclusion"
+description = "Remote File Inclusion vulnerability detection - includes and executes remote malicious files via PHP include/require"
+author = "Dominator"
+version = "1.0.0"
+category = "Injection"
+severity = "critical"
+cwe = "CWE-98"
+owasp = "A03:2021"
+cvss = "9.8"
+enabled = true
+passive = false
+tags = ["rfi", "file-inclusion", "remote", "php", "injection", "oob"]
+confidence_threshold = 0.75
+enable_oob = true
+oob_wait_time = 3
+timeout = 5

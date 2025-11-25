@@ -7,9 +7,10 @@ import sys
 import subprocess
 import re
 import threading
+import time
 from pathlib import Path
 
-from PyQt5.QtCore import QThread, pyqtSignal
+from PyQt5.QtCore import QThread, pyqtSignal, QTimer
 
 
 class ScanThread(QThread):
@@ -22,16 +23,21 @@ class ScanThread(QThread):
     resource_signal = pyqtSignal(str, str, str, str)  # (type, value, extra, source)
     scope_signal = pyqtSignal(str, str, str, str)  # (type, data1, data2, data3)
     report_signal = pyqtSignal(str)  # (report_filename) - emitted when report is saved
+    time_signal = pyqtSignal(int, int)  # (elapsed_seconds, remaining_seconds)
 
-    def __init__(self, command, module_count=None):
+    def __init__(self, command, module_count=None, max_time=None):
         super().__init__()
         self.command = command
         self.process = None
+        self.max_time = max_time or 0  # Max time in minutes (0 = unlimited)
+        self.start_time = None  # Will be set when scan starts
+
         # Calculate total modules from command or use provided count
         if module_count is not None:
             self.total_modules = module_count
         elif "--all" in command:
-            self.total_modules = 20  # All 20 modules
+            # Count actual modules from modules/ directory
+            self.total_modules = self._count_available_modules()
         elif "-m" in command:
             # Count modules from -m argument
             try:
@@ -42,13 +48,31 @@ class ScanThread(QThread):
             except:
                 self.total_modules = 1
         else:
-            self.total_modules = 1  # At least 1 module
+            # Default to all modules
+            self.total_modules = self._count_available_modules()
         self.completed_modules = 0
         self.total_vulns = 0
         self.current_severity = 'MEDIUM'  # Track current severity section
         self.paused = False
         self._pause_event = threading.Event()
         self._pause_event.set()  # Not paused initially
+        self._module_names = set()  # Track unique modules to avoid duplicate counting
+
+    def _count_available_modules(self):
+        """Count available modules from modules/ directory"""
+        try:
+            modules_dir = Path(__file__).parent.parent / "modules"
+            if modules_dir.exists():
+                count = 0
+                for item in modules_dir.iterdir():
+                    if item.is_dir() and not item.name.startswith('_'):
+                        module_file = item / "module.py"
+                        if module_file.exists() and item.name != 'oob_detection':
+                            count += 1
+                return max(count, 1)
+        except:
+            pass
+        return 20  # Fallback
 
     def pause(self):
         """Pause the scan"""
@@ -63,14 +87,33 @@ class ScanThread(QThread):
     def run(self):
         """Run the scan command"""
         try:
+            # Record start time for time tracking
+            self.start_time = time.time()
+            self._last_time_emit = 0
+
             # Get parent directory (where main.py and modules/ are)
             parent_dir = Path(__file__).parent.parent
 
-            # Hide console window on Windows
+            # Hide console window on Windows - use multiple methods for reliability
             creation_flags = 0
+            startupinfo = None
+
             if sys.platform == 'win32':
                 # CREATE_NO_WINDOW = 0x08000000
                 creation_flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)
+
+                # Also use startupinfo to hide window
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = 0  # SW_HIDE
+
+                # Replace python.exe with pythonw.exe if available (no console)
+                command = list(self.command)
+                if command and 'python.exe' in command[0].lower():
+                    pythonw = command[0].replace('python.exe', 'pythonw.exe')
+                    if Path(pythonw).exists():
+                        command[0] = pythonw
+                self.command = command
 
             self.process = subprocess.Popen(
                 self.command,
@@ -82,7 +125,8 @@ class ScanThread(QThread):
                 encoding='utf-8',
                 errors='ignore',
                 cwd=str(parent_dir),  # Set working directory to scanner root
-                creationflags=creation_flags  # Hide console window
+                creationflags=creation_flags,  # Hide console window
+                startupinfo=startupinfo  # Additional window hiding
             )
 
             for line in iter(self.process.stdout.readline, ''):
@@ -96,6 +140,9 @@ class ScanThread(QThread):
                     # Parse different types of output
                     self.parse_scan_output(line_clean)
 
+                    # Emit time signal every second
+                    self._emit_time_update()
+
             self.process.wait()
             self.finished_signal.emit(self.process.returncode)
 
@@ -103,12 +150,33 @@ class ScanThread(QThread):
             self.output_signal.emit(f"ERROR: {str(e)}")
             self.finished_signal.emit(-1)
 
+    def _emit_time_update(self):
+        """Emit time elapsed and remaining signals"""
+        if not self.start_time:
+            return
+
+        current_time = time.time()
+        elapsed = int(current_time - self.start_time)
+
+        # Only emit once per second to avoid flooding
+        if elapsed == self._last_time_emit:
+            return
+        self._last_time_emit = elapsed
+
+        # Calculate remaining time if max_time is set
+        if self.max_time > 0:
+            max_seconds = self.max_time * 60
+            remaining = max(0, max_seconds - elapsed)
+        else:
+            remaining = -1  # Unlimited
+
+        self.time_signal.emit(elapsed, remaining)
+
     def parse_scan_output(self, line):
         """Parse scanner output for progress and findings"""
-        # Strip ANSI color codes for easier parsing
-        line_clean = line
-        if '[' in line and 'm' in line:
-            line_clean = re.sub(r'\x1b\[[0-9;]*m', '', line)
+        # Strip ALL ANSI color codes (more robust pattern)
+        line_clean = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', line)
+        line_clean = line_clean.strip()
 
         # Detect resources (emails, phones, social media, leaked keys)
         self.detect_resources(line_clean)
@@ -116,20 +184,55 @@ class ScanThread(QThread):
         # Detect scope info (technologies, titles, IPs)
         self.detect_scope_info(line_clean)
 
-        # Track module execution
+        # Track module execution - "Running module: ModuleName"
         if 'Running module:' in line_clean:
             module_name = line_clean.split('Running module:')[-1].strip()
-            self.progress_signal.emit(0, f"Testing: {module_name}")
+            # Calculate progress based on started modules
+            current_progress = int((self.completed_modules / max(self.total_modules, 1)) * 100)
+            self.progress_signal.emit(current_progress, f"Running: {module_name}")
 
-        # Track module completion
-        elif 'Module' in line_clean and 'completed' in line_clean:
-            self.completed_modules += 1
-            progress = int((self.completed_modules / self.total_modules) * 100)
+        # Track module completion - "Module 'name' completed: X findings (Y vulnerabilities)"
+        elif "completed:" in line_clean and ("Module" in line_clean or "module" in line_clean):
+            # Extract module name and vulnerability count
+            try:
+                import re as regex
+                # Extract module name
+                name_match = regex.search(r"Module\s*'([^']+)'", line_clean, regex.IGNORECASE)
+                if name_match:
+                    module_name = name_match.group(1)
+                    # Avoid double counting same module
+                    if module_name not in self._module_names:
+                        self._module_names.add(module_name)
+                        self.completed_modules += 1
+
+                        # Extract vulnerability count from "(Y vulnerabilities)"
+                        vuln_match = regex.search(r'\((\d+)\s*vulnerabilit', line_clean, regex.IGNORECASE)
+                        if vuln_match:
+                            vuln_count = int(vuln_match.group(1))
+                            if vuln_count > 0:
+                                self.total_vulns += vuln_count
+                                # Emit vulnerability signal for each module with findings
+                                severity = 'MEDIUM'
+                                if any(x in module_name.lower() for x in ['sqli', 'sql', 'rce', 'cmdi', 'command']):
+                                    severity = 'CRITICAL'
+                                elif any(x in module_name.lower() for x in ['xss', 'ssrf', 'xxe', 'ssti']):
+                                    severity = 'HIGH'
+                                elif any(x in module_name.lower() for x in ['info', 'disclosure', 'header']):
+                                    severity = 'LOW'
+
+                                self.vulnerability_signal.emit(severity, f"[{module_name}] {vuln_count} vulnerabilities found")
+                else:
+                    self.completed_modules += 1
+            except:
+                self.completed_modules += 1
+
+            progress = int((self.completed_modules / max(self.total_modules, 1)) * 100)
+            progress = min(progress, 99)  # Never show 100% until truly finished
             self.progress_signal.emit(progress, f"Completed {self.completed_modules}/{self.total_modules} modules")
             self.stats_signal.emit(self.total_vulns, self.completed_modules, self.total_modules)
 
         # Track crawling progress
-        elif 'Crawling:' in line_clean or 'Found page:' in line_clean or 'Form discovered:' in line_clean:
+        elif 'Crawling:' in line_clean or 'Form discovered:' in line_clean:
             self.progress_signal.emit(0, "Crawling target...")
 
         # Track target discovery
@@ -140,47 +243,9 @@ class ScanThread(QThread):
             except:
                 pass
 
-        # Track vulnerabilities found - FIXED: Only count actual vulnerabilities, not debug info
-        # Filter out crawler/passive debug messages that start with "[CRAWLER]", "[PASSIVE]", etc.
-        elif 'Found' in line_clean and not self._is_debug_message(line_clean):
-            self.total_vulns += 1
-            # Try to determine severity from context (will be updated by severity line)
-            severity = 'MEDIUM'
-            self.vulnerability_signal.emit(severity, line_clean)
-            self.stats_signal.emit(self.total_vulns, self.completed_modules, self.total_modules)
-
-        # Detect severity section headers (Critical Severity, High Severity, etc.)
-        elif 'Severity (' in line_clean:
-            # Extract count from "Critical Severity (5):" format
-            try:
-                if 'Critical' in line_clean:
-                    self.current_severity = 'CRITICAL'
-                elif 'High' in line_clean:
-                    self.current_severity = 'HIGH'
-                elif 'Medium' in line_clean:
-                    self.current_severity = 'MEDIUM'
-                elif 'Low' in line_clean:
-                    self.current_severity = 'LOW'
-            except:
-                pass
-
-        # Detect vulnerability type lines like "[SQL Injection]"
-        elif line_clean.strip().startswith('[') and line_clean.strip().endswith(']'):
-            vuln_type = line_clean.strip()
-            # Skip empty brackets or brackets with only whitespace
-            content = vuln_type[1:-1].strip()  # Remove brackets and check content
-            # Also skip debug/summary messages (passive summary, crawler summary, etc.)
-            content_lower = content.lower()
-            is_summary = any(keyword in content_lower for keyword in [
-                'summary', 'passive', 'crawler', 'total vulnerabilities'
-            ])
-
-            if content and len(content) > 0 and not is_summary:
-                if hasattr(self, 'current_severity'):
-                    severity = self.current_severity
-                else:
-                    severity = 'MEDIUM'
-                self.vulnerability_signal.emit(severity, vuln_type)
+        # NOTE: Vulnerability counting is done ONLY from module completion messages above
+        # Format: "Module 'xxx' completed: X findings (Y vulnerabilities)"
+        # This is the single source of truth for vulnerability counts
 
         # Detect "Total vulnerabilities:" summary
         elif 'Total vulnerabilities:' in line_clean:

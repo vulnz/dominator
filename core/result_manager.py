@@ -30,8 +30,13 @@ class ResultManager:
         Returns:
             True if result was added, False if duplicate
         """
-        # Skip non-vulnerable results unless they contain important info
-        if not result.get('vulnerability') and not result.get('info'):
+        # Include vulnerable results, info findings, and recon findings
+        # Recon findings (like subdomain enumeration) have type='recon' or severity='info'
+        is_vulnerability = result.get('vulnerability')
+        is_info = result.get('info')
+        is_recon = result.get('type') == 'recon' or result.get('severity', '').lower() == 'info'
+
+        if not is_vulnerability and not is_info and not is_recon:
             return False
 
         # Check for duplicates

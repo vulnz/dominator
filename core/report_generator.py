@@ -11,6 +11,20 @@ from core.logger import get_logger
 logger = get_logger(__name__)
 
 
+def safe_json_for_html(data):
+    """
+    Safely embed JSON in HTML <script> tags
+    Escapes </script> and other dangerous sequences that could break out of script context
+    """
+    json_str = json.dumps(data, default=str, ensure_ascii=False)
+    # Replace </script> with <\/script> to prevent breaking out of script tag
+    json_str = json_str.replace('</', '<\\/')
+    # Also escape HTML comment sequences that could break out
+    json_str = json_str.replace('<!--', '<\\!--')
+    json_str = json_str.replace('-->', '--\\>')
+    return json_str
+
+
 class ReportGenerator:
     """Generates scan reports in various formats"""
 
@@ -91,7 +105,9 @@ class ReportGenerator:
                 f.write("└───────────────────────────────────────────────────────────────────────────────┘\n\n")
 
             # Statistics Summary
-            vulnerabilities = [r for r in results if r.get('vulnerability')]
+            # Include vulnerabilities AND recon/info findings
+            vulnerabilities = [r for r in results if r.get('vulnerability') or
+                              r.get('type') == 'recon' or r.get('severity', '').lower() == 'info']
             severity_counts = {
                 'Critical': len([r for r in vulnerabilities if r.get('severity') == 'Critical']),
                 'High': len([r for r in vulnerabilities if r.get('severity') == 'High']),
@@ -285,7 +301,7 @@ class ReportGenerator:
 
     def _generate_html(self, results: List[Dict[str, Any]], output_file: str,
                       scan_info: Dict[str, Any] = None, simple: bool = False) -> bool:
-        """Generate HTML report
+        """Generate HTML report - Nessus-style design
 
         Args:
             results: Scan results
@@ -293,6 +309,8 @@ class ReportGenerator:
             scan_info: Scan information
             simple: True for simple summary, False for full detailed report (default)
         """
+        from urllib.parse import urlparse
+
         # Check report_mode from scan_info
         report_mode = scan_info.get('report_mode', 'full') if scan_info else 'full'
         simple = (report_mode == 'simple')
@@ -301,18 +319,38 @@ class ReportGenerator:
             return self._generate_html_simple(results, output_file, scan_info)
 
         # FULL detailed HTML report (default)
-        # Preprocess: group security headers and enhance vulnerability names
-        raw_vulns = [r for r in results if r.get('vulnerability')]
+        raw_vulns = [r for r in results if r.get('vulnerability') or
+                     r.get('type') == 'recon' or r.get('severity', '').lower() == 'info']
         vulnerabilities = self._preprocess_findings(raw_vulns)
 
-        # Count by severity
+        # Count by severity (case-insensitive)
         severity_counts = {
-            'Critical': len([r for r in vulnerabilities if r.get('severity') == 'Critical']),
-            'High': len([r for r in vulnerabilities if r.get('severity') == 'High']),
-            'Medium': len([r for r in vulnerabilities if r.get('severity') == 'Medium']),
-            'Low': len([r for r in vulnerabilities if r.get('severity') == 'Low']),
-            'Info': len([r for r in vulnerabilities if r.get('severity') == 'Info']),
+            'Critical': len([r for r in vulnerabilities if r.get('severity', '').lower() == 'critical']),
+            'High': len([r for r in vulnerabilities if r.get('severity', '').lower() == 'high']),
+            'Medium': len([r for r in vulnerabilities if r.get('severity', '').lower() == 'medium']),
+            'Low': len([r for r in vulnerabilities if r.get('severity', '').lower() == 'low']),
+            'Info': len([r for r in vulnerabilities if r.get('severity', '').lower() == 'info']),
         }
+
+        # Group vulnerabilities by host
+        hosts_data = {}
+        for vuln in vulnerabilities:
+            url = vuln.get('url', 'Unknown')
+            try:
+                parsed = urlparse(url)
+                host = parsed.netloc or url
+            except:
+                host = url
+
+            if host not in hosts_data:
+                hosts_data[host] = {'vulns': [], 'counts': {'critical': 0, 'high': 0, 'medium': 0, 'low': 0, 'info': 0}}
+            hosts_data[host]['vulns'].append(vuln)
+            sev = vuln.get('severity', 'info').lower()
+            if sev in hosts_data[host]['counts']:
+                hosts_data[host]['counts'][sev] += 1
+
+        total_vulns = len(vulnerabilities)
+        total_hosts = len(hosts_data)
 
         html_content = f"""
 <!DOCTYPE html>
@@ -320,382 +358,497 @@ class ReportGenerator:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vulnerability Scan Report</title>
+    <title>Dominator Scan Report</title>
     <style>
-        body {{
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f5f5f5;
-        }}
-        .container {{
-            max-width: 1200px;
-            margin: 0 auto;
-            background-color: white;
-            padding: 20px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-        }}
-        h1 {{
-            color: #333;
-            border-bottom: 3px solid #007bff;
-            padding-bottom: 10px;
-        }}
-        .summary {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin: 20px 0;
-        }}
-        .summary-card {{
-            padding: 15px;
-            border-radius: 5px;
-            color: white;
-            text-align: center;
-        }}
-        .critical {{ background-color: #dc3545; }}
-        .high {{ background-color: #fd7e14; }}
-        .medium {{ background-color: #ffc107; color: #333; }}
-        .low {{ background-color: #28a745; }}
-        .info {{ background-color: #17a2b8; }}
-        .vulnerability {{
-            margin: 15px 0;
-            padding: 15px;
-            border-left: 4px solid #ccc;
-            background-color: #f9f9f9;
-        }}
-        .vulnerability.critical {{ border-left-color: #dc3545; }}
-        .vulnerability.high {{ border-left-color: #fd7e14; }}
-        .vulnerability.medium {{ border-left-color: #ffc107; }}
-        .vulnerability.low {{ border-left-color: #28a745; }}
-        .vulnerability h3 {{
-            margin-top: 0;
-            color: #333;
-        }}
-        .detail {{
-            margin: 5px 0;
-        }}
-        .label {{
-            font-weight: bold;
-            color: #555;
-        }}
-        .evidence {{
-            background-color: #f4f4f4;
-            padding: 10px;
-            border-radius: 3px;
-            font-family: monospace;
-            font-size: 12px;
-            overflow-x: auto;
-        }}
-        .timestamp {{
-            color: #888;
-            font-size: 14px;
-        }}
-        .retest-badge {{
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: bold;
-            margin-left: 10px;
-            vertical-align: middle;
-        }}
-        .retest-fixed {{
-            background-color: #28a745;
-            color: white;
-        }}
-        .retest-new {{
-            background-color: #ffc107;
-            color: #333;
-        }}
-        .retest-still {{
-            background-color: #dc3545;
-            color: white;
-        }}
-        /* NEW: Collapsible functionality */
-        .finding-header {{
-            cursor: pointer;
-            user-select: none;
-            position: relative;
-            padding-right: 30px;
-        }}
-        .finding-header:hover {{
-            opacity: 0.8;
-        }}
-        .finding-header::after {{
-            content: "▼";
-            position: absolute;
-            right: 10px;
-            top: 5px;
-            font-size: 14px;
-            transition: transform 0.3s;
-        }}
-        .finding-header.collapsed::after {{
-            transform: rotate(-90deg);
-        }}
-        .finding-details {{
-            display: block;
-            margin-top: 10px;
-        }}
-        .finding-details.collapsed {{
-            display: none;
-        }}
-        /* NEW: Filter controls */
-        .controls {{
-            background-color: #f0f0f0;
-            padding: 15px;
-            border-radius: 5px;
-            margin: 20px 0;
-            display: flex;
-            gap: 15px;
-            align-items: center;
-            flex-wrap: wrap;
-        }}
-        .controls label {{
-            font-weight: bold;
-            margin-right: 5px;
-        }}
-        .controls select {{
-            padding: 5px 10px;
-            border-radius: 3px;
-            border: 1px solid #ccc;
-        }}
-        .controls button {{
-            padding: 5px 15px;
-            border-radius: 3px;
-            border: none;
-            background-color: #007bff;
-            color: white;
-            cursor: pointer;
-            font-weight: bold;
-        }}
-        .controls button:hover {{
-            background-color: #0056b3;
-        }}
-        .hidden {{
-            display: none !important;
-        }}
+        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+        body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; }}
+        .header {{ background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 20px 30px; border-bottom: 3px solid #e94560; }}
+        .header h1 {{ color: #e94560; font-size: 28px; font-weight: 600; }}
+        .header .subtitle {{ color: #888; font-size: 14px; margin-top: 5px; }}
+        .container {{ display: flex; min-height: calc(100vh - 80px); }}
+        .sidebar {{ width: 280px; background: #16213e; padding: 20px; border-right: 1px solid #333; }}
+        .main {{ flex: 1; padding: 20px 30px; overflow-y: auto; }}
+
+        /* Summary Cards */
+        .summary-row {{ display: flex; gap: 0; margin-bottom: 25px; }}
+        .summary-card {{ flex: 1; padding: 20px 15px; text-align: center; color: white; }}
+        .summary-card h2 {{ font-size: 42px; font-weight: 300; margin-bottom: 5px; }}
+        .summary-card p {{ font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }}
+        .summary-card.critical {{ background: #9b2335; }}
+        .summary-card.high {{ background: #d35400; }}
+        .summary-card.medium {{ background: #c9a227; color: #333; }}
+        .summary-card.low {{ background: #27ae60; }}
+        .summary-card.info {{ background: #2980b9; }}
+
+        /* Tabs */
+        .tabs {{ display: flex; gap: 5px; margin-bottom: 20px; }}
+        .tab {{ padding: 10px 20px; background: #2a2a4a; color: #aaa; border: none; cursor: pointer; border-radius: 5px 5px 0 0; font-size: 14px; }}
+        .tab.active {{ background: #e94560; color: white; }}
+        .tab:hover {{ background: #3a3a5a; }}
+        .tab.active:hover {{ background: #e94560; }}
+        .tab-badge {{ background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 10px; margin-left: 8px; font-size: 12px; }}
+
+        /* Host List with Stacked Bars */
+        .host-item {{ background: #1e1e3f; margin-bottom: 10px; border-radius: 5px; overflow: hidden; cursor: pointer; }}
+        .host-item:hover {{ background: #2a2a4a; }}
+        .host-header {{ display: flex; align-items: center; padding: 12px 15px; }}
+        .host-name {{ flex: 1; font-weight: 500; color: #fff; }}
+        .host-bar {{ display: flex; height: 20px; flex: 2; border-radius: 3px; overflow: hidden; }}
+        .bar-segment {{ height: 100%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; color: white; min-width: 25px; }}
+        .bar-critical {{ background: #9b2335; }}
+        .bar-high {{ background: #d35400; }}
+        .bar-medium {{ background: #c9a227; color: #333; }}
+        .bar-low {{ background: #27ae60; }}
+        .bar-info {{ background: #2980b9; }}
+
+        /* Vulnerability Table */
+        .vuln-table {{ width: 100%; border-collapse: collapse; }}
+        .vuln-table th {{ background: #2a2a4a; padding: 12px 15px; text-align: left; font-weight: 500; color: #aaa; font-size: 12px; text-transform: uppercase; }}
+        .vuln-table td {{ padding: 12px 15px; border-bottom: 1px solid #333; }}
+        .vuln-table tr:hover {{ background: #2a2a4a; }}
+
+        /* Severity Badges */
+        .sev-badge {{ display: inline-block; padding: 4px 12px; border-radius: 3px; font-size: 11px; font-weight: bold; text-transform: uppercase; }}
+        .sev-critical {{ background: #9b2335; color: white; }}
+        .sev-high {{ background: #d35400; color: white; }}
+        .sev-medium {{ background: #c9a227; color: #333; }}
+        .sev-low {{ background: #27ae60; color: white; }}
+        .sev-info {{ background: #2980b9; color: white; }}
+
+        /* Sidebar Stats */
+        .sidebar-section {{ margin-bottom: 25px; }}
+        .sidebar-title {{ color: #888; font-size: 12px; text-transform: uppercase; margin-bottom: 10px; letter-spacing: 1px; }}
+        .stat-row {{ display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #333; }}
+        .stat-label {{ color: #aaa; }}
+        .stat-value {{ color: #fff; font-weight: 500; }}
+
+        /* Pie Chart - Fixed aspect ratio for perfect circle */
+        .pie-container {{ width: 150px; height: 150px; margin: 20px auto; position: relative; aspect-ratio: 1; }}
+        .pie-chart {{ width: 150px; height: 150px; border-radius: 50%; cursor: pointer; }}
+        .pie-legend {{ margin-top: 15px; }}
+        .legend-item {{ display: flex; align-items: center; margin-bottom: 8px; font-size: 13px; }}
+        .legend-dot {{ width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; }}
+
+        /* Controls */
+        .controls {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }}
+        .control-group {{ display: flex; gap: 10px; align-items: center; }}
+        .btn {{ padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }}
+        .btn-primary {{ background: #e94560; color: white; }}
+        .btn-secondary {{ background: #2a2a4a; color: #aaa; }}
+        .btn:hover {{ opacity: 0.9; }}
+        select {{ padding: 8px 12px; background: #2a2a4a; border: 1px solid #444; color: #fff; border-radius: 4px; }}
+
+        /* Expandable Details */
+        .vuln-details {{ display: none; background: #1a1a2e; padding: 15px 20px; border-left: 3px solid #e94560; margin: 10px 0; }}
+        .vuln-details.show {{ display: block; }}
+        .detail-grid {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }}
+        .detail-item label {{ display: block; color: #888; font-size: 11px; text-transform: uppercase; margin-bottom: 3px; }}
+        .detail-item span {{ color: #fff; }}
+        .evidence-box {{ background: #0d0d1a; padding: 15px; border-radius: 5px; font-family: 'Consolas', monospace; font-size: 12px; margin-top: 15px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }}
+        .clickable {{ cursor: pointer; }}
+        .clickable:hover {{ color: #e94560; }}
+
+        /* Host view / Vuln view toggle */
+        .view-content {{ display: none; }}
+        .view-content.active {{ display: block; }}
+
+        /* Host details panel */
+        .host-details-panel {{ background: #1e1e3f; border-radius: 5px; padding: 15px; margin-bottom: 20px; }}
+        .host-vuln-list {{ max-height: 500px; overflow-y: auto; }}
     </style>
 </head>
 <body>
+    <div class="header">
+        <h1>DOMINATOR</h1>
+        <div class="subtitle">Vulnerability Scan Report - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div>
+    </div>
+
     <div class="container">
-        <h1>Vulnerability Scan Report</h1>
-        <p class="timestamp">Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+        <div class="sidebar">
+            <div class="sidebar-section">
+                <div class="sidebar-title">Scan Details</div>
+                <div class="stat-row"><span class="stat-label">Total Hosts</span><span class="stat-value">{total_hosts}</span></div>
+                <div class="stat-row"><span class="stat-label">Vulnerabilities</span><span class="stat-value">{total_vulns}</span></div>
+                <div class="stat-row"><span class="stat-label">Generated</span><span class="stat-value">{datetime.datetime.now().strftime('%H:%M')}</span></div>
+            </div>
 
-        <h2>Summary</h2>
-        <div class="summary">
-            <div class="summary-card critical">
-                <h3>{severity_counts['Critical']}</h3>
-                <p>Critical</p>
-            </div>
-            <div class="summary-card high">
-                <h3>{severity_counts['High']}</h3>
-                <p>High</p>
-            </div>
-            <div class="summary-card medium">
-                <h3>{severity_counts['Medium']}</h3>
-                <p>Medium</p>
-            </div>
-            <div class="summary-card low">
-                <h3>{severity_counts['Low']}</h3>
-                <p>Low</p>
-            </div>
-            <div class="summary-card info">
-                <h3>{severity_counts['Info']}</h3>
-                <p>Info</p>
+            <div class="sidebar-section">
+                <div class="sidebar-title">Vulnerabilities</div>
+                <div class="pie-container">
+                    <canvas id="pieChart" class="pie-chart"></canvas>
+                </div>
+                <div class="pie-legend">
+                    <div class="legend-item"><span class="legend-dot" style="background:#9b2335"></span>Critical ({severity_counts['Critical']})</div>
+                    <div class="legend-item"><span class="legend-dot" style="background:#d35400"></span>High ({severity_counts['High']})</div>
+                    <div class="legend-item"><span class="legend-dot" style="background:#c9a227"></span>Medium ({severity_counts['Medium']})</div>
+                    <div class="legend-item"><span class="legend-dot" style="background:#27ae60"></span>Low ({severity_counts['Low']})</div>
+                    <div class="legend-item"><span class="legend-dot" style="background:#2980b9"></span>Info ({severity_counts['Info']})</div>
+                </div>
             </div>
         </div>
 
-        <!-- NEW: Filter and collapse controls -->
-        <div class="controls">
-            <div>
-                <label for="severityFilter">Filter by Severity:</label>
-                <select id="severityFilter" onchange="filterBySeverity()">
-                    <option value="all">All ({len(vulnerabilities)})</option>
-                    <option value="critical">Critical ({severity_counts['Critical']})</option>
-                    <option value="high">High ({severity_counts['High']})</option>
-                    <option value="medium">Medium ({severity_counts['Medium']})</option>
-                    <option value="low">Low ({severity_counts['Low']})</option>
-                    <option value="info">Info ({severity_counts['Info']})</option>
-                </select>
+        <div class="main">
+            <!-- Summary Cards -->
+            <div class="summary-row">
+                <div class="summary-card critical"><h2>{severity_counts['Critical']}</h2><p>Critical</p></div>
+                <div class="summary-card high"><h2>{severity_counts['High']}</h2><p>High</p></div>
+                <div class="summary-card medium"><h2>{severity_counts['Medium']}</h2><p>Medium</p></div>
+                <div class="summary-card low"><h2>{severity_counts['Low']}</h2><p>Low</p></div>
+                <div class="summary-card info"><h2>{severity_counts['Info']}</h2><p>Info</p></div>
             </div>
-            <div>
-                <button onclick="expandAll()">Expand All</button>
-                <button onclick="collapseAll()">Collapse All</button>
-            </div>
-        </div>
 
-        <h2>Vulnerabilities (<span id="visibleCount">{len(vulnerabilities)}</span>)</h2>
+            <!-- Tabs -->
+            <div class="tabs">
+                <button class="tab active" onclick="showView('hosts')" id="tab-hosts">Hosts<span class="tab-badge">{total_hosts}</span></button>
+                <button class="tab" onclick="showView('vulns')" id="tab-vulns">Vulnerabilities<span class="tab-badge">{total_vulns}</span></button>
+            </div>
+
+            <!-- Active Filter Indicator -->
+            <div id="activeFilter" style="display:none;margin-bottom:15px;padding:10px 15px;background:#2a2a4a;border-radius:5px;display:none;align-items:center;justify-content:space-between;">
+                <span>Filtering by: <strong id="filterName" style="color:#e94560;"></strong></span>
+                <button onclick="clearFilter()" style="background:none;border:none;color:#e94560;cursor:pointer;font-size:18px;padding:0 5px;">&times;</button>
+            </div>
+
+            <!-- Controls -->
+            <div class="controls">
+                <div class="control-group">
+                    <select id="severityFilter" onchange="filterBySeverity()">
+                        <option value="all">All Severities</option>
+                        <option value="critical">Critical</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                        <option value="info">Info</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <button class="btn btn-secondary" onclick="collapseAll()">Collapse All</button>
+                    <button class="btn btn-secondary" onclick="expandAll()">Expand All</button>
+                </div>
+            </div>
+
+            <!-- HOSTS VIEW -->
+            <div id="hostsView" class="view-content active">
 """
 
-        # Add vulnerabilities grouped by severity
-        for severity in ['Critical', 'High', 'Medium', 'Low', 'Info']:
-            severity_results = [r for r in vulnerabilities if r.get('severity') == severity]
-            if severity_results:
-                html_content += f"<h3>{severity} ({len(severity_results)})</h3>\n"
+        # Generate host list with stacked bars
+        for host, data in sorted(hosts_data.items(), key=lambda x: sum(x[1]['counts'].values()), reverse=True):
+            counts = data['counts']
+            total = sum(counts.values())
+            if total == 0:
+                continue
 
-                for result in severity_results:
-                    # HTML escape all user-controlled data to prevent XSS payloads from breaking the report
-                    raw_type = result.get('type', result.get('module', 'Unknown Vulnerability'))
-                    # Format type: replace underscores with spaces and title case
-                    vuln_type = html.escape(raw_type.replace('_', ' ').title())
-                    raw_url = result.get('url', 'N/A')
-
-                    # Make URL clickable
-                    if raw_url != 'N/A' and raw_url.startswith('http'):
-                        clickable_url = f'<a href="{html.escape(raw_url)}" target="_blank" style="color:#007bff; text-decoration:none; border-bottom:1px dashed #007bff;">{html.escape(raw_url)}</a>'
-                    else:
-                        clickable_url = html.escape(raw_url)
-
-                    # Get severity color
-                    sev_colors = {'Critical':'#dc3545','High':'#fd7e14','Medium':'#ffc107','Low':'#28a745','Info':'#17a2b8'}
-                    sev_color = sev_colors.get(severity, '#333')
-
-                    # Generate retest status badge if present
-                    retest_badge = ""
-                    retest_status = result.get('retest_status', '')
-                    if retest_status == 'FIXED':
-                        retest_badge = '<span class="retest-badge retest-fixed">✅ FIXED</span>'
-                    elif retest_status == 'NEW':
-                        retest_badge = '<span class="retest-badge retest-new">🆕 NEW</span>'
-                    elif retest_status == 'STILL_VULNERABLE':
-                        retest_badge = '<span class="retest-badge retest-still">⚠️ STILL VULNERABLE</span>'
-
-                    # Generate unique ID for this finding
-                    finding_id = f"finding_{severity.lower()}_{result.get('module', 'unknown').replace(' ', '_')}_{vulnerabilities.index(result)}"
-
-                    html_content += f"""
-        <div class="vulnerability {severity.lower()}" data-severity="{severity.lower()}">
-            <h3 class="finding-header" onclick="toggleFinding('{finding_id}')">{vuln_type}{retest_badge}</h3>
-            <div id="{finding_id}" class="finding-details">
-                <div class="detail"><span class="label">Severity:</span> <strong style="color: {sev_color}">{severity}</strong></div>
-                <div class="detail"><span class="label">URL:</span> {clickable_url}</div>
+            html_content += f"""
+                <div class="host-item" onclick="toggleHostDetails('{html.escape(host)}')">
+                    <div class="host-header">
+                        <span class="host-name">{html.escape(host)}</span>
+                        <div class="host-bar">
 """
-                    # Show ALL available fields
-                    fields_to_show = [
-                        ('method', 'HTTP Method'),
-                        ('parameter', 'Parameter'),
-                        ('payload', 'Payload'),
-                        ('module', 'Module'),
-                        ('confidence', 'Confidence'),
-                        ('cwe', 'CWE'),
-                        ('cwe_name', 'CWE Name'),
-                        ('owasp', 'OWASP'),
-                        ('owasp_name', 'OWASP Name'),
-                        ('cvss', 'CVSS Score'),
-                        ('detection_method', 'Detection Method'),
-                        ('vuln_type', 'Vulnerability Type'),
-                    ]
+            # Add bar segments
+            for sev, color in [('critical', 'critical'), ('high', 'high'), ('medium', 'medium'), ('low', 'low'), ('info', 'info')]:
+                if counts[sev] > 0:
+                    width = (counts[sev] / total) * 100
+                    html_content += f'                            <div class="bar-segment bar-{color}" style="width:{width}%">{counts[sev]}</div>\n'
 
-                    for field, label in fields_to_show:
-                        if result.get(field):
-                            value = html.escape(str(result.get(field)))
-                            if field == 'payload':
-                                html_content += f"            <div class=\"detail\"><span class=\"label\">{label}:</span> <code>{value}</code></div>\n"
-                            elif field == 'confidence':
-                                conf_pct = float(value) * 100
-                                html_content += f"            <div class=\"detail\"><span class=\"label\">{label}:</span> {conf_pct:.0f}%</div>\n"
-                            else:
-                                html_content += f"            <div class=\"detail\"><span class=\"label\">{label}:</span> {value}</div>\n"
+            html_content += f"""
+                        </div>
+                    </div>
+                    <div id="host-{html.escape(host).replace('.', '-').replace(':', '-')}" class="vuln-details">
+                        <table class="vuln-table">
+                            <thead><tr><th>Severity</th><th>CVSS</th><th>Module</th><th>Name</th></tr></thead>
+                            <tbody>
+"""
+            # Add vulnerabilities for this host
+            for vuln in sorted(data['vulns'], key=lambda x: ['critical', 'high', 'medium', 'low', 'info'].index(x.get('severity', 'info').lower())):
+                sev = vuln.get('severity', 'Info').lower()
+                cvss = vuln.get('cvss', 'N/A')
+                module = html.escape(vuln.get('module', vuln.get('type', 'Unknown')))
+                name = html.escape(vuln.get('type', vuln.get('module', 'Unknown')).replace('_', ' ').title())
 
-                    # Add retest tracking timestamps if present
-                    if result.get('first_seen'):
-                        html_content += f"            <div class=\"detail\"><span class=\"label\">First Seen:</span> {html.escape(result.get('first_seen'))}</div>\n"
-                    if result.get('last_seen'):
-                        html_content += f"            <div class=\"detail\"><span class=\"label\">Last Seen:</span> {html.escape(result.get('last_seen'))}</div>\n"
-                    if result.get('fixed_date'):
-                        html_content += f"            <div class=\"detail\"><span class=\"label\">Fixed Date:</span> {html.escape(result.get('fixed_date'))}</div>\n"
+                html_content += f"""
+                                <tr class="clickable" onclick="event.stopPropagation(); toggleVulnDetail('vuln-{id(vuln)}')" data-severity="{sev}">
+                                    <td><span class="sev-badge sev-{sev}">{sev.upper()}</span></td>
+                                    <td>{cvss}</td>
+                                    <td>{module}</td>
+                                    <td>{name}</td>
+                                </tr>
+                                <tr id="vuln-{id(vuln)}" class="vuln-detail-row" style="display:none;">
+                                    <td colspan="4">
+                                        <div class="detail-grid">
+                                            <div class="detail-item"><label>URL</label><span>{html.escape(vuln.get('url', 'N/A'))}</span></div>
+                                            <div class="detail-item"><label>Method</label><span style="background:#e94560;color:white;padding:2px 8px;border-radius:3px;">{html.escape(str(vuln.get('method', 'GET')))}</span></div>
+                                            <div class="detail-item"><label>Parameter</label><span style="color:#e94560;font-weight:bold;">{html.escape(str(vuln.get('parameter', 'N/A')))}</span></div>
+                                            <div class="detail-item"><label>Confidence</label><span>{float(vuln.get('confidence', 0.8))*100:.0f}%</span></div>
+                                            <div class="detail-item"><label>CWE</label><span>{html.escape(str(vuln.get('cwe', 'N/A')))}</span></div>
+                                            <div class="detail-item"><label>OWASP</label><span>{html.escape(str(vuln.get('owasp', 'N/A')))}</span></div>
+                                        </div>
+                                        <div style="margin-top:10px;"><label style="color:#888;font-size:11px;">PAYLOAD</label>
+                                            <div style="background:#1a1a2e;padding:10px;border-radius:4px;margin-top:5px;font-family:monospace;color:#e94560;word-break:break-all;">{html.escape(str(vuln.get('payload', 'N/A'))[:500])}</div>
+                                        </div>
+                                        <div style="margin-top:10px;"><label style="color:#888;font-size:11px;">EVIDENCE / PROOF</label>
+                                            <div class="evidence-box">{html.escape(str(vuln.get('evidence', vuln.get('description', 'No evidence')))[:1500])}</div>
+                                        </div>
+                                        <div style="margin-top:10px;display:flex;gap:10px;">
+                                            <button onclick="copyToClipboard('{html.escape(vuln.get('url', ''))}')" class="btn btn-secondary" style="font-size:11px;">📋 Copy URL</button>
+                                            <button onclick="copyToClipboard(`{html.escape(str(vuln.get('payload', '')).replace('`',''))}`)" class="btn btn-secondary" style="font-size:11px;">📋 Copy Payload</button>
+                                            <button onclick="copyFinding('{id(vuln)}')" class="btn btn-primary" style="font-size:11px;">📋 Copy Full Finding</button>
+                                        </div>
+                                        <script>window.findingData_{id(vuln)} = {safe_json_for_html({k:str(v)[:500] if isinstance(v,str) else v for k,v in vuln.items() if k not in ['response']})};</script>
+                                    </td>
+                                </tr>
+"""
 
-                    if result.get('description'):
-                        description = html.escape(result.get('description'))
-                        html_content += f"            <div class=\"detail\"><span class=\"label\">Description:</span> {description}</div>\n"
-
-                    if result.get('evidence'):
-                        evidence = result.get('evidence')
-                        # Make URLs in evidence clickable
-                        evidence_html = self._make_urls_clickable(evidence)
-                        html_content += f"            <div class=\"detail\"><span class=\"label\">Evidence:</span></div>\n"
-                        html_content += f"            <div class=\"evidence\">{evidence_html}</div>\n"
-
-                    if result.get('recommendation') or result.get('remediation'):
-                        rec = html.escape(result.get('recommendation') or result.get('remediation'))
-                        html_content += f"            <div class=\"detail\"><span class=\"label\">Recommendation:</span> {rec}</div>\n"
-
-                    # Add HTTP details section (curl, request, response)
-                    html_content += self._generate_http_details_section(result)
-
-                    # Show references if available
-                    if result.get('references'):
-                        refs = result.get('references')
-                        if isinstance(refs, list):
-                            html_content += f"            <div class=\"detail\"><span class=\"label\">References:</span></div>\n"
-                            for ref in refs:
-                                ref_escaped = html.escape(str(ref))
-                                html_content += f"            <div class=\"detail\" style=\"margin-left: 20px;\">• {ref_escaped}</div>\n"
-
-                    html_content += "            </div>\n"  # Close finding-details
-                    html_content += "        </div>\n"  # Close vulnerability
+            html_content += """
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+"""
 
         html_content += """
+            </div>
+
+            <!-- VULNERABILITIES VIEW -->
+            <div id="vulnsView" class="view-content">
+                <table class="vuln-table">
+                    <thead><tr><th>Severity</th><th>CVSS</th><th>Host</th><th>Module</th><th>Name</th></tr></thead>
+                    <tbody>
+"""
+
+        # Add all vulnerabilities sorted by severity
+        for vuln in sorted(vulnerabilities, key=lambda x: ['critical', 'high', 'medium', 'low', 'info'].index(x.get('severity', 'info').lower())):
+            sev = vuln.get('severity', 'Info').lower()
+            cvss = vuln.get('cvss', 'N/A')
+            url = vuln.get('url', 'Unknown')
+            try:
+                parsed = urlparse(url)
+                host = parsed.netloc or url
+            except:
+                host = url
+            module = html.escape(vuln.get('module', vuln.get('type', 'Unknown')))
+            name = html.escape(vuln.get('type', vuln.get('module', 'Unknown')).replace('_', ' ').title())
+
+            html_content += f"""
+                        <tr class="clickable" onclick="toggleVulnDetail('vuln-all-{id(vuln)}')" data-severity="{sev}">
+                            <td><span class="sev-badge sev-{sev}">{sev.upper()}</span></td>
+                            <td>{cvss}</td>
+                            <td>{html.escape(host)}</td>
+                            <td>{module}</td>
+                            <td>{name}</td>
+                        </tr>
+                        <tr id="vuln-all-{id(vuln)}" class="vuln-detail-row" style="display:none;">
+                            <td colspan="5">
+                                <div class="detail-grid">
+                                    <div class="detail-item"><label>Full URL</label><span>{html.escape(vuln.get('url', 'N/A'))}</span></div>
+                                    <div class="detail-item"><label>Method</label><span style="background:#e94560;color:white;padding:2px 8px;border-radius:3px;">{html.escape(str(vuln.get('method', 'GET')))}</span></div>
+                                    <div class="detail-item"><label>Parameter</label><span style="color:#e94560;font-weight:bold;">{html.escape(str(vuln.get('parameter', 'N/A')))}</span></div>
+                                    <div class="detail-item"><label>Confidence</label><span>{float(vuln.get('confidence', 0.8))*100:.0f}%</span></div>
+                                    <div class="detail-item"><label>CWE</label><span>{html.escape(str(vuln.get('cwe', 'N/A')))}</span></div>
+                                    <div class="detail-item"><label>OWASP</label><span>{html.escape(str(vuln.get('owasp', 'N/A')))}</span></div>
+                                </div>
+                                <div style="margin-top:10px;"><label style="color:#888;font-size:11px;">PAYLOAD</label>
+                                    <div style="background:#1a1a2e;padding:10px;border-radius:4px;margin-top:5px;font-family:monospace;color:#e94560;word-break:break-all;">{html.escape(str(vuln.get('payload', 'N/A'))[:500])}</div>
+                                </div>
+                                <div style="margin-top:10px;"><label style="color:#888;font-size:11px;">EVIDENCE / PROOF</label>
+                                    <div class="evidence-box">{html.escape(str(vuln.get('evidence', vuln.get('description', 'No evidence')))[:1500])}</div>
+                                </div>
+                                <div style="margin-top:10px;display:flex;gap:10px;">
+                                    <button onclick="copyToClipboard('{html.escape(vuln.get('url', ''))}')" class="btn btn-secondary" style="font-size:11px;">📋 Copy URL</button>
+                                    <button onclick="copyToClipboard(`{html.escape(str(vuln.get('payload', '')).replace('`',''))}`)" class="btn btn-secondary" style="font-size:11px;">📋 Copy Payload</button>
+                                    <button onclick="copyFinding('all-{id(vuln)}')" class="btn btn-primary" style="font-size:11px;">📋 Copy Full Finding</button>
+                                </div>
+                                <script>window.findingData_all_{id(vuln)} = {safe_json_for_html({k:str(v)[:500] if isinstance(v,str) else v for k,v in vuln.items() if k not in ['response']})};</script>
+                            </td>
+                        </tr>
+"""
+
+        html_content += f"""
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 
     <script>
-        // Toggle single finding collapse/expand
-        function toggleFinding(id) {{
-            const details = document.getElementById(id);
-            const header = details.previousElementSibling;
+        // Pie chart data and segments stored globally for click detection
+        const pieData = [{severity_counts['Critical']}, {severity_counts['High']}, {severity_counts['Medium']}, {severity_counts['Low']}, {severity_counts['Info']}];
+        const pieLabels = ['critical', 'high', 'medium', 'low', 'info'];
+        const pieColors = ['#9b2335', '#d35400', '#c9a227', '#27ae60', '#2980b9'];
+        let pieSegments = [];
 
-            if (details.classList.contains('collapsed')) {{
-                details.classList.remove('collapsed');
-                header.classList.remove('collapsed');
-            }} else {{
-                details.classList.add('collapsed');
-                header.classList.add('collapsed');
+        // Draw pie chart
+        function drawPieChart() {{
+            const canvas = document.getElementById('pieChart');
+            if (!canvas) return;
+
+            // Set canvas dimensions explicitly for proper circle
+            canvas.width = 150;
+            canvas.height = 150;
+
+            const ctx = canvas.getContext('2d');
+            const total = pieData.reduce((a, b) => a + b, 0);
+            if (total === 0) return;
+
+            let startAngle = -Math.PI / 2;
+            const centerX = 75;
+            const centerY = 75;
+            const radius = 70;
+            pieSegments = [];
+
+            pieData.forEach((value, i) => {{
+                if (value === 0) return;
+                const sliceAngle = (value / total) * 2 * Math.PI;
+                const endAngle = startAngle + sliceAngle;
+
+                // Store segment for click detection
+                pieSegments.push({{ startAngle, endAngle, label: pieLabels[i], color: pieColors[i] }});
+
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY);
+                ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+                ctx.fillStyle = pieColors[i];
+                ctx.fill();
+                startAngle = endAngle;
+            }});
+
+            // Draw center hole for donut effect
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius * 0.55, 0, 2 * Math.PI);
+            ctx.fillStyle = '#16213e';
+            ctx.fill();
+
+            // Add click handler
+            canvas.onclick = handlePieClick;
+        }}
+
+        // Handle pie chart click
+        function handlePieClick(e) {{
+            const canvas = e.target;
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left - 75;
+            const y = e.clientY - rect.top - 75;
+            const distance = Math.sqrt(x*x + y*y);
+
+            // Check if click is within donut (between inner and outer radius)
+            if (distance < 38 || distance > 70) return;
+
+            // Calculate angle
+            let angle = Math.atan2(y, x);
+            if (angle < -Math.PI/2) angle += 2 * Math.PI;
+
+            // Find which segment was clicked
+            for (const seg of pieSegments) {{
+                let start = seg.startAngle;
+                let end = seg.endAngle;
+                if (start < -Math.PI/2) start += 2 * Math.PI;
+                if (end < -Math.PI/2) end += 2 * Math.PI;
+
+                if (angle >= start && angle < end) {{
+                    filterBySeverityValue(seg.label);
+                    return;
+                }}
             }}
         }}
 
-        // Expand all findings
-        function expandAll() {{
-            document.querySelectorAll('.finding-details').forEach(el => {{
-                el.classList.remove('collapsed');
-            }});
-            document.querySelectorAll('.finding-header').forEach(el => {{
-                el.classList.remove('collapsed');
-            }});
+        // Filter by severity (called from pie click)
+        function filterBySeverityValue(severity) {{
+            document.getElementById('severityFilter').value = severity;
+            filterBySeverity();
+            // Show filter indicator
+            document.getElementById('activeFilter').style.display = 'flex';
+            document.getElementById('filterName').textContent = severity.toUpperCase();
         }}
 
-        // Collapse all findings
-        function collapseAll() {{
-            document.querySelectorAll('.finding-details').forEach(el => {{
-                el.classList.add('collapsed');
-            }});
-            document.querySelectorAll('.finding-header').forEach(el => {{
-                el.classList.add('collapsed');
-            }});
+        // Clear filter
+        function clearFilter() {{
+            document.getElementById('severityFilter').value = 'all';
+            filterBySeverity();
+            document.getElementById('activeFilter').style.display = 'none';
+        }}
+
+        // View switching
+        function showView(view) {{
+            document.querySelectorAll('.view-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+            document.getElementById(view + 'View').classList.add('active');
+            document.getElementById('tab-' + view).classList.add('active');
+        }}
+
+        // Toggle host details
+        function toggleHostDetails(host) {{
+            const id = 'host-' + host.replace(/\\./g, '-').replace(/:/g, '-');
+            const el = document.getElementById(id);
+            if (el) el.classList.toggle('show');
+        }}
+
+        // Toggle vulnerability detail
+        function toggleVulnDetail(id) {{
+            const el = document.getElementById(id);
+            if (el) el.style.display = el.style.display === 'none' ? 'table-row' : 'none';
         }}
 
         // Filter by severity
         function filterBySeverity() {{
             const filter = document.getElementById('severityFilter').value;
-            const findings = document.querySelectorAll('.vulnerability');
-            let visibleCount = 0;
-
-            findings.forEach(finding => {{
-                const severity = finding.getAttribute('data-severity');
-                if (filter === 'all' || severity === filter) {{
-                    finding.style.display = 'block';
-                    visibleCount++;
+            document.querySelectorAll('tr[data-severity]').forEach(row => {{
+                if (filter === 'all' || row.dataset.severity === filter) {{
+                    row.style.display = '';
                 }} else {{
-                    finding.style.display = 'none';
+                    row.style.display = 'none';
                 }}
             }});
-
-            document.getElementById('visibleCount').textContent = visibleCount;
         }}
 
-        // Initialize: Start with all findings expanded
-        document.addEventListener('DOMContentLoaded', function() {{
-            // All findings are expanded by default (no collapsed class)
-        }});
+        // Collapse/Expand all
+        function collapseAll() {{
+            document.querySelectorAll('.vuln-details').forEach(el => el.classList.remove('show'));
+            document.querySelectorAll('.vuln-detail-row').forEach(el => el.style.display = 'none');
+        }}
+
+        function expandAll() {{
+            document.querySelectorAll('.vuln-details').forEach(el => el.classList.add('show'));
+            document.querySelectorAll('.vuln-detail-row').forEach(el => el.style.display = 'table-row');
+        }}
+
+        // Copy to clipboard function
+        function copyToClipboard(text) {{
+            navigator.clipboard.writeText(text).then(() => {{
+                showToast('Copied to clipboard!');
+            }}).catch(() => {{
+                // Fallback for older browsers
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                showToast('Copied to clipboard!');
+            }});
+        }}
+
+        // Copy full finding as JSON
+        function copyFinding(id) {{
+            const dataKey = 'findingData_' + id.replace('-', '_');
+            const data = window[dataKey];
+            if (data) {{
+                const text = JSON.stringify(data, null, 2);
+                copyToClipboard(text);
+            }}
+        }}
+
+        // Toast notification
+        function showToast(msg) {{
+            const toast = document.createElement('div');
+            toast.textContent = msg;
+            toast.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#27ae60;color:white;padding:12px 24px;border-radius:4px;z-index:9999;animation:fadeIn 0.3s';
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 2000);
+        }}
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', drawPieChart);
     </script>
+    <style>@keyframes fadeIn {{ from {{ opacity: 0; }} to {{ opacity: 1; }} }}</style>
 </body>
 </html>
 """
@@ -709,7 +862,9 @@ class ReportGenerator:
     def _generate_html_simple(self, results: List[Dict[str, Any]], output_file: str,
                              scan_info: Dict[str, Any] = None) -> bool:
         """Generate simple summary-only HTML report"""
-        vulnerabilities = [r for r in results if r.get('vulnerability')]
+        # Include vulnerabilities AND recon/info findings
+        vulnerabilities = [r for r in results if r.get('vulnerability') or
+                          r.get('type') == 'recon' or r.get('severity', '').lower() == 'info']
 
         severity_counts = {
             'Critical': len([r for r in vulnerabilities if r.get('severity') == 'Critical']),
@@ -759,15 +914,17 @@ class ReportGenerator:
             logger.error(f"Error loading template: {e}")
             return False
 
-        vulnerabilities = [r for r in results if r.get('vulnerability')]
+        # Include vulnerabilities AND recon/info findings
+        vulnerabilities = [r for r in results if r.get('vulnerability') or
+                          r.get('type') == 'recon' or r.get('severity', '').lower() == 'info']
 
-        # Count by severity
+        # Count by severity (case-insensitive)
         severity_counts = {
-            'Critical': len([r for r in vulnerabilities if r.get('severity') == 'Critical']),
-            'High': len([r for r in vulnerabilities if r.get('severity') == 'High']),
-            'Medium': len([r for r in vulnerabilities if r.get('severity') == 'Medium']),
-            'Low': len([r for r in vulnerabilities if r.get('severity') == 'Low']),
-            'Info': len([r for r in vulnerabilities if r.get('severity') == 'Info']),
+            'Critical': len([r for r in vulnerabilities if r.get('severity', '').lower() == 'critical']),
+            'High': len([r for r in vulnerabilities if r.get('severity', '').lower() == 'high']),
+            'Medium': len([r for r in vulnerabilities if r.get('severity', '').lower() == 'medium']),
+            'Low': len([r for r in vulnerabilities if r.get('severity', '').lower() == 'low']),
+            'Info': len([r for r in vulnerabilities if r.get('severity', '').lower() == 'info']),
         }
 
         # Build vulnerability sections HTML
@@ -796,7 +953,9 @@ class ReportGenerator:
 
                 if result.get('evidence'):
                     sections_html += f'  <div class="detail"><span class="label">Evidence:</span></div>\n'
-                    sections_html += f'  <div class="evidence">{html.escape(result.get("evidence", ""))}</div>\n'
+                    # HTML escape and convert newlines to <br> for proper display
+                    evidence_text = html.escape(result.get("evidence", "")).replace('\n', '<br>')
+                    sections_html += f'  <div class="evidence">{evidence_text}</div>\n'
 
                 sections_html += '</div>\n'
 
@@ -993,102 +1152,230 @@ class ReportGenerator:
         # Replace URLs with clickable links
         clickable_text = url_pattern.sub(make_link, escaped_text)
 
+        # Convert newlines to <br> tags for proper HTML display
+        clickable_text = clickable_text.replace('\n', '<br>')
+
         return clickable_text
 
     def _preprocess_findings(self, findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Preprocess findings:
-        1. Group security headers per URL into single finding
-        2. Enhance XSS titles with type (Reflected/Stored/DOM)
-        3. Ensure full vulnerability names
-        4. Ensure response content is captured
+        1. Group similar findings (phones, emails, etc.) into ONE finding with all locations
+        2. Group security headers per URL into single finding
+        3. Enhance vulnerability names
+        4. Fix CVSS scores and confidence
+        5. Fix "Unknown" module names
         """
         processed = []
         security_headers_by_url = {}
 
-        # Full vulnerability name mappings
+        # Groups for aggregating similar passive findings
+        aggregated = {
+            'phone_disclosure': {'urls': [], 'data': [], 'severity': 'Medium', 'cwe': 'CWE-200', 'module': 'Sensitive Data Scanner'},
+            'email_disclosure': {'urls': [], 'data': [], 'severity': 'Low', 'cwe': 'CWE-200', 'module': 'Sensitive Data Scanner'},
+            'internal_ip': {'urls': [], 'data': [], 'severity': 'Low', 'cwe': 'CWE-200', 'module': 'Sensitive Data Scanner'},
+            'development_comment': {'urls': [], 'data': [], 'severity': 'Low', 'cwe': 'CWE-615', 'module': 'JS Analysis'},
+            'version_disclosure': {'urls': [], 'data': [], 'severity': 'Low', 'cwe': 'CWE-200', 'module': 'JS Analysis'},
+            'information_disclosure': {'urls': [], 'data': [], 'severity': 'Low', 'cwe': 'CWE-200', 'module': 'Passive Analysis'},
+            'hardcoded_password': {'urls': [], 'data': [], 'severity': 'High', 'cwe': 'CWE-798', 'module': 'JS Analysis'},
+            'hardcoded_username': {'urls': [], 'data': [], 'severity': 'Medium', 'cwe': 'CWE-798', 'module': 'JS Analysis'},
+        }
+
+        # CVSS scores by severity
+        cvss_map = {'critical': 9.8, 'high': 7.5, 'medium': 5.3, 'low': 3.1, 'info': 0.0}
+
+        # Complete module name mapping (lowercase -> proper name)
+        module_fixes = {
+            # Passive scanners
+            'phone_disclosure': 'Sensitive Data Scanner',
+            'email_disclosure': 'Sensitive Data Scanner',
+            'development_comment': 'JavaScript Analysis',
+            'version_disclosure': 'JavaScript Analysis',
+            'information_disclosure': 'Passive Analysis',
+            'hardcoded_password': 'JavaScript Analysis',
+            'hardcoded_username': 'JavaScript Analysis',
+            'hardcoded_credential': 'JavaScript Analysis',
+            'tabnabbing': 'Tabnabbing Scanner',
+            'base64_detect': 'Base64 Detector',
+            'sensitive_data': 'Sensitive Data Scanner',
+            'js_analysis': 'JavaScript Analysis',
+            'security_headers': 'Security Headers Analysis',
+            # Injection scanners
+            'xss': 'Cross-Site Scripting Scanner',
+            'sqli': 'SQL Injection Scanner',
+            'cmdi': 'Command Injection Scanner',
+            'ssti': 'Server-Side Template Injection Scanner',
+            'lfi': 'Local File Inclusion Scanner',
+            'rfi': 'Remote File Inclusion Scanner',
+            'xxe': 'XML External Entity Scanner',
+            'ssrf': 'Server-Side Request Forgery Scanner',
+            'ssi': 'Server-Side Include Injection Scanner',
+            'nosql_injection': 'NoSQL Injection Scanner',
+            'xpath': 'XPath Injection Scanner',
+            'crlf': 'CRLF Injection Scanner',
+            'crlf_injection': 'CRLF Injection Scanner',
+            'header_injection': 'Header Injection Scanner',
+            # Auth & Session
+            'csrf': 'CSRF Scanner',
+            'idor': 'IDOR Scanner',
+            'session': 'Session Security Scanner',
+            'jwt_analysis': 'JWT Analysis Scanner',
+            'weak_credentials': 'Weak Credentials Scanner',
+            'type_juggling': 'PHP Type Juggling Scanner',
+            # Discovery
+            'dirbrute': 'Directory Brute Force Scanner',
+            'backup_files': 'Backup Files Scanner',
+            'git': 'Git Exposure Scanner',
+            'env_secrets': 'Environment Secrets Scanner',
+            'robots_txt': 'Robots.txt Analyzer',
+            'cgi_scanner': 'CGI Scripts Scanner',
+            'iis_config': 'IIS Configuration Scanner',
+            'package_files': 'Package Files Scanner',
+            'subdomain': 'Subdomain Discovery',
+            'param_miner': 'Parameter Miner',
+            # API
+            'api_security': 'API Security Scanner',
+            'api_bola': 'API BOLA Scanner',
+            'api_rate_limit': 'API Rate Limit Scanner',
+            'api_mass_assignment': 'API Mass Assignment Scanner',
+            'api_excessive_data': 'API Excessive Data Scanner',
+            'graphql': 'GraphQL Security Scanner',
+            # Protocol
+            'request_smuggling': 'Request Smuggling Scanner',
+            'http_smuggling': 'HTTP Smuggling Scanner',
+            'http_methods': 'HTTP Methods Scanner',
+            'host_header': 'Host Header Injection Scanner',
+            'hpp': 'HTTP Parameter Pollution Scanner',
+            'prototype_pollution': 'Prototype Pollution Scanner',
+            # Config
+            'cors': 'CORS Misconfiguration Scanner',
+            'csp_bypass': 'CSP Bypass Scanner',
+            'ssl_tls': 'SSL/TLS Security Scanner',
+            # Client-side
+            'cspt': 'Client-Side Path Traversal Scanner',
+            'dom_xss': 'DOM XSS Scanner',
+            # Other
+            'file_upload': 'File Upload Scanner',
+            'redirect': 'Open Redirect Scanner',
+            'cloud_storage': 'Cloud Storage Scanner',
+            'oob_detection': 'Out-of-Band Detection Scanner',
+            'php_object_injection': 'PHP Object Injection Scanner',
+            'forbidden_bypass': 'Forbidden Bypass Scanner',
+            'websocket': 'WebSocket Scanner',
+            'soap_wsdl': 'SOAP/WSDL Scanner',
+            'favicon_hash': 'Favicon Hash Scanner',
+            'port_scan': 'Port Scanner',
+            'formula_injection': 'Formula Injection Scanner',
+        }
+
+        # Vulnerability name mappings
         vuln_names = {
-            'XSS': 'Cross-Site Scripting (XSS)',
-            'xss': 'Cross-Site Scripting (XSS)',
-            'SQLi': 'SQL Injection',
-            'sqli': 'SQL Injection',
-            'CMDi': 'Command Injection',
-            'cmdi': 'Command Injection',
-            'LFI': 'Local File Inclusion (LFI)',
-            'lfi': 'Local File Inclusion (LFI)',
-            'RFI': 'Remote File Inclusion (RFI)',
-            'rfi': 'Remote File Inclusion (RFI)',
-            'SSRF': 'Server-Side Request Forgery (SSRF)',
-            'ssrf': 'Server-Side Request Forgery (SSRF)',
-            'SSTI': 'Server-Side Template Injection (SSTI)',
-            'ssti': 'Server-Side Template Injection (SSTI)',
-            'XXE': 'XML External Entity Injection (XXE)',
-            'xxe': 'XML External Entity Injection (XXE)',
-            'IDOR': 'Insecure Direct Object Reference (IDOR)',
-            'idor': 'Insecure Direct Object Reference (IDOR)',
-            'CSRF': 'Cross-Site Request Forgery (CSRF)',
-            'csrf': 'Cross-Site Request Forgery (CSRF)',
-            'redirect': 'Open Redirect',
-            'Open Redirect': 'Open Redirect',
+            'XSS': 'Cross-Site Scripting (XSS)', 'xss': 'Cross-Site Scripting (XSS)',
+            'SQLi': 'SQL Injection', 'sqli': 'SQL Injection',
+            'CMDi': 'Command Injection', 'cmdi': 'Command Injection',
+            'LFI': 'Local File Inclusion (LFI)', 'lfi': 'Local File Inclusion (LFI)',
+            'RFI': 'Remote File Inclusion (RFI)', 'rfi': 'Remote File Inclusion (RFI)',
+            'SSRF': 'Server-Side Request Forgery (SSRF)', 'ssrf': 'Server-Side Request Forgery (SSRF)',
+            'SSTI': 'Server-Side Template Injection (SSTI)', 'ssti': 'Server-Side Template Injection (SSTI)',
+            'XXE': 'XML External Entity (XXE)', 'xxe': 'XML External Entity (XXE)',
+            'IDOR': 'Insecure Direct Object Reference (IDOR)', 'idor': 'Insecure Direct Object Reference (IDOR)',
+            'CSRF': 'Cross-Site Request Forgery (CSRF)', 'csrf': 'Cross-Site Request Forgery (CSRF)',
+            'redirect': 'Open Redirect', 'hpp': 'HTTP Parameter Pollution',
         }
 
         for finding in findings:
-            vuln_type = finding.get('type', finding.get('module', ''))
+            vuln_type = finding.get('type', finding.get('module', '')).lower().replace(' ', '_')
+
+            # Aggregate similar passive findings
+            if vuln_type in aggregated:
+                url = finding.get('url', 'unknown')
+                if url not in aggregated[vuln_type]['urls']:
+                    aggregated[vuln_type]['urls'].append(url)
+                evidence = finding.get('evidence', finding.get('description', ''))
+                if evidence and evidence not in aggregated[vuln_type]['data']:
+                    aggregated[vuln_type]['data'].append(evidence[:200])
+                continue
 
             # Group security headers by URL
-            if vuln_type in ['missing_security_header', 'security_header', 'Missing Security Header']:
+            if vuln_type in ['missing_security_header', 'security_header']:
                 url = finding.get('url', 'unknown')
                 if url not in security_headers_by_url:
                     security_headers_by_url[url] = {
-                        'url': url,
-                        'type': 'Missing Security Headers',
-                        'module': 'Security Headers',
-                        'severity': finding.get('severity', 'Medium'),
-                        'vulnerability': True,
-                        'headers': [],
-                        'description': 'Multiple security headers are missing from the response.',
-                        'recommendation': 'Add the following security headers to improve protection.',
-                        'response': finding.get('response', ''),
+                        'url': url, 'type': 'Missing Security Headers', 'module': 'Security Headers',
+                        'severity': 'Medium', 'vulnerability': True, 'headers': [],
+                        'cvss': 5.3, 'confidence': 0.95, 'cwe': 'CWE-693',
                     }
-                # Add header info
-                desc = finding.get('description', '')
-                security_headers_by_url[url]['headers'].append(desc)
+                security_headers_by_url[url]['headers'].append(finding.get('description', ''))
                 continue
 
-            # Enhance XSS type in title
-            if vuln_type.upper() == 'XSS' or 'XSS' in vuln_type.upper():
-                xss_type = 'Reflected'  # Default
-                evidence = finding.get('evidence', '').lower()
-                desc = finding.get('description', '').lower()
+            # Fix module name - always use proper capitalized name
+            module_key = finding.get('module', '').lower().replace(' ', '_').replace('-', '_')
+            type_key = finding.get('type', '').lower().replace(' ', '_').replace('-', '_')
 
-                if 'stored' in evidence or 'stored' in desc:
-                    xss_type = 'Stored'
-                elif 'dom' in evidence or 'dom-based' in desc or 'dom based' in desc:
-                    xss_type = 'DOM-Based'
-                elif 'reflected' in evidence or 'reflected' in desc:
-                    xss_type = 'Reflected'
-
-                finding['type'] = f'{xss_type} Cross-Site Scripting (XSS)'
-                finding['xss_type'] = xss_type
+            if module_key in module_fixes:
+                finding['module'] = module_fixes[module_key]
+            elif type_key in module_fixes:
+                finding['module'] = module_fixes[type_key]
+            elif vuln_type in module_fixes:
+                finding['module'] = module_fixes[vuln_type]
+            elif not finding.get('module') or finding.get('module') in ['Unknown', '', None]:
+                # Capitalize existing name if no mapping found
+                finding['module'] = finding.get('module', 'Scanner').replace('_', ' ').title()
 
             # Enhance vulnerability names
-            elif vuln_type in vuln_names:
+            if vuln_type in vuln_names:
                 finding['type'] = vuln_names[vuln_type]
+            elif vuln_type.upper() == 'XSS' or 'xss' in vuln_type:
+                finding['type'] = 'Cross-Site Scripting (XSS)'
 
-            # Ensure response content exists (use evidence if no response)
+            # Fix CVSS if missing or zero (modules may return "0.0" or 0.0)
+            cvss_val = finding.get('cvss')
+            if not cvss_val or cvss_val == 'N/A' or cvss_val == '0.0' or cvss_val == 0 or cvss_val == 0.0 or str(cvss_val) == '0.0':
+                sev = finding.get('severity', 'medium').lower()
+                finding['cvss'] = cvss_map.get(sev, 5.0)
+
+            # Fix confidence if missing or 0
+            if not finding.get('confidence') or finding.get('confidence') == 0:
+                # Set default confidence based on evidence
+                if finding.get('evidence'):
+                    finding['confidence'] = 0.80
+                else:
+                    finding['confidence'] = 0.60
+
+            # Ensure response exists
             if not finding.get('response') and finding.get('evidence'):
                 finding['response'] = finding.get('evidence')
 
             processed.append(finding)
 
+        # Create aggregated findings
+        for vuln_type, data in aggregated.items():
+            if data['urls']:
+                # Show top 10 URLs
+                urls_list = data['urls'][:10]
+                more_count = len(data['urls']) - 10 if len(data['urls']) > 10 else 0
+
+                processed.append({
+                    'url': urls_list[0],
+                    'type': vuln_type.replace('_', ' ').title(),
+                    'module': data['module'],
+                    'severity': data['severity'],
+                    'vulnerability': True,
+                    'cvss': cvss_map.get(data['severity'].lower(), 3.1),
+                    'confidence': 0.90,
+                    'cwe': data['cwe'],
+                    'parameter': 'Multiple Locations',
+                    'evidence': f"Found in {len(data['urls'])} locations:\n" + '\n'.join(f"  • {u}" for u in urls_list) + (f"\n  ... and {more_count} more" if more_count else ''),
+                    'description': f"{vuln_type.replace('_', ' ').title()} detected across {len(data['urls'])} pages",
+                    'all_urls': data['urls'],
+                    'samples': data['data'][:5],
+                })
+
         # Add grouped security headers
-        for url, header_finding in security_headers_by_url.items():
-            headers = header_finding['headers']
-            header_finding['evidence'] = 'Missing headers:\\n' + '\\n'.join(f'  - {h}' for h in headers)
-            header_finding['description'] = f'{len(headers)} security headers missing: ' + ', '.join(
-                h.split(':')[0].replace('Missing ', '') for h in headers if h
-            )
-            processed.append(header_finding)
+        for url, hdr in security_headers_by_url.items():
+            hdr['evidence'] = f"Missing {len(hdr['headers'])} headers:\n" + '\n'.join(f"  • {h}" for h in hdr['headers'])
+            hdr['description'] = f"{len(hdr['headers'])} security headers missing"
+            processed.append(hdr)
 
         return processed
 

@@ -10,6 +10,10 @@ Analyzes SSL/TLS configuration for security issues:
 - Key size validation (RSA < 2048, ECC < 256)
 - HSTS header analysis
 - Certificate transparency (SCT)
+- OCSP stapling status
+- Forward secrecy check
+- Certificate chain validation
+- Subdomain extraction from SANs
 """
 
 from core.base_module import BaseModule
@@ -67,6 +71,21 @@ class SSLTLSSecurityScanner(BaseModule):
             # Analyze SSL/TLS configuration
             ssl_findings = self._analyze_ssl_tls(hostname, port, url)
             results.extend(ssl_findings)
+
+            # Extract subdomains from certificate SANs
+            san_subdomains = self._extract_san_subdomains(hostname, port)
+            if san_subdomains:
+                results.append(self._create_san_finding(url, hostname, san_subdomains))
+
+            # Check OCSP stapling
+            ocsp_finding = self._check_ocsp_stapling(hostname, port, url)
+            if ocsp_finding:
+                results.append(ocsp_finding)
+
+            # Check forward secrecy
+            fs_finding = self._check_forward_secrecy(hostname, port, url)
+            if fs_finding:
+                results.append(fs_finding)
 
             # Check HTTP security headers
             header_findings = self._check_security_headers(client, url)
@@ -375,6 +394,158 @@ class SSLTLSSecurityScanner(BaseModule):
             self.logger.debug(f"Error checking security headers: {str(e)}")
 
         return findings
+
+
+    def _extract_san_subdomains(self, hostname: str, port: int) -> list:
+        """Extract subdomains from SSL certificate SANs"""
+        subdomains = []
+
+        try:
+            context = ssl.create_default_context()
+            with socket.create_connection((hostname, port), timeout=5) as sock:
+                with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+                    cert = ssock.getpeercert()
+
+                    if cert and 'subjectAltName' in cert:
+                        for san_type, san_value in cert['subjectAltName']:
+                            if san_type == 'DNS':
+                                san_value = san_value.lower()
+                                if not san_value.startswith('*'):
+                                    subdomains.append(san_value)
+
+        except Exception as e:
+            self.logger.debug(f"SAN extraction failed: {e}")
+
+        return subdomains
+
+    def _create_san_finding(self, url: str, hostname: str, subdomains: list) -> Dict:
+        """Create finding for discovered SANs"""
+        return {
+            'vulnerability': False,
+            'module': self.module_name,
+            'type': 'SSL Certificate SANs',
+            'severity': 'Info',
+            'url': url,
+            'parameter': 'subjectAltName',
+            'payload': f'{len(subdomains)} domains',
+            'method': 'SSL/TLS',
+            'confidence': 1.0,
+            'description': f'SSL certificate contains {len(subdomains)} Subject Alternative Names',
+            'evidence': f'Subdomains found in SSL certificate:\n' + '\n'.join(f'  - {s}' for s in subdomains[:20]),
+            'recommendation': 'Review certificate SANs for exposed internal hostnames.',
+            'cwe': 'CWE-200',
+            'cvss': 0.0,
+            'owasp': 'A01:2021',
+            'subdomains': subdomains,
+            'references': []
+        }
+
+    def _check_ocsp_stapling(self, hostname: str, port: int, url: str) -> Dict:
+        """Check if OCSP stapling is enabled"""
+        try:
+            context = ssl.create_default_context()
+            context.check_hostname = True
+            context.verify_mode = ssl.CERT_REQUIRED
+
+            with socket.create_connection((hostname, port), timeout=5) as sock:
+                with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+                    # Check for OCSP response (stapling)
+                    # Note: Python's ssl module doesn't directly expose OCSP stapling status
+                    # We check indirectly through cert properties
+                    cert = ssock.getpeercert()
+
+                    # Check for OCSP responder URL in cert
+                    ocsp_urls = []
+                    if cert:
+                        # Look for Authority Information Access
+                        for ext in cert.get('OCSP', []):
+                            ocsp_urls.append(ext)
+
+                    if not ocsp_urls:
+                        return {
+                            'vulnerability': False,
+                            'module': self.module_name,
+                            'type': 'OCSP Stapling Status',
+                            'severity': 'Info',
+                            'url': url,
+                            'parameter': 'OCSP',
+                            'payload': 'N/A',
+                            'method': 'SSL/TLS',
+                            'confidence': 0.7,
+                            'description': 'OCSP stapling status could not be determined',
+                            'evidence': 'No OCSP responder found in certificate',
+                            'recommendation': 'Enable OCSP stapling for improved performance and privacy.',
+                            'cwe': 'CWE-295',
+                            'cvss': 0.0,
+                            'owasp': 'A02:2021',
+                            'references': []
+                        }
+
+        except Exception as e:
+            self.logger.debug(f"OCSP check failed: {e}")
+
+        return None
+
+    def _check_forward_secrecy(self, hostname: str, port: int, url: str) -> Dict:
+        """Check if forward secrecy is supported"""
+        try:
+            context = ssl.create_default_context()
+
+            with socket.create_connection((hostname, port), timeout=5) as sock:
+                with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+                    cipher = ssock.cipher()
+
+                    if cipher:
+                        cipher_name = cipher[0]
+
+                        # Forward secrecy ciphers use ECDHE or DHE key exchange
+                        has_fs = 'ECDHE' in cipher_name or 'DHE' in cipher_name
+
+                        if not has_fs:
+                            return {
+                                'vulnerability': True,
+                                'module': self.module_name,
+                                'type': 'No Forward Secrecy',
+                                'severity': 'Medium',
+                                'url': url,
+                                'parameter': 'Cipher Suite',
+                                'payload': cipher_name,
+                                'method': 'SSL/TLS',
+                                'confidence': 0.95,
+                                'description': f'Server cipher suite does not provide forward secrecy: {cipher_name}',
+                                'evidence': f'Cipher: {cipher_name} (no ECDHE/DHE key exchange)',
+                                'recommendation': 'Configure server to prefer cipher suites with ECDHE or DHE key exchange.',
+                                'cwe': 'CWE-327',
+                                'cvss': 5.3,
+                                'owasp': 'A02:2021',
+                                'references': [
+                                    'https://wiki.mozilla.org/Security/Server_Side_TLS'
+                                ]
+                            }
+                        else:
+                            return {
+                                'vulnerability': False,
+                                'module': self.module_name,
+                                'type': 'Forward Secrecy Enabled',
+                                'severity': 'Info',
+                                'url': url,
+                                'parameter': 'Cipher Suite',
+                                'payload': cipher_name,
+                                'method': 'SSL/TLS',
+                                'confidence': 0.95,
+                                'description': f'Server supports forward secrecy with {cipher_name}',
+                                'evidence': f'Cipher: {cipher_name} (supports perfect forward secrecy)',
+                                'recommendation': 'Forward secrecy is properly configured.',
+                                'cwe': 'CWE-327',
+                                'cvss': 0.0,
+                                'owasp': 'A02:2021',
+                                'references': []
+                            }
+
+        except Exception as e:
+            self.logger.debug(f"Forward secrecy check failed: {e}")
+
+        return None
 
 
 def get_module(module_path: str, payload_limit: int = None):

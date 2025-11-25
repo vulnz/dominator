@@ -1,0 +1,15 @@
+{
+    "name": "SSI Injection Scanner",
+    "description": "Detects Server-Side Include injection vulnerabilities",
+    "author": "Dominator Team",
+    "version": "1.0",
+    "category": "Injection",
+    "severity": "High",
+    "cwe": "CWE-97",
+    "owasp": "A03:2021",
+    "tags": ["ssi", "injection", "rce", "lfi"],
+    "references": [
+        "https://owasp.org/www-community/attacks/Server-Side_Includes_(SSI)_Injection",
+        "https://github.com/swisskyrepo/PayloadsAllTheThings/tree/master/Server%20Side%20Include%20Injection"
+    ]
+}

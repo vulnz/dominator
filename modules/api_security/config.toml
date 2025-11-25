@@ -1,0 +1,14 @@
+# Module Configuration (TOML format)
+
+name = "API Security"
+description = "Advanced API security testing including BOLA/IDOR, HTTP verb tampering, mass assignment, and authentication bypass"
+enabled = true
+severity = "High"
+cwe = "CWE-639"
+cvss = 8.2
+cvss_vector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N"
+owasp = "API1:2023"
+payload_limit = 20
+early_exit = false
+test_methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE"]
+bola_test_ids = [1, 2, 3, 999, 9999, -1, 0, "admin", "test"]

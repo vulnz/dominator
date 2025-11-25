@@ -1,0 +1,8 @@
+# Module Configuration (TOML format)
+
+name = "Host Header Injection"
+description = "Detects Host header injection vulnerabilities including password reset poisoning, cache poisoning, and SSRF"
+enabled = true
+severity = "High"
+cwe = "CWE-444"
+cvss = 7.5

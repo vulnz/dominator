@@ -44,6 +44,12 @@ class CloudStorageEnumerationScanner(BaseModule):
 
             # Extract domain from URL
             domain = self._extract_domain(url)
+
+            # Skip local targets - cloud storage scanning doesn't make sense for localhost/IPs
+            if self._is_local_target(domain):
+                self.logger.debug(f"Skipping cloud storage scan for local target: {domain}")
+                continue
+
             company_name = self._extract_company_name(domain)
 
             # Test each payload
@@ -452,6 +458,38 @@ class CloudStorageEnumerationScanner(BaseModule):
             domain = domain.split('.')[0]
 
         return domain
+
+    def _is_local_target(self, domain: str) -> bool:
+        """Check if target is localhost, IP address, or private network - skip cloud scanning for these"""
+        domain = domain.lower()
+
+        # Remove port if present
+        if ':' in domain:
+            domain = domain.split(':')[0]
+
+        # Check for localhost
+        if domain in ('localhost', '127.0.0.1', '::1'):
+            return True
+
+        # Check for common local hostnames
+        if domain in ('host.docker.internal', 'kubernetes.docker.internal'):
+            return True
+
+        # Check for IP addresses (v4)
+        ip_pattern = r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$'
+        match = re.match(ip_pattern, domain)
+        if match:
+            octets = [int(o) for o in match.groups()]
+            # All IPs should be skipped for cloud storage scanning
+            # Private ranges: 10.x.x.x, 172.16-31.x.x, 192.168.x.x, 127.x.x.x
+            # But really ANY IP is unlikely to have cloud storage buckets
+            return True
+
+        # Check for .local, .internal, .test domains
+        if domain.endswith(('.local', '.internal', '.test', '.localhost', '.lan')):
+            return True
+
+        return False
 
 
 def get_module(module_path: str, payload_limit: int = None):

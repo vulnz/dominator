@@ -1,0 +1,13 @@
+# Module Configuration (TOML format)
+
+enabled = true
+name = "Environment Files & API Keys Scanner"
+description = "Detects exposed .env files, configuration files, and leaked API keys/secrets"
+severity = "Critical"
+cwe = "CWE-798"
+owasp = "A02:2021"
+cvss = "9.8"
+cwe_name = "Use of Hard-coded Credentials"
+owasp_name = "Cryptographic Failures"
+cvss_vector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+remediation = "Never commit .env files to version control. Use environment variables or secret management services (AWS Secrets Manager, Azure Key Vault, HashiCorp Vault). Add .env to .gitignore. Rotate all exposed keys immediately."

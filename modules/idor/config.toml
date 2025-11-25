@@ -1,0 +1,12 @@
+# Module Configuration (TOML format)
+
+enabled = true
+name = "IDOR Scanner"
+description = "Detects Insecure Direct Object Reference vulnerabilities"
+severity = "High"
+cwe = "CWE-639"
+cwe_name = "Authorization Bypass Through User-Controlled Key"
+owasp = "A01:2021"
+owasp_name = "Broken Access Control"
+cvss = "7.5"
+cvss_vector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"

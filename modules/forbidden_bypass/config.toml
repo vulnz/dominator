@@ -1,0 +1,16 @@
+# Module Configuration (TOML format)
+
+name = "403 Forbidden Bypass Scanner"
+description = "Attempts to bypass 403 Forbidden responses using various techniques including header manipulation and path modifications"
+author = "Dominator Team"
+version = "1.0"
+category = "bypass"
+severity = "Medium"
+enabled = true
+passive = false
+cwe = "CWE-284"
+owasp = "A01:2021"
+cvss = 5.3
+tags = ["403", "bypass", "forbidden", "access-control", "path-traversal"]
+references = ["https://book.hacktricks.xyz/network-services-pentesting/pentesting-web/403-and-401-bypasses", "https://github.com/iamj0ker/bypass-403"]
+scan_limit = 3

@@ -8,10 +8,13 @@ from PyQt5.QtWidgets import (
     QStackedWidget, QWidget, QLineEdit, QTextEdit, QCheckBox,
     QSpinBox, QComboBox, QGroupBox, QGridLayout, QFrame,
     QRadioButton, QButtonGroup, QProgressBar, QMessageBox,
-    QScrollArea
+    QScrollArea, QTableWidget, QTableWidgetItem, QHeaderView
 )
 from PyQt5.QtGui import QFont, QPixmap
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal, QThread
+import requests
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class ScanWizard(QDialog):
@@ -24,7 +27,7 @@ class ScanWizard(QDialog):
         super().__init__(parent)
         self.config = {}
         self.current_step = 0
-        self.total_steps = 7
+        self.total_steps = 8
         self.init_ui()
 
     def init_ui(self):
@@ -80,7 +83,8 @@ class ScanWizard(QDialog):
         # Create all steps
         self.stack.addWidget(self._create_step_welcome())      # Step 0
         self.stack.addWidget(self._create_step_target())       # Step 1
-        self.stack.addWidget(self._create_step_scan_type())    # Step 2
+        self.stack.addWidget(self._create_step_tech_detect())  # Step 2 - Technology Detection
+        self.stack.addWidget(self._create_step_scan_type())    # Step 3
         self.stack.addWidget(self._create_step_modules())      # Step 3
         self.stack.addWidget(self._create_step_headers())      # Step 4
         self.stack.addWidget(self._create_step_payloads())     # Step 5
@@ -141,36 +145,220 @@ class ScanWizard(QDialog):
         return header
 
     def _create_step_welcome(self):
-        """Step 0: Welcome screen"""
+        """Step 0: Welcome - Clean modern design"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        layout.setAlignment(Qt.AlignCenter)
+        layout.setSpacing(20)
+        layout.setContentsMargins(20, 10, 20, 10)
 
-        # Icon/Logo
-        icon = QLabel("🎯")
-        icon.setFont(QFont("Segoe UI Emoji", 64))
-        icon.setAlignment(Qt.AlignCenter)
-        layout.addWidget(icon)
+        # Header section
+        header = QLabel("What would you like to scan?")
+        header.setFont(QFont("Arial", 18, QFont.Bold))
+        header.setAlignment(Qt.AlignCenter)
+        header.setStyleSheet("color: #2c3e50;")
+        layout.addWidget(header)
 
-        # Welcome text
-        welcome = QLabel("Welcome to Dominator Scan Wizard")
-        welcome.setFont(QFont("Arial", 18, QFont.Bold))
-        welcome.setAlignment(Qt.AlignCenter)
-        layout.addWidget(welcome)
+        # Subtitle
+        subtitle = QLabel("Choose a scan type to get started")
+        subtitle.setFont(QFont("Arial", 11))
+        subtitle.setAlignment(Qt.AlignCenter)
+        subtitle.setStyleSheet("color: #7f8c8d; margin-bottom: 10px;")
+        layout.addWidget(subtitle)
 
-        desc = QLabel(
-            "This wizard will guide you through setting up a vulnerability scan.\n\n"
-            "You'll configure:\n"
-            "• Target URL or IP\n"
-            "• Scan type and intensity\n"
-            "• Security modules to run\n"
-            "• Performance settings"
+        self.scan_mode_group = QButtonGroup()
+
+        # Cards in horizontal layout
+        cards_layout = QHBoxLayout()
+        cards_layout.setSpacing(20)
+
+        # Web Application Scan
+        web_card = self._create_scan_mode_card(
+            "🌐", "Web Application",
+            "Scan websites for vulnerabilities like XSS, SQLi, CSRF and more",
+            "web", "#27ae60"
         )
-        desc.setAlignment(Qt.AlignCenter)
-        desc.setStyleSheet("color: #666666; font-size: 12px;")
-        layout.addWidget(desc)
+        cards_layout.addWidget(web_card)
+
+        # API Scan
+        api_card = self._create_scan_mode_card(
+            "🔌", "API Testing",
+            "Test REST/SOAP APIs for security issues and misconfigurations",
+            "api", "#3498db"
+        )
+        cards_layout.addWidget(api_card)
+
+        # GraphQL Scan
+        graphql_card = self._create_scan_mode_card(
+            "📊", "GraphQL",
+            "Analyze GraphQL endpoints for introspection and query vulnerabilities",
+            "graphql", "#9b59b6"
+        )
+        cards_layout.addWidget(graphql_card)
+
+        layout.addLayout(cards_layout)
+
+        # Spacer
+        layout.addSpacing(15)
+
+        # Steps preview - horizontal compact
+        steps_frame = self._create_steps_preview()
+        layout.addWidget(steps_frame)
+
+        layout.addStretch()
 
         return widget
+
+    def _create_scan_mode_card(self, icon, title, desc, value, color):
+        """Create a clean scan mode card"""
+        card = QFrame()
+        card.setObjectName(f"card_{value}")
+        card.setFixedHeight(200)
+        card.setCursor(Qt.PointingHandCursor)
+
+        if not hasattr(self, '_scan_mode_cards'):
+            self._scan_mode_cards = {}
+
+        layout = QVBoxLayout(card)
+        layout.setSpacing(10)
+        layout.setContentsMargins(20, 25, 20, 20)
+
+        # Radio button (hidden but functional)
+        radio = QRadioButton()
+        radio.setProperty("scan_mode", value)
+        radio.hide()
+        self.scan_mode_group.addButton(radio)
+
+        # Icon
+        icon_lbl = QLabel(icon)
+        icon_lbl.setFont(QFont("Segoe UI Emoji", 36))
+        icon_lbl.setAlignment(Qt.AlignCenter)
+        layout.addWidget(icon_lbl)
+
+        # Title
+        title_lbl = QLabel(title)
+        title_lbl.setFont(QFont("Arial", 14, QFont.Bold))
+        title_lbl.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title_lbl)
+
+        # Description
+        desc_lbl = QLabel(desc)
+        desc_lbl.setAlignment(Qt.AlignCenter)
+        desc_lbl.setWordWrap(True)
+        desc_lbl.setStyleSheet("font-size: 11px;")
+        layout.addWidget(desc_lbl)
+
+        layout.addStretch()
+
+        # Checkmark indicator
+        check = QLabel("✓")
+        check.setAlignment(Qt.AlignCenter)
+        check.setFont(QFont("Arial", 16, QFont.Bold))
+        check.setObjectName("checkmark")
+        check.hide()
+        layout.addWidget(check)
+
+        self._scan_mode_cards[value] = {'card': card, 'color': color, 'check': check, 'title': title_lbl, 'desc': desc_lbl}
+
+        def update_style(checked, c=card, col=color, chk=check, ttl=title_lbl, dsc=desc_lbl):
+            if checked:
+                c.setStyleSheet(f"""
+                    QFrame#card_{value} {{
+                        background-color: {col};
+                        border: 3px solid {col};
+                        border-radius: 15px;
+                    }}
+                    QLabel {{
+                        color: white;
+                        background: transparent;
+                    }}
+                """)
+                chk.show()
+            else:
+                c.setStyleSheet(f"""
+                    QFrame#card_{value} {{
+                        background-color: #ffffff;
+                        border: 2px solid #e0e0e0;
+                        border-radius: 15px;
+                    }}
+                    QFrame#card_{value}:hover {{
+                        border: 2px solid {col};
+                        background-color: {col}11;
+                    }}
+                    QLabel {{
+                        color: #2c3e50;
+                        background: transparent;
+                    }}
+                """)
+                chk.hide()
+
+        radio.toggled.connect(update_style)
+        card.mousePressEvent = lambda e, r=radio: r.setChecked(True)
+
+        if value == "web":
+            radio.setChecked(True)
+            update_style(True)
+        else:
+            update_style(False)
+
+        return card
+
+    def _create_steps_preview(self):
+        """Create horizontal steps preview"""
+        frame = QFrame()
+        frame.setStyleSheet("""
+            QFrame {
+                background-color: #f8f9fa;
+                border-radius: 10px;
+                padding: 10px;
+            }
+        """)
+
+        layout = QHBoxLayout(frame)
+        layout.setSpacing(5)
+        layout.setContentsMargins(15, 12, 15, 12)
+
+        steps = [
+            ("🎯", "Target"),
+            ("🔍", "Detect"),
+            ("📦", "Modules"),
+            ("🔑", "Auth"),
+            ("⚙️", "Settings"),
+            ("🚀", "Scan"),
+        ]
+
+        for i, (icon, name) in enumerate(steps):
+            # Step container
+            step = QWidget()
+            step_layout = QHBoxLayout(step)
+            step_layout.setContentsMargins(8, 5, 8, 5)
+            step_layout.setSpacing(5)
+
+            # Number badge
+            num = QLabel(str(i + 1))
+            num.setFixedSize(22, 22)
+            num.setAlignment(Qt.AlignCenter)
+            num.setFont(QFont("Arial", 9, QFont.Bold))
+            num.setStyleSheet("""
+                background-color: #3498db;
+                color: white;
+                border-radius: 11px;
+            """)
+            step_layout.addWidget(num)
+
+            # Icon + Name
+            text = QLabel(f"{icon} {name}")
+            text.setStyleSheet("color: #2c3e50; font-size: 11px; font-weight: bold;")
+            step_layout.addWidget(text)
+
+            layout.addWidget(step)
+
+            # Arrow between steps
+            if i < len(steps) - 1:
+                arrow = QLabel("→")
+                arrow.setStyleSheet("color: #bdc3c7; font-size: 14px;")
+                layout.addWidget(arrow)
+
+        return frame
 
     def _create_step_target(self):
         """Step 1: Target configuration"""
@@ -232,6 +420,233 @@ class ScanWizard(QDialog):
         layout.addStretch()
 
         return widget
+
+
+    def _create_step_tech_detect(self):
+        """Step 2: Technology Detection - Fingerprint the target before scanning"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        # Info label
+        info = QLabel("Detect technologies before scanning to optimize module selection:")
+        info.setStyleSheet("font-size: 13px; color: #666666; margin-bottom: 10px;")
+        layout.addWidget(info)
+
+        # Detect button
+        btn_layout = QHBoxLayout()
+        self.detect_tech_btn = QPushButton("🔍 Detect Technologies")
+        self.detect_tech_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                padding: 10px 20px;
+                border: none;
+                border-radius: 5px;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+            QPushButton:disabled {
+                background-color: #cccccc;
+            }
+        """)
+        self.detect_tech_btn.clicked.connect(self._run_tech_detection)
+        btn_layout.addWidget(self.detect_tech_btn)
+
+        self.tech_status_label = QLabel("")
+        self.tech_status_label.setStyleSheet("font-size: 11px; color: #666;")
+        btn_layout.addWidget(self.tech_status_label)
+        btn_layout.addStretch()
+        layout.addLayout(btn_layout)
+
+        # Results table
+        self.tech_table = QTableWidget()
+        self.tech_table.setColumnCount(4)
+        self.tech_table.setHorizontalHeaderLabels(["Category", "Technology", "Version", "Source"])
+        self.tech_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.tech_table.setAlternatingRowColors(True)
+        self.tech_table.setStyleSheet("""
+            QTableWidget {
+                border: 1px solid #e0e0e0;
+                border-radius: 5px;
+                background-color: white;
+            }
+            QTableWidget::item {
+                padding: 5px;
+            }
+            QHeaderView::section {
+                background-color: #f0f0f0;
+                padding: 8px;
+                font-weight: bold;
+                border: none;
+            }
+        """)
+        layout.addWidget(self.tech_table)
+
+        # Recommendation
+        self.tech_recommendation = QLabel("")
+        self.tech_recommendation.setWordWrap(True)
+        self.tech_recommendation.setStyleSheet("""
+            color: #1976D2;
+            background-color: #E3F2FD;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 11px;
+        """)
+        self.tech_recommendation.setVisible(False)
+        layout.addWidget(self.tech_recommendation)
+
+        # Skip option
+        skip_label = QLabel("You can skip this step if you prefer to select modules manually.")
+        skip_label.setStyleSheet("color: #888888; font-size: 10px; margin-top: 10px;")
+        layout.addWidget(skip_label)
+
+        return widget
+
+    def _run_tech_detection(self):
+        """Run technology detection on the target"""
+        from passive_detectors.technology_detector import TechnologyDetector
+
+        # Get target from previous step
+        target = self.target_input.text().strip()
+        if not target:
+            targets = self.multi_target_input.toPlainText().strip().split("\n")
+            target = targets[0] if targets else ""
+
+        if not target:
+            self.tech_status_label.setText("Please enter a target first!")
+            self.tech_status_label.setStyleSheet("color: red;")
+            return
+
+        # Ensure URL format
+        if not target.startswith(("http://", "https://")):
+            target = "http://" + target
+
+        self.detect_tech_btn.setEnabled(False)
+        self.tech_status_label.setText("Detecting technologies...")
+        self.tech_status_label.setStyleSheet("color: #666;")
+
+        # Clear previous results
+        self.tech_table.setRowCount(0)
+
+        try:
+            # Make request
+            headers = {"User-Agent": "Dominator/1.0 (Technology Scanner)"}
+            response = requests.get(target, headers=headers, timeout=10, verify=False, allow_redirects=True)
+
+            # Get response headers as dict
+            resp_headers = dict(response.headers)
+
+            # Run technology detection
+            found, technologies = TechnologyDetector.analyze(resp_headers, response.text, target)
+
+            # Additional detection for OS, Cloud, etc.
+            extra_techs = self._detect_extra_technologies(resp_headers, response.text, target)
+            technologies.extend(extra_techs)
+
+            # Deduplicate
+            seen = set()
+            unique_techs = []
+            for tech in technologies:
+                key = (tech.get("name", ""), tech.get("category", ""))
+                if key not in seen:
+                    seen.add(key)
+                    unique_techs.append(tech)
+
+            # Display results
+            self.tech_table.setRowCount(len(unique_techs))
+            for i, tech in enumerate(unique_techs):
+                self.tech_table.setItem(i, 0, QTableWidgetItem(tech.get("category", "Unknown")))
+                self.tech_table.setItem(i, 1, QTableWidgetItem(tech.get("name", "Unknown")))
+                self.tech_table.setItem(i, 2, QTableWidgetItem(tech.get("version", "-")))
+                self.tech_table.setItem(i, 3, QTableWidgetItem(tech.get("detection_method", "-")))
+
+            # Store for module recommendations
+            self._detected_technologies = unique_techs
+
+            # Show recommendations
+            self._show_tech_recommendations(unique_techs)
+
+            self.tech_status_label.setText(f"Found {len(unique_techs)} technologies")
+            self.tech_status_label.setStyleSheet("color: green;")
+
+        except Exception as e:
+            self.tech_status_label.setText(f"Detection failed: {str(e)[:50]}")
+            self.tech_status_label.setStyleSheet("color: red;")
+
+        self.detect_tech_btn.setEnabled(True)
+
+    def _detect_extra_technologies(self, headers, content, url):
+        """Detect additional technologies: OS, Cloud, etc."""
+        import re as regex
+        extra = []
+
+        # Cloud providers from headers/content
+        cloud_patterns = {
+            r"amazonaws\.com|cloudfront\.net|elasticbeanstalk|s3\.amazonaws": ("Amazon AWS", "Cloud Provider"),
+            r"azure|azurewebsites\.net|azure-dns": ("Microsoft Azure", "Cloud Provider"),
+            r"googleapis\.com|appspot\.com|cloudflare": ("Google Cloud/Cloudflare", "Cloud Provider"),
+            r"heroku|herokuapp\.com": ("Heroku", "Cloud Provider"),
+            r"vercel\.app|vercel\.com": ("Vercel", "Cloud Provider"),
+            r"netlify\.app|netlify\.com": ("Netlify", "Cloud Provider"),
+        }
+
+        # Check headers
+        header_str = str(headers)
+        for pattern, (name, cat) in cloud_patterns.items():
+            if regex.search(pattern, header_str, regex.I) or regex.search(pattern, content, regex.I):
+                extra.append({"name": name, "category": cat, "detection_method": "Header/Content Analysis"})
+
+        # OS detection from Server header
+        server = headers.get("Server", "")
+        if "ubuntu" in server.lower() or "debian" in server.lower():
+            extra.append({"name": "Linux (Ubuntu/Debian)", "category": "Operating System", "detection_method": "Server Header"})
+        elif "win" in server.lower() or "iis" in server.lower():
+            extra.append({"name": "Windows Server", "category": "Operating System", "detection_method": "Server Header"})
+        elif "centos" in server.lower() or "rhel" in server.lower() or "fedora" in server.lower():
+            extra.append({"name": "Linux (RHEL/CentOS)", "category": "Operating System", "detection_method": "Server Header"})
+
+        # Additional frameworks
+        if regex.search(r"laravel|illuminate", content, regex.I):
+            extra.append({"name": "Laravel", "category": "PHP Framework", "detection_method": "Content Analysis"})
+        if regex.search(r"symfony", content, regex.I):
+            extra.append({"name": "Symfony", "category": "PHP Framework", "detection_method": "Content Analysis"})
+        if regex.search(r"__next|_next/static", content, regex.I):
+            extra.append({"name": "Next.js", "category": "JavaScript Framework", "detection_method": "Content Analysis"})
+        if regex.search(r"tailwindcss|tailwind", content, regex.I):
+            extra.append({"name": "Tailwind CSS", "category": "CSS Framework", "detection_method": "Content Analysis"})
+
+        return extra
+
+    def _show_tech_recommendations(self, technologies):
+        """Show module recommendations based on detected technologies"""
+        recommendations = []
+
+        tech_names = [t.get("name", "").lower() for t in technologies]
+        categories = [t.get("category", "").lower() for t in technologies]
+
+        if any("php" in t for t in tech_names):
+            recommendations.append("PHP detected: Enable php_object_injection, lfi modules")
+        if any("wordpress" in t for t in tech_names):
+            recommendations.append("WordPress: Enable dirbrute (wp-paths), xss, sqli modules")
+        if any("java" in t or "tomcat" in t for t in tech_names):
+            recommendations.append("Java detected: Enable xxe, ssti modules")
+        if any("node" in t or "express" in t or "next.js" in t for t in tech_names):
+            recommendations.append("Node.js: Enable prototype_pollution, nosql_injection modules")
+        if any("mysql" in t or "postgresql" in t or "mssql" in t for t in tech_names):
+            recommendations.append("Database detected: Enable sqli module with all payloads")
+        if any("api" in c for c in categories):
+            recommendations.append("API detected: Enable api_security, jwt_analysis modules")
+        if any("cloud" in c for c in categories):
+            recommendations.append("Cloud platform: Enable cloud_storage, ssrf modules")
+
+        if recommendations:
+            self.tech_recommendation.setText("💡 Recommendations:\n" + "\n".join(recommendations))
+            self.tech_recommendation.setVisible(True)
+        else:
+            self.tech_recommendation.setVisible(False)
 
     def _create_step_scan_type(self):
         """Step 2: Scan type selection"""
@@ -327,12 +742,94 @@ class ScanWizard(QDialog):
 
         return card
 
+    def _load_modules_dynamically(self):
+        """Load all modules from modules/ directory"""
+        from pathlib import Path
+        modules = {}
+
+        script_dir = Path(__file__).parent.parent.parent
+        modules_dir = script_dir / "modules"
+
+        if not modules_dir.exists():
+            return modules
+
+        CATEGORY_MAP = {
+            "sqli": "Injection", "xss": "Injection", "cmdi": "Injection", "ssti": "Injection",
+            "xxe": "Injection", "xpath": "Injection", "nosql": "Injection", "crlf": "Injection",
+            "header_injection": "Injection", "formula": "Injection", "ssi": "Injection",
+            "lfi": "File & Path", "rfi": "File & Path", "file_upload": "File & Path",
+            "csrf": "Auth & Session", "session": "Auth & Session", "jwt": "Auth & Session",
+            "weak_credentials": "Auth & Session", "idor": "Auth & Session",
+            "api": "API Security", "graphql": "API Security", "websocket": "API Security",
+            "dirbrute": "Recon", "subdomain": "Recon", "port": "Recon", "param": "Recon",
+            "favicon": "Recon", "robots": "Recon",
+            "git": "Info Disclosure", "env": "Info Disclosure", "backup": "Info Disclosure",
+            "config": "Info Disclosure", "debug": "Info Disclosure", "package": "Info Disclosure",
+            "base64": "Info Disclosure", "sensitive": "Info Disclosure",
+            "ssrf": "Server & Network", "redirect": "Server & Network", "smuggling": "Server & Network",
+            "host_header": "Server & Network", "cors": "Server & Network", "http_methods": "Server & Network",
+            "forbidden": "Server & Network", "cgi": "Server & Network", "hpp": "Server & Network",
+            "ssl": "Security Config", "security_headers": "Security Config", "csp": "Security Config",
+            "tabnabbing": "Security Config", "cspt": "Security Config",
+            "dom_xss": "Advanced", "prototype": "Advanced", "php_object": "Advanced",
+            "type_juggling": "Advanced", "request_smuggling": "Advanced",
+            "cloud": "Cloud", "storage": "Cloud",
+        }
+
+        for module_path in sorted(modules_dir.iterdir()):
+            if not module_path.is_dir() or module_path.name.startswith('_'):
+                continue
+            if module_path.name in ['oob_detection']:
+                continue
+
+            module_id = module_path.name
+            name = module_id.replace('_', ' ').title()
+            category = "Other"
+
+            # Try to load config
+            toml_file = module_path / "config.toml"
+            json_file = module_path / "config.json"
+
+            if toml_file.exists():
+                try:
+                    import tomllib
+                    with open(toml_file, 'rb') as f:
+                        config = tomllib.load(f)
+                    name = config.get('module', {}).get('name', name)
+                    category = config.get('module', {}).get('category', category)
+                except:
+                    pass
+            elif json_file.exists():
+                try:
+                    import json
+                    with open(json_file, 'r') as f:
+                        config = json.load(f)
+                    name = config.get('name', name)
+                    category = config.get('category', category)
+                except:
+                    pass
+
+            # Auto-detect category from module name
+            if category == "Other":
+                for key, cat in CATEGORY_MAP.items():
+                    if key in module_id.lower():
+                        category = cat
+                        break
+
+            modules[module_id] = {'name': name, 'category': category}
+
+        return modules
+
     def _create_step_modules(self):
-        """Step 3: Module selection - All 25 modules"""
+        """Step 3: Module selection - Dynamic loading"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
-        info = QLabel("Select the security modules to run (25 available):")
+        # Load modules dynamically
+        all_modules = self._load_modules_dynamically()
+        total_count = len(all_modules)
+
+        info = QLabel(f"Select the security modules to run ({total_count} available):")
         info.setStyleSheet("font-size: 13px; color: #666666; margin-bottom: 10px;")
         layout.addWidget(info)
 
@@ -349,61 +846,69 @@ class ScanWizard(QDialog):
         scroll_content = QWidget()
         scroll_layout = QVBoxLayout(scroll_content)
 
-        # Module categories - All 25 modules
-        categories = [
-            ("Injection (6 modules)", [
-                ("sqli", "SQL Injection", True),
-                ("xss", "Cross-Site Scripting", True),
-                ("cmdi", "Command Injection", True),
-                ("ssti", "Server-Side Template Injection", True),
-                ("xpath", "XPath Injection", False),
-                ("xxe", "XML External Entity", False),
-            ]),
-            ("File & Path (4 modules)", [
-                ("lfi", "Local File Inclusion", True),
-                ("rfi", "Remote File Inclusion", True),
-                ("file_upload", "File Upload Vulnerabilities", False),
-                ("dirbrute", "Directory Bruteforce", False),
-            ]),
-            ("Access Control (4 modules)", [
-                ("csrf", "Cross-Site Request Forgery", True),
-                ("idor", "Insecure Direct Object Reference", True),
-                ("ssrf", "Server-Side Request Forgery", True),
-                ("redirect", "Open Redirect", True),
-            ]),
-            ("Information Disclosure (11 modules)", [
-                ("git", "Git Repository Exposure", True),
-                ("env_secrets", "Environment Secrets", True),
-                ("db_exposure", "Database Exposure", True),
-                ("backup_files", "Backup File Detection", True),
-                ("config_files", "Configuration Files", True),
-                ("svn_hg", "SVN/Mercurial Exposure", False),
-                ("debug_pages", "Debug Pages Detection", False),
-                ("api_docs", "API Documentation Exposure", False),
-                ("dom_xss", "DOM-based XSS", False),
-                ("weak_credentials", "Weak Credentials", False),
-                ("php_object_injection", "PHP Object Injection", False),
-            ]),
-        ]
+        # Group modules by category
+        categories = {}
+        for mid, info_data in all_modules.items():
+            cat = info_data.get('category', 'Other')
+            if cat not in categories:
+                categories[cat] = []
+            categories[cat].append((mid, info_data['name']))
+
+        # Category order and styles
+        CATEGORY_ORDER = ["Injection", "File & Path", "Auth & Session", "API Security",
+                         "Recon", "Info Disclosure", "Server & Network", "Security Config",
+                         "Advanced", "Cloud", "Other"]
+
+        CATEGORY_STYLES = {
+            "Injection": {"icon": "💉", "color": "#e74c3c"},
+            "File & Path": {"icon": "📁", "color": "#e67e22"},
+            "Auth & Session": {"icon": "🔑", "color": "#9b59b6"},
+            "API Security": {"icon": "🔌", "color": "#3498db"},
+            "Recon": {"icon": "🔍", "color": "#27ae60"},
+            "Info Disclosure": {"icon": "📦", "color": "#f39c12"},
+            "Server & Network": {"icon": "🌐", "color": "#1abc9c"},
+            "Security Config": {"icon": "🛡️", "color": "#795548"},
+            "Advanced": {"icon": "⚡", "color": "#c0392b"},
+            "Cloud": {"icon": "☁️", "color": "#2980b9"},
+            "Other": {"icon": "🔧", "color": "#7f8c8d"},
+        }
 
         self.module_checkboxes = {}
 
-        for category_name, modules in categories:
-            group = QGroupBox(category_name)
-            group.setStyleSheet("""
-                QGroupBox {
+        for cat_name in CATEGORY_ORDER:
+            if cat_name not in categories:
+                continue
+
+            modules_in_cat = categories[cat_name]
+            style = CATEGORY_STYLES.get(cat_name, CATEGORY_STYLES["Other"])
+
+            group = QGroupBox(f"{style['icon']} {cat_name} ({len(modules_in_cat)})")
+            group.setStyleSheet(f"""
+                QGroupBox {{
                     font-size: 12px;
                     font-weight: bold;
-                }
+                    color: {style['color']};
+                    border: 1px solid {style['color']}44;
+                    border-radius: 5px;
+                    margin-top: 8px;
+                    padding-top: 8px;
+                }}
+                QGroupBox::title {{
+                    subcontrol-origin: margin;
+                    left: 10px;
+                    padding: 0 5px;
+                }}
             """)
             grid = QGridLayout()
+            grid.setSpacing(5)
 
-            for i, (key, name, default) in enumerate(modules):
+            for i, (mid, name) in enumerate(sorted(modules_in_cat, key=lambda x: x[1])):
                 cb = QCheckBox(name)
-                cb.setChecked(default)
+                cb.setChecked(True)  # All enabled by default
                 cb.setStyleSheet("font-size: 11px;")
-                self.module_checkboxes[key] = cb
-                grid.addWidget(cb, i // 2, i % 2)
+                cb.setToolTip(f"Module: {mid}")
+                self.module_checkboxes[mid] = cb
+                grid.addWidget(cb, i // 3, i % 3)
 
             group.setLayout(grid)
             scroll_layout.addWidget(group)
@@ -414,19 +919,22 @@ class ScanWizard(QDialog):
         # Select all / none
         btn_layout = QHBoxLayout()
 
-        select_all = QPushButton("Select All (25)")
+        select_all = QPushButton(f"Select All ({total_count})")
+        select_all.setStyleSheet("font-size: 11px; padding: 5px 10px;")
         select_all.clicked.connect(lambda: self._toggle_all_modules(True))
         btn_layout.addWidget(select_all)
 
         select_none = QPushButton("Select None")
+        select_none.setStyleSheet("font-size: 11px; padding: 5px 10px;")
         select_none.clicked.connect(lambda: self._toggle_all_modules(False))
         btn_layout.addWidget(select_none)
 
         btn_layout.addStretch()
 
         # Module count label
-        self.module_count_label = QLabel("Selected: 0/25")
+        self.module_count_label = QLabel(f"Selected: {total_count}/{total_count}")
         self.module_count_label.setStyleSheet("font-size: 11px; color: #666666;")
+        self._total_modules = total_count
         btn_layout.addWidget(self.module_count_label)
 
         layout.addLayout(btn_layout)
@@ -435,16 +943,14 @@ class ScanWizard(QDialog):
         for cb in self.module_checkboxes.values():
             cb.stateChanged.connect(self._update_module_count)
 
-        # Initial count update
-        self._update_module_count()
-
         return widget
 
     def _update_module_count(self):
         """Update the selected module count label"""
         count = sum(1 for cb in self.module_checkboxes.values() if cb.isChecked())
+        total = getattr(self, '_total_modules', len(self.module_checkboxes))
         if hasattr(self, 'module_count_label'):
-            self.module_count_label.setText(f"Selected: {count}/25")
+            self.module_count_label.setText(f"Selected: {count}/{total}")
 
     def _toggle_all_modules(self, checked):
         """Toggle all module checkboxes"""
@@ -835,14 +1341,15 @@ class ScanWizard(QDialog):
 
         # Update header
         titles = [
-            ("Welcome to Scan Wizard", "Let's configure your scan step by step"),
+            ("🎯 Select Scan Type", "Choose your scan mode and see the roadmap"),
             ("Step 1: Target", "Enter the target URL or IP address to scan"),
-            ("Step 2: Scan Type", "Choose the type of scan to perform"),
-            ("Step 3: Modules", "Select security modules to run (25 available)"),
-            ("Step 4: Headers & Auth", "Configure headers, cookies, and authentication"),
-            ("Step 5: Custom Payloads", "Super Advanced - Add or modify payloads"),
-            ("Step 6: Settings", "Configure performance and output settings"),
-            ("Step 7: Confirm", "Review your configuration and start scanning"),
+            ("Step 2: Technology Detection", "Fingerprint the target to optimize scanning"),
+            ("Step 3: Scan Type", "Choose the depth of scan to perform"),
+            ("Step 4: Modules", "Select security modules to run"),
+            ("Step 5: Headers & Auth", "Configure headers, cookies, and authentication"),
+            ("Step 6: Custom Payloads", "Super Advanced - Add or modify payloads"),
+            ("Step 7: Settings", "Configure performance and output settings"),
+            ("Step 8: Confirm", "Review your configuration and start scanning"),
         ]
 
         if self.current_step < len(titles):
@@ -895,7 +1402,19 @@ class ScanWizard(QDialog):
         if not target:
             target = self.multi_target_input.toPlainText().strip().split('\n')[0]
 
-        # Get scan type
+        # Get scan mode (web/api/graphql)
+        scan_mode = "web"
+        scan_mode_display = "Web Application"
+        for btn in self.scan_mode_group.buttons():
+            if btn.isChecked():
+                scan_mode = btn.property("scan_mode")
+                if scan_mode == "api":
+                    scan_mode_display = "API Scan"
+                elif scan_mode == "graphql":
+                    scan_mode_display = "GraphQL"
+                break
+
+        # Get scan type (quick/standard/full/custom)
         scan_type = "standard"
         for btn in self.scan_type_group.buttons():
             if btn.isChecked():
@@ -914,8 +1433,13 @@ class ScanWizard(QDialog):
         has_auth = self.auth_type_combo.currentText() != "None"
         has_payloads = bool(self.payloads_input.toPlainText().strip())
 
+        # Mode icons
+        mode_icons = {"web": "🌐", "api": "🔌", "graphql": "📊"}
+
         summary = f"""SCAN CONFIGURATION SUMMARY
 {'='*40}
+
+{mode_icons.get(scan_mode, '🌐')} Scan Mode: {scan_mode_display}
 
 Target: {target}
 
@@ -950,6 +1474,14 @@ Ready to start scan!
         target = self.target_input.text().strip()
         multi_targets = self.multi_target_input.toPlainText().strip()
 
+        # Get scan mode (web/api/graphql)
+        scan_mode = "web"
+        for btn in self.scan_mode_group.buttons():
+            if btn.isChecked():
+                scan_mode = btn.property("scan_mode")
+                break
+
+        # Get scan type (quick/standard/full/custom)
         scan_type = "standard"
         for btn in self.scan_type_group.buttons():
             if btn.isChecked():
@@ -980,6 +1512,7 @@ Ready to start scan!
         self.config = {
             'target': target if target else multi_targets.split('\n')[0],
             'targets': multi_targets.split('\n') if multi_targets else [target],
+            'scan_mode': scan_mode,  # web, api, or graphql
             'scan_type': scan_type,
             'modules': selected_modules,
             'threads': self.threads_spin.value(),
@@ -1018,12 +1551,18 @@ Ready to start scan!
         # Get schedule time
         schedule_dt = self.schedule_datetime.dateTime().toPyDateTime()
 
+        # Get scan mode display name
+        scan_mode = self.config.get('scan_mode', 'web')
+        mode_names = {'web': 'Web App', 'api': 'API', 'graphql': 'GraphQL'}
+        mode_display = mode_names.get(scan_mode, 'Web App')
+
         # Create task data
         task = {
             'id': str(uuid.uuid4()),
-            'name': f"Wizard Scan - {self.config['target'][:30]}",
+            'name': f"{mode_display} Scan - {self.config['target'][:30]}",
             'target': self.config['target'],
             'project_path': '',
+            'scan_mode': scan_mode,
             'modules': self.config['modules'],
             'settings': {
                 'threads': self.config['threads'],

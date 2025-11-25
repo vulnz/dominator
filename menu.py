@@ -19,6 +19,13 @@ Usage examples:
   python main.py -f targets.txt -m xss,sqli
   python main.py -t example.com -c "session=abc123" -H "User-Agent: Custom"
   python main.py -t example.com -a jwt -o report.html --timeout 30
+
+API Testing examples:
+  python main.py --api swagger.json -m sqli,xss
+  python main.py --api https://api.example.com/v1/openapi.json --all
+  python main.py --api collection.postman.json --api-auth-token "Bearer xxx"
+  python main.py -t https://api.example.com --api-discover -m api_security
+  python main.py --api requests.har --api-base-url https://api.example.com
         """
     )
     
@@ -27,6 +34,8 @@ Usage examples:
                        help='Launch GUI interface with optional pre-configured parameters')
     parser.add_argument('--auto-start', action='store_true',
                        help='Auto-start scan when using --gui (requires target/file)')
+    parser.add_argument('--wizard', action='store_true',
+                       help='Launch interactive terminal wizard for guided scan configuration')
 
     # Target options
     target_group = parser.add_mutually_exclusive_group(required=False)
@@ -34,6 +43,8 @@ Usage examples:
                        help='One or more scan targets (IP, domain, URL, IP:port, URL:port, subnet)')
     target_group.add_argument('-f', '--file',
                        help='File with targets for scanning')
+    target_group.add_argument('--api-targets-file',
+                       help='JSON file with API targets (includes method, headers, body, params)')
     
     # HTTP parameters
     parser.add_argument('-H', '--headers', action='append',
@@ -101,6 +112,8 @@ Usage examples:
                        help='Scan only the specified URL without crawling or testing other pages')
     parser.add_argument('--single-page', '--no-crawl', action='store_true', dest='nocrawl',
                        help='Scan only the target page without crawling (single-page mode)')
+    parser.add_argument('-np', '--no-ping', action='store_true', dest='no_ping',
+                       help='Skip target alive check - attempt scan regardless of connectivity status')
     parser.add_argument('--max-crawl-pages', type=int, default=50,
                        help='Maximum pages to crawl (default: 50)')
     parser.add_argument('--add-known-paths',
@@ -121,7 +134,25 @@ Usage examples:
                        help='Passive reconnaissance only - no active attacks (crawl + passive detectors only)')
     parser.add_argument('--live', action='store_true',
                        help='Enable live reporting mode - generate real-time HTML/TXT report as vulnerabilities are found')
-    
+
+    # API Testing options
+    parser.add_argument('--api-spec', '--api',
+                       help='API specification file or URL (OpenAPI/Swagger, Postman, HAR, WADL, RAML, GraphQL)')
+    parser.add_argument('--api-format',
+                       choices=['auto', 'openapi', 'swagger', 'postman', 'har', 'wadl', 'raml', 'graphql', 'blueprint'],
+                       default='auto',
+                       help='API specification format (default: auto-detect)')
+    parser.add_argument('--api-base-url',
+                       help='Override base URL for API endpoints')
+    parser.add_argument('--api-discover', action='store_true',
+                       help='Try to auto-discover API spec from target (checks /swagger.json, /openapi.json, etc.)')
+    parser.add_argument('--api-auth-token',
+                       help='Bearer token for API authentication (shortcut for -H "Authorization: Bearer <token>")')
+    parser.add_argument('-apim', '--api-modules', action='store_true',
+                       help='Use API-specific security modules only (BOLA, Mass Assignment, Rate Limit, etc.)')
+    parser.add_argument('--api-full', action='store_true',
+                       help='Use all modules including API-specific ones for API testing')
+
     # Deduplication options
     parser.add_argument('--max-duplicates', type=int, default=3,
                        help='Maximum number of duplicate findings to show (default: 3)')
@@ -158,7 +189,7 @@ Usage examples:
     return parser
 
 def show_modules():
-    """Show all available modules - DYNAMICALLY loaded from config.json files"""
+    """Show all available modules with fancy CLI formatting"""
     import json
     from pathlib import Path
 
@@ -170,109 +201,202 @@ def show_modules():
         print("Modules directory not found!")
         return
 
+    # Category mappings for auto-detection
+    CATEGORY_MAP = {
+        "sqli": "Injection", "xss": "Injection", "cmdi": "Injection", "ssti": "Injection",
+        "xxe": "Injection", "xpath": "Injection", "nosql": "Injection", "ldap": "Injection",
+        "ssi": "Injection", "formula": "Injection", "crlf": "Injection", "header_injection": "Injection",
+        "lfi": "File & Path", "rfi": "File & Path", "path": "File & Path", "file_upload": "File & Path",
+        "csrf": "Auth & Session", "session": "Auth & Session", "jwt": "Auth & Session",
+        "weak_credentials": "Auth & Session", "idor": "Auth & Session", "auth": "Auth & Session",
+        "api": "API Security", "graphql": "API Security", "soap": "API Security", "websocket": "API Security",
+        "dirbrute": "Recon", "subdomain": "Recon", "port": "Recon", "param": "Recon",
+        "favicon": "Recon", "robots": "Recon", "sensitive": "Recon",
+        "git": "Info Disclosure", "env": "Info Disclosure", "backup": "Info Disclosure",
+        "config": "Info Disclosure", "debug": "Info Disclosure", "package": "Info Disclosure",
+        "phpinfo": "Info Disclosure", "db_exposure": "Info Disclosure", "base64": "Info Disclosure",
+        "ssrf": "Server & Network", "redirect": "Server & Network", "smuggling": "Server & Network",
+        "host_header": "Server & Network", "cors": "Server & Network", "http_methods": "Server & Network",
+        "forbidden": "Server & Network", "cgi": "Server & Network", "iis": "Server & Network", "hpp": "Server & Network",
+        "ssl": "Security Config", "security_headers": "Security Config", "csp": "Security Config",
+        "tabnabbing": "Security Config", "cspt": "Security Config",
+        "dom_xss": "Advanced", "prototype": "Advanced", "php_object": "Advanced",
+        "type_juggling": "Advanced", "request_smuggling": "Advanced",
+        "cloud": "Cloud", "storage": "Cloud",
+    }
+
+    # Category icons
+    CATEGORY_ICONS = {
+        "Injection": "💉", "File & Path": "📁", "Auth & Session": "🔑",
+        "API Security": "🔌", "Recon": "🔍", "Info Disclosure": "📦",
+        "Server & Network": "🌐", "Security Config": "🛡️", "Advanced": "⚡",
+        "Cloud": "☁️", "Other": "🔧"
+    }
+
+    # Severity colors (ANSI)
+    SEVERITY_COLORS = {
+        "critical": "\033[91m", "high": "\033[91m", "medium": "\033[93m",
+        "low": "\033[92m", "info": "\033[96m"
+    }
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+
     # Collect all modules with their config
     modules_by_category = {}
 
     for module_path in sorted(modules_dir.iterdir()):
         if module_path.is_dir() and not module_path.name.startswith('_'):
+            if module_path.name == 'oob_detection':
+                continue
+
             config_file = module_path / "config.json"
+            toml_file = module_path / "config.toml"
 
             # Default values
-            name = module_path.name
-            description = f"Module: {module_path.name}"
+            folder = module_path.name
+            name = folder.replace('_', ' ').title()
+            description = f"Module: {folder}"
             category = "Other"
             severity = "medium"
             enabled = True
             passive = False
 
-            if config_file.exists():
+            # Try TOML first, then JSON
+            config = {}
+            if toml_file.exists():
+                try:
+                    import tomllib
+                    with open(toml_file, 'rb') as f:
+                        config = tomllib.load(f)
+                except:
+                    pass
+
+            if not config and config_file.exists():
                 try:
                     with open(config_file, 'r', encoding='utf-8') as f:
                         config = json.load(f)
-                        name = config.get('name', module_path.name)
-                        description = config.get('description', description)
-                        category = config.get('category', 'Other')
-                        severity = config.get('severity', 'medium')
-                        enabled = config.get('enabled', True)
-                        passive = config.get('passive', False)
                 except:
                     pass
+
+            if config:
+                name = config.get('name', name)
+                description = config.get('description', description)
+                category = config.get('category', 'Other')
+                severity = config.get('severity', 'medium')
+                enabled = config.get('enabled', True)
+                passive = config.get('passive', False)
+
+            # Auto-detect category from folder name
+            if category == "Other":
+                folder_lower = folder.lower()
+                for key, cat in CATEGORY_MAP.items():
+                    if key in folder_lower:
+                        category = cat
+                        break
 
             if category not in modules_by_category:
                 modules_by_category[category] = []
 
             modules_by_category[category].append({
-                'folder': module_path.name,
+                'folder': folder,
                 'name': name,
                 'description': description,
-                'severity': severity,
+                'severity': severity.lower() if severity else 'medium',
                 'enabled': enabled,
                 'passive': passive
             })
 
-    # Print header
-    print("\n" + "=" * 80)
-    print("                        AVAILABLE SCANNING MODULES")
-    print("=" * 80)
+    # Print fancy header
+    print()
+    print(f"{BOLD}╔{'═' * 78}╗{RESET}")
+    print(f"{BOLD}║{'DOMINATOR - VULNERABILITY SCANNING MODULES':^78}║{RESET}")
+    print(f"{BOLD}╚{'═' * 78}╝{RESET}")
 
     total_modules = 0
     enabled_count = 0
+    active_count = 0
+    passive_count = 0
 
-    # Print modules by category
-    category_order = ['Injection', 'Information Disclosure', 'Recon', 'Security', 'Other']
+    # Category order
+    category_order = ["Injection", "File & Path", "Auth & Session", "API Security",
+                     "Recon", "Info Disclosure", "Server & Network", "Security Config",
+                     "Advanced", "Cloud", "Other"]
 
     for category in category_order:
-        if category in modules_by_category:
-            modules = modules_by_category[category]
-            print(f"\n[{category.upper()}] ({len(modules)} modules)")
-            print("-" * 60)
+        if category not in modules_by_category:
+            continue
 
-            for mod in sorted(modules, key=lambda x: x['folder']):
-                status = "✓" if mod['enabled'] else "✗"
-                passive_tag = " [PASSIVE]" if mod['passive'] else ""
-                severity_tag = f" [{mod['severity'].upper()}]" if mod['severity'] else ""
+        modules = modules_by_category[category]
+        icon = CATEGORY_ICONS.get(category, "🔧")
 
-                # Truncate description if too long
-                desc = mod['description'][:50] + "..." if len(mod['description']) > 50 else mod['description']
+        # Category header
+        print()
+        print(f"{BOLD}┌{'─' * 78}┐{RESET}")
+        print(f"{BOLD}│ {icon} {category.upper():<73} │{RESET}")
+        print(f"{BOLD}│ {len(modules)} modules{' ' * 68}│{RESET}")
+        print(f"{BOLD}├{'─' * 78}┤{RESET}")
 
-                print(f"  {status} {mod['folder']:<20} {desc}{severity_tag}{passive_tag}")
+        for mod in sorted(modules, key=lambda x: x['folder']):
+            status = f"\033[92m✓{RESET}" if mod['enabled'] else f"\033[91m✗{RESET}"
+            sev = mod['severity']
+            sev_color = SEVERITY_COLORS.get(sev, "")
+            sev_tag = f"{sev_color}[{sev.upper():^8}]{RESET}"
 
-                total_modules += 1
-                if mod['enabled']:
-                    enabled_count += 1
+            type_tag = f"{DIM}[PASSIVE]{RESET}" if mod['passive'] else f"[ACTIVE] "
 
-    # Print remaining categories
-    for category, modules in modules_by_category.items():
-        if category not in category_order:
-            print(f"\n[{category.upper()}] ({len(modules)} modules)")
-            print("-" * 60)
+            # Truncate description
+            desc = mod['description'][:35] + "..." if len(mod['description']) > 35 else mod['description']
 
-            for mod in sorted(modules, key=lambda x: x['folder']):
-                status = "✓" if mod['enabled'] else "✗"
-                passive_tag = " [PASSIVE]" if mod['passive'] else ""
-                severity_tag = f" [{mod['severity'].upper()}]" if mod['severity'] else ""
-                desc = mod['description'][:50] + "..." if len(mod['description']) > 50 else mod['description']
+            print(f"│ {status} {mod['folder']:<18} {type_tag} {sev_tag} {desc:<35} │")
 
-                print(f"  {status} {mod['folder']:<20} {desc}{severity_tag}{passive_tag}")
+            total_modules += 1
+            if mod['enabled']:
+                enabled_count += 1
+            if mod['passive']:
+                passive_count += 1
+            else:
+                active_count += 1
 
-                total_modules += 1
-                if mod['enabled']:
-                    enabled_count += 1
+        print(f"└{'─' * 78}┘")
 
-    # Print summary
-    print("\n" + "=" * 80)
-    print(f"Total: {total_modules} modules | Enabled: {enabled_count} | Disabled: {total_modules - enabled_count}")
-    print("=" * 80)
-    print("\nUsage: python main.py -t <target> -m xss,sqli,cmdi")
-    print("       python main.py -t <target> --all  (use all enabled modules)")
-    print("")
+    # Summary footer
+    print()
+    print(f"{BOLD}╔{'═' * 78}╗{RESET}")
+    print(f"{BOLD}║{'SUMMARY':^78}║{RESET}")
+    print(f"{BOLD}╠{'═' * 78}╣{RESET}")
+    print(f"{BOLD}║{RESET} Total Modules: {total_modules:<10} Active: {active_count:<10} Passive: {passive_count:<10}      {BOLD}║{RESET}")
+    print(f"{BOLD}║{RESET} Enabled: \033[92m{enabled_count:<10}{RESET} Disabled: \033[91m{total_modules - enabled_count:<10}{RESET}                          {BOLD}║{RESET}")
+    print(f"{BOLD}╠{'═' * 78}╣{RESET}")
+    print(f"{BOLD}║{RESET} {'USAGE EXAMPLES:':<76} {BOLD}║{RESET}")
+    print(f"{BOLD}║{RESET}   python main.py -t <target> -m xss,sqli,cmdi                               {BOLD}║{RESET}")
+    print(f"{BOLD}║{RESET}   python main.py -t <target> --all  (use all enabled modules)              {BOLD}║{RESET}")
+    print(f"{BOLD}║{RESET}   python main.py -t <target> -m injection  (all injection modules)         {BOLD}║{RESET}")
+    print(f"{BOLD}╚{'═' * 78}╝{RESET}")
+    print()
 
 def process_args(args):
     """Process and validate command line arguments"""
+    # Handle API targets file (from GUI API Testing tab)
+    if hasattr(args, 'api_targets_file') and args.api_targets_file:
+        import json
+        try:
+            with open(args.api_targets_file, 'r', encoding='utf-8') as f:
+                args.api_targets = json.load(f)
+            # Set target from first API endpoint for Config compatibility
+            if args.api_targets and len(args.api_targets) > 0:
+                args.target = args.api_targets[0].get('url', '')
+            print(f"[*] Loaded {len(args.api_targets)} API targets from file")
+        except Exception as e:
+            print(f"[!] Error loading API targets file: {e}")
+            args.api_targets = []
+    else:
+        args.api_targets = []
+
     # Fix args for Config compatibility
     if hasattr(args, 'file') and args.file:
         args.target = args.file
-    
+
     # Keep multiple targets as list, convert single target to string
     if hasattr(args, 'target') and isinstance(args.target, list) and len(args.target) == 1:
         args.target = args.target[0]
@@ -307,6 +431,8 @@ def process_args(args):
         args.dedupe_domain = not args.no_domain_dedupe
     if not hasattr(args, 'nocrawl'):
         args.nocrawl = False
+    if not hasattr(args, 'no_ping'):
+        args.no_ping = False
     if not hasattr(args, 'debug'):
         args.debug = False
     if not hasattr(args, 'filetree'):
@@ -321,7 +447,46 @@ def process_args(args):
         args.wafiffound = False
     if not hasattr(args, 'waf_detect'):
         args.waf_detect = False
-    
+
+    # API Testing defaults
+    if not hasattr(args, 'api_spec'):
+        args.api_spec = None
+    if not hasattr(args, 'api_format'):
+        args.api_format = 'auto'
+    if not hasattr(args, 'api_base_url'):
+        args.api_base_url = None
+    if not hasattr(args, 'api_discover'):
+        args.api_discover = False
+    if not hasattr(args, 'api_auth_token'):
+        args.api_auth_token = None
+
+    # Handle API spec - parse and get endpoints as targets
+    if args.api_spec:
+        args = _process_api_spec(args)
+
+    # Handle API auto-discovery
+    if args.api_discover and args.target:
+        args = _discover_api_spec(args)
+
+    # Handle -apim flag (API-specific modules only)
+    if getattr(args, 'api_modules', False):
+        api_only_modules = [
+            'api_security', 'api_bola', 'api_mass_assignment',
+            'api_rate_limit', 'api_excessive_data', 'jwt_analysis',
+            'graphql', 'cors', 'idor'
+        ]
+        args.modules = ','.join(api_only_modules)
+        args.all = False
+        print(f"\n[API MODULES] Using API-specific security modules:")
+        for mod in api_only_modules:
+            print(f"  - {mod}")
+        print()
+
+    # Handle --api-full flag
+    if getattr(args, 'api_full', False):
+        args.all = True
+        print("[API FULL] Using all modules including API-specific ones")
+
     # Apply nocrawl logic
     if args.nocrawl:
         args.single_url = True
@@ -371,5 +536,142 @@ def process_args(args):
         print("  - Concurrent requests: enabled (10 per module)")
         print("  - Early exit: enabled (stop on first vuln per parameter)")
         print()
+
+    return args
+
+
+def _process_api_spec(args):
+    """Process API specification and extract endpoints as targets"""
+    try:
+        from utils.api_parser import APIParser
+
+        print(f"\n[API TESTING] Loading API specification: {args.api_spec}")
+
+        parser = APIParser()
+        endpoints = parser.parse(
+            args.api_spec,
+            format_type=args.api_format,
+            base_url=args.api_base_url
+        )
+
+        if not endpoints:
+            print("[!] No endpoints found in API specification")
+            return args
+
+        # Get summary
+        summary = parser.get_summary()
+        print(f"[+] API: {summary['spec_info'].get('title', 'Unknown')}")
+        print(f"[+] Base URL: {summary.get('base_url', 'N/A')}")
+        print(f"[+] Endpoints found: {summary['total_endpoints']}")
+        print(f"[+] Methods: {summary['methods']}")
+
+        if summary.get('auth_schemes'):
+            print(f"[+] Auth schemes: {', '.join(summary['auth_schemes'])}")
+
+        # Display parsed endpoints with parameters
+        print(f"\n{'─' * 60}")
+        print(f"  PARSED API ENDPOINTS")
+        print(f"{'─' * 60}")
+        for i, ep in enumerate(endpoints, 1):
+            method = ep.method.upper()
+            # Extract path from full URL
+            from urllib.parse import urlparse
+            parsed_url = urlparse(ep.url)
+            path = parsed_url.path or '/'
+
+            # Color-code methods
+            method_colors = {'GET': '32', 'POST': '33', 'PUT': '34', 'DELETE': '31', 'PATCH': '35'}
+            color = method_colors.get(method, '37')
+            print(f"  [{i:2d}] \033[{color}m{method:7s}\033[0m {path}")
+
+            # Show parameters
+            params = []
+            if ep.params:
+                params.extend([f"?{p}" for p in list(ep.params.keys())[:5]])
+            if ep.body and isinstance(ep.body, dict):
+                params.extend([f"@{p}" for p in list(ep.body.keys())[:5]])
+            if ep.headers:
+                params.extend([f"H:{h}" for h in list(ep.headers.keys())[:3]])
+
+            if params:
+                print(f"       └─ params: {', '.join(params[:8])}" + (" ..." if len(params) > 8 else ""))
+        print(f"{'─' * 60}\n")
+
+        # Convert endpoints to targets
+        targets = []
+        for ep in endpoints:
+            target_dict = ep.to_target()
+
+            # Add Bearer token if provided via --api-auth-token (convenience shortcut)
+            if args.api_auth_token:
+                target_dict['headers']['Authorization'] = f"Bearer {args.api_auth_token}"
+
+            # Add any custom headers from -H flag
+            if hasattr(args, 'headers') and args.headers:
+                for header in args.headers:
+                    if ':' in header:
+                        key, value = header.split(':', 1)
+                        target_dict['headers'][key.strip()] = value.strip()
+
+            targets.append(target_dict)
+
+        # Show auth hint from spec if user didn't provide auth
+        if not args.api_auth_token and summary.get('auth_schemes'):
+            auth_info = parser.get_auth_header_hint()
+            if auth_info:
+                print(f"\n[!] API requires authentication: {', '.join(summary['auth_schemes'])}")
+                if auth_info.get('type'):
+                    print(f"    Type: {auth_info['type']}")
+                    print(f"    Header: {auth_info['header']}")
+                    print(f"    Format: {auth_info['format']}")
+                print(f"    Use: --api-auth-token <token> or -H \"{auth_info.get('header', 'Authorization')}: Bearer <token>\"")
+                print()
+
+        # Store API targets in args
+        args.api_targets = targets
+
+        # Set target from base_url if not already set
+        if not args.target and summary.get('base_url'):
+            args.target = summary['base_url']
+
+        # Disable crawling for API testing (we have explicit endpoints)
+        args.nocrawl = True
+        args.single_url = True
+
+        print(f"[+] API mode enabled - crawling disabled, testing {len(targets)} endpoints")
+        print()
+
+    except ImportError as e:
+        print(f"[!] Error loading API parser: {e}")
+        print("[!] Make sure pyyaml is installed: pip install pyyaml")
+    except Exception as e:
+        print(f"[!] Error processing API specification: {e}")
+        import traceback
+        traceback.print_exc()
+
+    return args
+
+
+def _discover_api_spec(args):
+    """Try to auto-discover API specification from target"""
+    try:
+        from utils.api_parser import fetch_swagger_url
+
+        target = args.target[0] if isinstance(args.target, list) else args.target
+
+        print(f"\n[API DISCOVERY] Searching for API specification at {target}...")
+
+        spec_url = fetch_swagger_url(target)
+
+        if spec_url:
+            print(f"[+] Found API specification: {spec_url}")
+            args.api_spec = spec_url
+            args = _process_api_spec(args)
+        else:
+            print("[!] No API specification found at common endpoints")
+            print("    Checked: /swagger.json, /openapi.json, /api-docs, etc.")
+
+    except Exception as e:
+        print(f"[!] Error during API discovery: {e}")
 
     return args

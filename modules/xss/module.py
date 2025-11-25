@@ -20,12 +20,24 @@ logger = get_logger(__name__)
 class XSSModule(BaseModule):
     """Improved XSS vulnerability scanner module"""
 
-    def __init__(self, module_path: str, payload_limit: int = None):
+    def __init__(self, module_path: str, payload_limit: int = None, waf_mode: bool = False):
         """Initialize XSS module"""
         super().__init__(module_path, payload_limit=payload_limit)
 
         # Load XSS indicators from TXT file
         self.xss_indicators = BaseDetector.load_patterns_from_file('xss/indicators')
+
+        # WAF bypass mode
+        self.waf_mode = waf_mode
+        self.waf_bypass_payloads = []
+
+        if self.waf_mode:
+            try:
+                from utils.waf_bypass import WAFBypass
+                self.waf_bypass_payloads = WAFBypass.get_xss_bypass_payloads()
+                logger.info(f"WAF bypass mode enabled: {len(self.waf_bypass_payloads)} bypass payloads loaded")
+            except ImportError:
+                logger.warning("WAF bypass module not found, using standard payloads")
 
         logger.info(f"XSS module loaded: {len(self.payloads)} payloads, "
                    f"{len(self.xss_indicators)} indicators")
@@ -58,8 +70,15 @@ class XSSModule(BaseModule):
             for param_name in params:
                 logger.debug(f"Testing XSS in parameter: {param_name} via {method}")
 
+                # Get payloads - include WAF bypass payloads if enabled
+                all_payloads = list(self.get_limited_payloads())
+                if self.waf_mode and self.waf_bypass_payloads:
+                    # Add WAF bypass payloads (prioritized at the end)
+                    all_payloads.extend(self.waf_bypass_payloads)
+                    logger.debug(f"Using {len(all_payloads)} payloads (including WAF bypass)")
+
                 # Try each payload (limited)
-                for payload in self.get_limited_payloads():  # Limit to 50 payloads for better detection
+                for payload in all_payloads:
                     # Create test parameters
                     test_params = params.copy()
                     test_params[param_name] = payload
@@ -475,14 +494,16 @@ class XSSModule(BaseModule):
         return results
 
 
-def get_module(module_path: str, payload_limit: int = None):
+def get_module(module_path: str, payload_limit: int = None, waf_mode: bool = False):
     """
     Factory function to create module instance
 
     Args:
         module_path: Path to module directory
+        payload_limit: Maximum payloads to use
+        waf_mode: Enable WAF bypass payloads
 
     Returns:
         XSSModule instance
     """
-    return XSSModule(module_path, payload_limit=payload_limit)
+    return XSSModule(module_path, payload_limit=payload_limit, waf_mode=waf_mode)

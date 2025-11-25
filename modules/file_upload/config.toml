@@ -1,0 +1,17 @@
+# Module Configuration (TOML format)
+
+name = "File Upload"
+description = "Unrestricted File Upload vulnerability scanner"
+version = "1.0"
+author = "Dominator Scanner"
+enabled = true
+confidence_threshold = 0.6
+cwe = "CWE-434"
+owasp = "A03:2021"
+cvss = "9.8"
+severity = "Critical"
+cwe_name = "Unrestricted Upload of File with Dangerous Type"
+owasp_name = "Injection"
+cvss_vector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+max_uploads = 50
+test_all_forms = true

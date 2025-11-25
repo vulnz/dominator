@@ -1,0 +1,17 @@
+# Module Configuration (TOML format)
+
+enabled = true
+name = "Directory Enumeration"
+description = "Discovers hidden directories, files, and directory listings through enumeration"
+severity = "Medium"
+cwe = "CWE-425"
+owasp = "A01:2021"
+cvss = "5.3"
+max_threads = 10
+timeout = 5
+follow_redirects = false
+interesting_status_codes = [200, 301, 302, 401, 403]
+interesting_extensions = ["", ".php", ".asp", ".aspx", ".jsp", ".html", ".js", ".txt", ".xml", ".json", ".bak", ".old", ".zip", ".tar.gz", ".sql", ".log"]
+cwe_name = "Direct Request ('Forced Browsing')"
+owasp_name = "Broken Access Control"
+cvss_vector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"

@@ -1,0 +1,15 @@
+# Module Configuration (TOML format)
+
+name = "Parameter Miner"
+description = "Discovers hidden parameters in web applications using common wordlists and response analysis"
+author = "Dominator Team"
+version = "1.0"
+category = "discovery"
+severity = "Info"
+enabled = true
+passive = false
+cwe = "CWE-200"
+owasp = "A01:2021"
+cvss = 3.7
+tags = ["parameter", "discovery", "hidden", "fuzzing", "recon"]
+references = ["https://portswigger.net/bappstore/17d2949a985c4b7ca092728dba871943", "https://github.com/s0md3v/Arjun"]

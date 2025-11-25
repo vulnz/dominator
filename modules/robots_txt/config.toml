@@ -1,0 +1,12 @@
+# Module Configuration (TOML format)
+
+name = "Robots.txt Scanner"
+description = "Analyzes robots.txt for information disclosure and hidden paths"
+author = "Dominator Team"
+version = "1.0"
+category = "Discovery"
+severity = "Info"
+cwe = "CWE-200"
+owasp = "A01:2021"
+tags = ["robots", "recon", "info-disclosure", "hidden-paths"]
+references = ["https://developers.google.com/search/docs/crawling-indexing/robots/robots_txt", "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/03-Review_Webserver_Metafiles_for_Information_Leakage"]

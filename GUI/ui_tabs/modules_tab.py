@@ -19,6 +19,13 @@ import json
 import os
 from datetime import datetime
 
+# TOML support (Python 3.11+)
+try:
+    import tomllib
+    HAS_TOML = True
+except ImportError:
+    HAS_TOML = False
+
 
 class ModulesTabBuilder:
     """Builder class for creating the Modules tab
@@ -29,7 +36,8 @@ class ModulesTabBuilder:
 
     @staticmethod
     def load_all_module_configs():
-        """Dynamically load all module configurations from config.json files.
+        """Dynamically load all module configurations from config files.
+        Prefers TOML over JSON format.
         Returns dict mapping module_folder -> config dict
         """
         parent_dir = Path(__file__).parent.parent.parent
@@ -39,35 +47,65 @@ class ModulesTabBuilder:
         if modules_dir.exists():
             for module_path in modules_dir.iterdir():
                 if module_path.is_dir() and not module_path.name.startswith('_'):
-                    config_file = module_path / "config.json"
-                    if config_file.exists():
+                    toml_file = module_path / "config.toml"
+                    json_file = module_path / "config.json"
+
+                    config = None
+
+                    # Try TOML first (preferred)
+                    if HAS_TOML and toml_file.exists():
                         try:
-                            with open(config_file, 'r', encoding='utf-8') as f:
+                            with open(toml_file, 'rb') as f:
+                                config = tomllib.load(f)
+                        except Exception:
+                            pass
+
+                    # Fall back to JSON
+                    if config is None and json_file.exists():
+                        try:
+                            with open(json_file, 'r', encoding='utf-8') as f:
                                 config = json.load(f)
-                                configs[module_path.name] = config
-                        except Exception as e:
-                            # Fallback for modules with invalid JSON
-                            configs[module_path.name] = {
-                                'name': module_path.name.upper(),
-                                'description': f'Module: {module_path.name}',
-                                'enabled': True,
-                                'severity': 'medium'
-                            }
+                        except Exception:
+                            pass
+
+                    # Store config or use fallback
+                    if config:
+                        configs[module_path.name] = config
+                    else:
+                        # Fallback for modules without valid config
+                        configs[module_path.name] = {
+                            'name': module_path.name.upper(),
+                            'description': f'Module: {module_path.name}',
+                            'enabled': True,
+                            'severity': 'medium'
+                        }
         return configs
 
     @staticmethod
     def get_module_description(module_folder):
-        """Get description for a module from its config.json"""
+        """Get description for a module from its config file (TOML preferred)"""
         parent_dir = Path(__file__).parent.parent.parent
-        config_file = parent_dir / "modules" / module_folder / "config.json"
+        toml_file = parent_dir / "modules" / module_folder / "config.toml"
+        json_file = parent_dir / "modules" / module_folder / "config.json"
 
-        if config_file.exists():
+        # Try TOML first
+        if HAS_TOML and toml_file.exists():
             try:
-                with open(config_file, 'r', encoding='utf-8') as f:
+                with open(toml_file, 'rb') as f:
+                    config = tomllib.load(f)
+                    return config.get('description', f'Module: {module_folder}')
+            except:
+                pass
+
+        # Fall back to JSON
+        if json_file.exists():
+            try:
+                with open(json_file, 'r', encoding='utf-8') as f:
                     config = json.load(f)
                     return config.get('description', f'Module: {module_folder}')
             except:
                 pass
+
         return f'Module: {module_folder}'
 
     # Severity colors and icons

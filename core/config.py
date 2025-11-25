@@ -35,8 +35,13 @@ class Config:
         self.recon_only = getattr(args, 'recon_only', False)  # Passive recon only, no active attacks
         self.rotate_agent = getattr(args, 'rotate_agent', False)  # Random User-Agent rotation
         self.live_reporting = getattr(args, 'live', False)  # Real-time report updates
+        self.no_ping = getattr(args, 'no_ping', False)  # Skip target alive check
         self.add_known_paths = getattr(args, 'add_known_paths', None)  # File with known paths to inject
         self.custom_payloads = getattr(args, 'custom_payloads', None)  # Custom payloads override
+
+        # API Testing mode - pre-parsed endpoints from API spec
+        self.api_targets = getattr(args, 'api_targets', None)  # List of endpoint dicts from API parser
+        self.api_mode = self.api_targets is not None and len(self.api_targets) > 0
 
         # Directory paths
         self.modules_dir = "modules"

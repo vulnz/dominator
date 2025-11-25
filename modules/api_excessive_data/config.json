@@ -1,0 +1,19 @@
+{
+    "name": "API Excessive Data Exposure",
+    "description": "Detects APIs returning more data than necessary (sensitive data exposure)",
+    "version": "1.0",
+    "author": "Dominator Team",
+    "category": "API Testing",
+    "severity": "medium",
+    "cwe": "CWE-213",
+    "owasp": "API3:2023",
+    "cvss": "6.5",
+    "enabled": true,
+    "passive": true,
+    "api_only": true,
+    "tags": ["api", "data-exposure", "pii", "sensitive-data", "owasp-api-top10"],
+    "references": [
+        "https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/",
+        "https://cwe.mitre.org/data/definitions/213.html"
+    ]
+}

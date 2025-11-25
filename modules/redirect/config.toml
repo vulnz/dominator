@@ -1,0 +1,12 @@
+# Module Configuration (TOML format)
+
+enabled = true
+name = "Open Redirect Scanner"
+description = "Detects Open Redirect vulnerabilities"
+severity = "Medium"
+cwe = "CWE-601"
+owasp = "A01:2021"
+cvss = "6.1"
+cwe_name = "URL Redirection to Untrusted Site ('Open Redirect')"
+owasp_name = "Broken Access Control"
+cvss_vector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N"

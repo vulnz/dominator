@@ -14,21 +14,25 @@ logger = get_logger(__name__)
 class ModuleLoader:
     """Dynamically loads scanner modules"""
 
-    def __init__(self, modules_dir: str = "modules", payload_limit: int = None):
+    def __init__(self, modules_dir: str = "modules", payload_limit: int = None, waf_mode: bool = False):
         """
         Initialize module loader
 
         Args:
             modules_dir: Path to modules directory
             payload_limit: Global payload limit for all modules (from --payload-limit CLI arg)
+            waf_mode: Enable WAF bypass payloads for modules
         """
         self.modules_dir = modules_dir
         self.payload_limit = payload_limit
+        self.waf_mode = waf_mode
         self.available_modules = self._discover_modules()
 
         logger.info(f"Module loader initialized. Available modules: {len(self.available_modules)}")
         if payload_limit:
             logger.info(f"Global payload limit set to: {payload_limit}")
+        if waf_mode:
+            logger.info("WAF bypass mode enabled for modules")
 
     def _discover_modules(self) -> Dict[str, str]:
         """
@@ -98,7 +102,17 @@ class ModuleLoader:
 
             # Get module instance
             if hasattr(module, 'get_module'):
-                module_instance = module.get_module(module_path, payload_limit=self.payload_limit)
+                # Try to pass waf_mode if module supports it
+                try:
+                    module_instance = module.get_module(
+                        module_path,
+                        payload_limit=self.payload_limit,
+                        waf_mode=self.waf_mode
+                    )
+                except TypeError:
+                    # Module doesn't support waf_mode parameter
+                    module_instance = module.get_module(module_path, payload_limit=self.payload_limit)
+
                 logger.info(f"Successfully loaded module: {module_name}")
                 return module_instance
             else:

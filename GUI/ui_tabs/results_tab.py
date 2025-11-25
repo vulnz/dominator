@@ -49,19 +49,19 @@ class ResultsTabBuilder:
         main_layout.setSpacing(0)
         main_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Create subtabs for Results and Progress
+        # Create subtabs for Results and Progress - Light theme
         self.results_subtabs = QTabWidget()
         self.results_subtabs.setStyleSheet("""
             QTabWidget::pane {
-                border: 2px solid #e0e0e0;
+                border: 2px solid #d1d5db;
                 background-color: #ffffff;
-                border-radius: 4px;
+                border-radius: 8px;
             }
             QTabBar::tab {
-                background-color: #f5f5f5;
-                color: #333333;
+                background-color: #f3f4f6;
+                color: #4b5563;
                 padding: 12px 24px;
-                border: 2px solid #e0e0e0;
+                border: 2px solid #d1d5db;
                 border-bottom: none;
                 margin-right: 3px;
                 border-radius: 6px 6px 0 0;
@@ -71,17 +71,19 @@ class ResultsTabBuilder:
             }
             QTabBar::tab:selected {
                 background-color: #ffffff;
-                color: #4CAF50;
-                border-bottom: 3px solid #4CAF50;
+                color: #6366f1;
+                border-bottom: 3px solid #6366f1;
                 padding-bottom: 11px;
             }
             QTabBar::tab:hover {
-                background-color: #e8f5e9;
+                background-color: #e5e7eb;
+                color: #1f2937;
             }
         """)
 
         # === Results subtab ===
         results_content = QWidget()
+        results_content.setStyleSheet("background-color: #f9fafb;")
         results_layout = QVBoxLayout(results_content)
         results_layout.setSpacing(10)
         results_layout.setContentsMargins(10, 10, 10, 10)
@@ -150,25 +152,25 @@ class ResultsTabBuilder:
         resources_tabs = QTabWidget()
         resources_tabs.setStyleSheet("""
             QTabWidget::pane {
-                border: 1px solid #e0e0e0;
+                border: 1px solid #d1d5db;
                 background-color: #ffffff;
                 border-radius: 4px;
             }
             QTabBar::tab {
-                background-color: #f5f5f5;
-                color: #333333;
+                background-color: #f3f4f6;
+                color: #6b7280;
                 padding: 6px 12px;
-                border: 1px solid #e0e0e0;
+                border: 1px solid #d1d5db;
                 border-bottom: none;
                 margin-right: 2px;
             }
             QTabBar::tab:selected {
-                background-color: #ffffff;
-                color: #4CAF50;
+                background-color: #f9fafb;
+                color: #6366f1;
                 font-weight: bold;
             }
             QTabBar::tab:hover {
-                background-color: #e8e8e8;
+                background-color: #e5e7eb;
             }
         """)
 
@@ -294,23 +296,23 @@ class ResultsTabBuilder:
         return """
             QTableWidget {
                 background-color: #ffffff;
-                color: #333333;
-                gridline-color: #e0e0e0;
-                border: 1px solid #cccccc;
+                color: #1f2937;
+                gridline-color: #d1d5db;
+                border: 1px solid #d1d5db;
                 border-radius: 4px;
             }
             QHeaderView::section {
-                background-color: #f5f5f5;
-                color: #4CAF50;
+                background-color: #f3f4f6;
+                color: #6366f1;
                 padding: 8px;
-                border: 1px solid #e0e0e0;
+                border: 1px solid #d1d5db;
                 font-weight: bold;
             }
             QTableWidget::item {
                 padding: 5px;
             }
             QTableWidget::item:selected {
-                background-color: #4CAF50;
+                background-color: #6366f1;
                 color: white;
             }
         """
@@ -428,14 +430,17 @@ class ResultsTabBuilder:
                 QMessageBox.critical(self.gui, "Error", f"Failed to export:\n{e}")
 
     def _create_dashboard(self):
-        """Create dashboard header with stats cards and charts"""
+        """Create dashboard header with stats cards and charts - Dark theme"""
         dashboard = QFrame()
         dashboard.setStyleSheet("""
             QFrame {
-                background-color: #f8f9fa;
-                border: 1px solid #e0e0e0;
-                border-radius: 8px;
-                padding: 10px;
+                background: linear-gradient(135deg, #f3f4f6 0%, #1e1e35 100%);
+                border: 2px solid #d1d5db;
+                border-radius: 12px;
+                padding: 15px;
+            }
+            QLabel {
+                color: #1f2937;
             }
         """)
 
@@ -446,7 +451,7 @@ class ResultsTabBuilder:
         cards_layout = QVBoxLayout()
 
         # Total findings card
-        self.gui.total_card = StatsCard("Total Findings", "0", "#333333")
+        self.gui.total_card = StatsCard("Total Findings", "0", "#6366f1")
         cards_layout.addWidget(self.gui.total_card)
 
         # Severity cards in a row
@@ -472,7 +477,7 @@ class ResultsTabBuilder:
 
         # Pie chart
         pie_label = QLabel("Severity Distribution")
-        pie_label.setStyleSheet("font-weight: bold; color: #333333;")
+        pie_label.setStyleSheet("font-weight: bold; color: #1f2937;")
         pie_label.setAlignment(Qt.AlignCenter)
         charts_layout.addWidget(pie_label)
 
@@ -485,7 +490,7 @@ class ResultsTabBuilder:
         timeline_layout = QVBoxLayout()
 
         timeline_label = QLabel("Findings Timeline")
-        timeline_label.setStyleSheet("font-weight: bold; color: #333333;")
+        timeline_label.setStyleSheet("font-weight: bold; color: #1f2937;")
         timeline_label.setAlignment(Qt.AlignCenter)
         timeline_layout.addWidget(timeline_label)
 
@@ -498,7 +503,7 @@ class ResultsTabBuilder:
         host_stats_layout = QVBoxLayout()
 
         host_label = QLabel("Findings by Host")
-        host_label.setStyleSheet("font-weight: bold; color: #333333;")
+        host_label.setStyleSheet("font-weight: bold; color: #1f2937;")
         host_label.setAlignment(Qt.AlignCenter)
         host_stats_layout.addWidget(host_label)
 
@@ -509,17 +514,18 @@ class ResultsTabBuilder:
         self.gui.host_stats_list.setStyleSheet("""
             QListWidget {
                 background-color: #ffffff;
-                border: 1px solid #e0e0e0;
+                border: 1px solid #d1d5db;
                 border-radius: 4px;
                 font-size: 10px;
+                color: #1f2937;
             }
             QListWidget::item {
                 padding: 4px;
-                border-bottom: 1px solid #f0f0f0;
+                border-bottom: 1px solid #e5e7eb;
             }
             QListWidget::item:selected {
-                background-color: #e3f2fd;
-                color: #333333;
+                background-color: #d1d5db;
+                color: #ffffff;
             }
         """)
         self.gui.host_stats_list.itemClicked.connect(self._on_host_clicked)
@@ -545,7 +551,7 @@ class ResultsTabBuilder:
         filters_frame.setStyleSheet("""
             QFrame {
                 background-color: #ffffff;
-                border: 1px solid #e0e0e0;
+                border: 1px solid #d1d5db;
                 border-radius: 6px;
                 padding: 8px;
             }
@@ -556,76 +562,90 @@ class ResultsTabBuilder:
 
         # Severity filter
         severity_label = QLabel("Severity:")
-        severity_label.setStyleSheet("color: #333333; font-weight: bold;")
+        severity_label.setStyleSheet("color: #1f2937; font-weight: bold;")
         layout.addWidget(severity_label)
 
         self.gui.severity_filter = QComboBox()
         self.gui.severity_filter.addItems(["All", "Critical", "High", "Medium", "Low", "Info"])
         self.gui.severity_filter.setStyleSheet("""
             QComboBox {
-                background-color: #ffffff;
-                border: 1px solid #cccccc;
+                background-color: #f3f4f6;
+                color: #1f2937;
+                border: 1px solid #d1d5db;
                 border-radius: 4px;
                 padding: 5px;
                 min-width: 100px;
             }
+            QComboBox:hover { border-color: #6366f1; }
+            QComboBox::drop-down { border: none; }
+            QComboBox QAbstractItemView { background-color: #f3f4f6; color: #1f2937; selection-background-color: #6366f1; }
         """)
         self.gui.severity_filter.currentTextChanged.connect(self._apply_filters)
         layout.addWidget(self.gui.severity_filter)
 
         # Module filter
         module_label = QLabel("Module:")
-        module_label.setStyleSheet("color: #333333; font-weight: bold;")
+        module_label.setStyleSheet("color: #1f2937; font-weight: bold;")
         layout.addWidget(module_label)
 
         self.gui.module_filter = QComboBox()
         self.gui.module_filter.addItem("All")
         self.gui.module_filter.setStyleSheet("""
             QComboBox {
-                background-color: #ffffff;
-                border: 1px solid #cccccc;
+                background-color: #f3f4f6;
+                color: #1f2937;
+                border: 1px solid #d1d5db;
                 border-radius: 4px;
                 padding: 5px;
                 min-width: 120px;
             }
+            QComboBox:hover { border-color: #6366f1; }
+            QComboBox::drop-down { border: none; }
+            QComboBox QAbstractItemView { background-color: #f3f4f6; color: #1f2937; selection-background-color: #6366f1; }
         """)
         self.gui.module_filter.currentTextChanged.connect(self._apply_filters)
         layout.addWidget(self.gui.module_filter)
 
         # Target filter
         target_label = QLabel("Target:")
-        target_label.setStyleSheet("color: #333333; font-weight: bold;")
+        target_label.setStyleSheet("color: #1f2937; font-weight: bold;")
         layout.addWidget(target_label)
 
         self.gui.target_filter = QComboBox()
         self.gui.target_filter.addItem("All")
         self.gui.target_filter.setStyleSheet("""
             QComboBox {
-                background-color: #ffffff;
-                border: 1px solid #cccccc;
+                background-color: #f3f4f6;
+                color: #1f2937;
+                border: 1px solid #d1d5db;
                 border-radius: 4px;
                 padding: 5px;
                 min-width: 150px;
             }
+            QComboBox:hover { border-color: #6366f1; }
+            QComboBox::drop-down { border: none; }
+            QComboBox QAbstractItemView { background-color: #f3f4f6; color: #1f2937; selection-background-color: #6366f1; }
         """)
         self.gui.target_filter.currentTextChanged.connect(self._apply_filters)
         layout.addWidget(self.gui.target_filter)
 
         # Search box
         search_label = QLabel("Search:")
-        search_label.setStyleSheet("color: #333333; font-weight: bold;")
+        search_label.setStyleSheet("color: #1f2937; font-weight: bold;")
         layout.addWidget(search_label)
 
         self.gui.results_search = QLineEdit()
         self.gui.results_search.setPlaceholderText("Search findings...")
         self.gui.results_search.setStyleSheet("""
             QLineEdit {
-                background-color: #ffffff;
-                border: 1px solid #cccccc;
+                background-color: #f3f4f6;
+                color: #1f2937;
+                border: 1px solid #d1d5db;
                 border-radius: 4px;
                 padding: 5px;
                 min-width: 150px;
             }
+            QLineEdit:focus { border-color: #6366f1; }
         """)
         self.gui.results_search.textChanged.connect(self._apply_filters)
         layout.addWidget(self.gui.results_search)
@@ -634,14 +654,15 @@ class ResultsTabBuilder:
         clear_btn = QPushButton("Clear Filters")
         clear_btn.setStyleSheet("""
             QPushButton {
-                background-color: #f0f0f0;
-                color: #333333;
-                border: 1px solid #cccccc;
+                background-color: #f3f4f6;
+                color: #1f2937;
+                border: 1px solid #d1d5db;
                 border-radius: 4px;
                 padding: 5px 15px;
             }
             QPushButton:hover {
-                background-color: #e0e0e0;
+                background-color: #d1d5db;
+                border-color: #6366f1;
             }
         """)
         clear_btn.clicked.connect(self._clear_filters)
@@ -652,18 +673,18 @@ class ResultsTabBuilder:
         self.gui.group_by_target.setCheckable(True)
         self.gui.group_by_target.setStyleSheet("""
             QPushButton {
-                background-color: #f0f0f0;
-                color: #333333;
-                border: 1px solid #cccccc;
+                background-color: #f3f4f6;
+                color: #1f2937;
+                border: 1px solid #d1d5db;
                 border-radius: 4px;
                 padding: 5px 15px;
             }
             QPushButton:checked {
-                background-color: #2196F3;
+                background-color: #6366f1;
                 color: white;
             }
             QPushButton:hover {
-                background-color: #e0e0e0;
+                background-color: #d1d5db;
             }
             QPushButton:checked:hover {
                 background-color: #1976D2;
@@ -677,58 +698,96 @@ class ResultsTabBuilder:
         return filters_frame
 
     def _create_results_table(self):
-        """Create the results table widget"""
+        """Create the results table widget with comprehensive columns"""
         container = QWidget()
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # Table label
-        label = QLabel("Findings")
-        label.setStyleSheet("font-size: 14px; font-weight: bold; color: #333333; padding: 5px;")
-        layout.addWidget(label)
+        # Table header with count
+        header_layout = QHBoxLayout()
+        label = QLabel("🔍 Findings")
+        label.setStyleSheet("font-size: 16px; font-weight: bold; color: #1976D2; padding: 5px;")
+        header_layout.addWidget(label)
 
-        # Results table
+        self.gui.findings_count_label = QLabel("(0)")
+        self.gui.findings_count_label.setStyleSheet("font-size: 14px; color: #666; padding: 5px;")
+        header_layout.addWidget(self.gui.findings_count_label)
+        header_layout.addStretch()
+        layout.addLayout(header_layout)
+
+        # Results table with MORE columns
         self.gui.results_table = QTableWidget()
-        self.gui.results_table.setColumnCount(6)
-        self.gui.results_table.setHorizontalHeaderLabels(["#", "Severity", "Module", "Title", "Target", "Time"])
+        self.gui.results_table.setColumnCount(9)
+        self.gui.results_table.setHorizontalHeaderLabels([
+            "#", "⚠️ Severity", "📦 Module", "🎯 Vulnerability",
+            "🔗 URL", "📝 Parameter", "💉 Payload", "📊 CVSS", "⏰ Time"
+        ])
 
-        # Style the table
+        # Modern dark-themed table style
         self.gui.results_table.setStyleSheet("""
             QTableWidget {
-                background-color: #ffffff;
-                border: 1px solid #e0e0e0;
-                border-radius: 4px;
-                gridline-color: #f0f0f0;
+                background-color: #f9fafb;
+                alternate-background-color: #252536;
+                border: 2px solid #d1d5db;
+                border-radius: 8px;
+                gridline-color: #d1d5db;
+                color: #1f2937;
+                font-size: 11px;
             }
             QTableWidget::item {
-                padding: 8px;
-                color: #333333;
+                padding: 10px 8px;
+                border-bottom: 1px solid #d1d5db;
             }
             QTableWidget::item:selected {
-                background-color: #e3f2fd;
-                color: #333333;
+                background-color: #4a4a7a;
+                color: #ffffff;
+            }
+            QTableWidget::item:hover {
+                background-color: #e5e7eb;
             }
             QHeaderView::section {
-                background-color: #f5f5f5;
-                color: #333333;
-                padding: 8px;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #d1d5db, stop:1 #e5e7eb);
+                color: #ffffff;
+                padding: 12px 8px;
                 border: none;
-                border-bottom: 2px solid #e0e0e0;
+                border-bottom: 3px solid #6366f1;
                 font-weight: bold;
+                font-size: 11px;
+            }
+            QScrollBar:vertical {
+                background: #f9fafb;
+                width: 12px;
+                border-radius: 6px;
+            }
+            QScrollBar::handle:vertical {
+                background: #4a4a7a;
+                border-radius: 6px;
+                min-height: 30px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #6366f1;
             }
         """)
 
-        # Configure table
+        # Configure table columns
         header = self.gui.results_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.Fixed)
-        header.setSectionResizeMode(1, QHeaderView.Fixed)
-        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.Stretch)
-        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(0, QHeaderView.Fixed)      # #
+        header.setSectionResizeMode(1, QHeaderView.Fixed)      # Severity
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)  # Module
+        header.setSectionResizeMode(3, QHeaderView.Stretch)    # Vulnerability
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # URL
+        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)  # Parameter
+        header.setSectionResizeMode(6, QHeaderView.ResizeToContents)  # Payload
+        header.setSectionResizeMode(7, QHeaderView.Fixed)      # CVSS
+        header.setSectionResizeMode(8, QHeaderView.Fixed)      # Time
 
-        self.gui.results_table.setColumnWidth(0, 40)
-        self.gui.results_table.setColumnWidth(1, 80)
+        self.gui.results_table.setColumnWidth(0, 40)   # #
+        self.gui.results_table.setColumnWidth(1, 90)   # Severity
+        self.gui.results_table.setColumnWidth(7, 70)   # CVSS
+        self.gui.results_table.setColumnWidth(8, 80)   # Time
+        self.gui.results_table.setAlternatingRowColors(True)
+        self.gui.results_table.setRowHeight(0, 40)  # Default row height
 
         self.gui.results_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.gui.results_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -749,127 +808,228 @@ class ResultsTabBuilder:
         return container
 
     def _create_detail_panel(self):
-        """Create the detail panel for showing selected finding details"""
+        """Create the detail panel for showing selected finding details with ALL data"""
         container = QWidget()
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
 
         # Panel label
-        label = QLabel("Finding Details")
-        label.setStyleSheet("font-size: 14px; font-weight: bold; color: #333333; padding: 5px;")
+        label = QLabel("📋 Finding Details")
+        label.setStyleSheet("font-size: 16px; font-weight: bold; color: #1976D2; padding: 5px;")
         layout.addWidget(label)
 
-        # Scroll area for details
+        # Scroll area for details with dark theme
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("""
             QScrollArea {
-                background-color: #ffffff;
-                border: 1px solid #e0e0e0;
-                border-radius: 4px;
+                background-color: #f9fafb;
+                border: 2px solid #d1d5db;
+                border-radius: 8px;
+            }
+            QScrollBar:vertical {
+                background: #f9fafb;
+                width: 10px;
+            }
+            QScrollBar::handle:vertical {
+                background: #4a4a7a;
+                border-radius: 5px;
             }
         """)
 
-        # Detail content widget
+        # Detail content widget with dark theme
         self.gui.detail_content = QWidget()
+        self.gui.detail_content.setStyleSheet("background-color: #f9fafb;")
         detail_layout = QVBoxLayout(self.gui.detail_content)
-        detail_layout.setSpacing(10)
+        detail_layout.setSpacing(12)
+        detail_layout.setContentsMargins(15, 15, 15, 15)
 
         # Severity badge
-        self.gui.detail_severity = QLabel("No finding selected")
+        self.gui.detail_severity = QLabel("Select a finding to view details")
         self.gui.detail_severity.setAlignment(Qt.AlignCenter)
         self.gui.detail_severity.setStyleSheet("""
-            background-color: #f0f0f0;
-            color: #666666;
-            padding: 10px;
-            border-radius: 4px;
+            background-color: #d1d5db;
+            color: #6b7280;
+            padding: 15px;
+            border-radius: 8px;
             font-weight: bold;
+            font-size: 14px;
         """)
         detail_layout.addWidget(self.gui.detail_severity)
 
         # Title
         self.gui.detail_title = QLabel("")
-        self.gui.detail_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #333333;")
+        self.gui.detail_title.setStyleSheet("font-size: 16px; font-weight: bold; color: #f0f0f0;")
         self.gui.detail_title.setWordWrap(True)
         detail_layout.addWidget(self.gui.detail_title)
 
-        # Info section
-        info_group = QGroupBox("Information")
-        info_group.setStyleSheet("QGroupBox { font-weight: bold; color: #333333; }")
+        # === BASIC INFO SECTION ===
+        info_group = QGroupBox("📌 Basic Information")
+        info_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                color: #60a5fa;
+                border: 1px solid #d1d5db;
+                border-radius: 6px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+            }
+            QLabel { color: #1f2937; }
+        """)
         info_layout = QGridLayout(info_group)
+        info_layout.setSpacing(8)
 
-        info_layout.addWidget(QLabel("Module:"), 0, 0)
-        self.gui.detail_module = QLabel("-")
-        self.gui.detail_module.setStyleSheet("color: #333333;")
-        info_layout.addWidget(self.gui.detail_module, 0, 1)
+        # Labels with styling
+        label_style = "color: #6b7280; font-weight: bold;"
+        value_style = "color: #1f2937;"
 
-        info_layout.addWidget(QLabel("Target:"), 1, 0)
-        self.gui.detail_target = QLabel("-")
-        self.gui.detail_target.setStyleSheet("color: #333333;")
-        self.gui.detail_target.setWordWrap(True)
-        info_layout.addWidget(self.gui.detail_target, 1, 1)
+        for row_idx, (label_text, attr_name) in enumerate([
+            ("Module:", "detail_module"),
+            ("Target URL:", "detail_target"),
+            ("Parameter:", "detail_parameter"),
+            ("Time:", "detail_time"),
+        ]):
+            lbl = QLabel(label_text)
+            lbl.setStyleSheet(label_style)
+            info_layout.addWidget(lbl, row_idx, 0)
 
-        info_layout.addWidget(QLabel("Time:"), 2, 0)
-        self.gui.detail_time = QLabel("-")
-        self.gui.detail_time.setStyleSheet("color: #333333;")
-        info_layout.addWidget(self.gui.detail_time, 2, 1)
-
-        info_layout.addWidget(QLabel("CVSS:"), 3, 0)
-        self.gui.detail_cvss = QLabel("-")
-        self.gui.detail_cvss.setStyleSheet("color: #333333; font-weight: bold;")
-        info_layout.addWidget(self.gui.detail_cvss, 3, 1)
+            value_lbl = QLabel("-")
+            value_lbl.setStyleSheet(value_style)
+            value_lbl.setWordWrap(True)
+            value_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            setattr(self.gui, attr_name, value_lbl)
+            info_layout.addWidget(value_lbl, row_idx, 1)
 
         detail_layout.addWidget(info_group)
 
-        # References section
-        ref_group = QGroupBox("References")
-        ref_group.setStyleSheet("QGroupBox { font-weight: bold; color: #333333; }")
-        ref_layout = QVBoxLayout(ref_group)
+        # === CLASSIFICATION SECTION ===
+        class_group = QGroupBox("🏷️ Classification")
+        class_group.setStyleSheet(info_group.styleSheet().replace('#60a5fa', '#a78bfa'))
+        class_layout = QGridLayout(class_group)
+        class_layout.setSpacing(8)
 
-        self.gui.detail_cwe = QLabel("CWE: -")
-        self.gui.detail_cwe.setStyleSheet("color: #333333;")
-        ref_layout.addWidget(self.gui.detail_cwe)
+        for row_idx, (label_text, attr_name) in enumerate([
+            ("CVSS Score:", "detail_cvss"),
+            ("CWE:", "detail_cwe"),
+            ("OWASP:", "detail_owasp"),
+        ]):
+            lbl = QLabel(label_text)
+            lbl.setStyleSheet(label_style)
+            class_layout.addWidget(lbl, row_idx, 0)
 
-        self.gui.detail_owasp = QLabel("OWASP: -")
-        self.gui.detail_owasp.setStyleSheet("color: #333333;")
-        ref_layout.addWidget(self.gui.detail_owasp)
+            value_lbl = QLabel("-")
+            value_lbl.setStyleSheet("color: #fbbf24; font-weight: bold;")
+            value_lbl.setWordWrap(True)
+            setattr(self.gui, attr_name, value_lbl)
+            class_layout.addWidget(value_lbl, row_idx, 1)
 
-        detail_layout.addWidget(ref_group)
+        detail_layout.addWidget(class_group)
 
-        # Description section
-        desc_group = QGroupBox("Description")
-        desc_group.setStyleSheet("QGroupBox { font-weight: bold; color: #333333; }")
+        # === PAYLOAD SECTION ===
+        payload_group = QGroupBox("💉 Payload")
+        payload_group.setStyleSheet(info_group.styleSheet().replace('#60a5fa', '#f87171'))
+        payload_layout = QVBoxLayout(payload_group)
+
+        self.gui.detail_payload = QTextEdit()
+        self.gui.detail_payload.setReadOnly(True)
+        self.gui.detail_payload.setMaximumHeight(80)
+        self.gui.detail_payload.setFont(QFont("Consolas", 10))
+        self.gui.detail_payload.setStyleSheet("""
+            QTextEdit {
+                background-color: #e5e7eb;
+                border: 1px solid #4a4a7a;
+                border-radius: 4px;
+                color: #f87171;
+                padding: 8px;
+            }
+        """)
+        payload_layout.addWidget(self.gui.detail_payload)
+        detail_layout.addWidget(payload_group)
+
+        # === EVIDENCE SECTION ===
+        evidence_group = QGroupBox("🔍 Evidence")
+        evidence_group.setStyleSheet(info_group.styleSheet().replace('#60a5fa', '#22c55e'))
+        evidence_layout = QVBoxLayout(evidence_group)
+
+        self.gui.detail_evidence = QTextEdit()
+        self.gui.detail_evidence.setReadOnly(True)
+        self.gui.detail_evidence.setMaximumHeight(100)
+        self.gui.detail_evidence.setFont(QFont("Consolas", 9))
+        self.gui.detail_evidence.setStyleSheet("""
+            QTextEdit {
+                background-color: #e5e7eb;
+                border: 1px solid #4a4a7a;
+                border-radius: 4px;
+                color: #22c55e;
+                padding: 8px;
+            }
+        """)
+        evidence_layout.addWidget(self.gui.detail_evidence)
+        detail_layout.addWidget(evidence_group)
+
+        # === DESCRIPTION SECTION ===
+        desc_group = QGroupBox("📝 Description")
+        desc_group.setStyleSheet(info_group.styleSheet())
         desc_layout = QVBoxLayout(desc_group)
 
         self.gui.detail_description = QTextEdit()
         self.gui.detail_description.setReadOnly(True)
-        self.gui.detail_description.setMaximumHeight(100)
-        self.gui.detail_description.setFont(QFont("Consolas", 9))
+        self.gui.detail_description.setMaximumHeight(80)
+        self.gui.detail_description.setFont(QFont("Arial", 10))
         self.gui.detail_description.setStyleSheet("""
             QTextEdit {
-                background-color: #f8f9fa;
-                border: 1px solid #e0e0e0;
+                background-color: #e5e7eb;
+                border: 1px solid #4a4a7a;
                 border-radius: 4px;
-                color: #333333;
+                color: #1f2937;
+                padding: 8px;
             }
         """)
         desc_layout.addWidget(self.gui.detail_description)
-
         detail_layout.addWidget(desc_group)
 
+        # === REMEDIATION SECTION ===
+        remed_group = QGroupBox("🛡️ Remediation")
+        remed_group.setStyleSheet(info_group.styleSheet().replace('#60a5fa', '#fbbf24'))
+        remed_layout = QVBoxLayout(remed_group)
+
+        self.gui.detail_remediation = QTextEdit()
+        self.gui.detail_remediation.setReadOnly(True)
+        self.gui.detail_remediation.setMaximumHeight(80)
+        self.gui.detail_remediation.setFont(QFont("Arial", 10))
+        self.gui.detail_remediation.setStyleSheet("""
+            QTextEdit {
+                background-color: #e5e7eb;
+                border: 1px solid #4a4a7a;
+                border-radius: 4px;
+                color: #fbbf24;
+                padding: 8px;
+            }
+        """)
+        remed_layout.addWidget(self.gui.detail_remediation)
+        detail_layout.addWidget(remed_group)
+
         # View full details button
-        view_full_btn = QPushButton("View Full Details")
+        view_full_btn = QPushButton("🔎 View Full Details")
         view_full_btn.setStyleSheet("""
             QPushButton {
-                background-color: #2196F3;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #6366f1, stop:1 #8b5cf6);
                 color: white;
                 border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
+                border-radius: 8px;
+                padding: 12px 24px;
                 font-weight: bold;
+                font-size: 13px;
             }
             QPushButton:hover {
-                background-color: #1976D2;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #4f46e5, stop:1 #7c3aed);
             }
         """)
         view_full_btn.clicked.connect(self._show_full_details)
@@ -887,8 +1047,8 @@ class ResultsTabBuilder:
         export_frame = QFrame()
         export_frame.setStyleSheet("""
             QFrame {
-                background-color: #f8f9fa;
-                border: 1px solid #e0e0e0;
+                background-color: #ffffff;
+                border: 1px solid #d1d5db;
                 border-radius: 6px;
                 padding: 8px;
             }
@@ -1056,7 +1216,7 @@ class ResultsTabBuilder:
         self.gui.scan_output_search.setStyleSheet("""
             QLineEdit {
                 background-color: white;
-                border: 2px solid #e0e0e0;
+                border: 2px solid #1f2937;
                 border-radius: 6px;
                 padding: 6px 12px;
                 font-size: 11px;
@@ -1139,19 +1299,19 @@ class ResultsTabBuilder:
         self.gui.scan_output_table.setStyleSheet("""
             QTableWidget {
                 background-color: #ffffff;
-                color: #212121;
-                gridline-color: #e8e8e8;
-                border: 2px solid #e0e0e0;
+                color: #1f2937;
+                gridline-color: #d1d5db;
+                border: 2px solid #d1d5db;
                 border-radius: 6px;
             }
             QHeaderView::section {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #f5f5f5, stop:1 #e0e0e0);
-                color: #2196F3;
+                    stop:0 #e5e7eb, stop:1 #f3f4f6);
+                color: #6366f1;
                 padding: 8px;
                 border: none;
-                border-bottom: 2px solid #2196F3;
-                border-right: 1px solid #d0d0d0;
+                border-bottom: 2px solid #6366f1;
+                border-right: 1px solid #d1d5db;
                 font-weight: bold;
                 font-size: 10px;
             }
@@ -1160,14 +1320,14 @@ class ResultsTabBuilder:
             }
             QTableWidget::item {
                 padding: 6px;
-                border-bottom: 1px solid #f0f0f0;
+                border-bottom: 1px solid #e5e7eb;
             }
             QTableWidget::item:selected {
-                background-color: #e3f2fd;
-                color: #1976D2;
+                background-color: #d1d5db;
+                color: #ffffff;
             }
             QTableWidget::item:hover {
-                background-color: #f5f5f5;
+                background-color: #f3f4f6;
             }
         """)
 
@@ -1228,7 +1388,7 @@ class ResultsTabBuilder:
         self.gui.debug_search.setStyleSheet("""
             QLineEdit {
                 background-color: white;
-                border: 2px solid #e0e0e0;
+                border: 2px solid #1f2937;
                 border-radius: 6px;
                 padding: 6px 12px;
             }
@@ -1269,26 +1429,26 @@ class ResultsTabBuilder:
         self.gui.debug_table.setFont(QFont("Consolas", 9))
         self.gui.debug_table.setStyleSheet("""
             QTableWidget {
-                background-color: #fafafa;
-                color: #666666;
-                gridline-color: #e8e8e8;
-                border: 2px solid #e0e0e0;
+                background-color: #ffffff;
+                color: #6b7280;
+                gridline-color: #d1d5db;
+                border: 2px solid #d1d5db;
                 border-radius: 6px;
             }
             QHeaderView::section {
-                background: #f0f0f0;
-                color: #9E9E9E;
+                background: #f3f4f6;
+                color: #6366f1;
                 padding: 8px;
                 border: none;
-                border-bottom: 2px solid #9E9E9E;
+                border-bottom: 2px solid #6366f1;
                 font-weight: bold;
             }
             QTableWidget::item {
                 padding: 4px;
             }
             QTableWidget::item:selected {
-                background-color: #e0e0e0;
-                color: #666666;
+                background-color: #d1d5db;
+                color: #1f2937;
             }
         """)
 
@@ -1512,7 +1672,7 @@ class ResultsTabBuilder:
         self.gui.tree_search.setStyleSheet("""
             QLineEdit {
                 background-color: white;
-                border: 2px solid #e0e0e0;
+                border: 2px solid #1f2937;
                 border-radius: 6px;
                 padding: 6px 12px;
             }
@@ -1537,26 +1697,26 @@ class ResultsTabBuilder:
         self.gui.site_tree.setExpandsOnDoubleClick(True)
         self.gui.site_tree.setStyleSheet("""
             QTreeWidget {
-                background-color: #fafafa;
-                color: #333333;
-                border: 2px solid #e0e0e0;
+                background-color: #ffffff;
+                color: #1f2937;
+                border: 2px solid #d1d5db;
                 border-radius: 6px;
                 font-family: 'Consolas', 'Courier New', monospace;
                 font-size: 10pt;
             }
             QTreeWidget::item {
                 padding: 4px;
-                border-bottom: 1px solid #f0f0f0;
+                border-bottom: 1px solid #e5e7eb;
             }
             QTreeWidget::item:selected {
-                background-color: #e8f5e9;
-                color: #2E7D32;
+                background-color: #d1d5db;
+                color: #ffffff;
             }
             QTreeWidget::item:hover {
-                background-color: #f5f5f5;
+                background-color: #f3f4f6;
             }
             QHeaderView::section {
-                background-color: #4CAF50;
+                background-color: #6366f1;
                 color: white;
                 padding: 8px;
                 border: none;
@@ -1633,7 +1793,7 @@ class ResultsTabBuilder:
 
                 item.setText(0, f"{icon} {part}")
                 item.setText(1, item_type)
-                item.setForeground(0, QColor('#333333'))
+                item.setForeground(0, QColor('#1f2937'))
 
                 self.gui.site_tree_nodes[current_path] = item
                 self.gui.site_tree_data[current_path] = {'type': item_type.lower(), 'params': [], 'vulns': []}
@@ -1986,50 +2146,76 @@ class ResultsTabBuilder:
         self._show_full_details()
 
     def _on_selection_changed(self):
-        """Handle selection change to update detail panel"""
+        """Handle selection change to update detail panel with ALL data"""
         selected = self.gui.results_table.selectedItems()
         if not selected:
             return
 
         row = selected[0].row()
 
-        # Get finding data from row
+        # Get finding data from row (new column order: #, Severity, Module, Title, URL, Parameter, Payload, CVSS, Time)
         severity = self.gui.results_table.item(row, 1).text() if self.gui.results_table.item(row, 1) else "INFO"
         module = self.gui.results_table.item(row, 2).text() if self.gui.results_table.item(row, 2) else "-"
         title = self.gui.results_table.item(row, 3).text() if self.gui.results_table.item(row, 3) else "-"
         target = self.gui.results_table.item(row, 4).text() if self.gui.results_table.item(row, 4) else "-"
-        time = self.gui.results_table.item(row, 5).text() if self.gui.results_table.item(row, 5) else "-"
+        parameter = self.gui.results_table.item(row, 5).text() if self.gui.results_table.item(row, 5) else "-"
+        payload = self.gui.results_table.item(row, 6).text() if self.gui.results_table.item(row, 6) else "-"
+        cvss_display = self.gui.results_table.item(row, 7).text() if self.gui.results_table.item(row, 7) else "-"
+        time = self.gui.results_table.item(row, 8).text() if self.gui.results_table.item(row, 8) else "-"
 
-        # Update detail panel
-        self.gui.detail_severity.setText(severity)
+        # Update severity badge
+        self.gui.detail_severity.setText(f"⚠️  {severity}  ⚠️")
         color = SEVERITY_COLORS.get(severity.upper(), '#888888')
         self.gui.detail_severity.setStyleSheet(f"""
             background-color: {color};
             color: white;
-            padding: 10px;
-            border-radius: 4px;
+            padding: 15px;
+            border-radius: 8px;
             font-weight: bold;
-            font-size: 14px;
+            font-size: 16px;
         """)
 
+        # Update basic info
         self.gui.detail_title.setText(title)
         self.gui.detail_module.setText(module)
         self.gui.detail_target.setText(target)
+        if hasattr(self.gui, 'detail_parameter'):
+            self.gui.detail_parameter.setText(parameter)
         self.gui.detail_time.setText(time)
 
-        # Get stored finding data if available
+        # Get stored finding data for extended info
         finding_data = self.gui.results_table.item(row, 0).data(Qt.UserRole) if self.gui.results_table.item(row, 0) else {}
+        data = finding_data or {}
 
-        if finding_data:
-            self.gui.detail_cvss.setText(f"{finding_data.get('cvss', 0)}/10")
-            self.gui.detail_cwe.setText(f"CWE: {finding_data.get('cwe', 'N/A')}")
-            self.gui.detail_owasp.setText(f"OWASP: {finding_data.get('owasp', 'N/A')}")
-            self.gui.detail_description.setPlainText(finding_data.get('description', 'No description available'))
-        else:
-            self.gui.detail_cvss.setText("-")
-            self.gui.detail_cwe.setText("CWE: -")
-            self.gui.detail_owasp.setText("OWASP: -")
-            self.gui.detail_description.setPlainText(title)
+        # Classification
+        cvss = data.get('cvss', cvss_display)
+        cwe = data.get('cwe', 'N/A')
+        cwe_name = data.get('cwe_name', '')
+        owasp = data.get('owasp', 'N/A')
+        owasp_name = data.get('owasp_name', '')
+
+        self.gui.detail_cvss.setText(f"{cvss}/10" if cvss and cvss != '-' else "-")
+        self.gui.detail_cwe.setText(f"{cwe}" + (f" - {cwe_name}" if cwe_name else ""))
+        self.gui.detail_owasp.setText(f"{owasp}" + (f" - {owasp_name}" if owasp_name else ""))
+
+        # Payload - get from stored data (may be longer than displayed)
+        full_payload = data.get('payload', payload)
+        if hasattr(self.gui, 'detail_payload'):
+            self.gui.detail_payload.setPlainText(full_payload if full_payload else "No payload")
+
+        # Evidence
+        evidence = data.get('evidence', '')
+        if hasattr(self.gui, 'detail_evidence'):
+            self.gui.detail_evidence.setPlainText(evidence if evidence else "No evidence captured")
+
+        # Description
+        description = data.get('description', title)
+        self.gui.detail_description.setPlainText(description if description else "No description available")
+
+        # Remediation
+        remediation = data.get('remediation', '')
+        if hasattr(self.gui, 'detail_remediation'):
+            self.gui.detail_remediation.setPlainText(remediation if remediation else "No remediation advice available")
 
     def _show_context_menu(self, position):
         """Show context menu for results table"""
@@ -2228,80 +2414,389 @@ class ResultsTabBuilder:
             if sev in severity_counts:
                 severity_counts[sev] += 1
 
-        # Generate HTML
+        # Generate HTML with professional dark theme
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         html = f"""<!DOCTYPE html>
 <html>
 <head>
     <title>Dominator Live Report - {timestamp}</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body {{ font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }}
-        .header {{ background: #4CAF50; color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }}
-        .header h1 {{ margin: 0; }}
-        .stats {{ display: flex; gap: 15px; margin-bottom: 20px; }}
-        .stat-card {{ background: white; padding: 15px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; min-width: 100px; }}
-        .stat-card .number {{ font-size: 24px; font-weight: bold; }}
-        .stat-card.critical .number {{ color: #f44336; }}
-        .stat-card.high .number {{ color: #FF9800; }}
-        .stat-card.medium .number {{ color: #FFC107; }}
-        .stat-card.low .number {{ color: #4CAF50; }}
-        .finding {{ background: white; padding: 15px; margin-bottom: 10px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 4px solid #ccc; }}
-        .finding.critical {{ border-left-color: #f44336; }}
-        .finding.high {{ border-left-color: #FF9800; }}
-        .finding.medium {{ border-left-color: #FFC107; }}
-        .finding.low {{ border-left-color: #4CAF50; }}
-        .finding .title {{ font-weight: bold; margin-bottom: 5px; }}
-        .finding .meta {{ color: #666; font-size: 12px; }}
-        .live-badge {{ background: #00BCD4; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; }}
+        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+        body {{
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #ffffff 0%, #16213e 100%);
+            color: #1f2937;
+            min-height: 100vh;
+            padding: 30px;
+        }}
+        .container {{ max-width: 1400px; margin: 0 auto; }}
+
+        /* Header */
+        .header {{
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            padding: 30px;
+            border-radius: 16px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 40px rgba(99, 102, 241, 0.3);
+        }}
+        .header h1 {{
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }}
+        .header .subtitle {{
+            opacity: 0.9;
+            font-size: 1.1em;
+        }}
+        .live-badge {{
+            background: #22c55e;
+            color: white;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            animation: pulse 2s infinite;
+        }}
+        @keyframes pulse {{
+            0%, 100% {{ opacity: 1; }}
+            50% {{ opacity: 0.7; }}
+        }}
+
+        /* Stats Grid */
+        .stats {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }}
+        .stat-card {{
+            background: linear-gradient(135deg, #f3f4f6 0%, #1e1e35 100%);
+            padding: 25px;
+            border-radius: 12px;
+            text-align: center;
+            border: 1px solid #d1d5db;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }}
+        .stat-card:hover {{
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }}
+        .stat-card .number {{
+            font-size: 3em;
+            font-weight: bold;
+            line-height: 1;
+        }}
+        .stat-card .label {{
+            font-size: 0.9em;
+            opacity: 0.8;
+            margin-top: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }}
+        .stat-card.total .number {{ color: #60a5fa; }}
+        .stat-card.critical .number {{ color: #ef4444; }}
+        .stat-card.high .number {{ color: #f97316; }}
+        .stat-card.medium .number {{ color: #eab308; }}
+        .stat-card.low .number {{ color: #22c55e; }}
+        .stat-card.info .number {{ color: #3b82f6; }}
+
+        /* Findings Section */
+        .section-title {{
+            font-size: 1.5em;
+            margin: 30px 0 20px 0;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #6366f1;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }}
+
+        /* Finding Cards */
+        .finding {{
+            background: linear-gradient(135deg, #f3f4f6 0%, #1e1e35 100%);
+            padding: 20px;
+            margin-bottom: 15px;
+            border-radius: 12px;
+            border-left: 5px solid #d1d5db;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }}
+        .finding:hover {{
+            transform: translateX(5px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+        }}
+        .finding.critical {{ border-left-color: #ef4444; }}
+        .finding.high {{ border-left-color: #f97316; }}
+        .finding.medium {{ border-left-color: #eab308; }}
+        .finding.low {{ border-left-color: #22c55e; }}
+        .finding.info {{ border-left-color: #3b82f6; }}
+
+        .finding .title {{
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }}
+        .severity-badge {{
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 0.75em;
+            font-weight: bold;
+            text-transform: uppercase;
+        }}
+        .severity-badge.critical {{ background: #ef4444; color: white; }}
+        .severity-badge.high {{ background: #f97316; color: white; }}
+        .severity-badge.medium {{ background: #eab308; color: #000; }}
+        .severity-badge.low {{ background: #22c55e; color: white; }}
+        .severity-badge.info {{ background: #3b82f6; color: white; }}
+
+        .finding .meta {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            font-size: 0.9em;
+            opacity: 0.8;
+            margin-bottom: 15px;
+        }}
+        .finding .meta-item {{
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }}
+        .finding .meta a {{
+            color: #60a5fa;
+            text-decoration: none;
+        }}
+        .finding .meta a:hover {{ text-decoration: underline; }}
+
+        /* Details Grid */
+        .details-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }}
+        .detail-item {{
+            background: #ffffff;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #d1d5db;
+        }}
+        .detail-item .label {{
+            font-size: 0.8em;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }}
+        .detail-item .value {{
+            font-family: 'Consolas', 'Monaco', monospace;
+            word-break: break-all;
+        }}
+        .detail-item .value.param {{ color: #fbbf24; }}
+        .detail-item .value.payload {{ color: #f87171; }}
+        .detail-item .value.cvss {{ color: #22c55e; font-size: 1.3em; font-weight: bold; }}
+        .detail-item .value.cwe {{ color: #a78bfa; }}
+        .detail-item .value.owasp {{ color: #fb923c; }}
+
+        /* Collapsible Sections */
+        details {{
+            margin-top: 10px;
+            background: #ffffff;
+            border-radius: 8px;
+            border: 1px solid #d1d5db;
+        }}
+        summary {{
+            padding: 12px;
+            cursor: pointer;
+            font-weight: bold;
+            color: #60a5fa;
+            user-select: none;
+        }}
+        summary:hover {{ background: rgba(99, 102, 241, 0.1); border-radius: 8px 8px 0 0; }}
+        details[open] summary {{ border-bottom: 1px solid #d1d5db; }}
+
+        pre {{
+            background: #0f0f1a;
+            color: #aed581;
+            padding: 15px;
+            border-radius: 0 0 8px 8px;
+            overflow-x: auto;
+            font-size: 12px;
+            max-height: 300px;
+            margin: 0;
+        }}
+
+        /* Footer */
+        .footer {{
+            text-align: center;
+            margin-top: 50px;
+            padding: 20px;
+            opacity: 0.6;
+            font-size: 0.9em;
+        }}
+
+        /* Print Styles */
+        @media print {{
+            body {{ background: white; color: black; }}
+            .finding {{ page-break-inside: avoid; }}
+        }}
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>Dominator Scan Report <span class="live-badge">LIVE</span></h1>
-        <p>Generated: {timestamp}</p>
-        <p>Total Findings: {len(findings)}</p>
-    </div>
+    <div class="container">
+        <div class="header">
+            <h1>
+                <span>DOMINATOR</span>
+                <span class="live-badge">LIVE</span>
+            </h1>
+            <p class="subtitle">Web Vulnerability Scan Report - Generated: {timestamp}</p>
+        </div>
 
-    <div class="stats">
-        <div class="stat-card critical">
-            <div class="number">{severity_counts['CRITICAL']}</div>
-            <div>Critical</div>
+        <div class="stats">
+            <div class="stat-card total">
+                <div class="number">{len(findings)}</div>
+                <div class="label">Total Findings</div>
+            </div>
+            <div class="stat-card critical">
+                <div class="number">{severity_counts['CRITICAL']}</div>
+                <div class="label">Critical</div>
+            </div>
+            <div class="stat-card high">
+                <div class="number">{severity_counts['HIGH']}</div>
+                <div class="label">High</div>
+            </div>
+            <div class="stat-card medium">
+                <div class="number">{severity_counts['MEDIUM']}</div>
+                <div class="label">Medium</div>
+            </div>
+            <div class="stat-card low">
+                <div class="number">{severity_counts['LOW']}</div>
+                <div class="label">Low</div>
+            </div>
+            <div class="stat-card info">
+                <div class="number">{severity_counts['INFO']}</div>
+                <div class="label">Info</div>
+            </div>
         </div>
-        <div class="stat-card high">
-            <div class="number">{severity_counts['HIGH']}</div>
-            <div>High</div>
-        </div>
-        <div class="stat-card medium">
-            <div class="number">{severity_counts['MEDIUM']}</div>
-            <div>Medium</div>
-        </div>
-        <div class="stat-card low">
-            <div class="number">{severity_counts['LOW']}</div>
-            <div>Low</div>
-        </div>
-    </div>
 
-    <h2>Findings</h2>
+        <h2 class="section-title">Vulnerability Findings</h2>
 """
 
-        # Add findings
-        for f in findings:
-            sev = f.get('severity', '').lower()
-            html += f"""
-    <div class="finding {sev}">
-        <div class="title">[{f.get('severity', 'N/A')}] {f.get('title', 'N/A')}</div>
-        <div class="meta">
-            Module: {f.get('module', 'N/A')} |
-            Target: {f.get('target', 'N/A')} |
-            Time: {f.get('time', 'N/A')}
+        # Add findings with full details - grouped by severity
+        severity_order = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO']
+        for sev_level in severity_order:
+            sev_findings = [f for f in findings if f.get('severity', '').upper() == sev_level]
+            if not sev_findings:
+                continue
+
+            for f in sev_findings:
+                sev = f.get('severity', '').lower()
+
+                # Build details grid
+                details_html = '<div class="details-grid">'
+
+                if f.get('parameter'):
+                    details_html += f'''
+                    <div class="detail-item">
+                        <div class="label">Parameter</div>
+                        <div class="value param">{f.get('parameter')}</div>
+                    </div>'''
+
+                if f.get('payload'):
+                    payload = str(f.get('payload', ''))
+                    payload_display = payload[:100] + '...' if len(payload) > 100 else payload
+                    details_html += f'''
+                    <div class="detail-item">
+                        <div class="label">Payload</div>
+                        <div class="value payload" title="{payload}">{payload_display}</div>
+                    </div>'''
+
+                if f.get('cvss'):
+                    details_html += f'''
+                    <div class="detail-item">
+                        <div class="label">CVSS Score</div>
+                        <div class="value cvss">{f.get('cvss')}/10</div>
+                    </div>'''
+
+                if f.get('cwe'):
+                    cwe_name = f.get('cwe_name', '')
+                    details_html += f'''
+                    <div class="detail-item">
+                        <div class="label">CWE</div>
+                        <div class="value cwe">{f.get('cwe')}{' - ' + cwe_name if cwe_name else ''}</div>
+                    </div>'''
+
+                if f.get('owasp'):
+                    owasp_name = f.get('owasp_name', '')
+                    details_html += f'''
+                    <div class="detail-item">
+                        <div class="label">OWASP</div>
+                        <div class="value owasp">{f.get('owasp')}{' - ' + owasp_name if owasp_name else ''}</div>
+                    </div>'''
+
+                details_html += '</div>'
+
+                # Evidence section
+                if f.get('evidence'):
+                    evidence = str(f.get('evidence', ''))[:500]
+                    details_html += f'''
+                    <details>
+                        <summary>Evidence</summary>
+                        <pre>{evidence}</pre>
+                    </details>'''
+
+                # Request/Response
+                if f.get('request'):
+                    req = str(f.get('request', ''))[:1000]
+                    details_html += f'''
+                    <details>
+                        <summary>HTTP Request</summary>
+                        <pre>{req}</pre>
+                    </details>'''
+
+                if f.get('response'):
+                    resp = str(f.get('response', ''))[:1000]
+                    details_html += f'''
+                    <details>
+                        <summary>HTTP Response</summary>
+                        <pre>{resp}</pre>
+                    </details>'''
+
+                # Remediation
+                if f.get('remediation'):
+                    details_html += f'''
+                    <details>
+                        <summary>Remediation</summary>
+                        <pre style="color: #22c55e;">{f.get('remediation')}</pre>
+                    </details>'''
+
+                html += f'''
+        <div class="finding {sev}">
+            <div class="title">
+                <span class="severity-badge {sev}">{f.get('severity', 'N/A')}</span>
+                <span>{f.get('title', 'N/A')}</span>
+            </div>
+            <div class="meta">
+                <span class="meta-item"><strong>Module:</strong> {f.get('module', 'N/A')}</span>
+                <span class="meta-item"><strong>Target:</strong> <a href="{f.get('target', '#')}" target="_blank">{f.get('target', 'N/A')}</a></span>
+                <span class="meta-item"><strong>Time:</strong> {f.get('time', 'N/A')}</span>
+            </div>
+            {details_html}
         </div>
-    </div>
-"""
+'''
 
         html += """
-    <p style="color: #888; margin-top: 30px; text-align: center;">
-        Generated by Dominator Web Vulnerability Scanner
-    </p>
+        <div class="footer">
+            <p>Generated by Dominator Web Vulnerability Scanner</p>
+            <p>https://github.com/dominator-scanner</p>
+        </div>
+    </div>
 </body>
 </html>
 """
@@ -2349,17 +2844,21 @@ class ResultsTabBuilder:
         dialog.exec_()
 
     def _get_finding_from_row(self, row):
-        """Get finding data from a table row"""
+        """Get finding data from a table row (9-column structure)"""
+        # Columns: 0=#, 1=Severity, 2=Module, 3=Vulnerability, 4=URL, 5=Parameter, 6=Payload, 7=CVSS, 8=Time
         finding = {
             'id': self.gui.results_table.item(row, 0).text() if self.gui.results_table.item(row, 0) else "",
             'severity': self.gui.results_table.item(row, 1).text() if self.gui.results_table.item(row, 1) else "",
             'module': self.gui.results_table.item(row, 2).text() if self.gui.results_table.item(row, 2) else "",
             'title': self.gui.results_table.item(row, 3).text() if self.gui.results_table.item(row, 3) else "",
             'target': self.gui.results_table.item(row, 4).text() if self.gui.results_table.item(row, 4) else "",
-            'time': self.gui.results_table.item(row, 5).text() if self.gui.results_table.item(row, 5) else "",
+            'parameter': self.gui.results_table.item(row, 5).text() if self.gui.results_table.item(row, 5) else "",
+            'payload': self.gui.results_table.item(row, 6).text() if self.gui.results_table.item(row, 6) else "",
+            'cvss': self.gui.results_table.item(row, 7).text() if self.gui.results_table.item(row, 7) else "",
+            'time': self.gui.results_table.item(row, 8).text() if self.gui.results_table.item(row, 8) else "",
         }
 
-        # Add stored data if available
+        # Add stored data if available (contains full payload, evidence, CWE, OWASP, etc.)
         stored_data = self.gui.results_table.item(row, 0).data(Qt.UserRole) if self.gui.results_table.item(row, 0) else {}
         if stored_data:
             finding.update(stored_data)
@@ -2585,7 +3084,7 @@ class ResultsTabBuilder:
 # Helper function to add a finding to the results table (to be called from results_handler)
 def add_finding_to_table(gui, severity, description, module="", target="", finding_data=None):
     """
-    Add a finding to the results table
+    Add a finding to the results table with ALL data
 
     Args:
         gui: The main GUI instance
@@ -2593,45 +3092,107 @@ def add_finding_to_table(gui, severity, description, module="", target="", findi
         description: Finding title/description
         module: Module that found the vulnerability
         target: Target URL
-        finding_data: Additional finding data (dict with cvss, cwe, owasp, etc.)
+        finding_data: Additional finding data (dict with cvss, cwe, owasp, parameter, payload, etc.)
     """
     if not hasattr(gui, 'results_table'):
         return
 
     row = gui.results_table.rowCount()
     gui.results_table.insertRow(row)
+    gui.results_table.setRowHeight(row, 36)
 
-    # Row number
+    # Extract data from finding_data
+    data = finding_data or {}
+    parameter = data.get('parameter', '')
+    payload = data.get('payload', '')
+    cvss = data.get('cvss', '')
+    evidence = data.get('evidence', '')
+
+    # Truncate long values for display
+    if len(payload) > 50:
+        payload_display = payload[:47] + "..."
+    else:
+        payload_display = payload
+
+    if len(target) > 60:
+        target_display = target[:57] + "..."
+    else:
+        target_display = target
+
+    # Column 0: Row number
     num_item = QTableWidgetItem(str(row + 1))
     num_item.setTextAlignment(Qt.AlignCenter)
-    if finding_data:
-        num_item.setData(Qt.UserRole, finding_data)
+    num_item.setData(Qt.UserRole, finding_data)  # Store full data
     gui.results_table.setItem(row, 0, num_item)
 
-    # Severity with color
-    severity_item = QTableWidgetItem(severity.upper())
+    # Column 1: Severity with colored background
+    severity_upper = severity.upper()
+    severity_item = QTableWidgetItem(severity_upper)
     severity_item.setTextAlignment(Qt.AlignCenter)
-    color = SEVERITY_COLORS.get(severity.upper(), '#888888')
-    severity_item.setForeground(QColor(color))
-    severity_item.setFont(QFont("Arial", 9, QFont.Bold))
+    color = SEVERITY_COLORS.get(severity_upper, '#888888')
+    severity_item.setForeground(QColor('#ffffff'))
+    severity_item.setBackground(QColor(color))
+    severity_item.setFont(QFont("Arial", 10, QFont.Bold))
     gui.results_table.setItem(row, 1, severity_item)
 
-    # Module
+    # Column 2: Module
     module_item = QTableWidgetItem(module)
+    module_item.setForeground(QColor('#a78bfa'))  # Purple for modules
     gui.results_table.setItem(row, 2, module_item)
 
-    # Title
+    # Column 3: Vulnerability Title
     title_item = QTableWidgetItem(description)
+    title_item.setFont(QFont("Arial", 10))
+    title_item.setForeground(QColor('#f0f0f0'))
     gui.results_table.setItem(row, 3, title_item)
 
-    # Target
-    target_item = QTableWidgetItem(target)
+    # Column 4: URL/Target
+    target_item = QTableWidgetItem(target_display)
+    target_item.setToolTip(target)  # Full URL on hover
+    target_item.setForeground(QColor('#60a5fa'))  # Blue for URLs
     gui.results_table.setItem(row, 4, target_item)
 
-    # Time
+    # Column 5: Parameter
+    param_item = QTableWidgetItem(parameter)
+    param_item.setForeground(QColor('#fbbf24'))  # Yellow for params
+    param_item.setFont(QFont("Consolas", 10))
+    gui.results_table.setItem(row, 5, param_item)
+
+    # Column 6: Payload
+    payload_item = QTableWidgetItem(payload_display)
+    payload_item.setToolTip(payload)  # Full payload on hover
+    payload_item.setForeground(QColor('#f87171'))  # Red for payloads
+    payload_item.setFont(QFont("Consolas", 9))
+    gui.results_table.setItem(row, 6, payload_item)
+
+    # Column 7: CVSS Score
+    cvss_item = QTableWidgetItem(str(cvss) if cvss else "-")
+    cvss_item.setTextAlignment(Qt.AlignCenter)
+    cvss_item.setFont(QFont("Arial", 10, QFont.Bold))
+    # Color CVSS based on score
+    try:
+        cvss_val = float(cvss) if cvss else 0
+        if cvss_val >= 9.0:
+            cvss_item.setForeground(QColor('#ef4444'))  # Critical red
+        elif cvss_val >= 7.0:
+            cvss_item.setForeground(QColor('#f97316'))  # High orange
+        elif cvss_val >= 4.0:
+            cvss_item.setForeground(QColor('#eab308'))  # Medium yellow
+        else:
+            cvss_item.setForeground(QColor('#22c55e'))  # Low green
+    except:
+        cvss_item.setForeground(QColor('#888888'))
+    gui.results_table.setItem(row, 7, cvss_item)
+
+    # Column 8: Time
     time_item = QTableWidgetItem(datetime.now().strftime("%H:%M:%S"))
     time_item.setTextAlignment(Qt.AlignCenter)
-    gui.results_table.setItem(row, 5, time_item)
+    time_item.setForeground(QColor('#6b7280'))
+    gui.results_table.setItem(row, 8, time_item)
+
+    # Update findings count
+    if hasattr(gui, 'findings_count_label'):
+        gui.findings_count_label.setText(f"({gui.results_table.rowCount()})")
 
     # Update filters
     if hasattr(gui, 'module_filter') and module:

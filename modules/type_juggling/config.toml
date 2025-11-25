@@ -1,0 +1,15 @@
+# Module Configuration (TOML format)
+
+name = "PHP Type Juggling Scanner"
+description = "Detects PHP type juggling vulnerabilities using magic hashes and loose comparison bypasses"
+author = "Dominator Team"
+version = "1.0"
+category = "authentication"
+severity = "High"
+enabled = true
+passive = false
+cwe = "CWE-1024"
+owasp = "A07:2021"
+cvss = 8.1
+tags = ["php", "type-juggling", "magic-hash", "authentication-bypass", "loose-comparison"]
+references = ["https://owasp.org/www-pdf-archive/PHPMagicTricks-TypeJuggling.pdf", "https://github.com/swisskyrepo/PayloadsAllTheThings/blob/master/Type%20Juggling/README.md"]

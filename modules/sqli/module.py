@@ -20,12 +20,24 @@ logger = get_logger(__name__)
 class SQLiModule(BaseModule):
     """Improved SQL Injection scanner module"""
 
-    def __init__(self, module_path: str, payload_limit: int = None):
+    def __init__(self, module_path: str, payload_limit: int = None, waf_mode: bool = False):
         """Initialize SQLi module"""
         super().__init__(module_path, payload_limit=payload_limit)
 
         # Load error patterns from TXT file (instead of hardcoding!)
         self.error_patterns = self._load_txt_file("error_patterns.txt")
+
+        # WAF bypass mode
+        self.waf_mode = waf_mode
+        self.waf_bypass_payloads = []
+
+        if self.waf_mode:
+            try:
+                from utils.waf_bypass import WAFBypass
+                self.waf_bypass_payloads = WAFBypass.get_sqli_bypass_payloads()
+                logger.info(f"WAF bypass mode enabled: {len(self.waf_bypass_payloads)} bypass payloads loaded")
+            except ImportError:
+                logger.warning("WAF bypass module not found, using standard payloads")
 
         logger.info(f"SQLi module loaded: {len(self.payloads)} payloads, "
                    f"{len(self.error_patterns)} error patterns")
@@ -67,8 +79,15 @@ class SQLiModule(BaseModule):
                 # CRITICAL FIX: Get baseline response FIRST (without SQL payload)
                 baseline_text = self._get_baseline_response(url, params, method, http_client)
 
+                # Get payloads - include WAF bypass payloads if enabled
+                all_payloads = list(self.get_limited_payloads())
+                if self.waf_mode and self.waf_bypass_payloads:
+                    # Add WAF bypass payloads (prioritized at the end)
+                    all_payloads.extend(self.waf_bypass_payloads)
+                    logger.debug(f"Using {len(all_payloads)} payloads (including WAF bypass)")
+
                 # Try payloads (limited)
-                for payload in self.get_limited_payloads():  # Limit to 50 for better detection
+                for payload in all_payloads:
                     test_params = params.copy()
                     test_params[param_name] = payload
 
@@ -671,6 +690,6 @@ class SQLiModule(BaseModule):
         return results
 
 
-def get_module(module_path: str, payload_limit: int = None):
-    """Create module instance"""
-    return SQLiModule(module_path, payload_limit=payload_limit)
+def get_module(module_path: str, payload_limit: int = None, waf_mode: bool = False):
+    """Create module instance with optional WAF bypass mode"""
+    return SQLiModule(module_path, payload_limit=payload_limit, waf_mode=waf_mode)

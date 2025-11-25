@@ -1,0 +1,16 @@
+# Module Configuration (TOML format)
+
+enabled = true
+name = "Weak Credentials Scanner"
+description = "Detects weak passwords and authentication bypass vulnerabilities"
+severity = "Critical"
+cwe = "CWE-521"
+owasp = "A07:2021"
+cvss = "9.8"
+max_attempts = 200
+timeout = 10
+cwe_name = "Weak Password Requirements"
+owasp_name = "Identification and Authentication Failures"
+cvss_vector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+remediation = "Implement strong password policies with minimum length requirements (12+ characters), complexity rules (uppercase, lowercase, numbers, special characters), account lockout after failed attempts, multi-factor authentication (MFA), and regular password rotation. Never use default or weak credentials in production systems."
+test_direct_urls = true

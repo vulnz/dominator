@@ -1,6 +1,6 @@
 # Dominator Web Vulnerability Scanner
 
-🔥 **Advanced web vulnerability scanner** with 17+ detection modules, intelligent passive scanning, and OOB (Out-of-Band) detection capabilities.
+🔥 **Advanced web vulnerability scanner** with 50+ detection modules, intelligent passive scanning, API security testing, and OOB (Out-of-Band) detection capabilities.
 
 [![GitHub stars](https://img.shields.io/github/stars/vulnz/dominator?style=social)](https://github.com/vulnz/dominator)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -67,6 +67,27 @@ Dual OOB infrastructure for detecting **blind vulnerabilities**:
 - **TXT** - Plain text reports
 - **Multi-Target Scanning** - Consolidated reports for multiple targets
 
+### 🔌 **API Security Testing (NEW)**
+Comprehensive REST API vulnerability scanning with support for multiple specification formats:
+
+**Supported Formats:**
+- **OpenAPI/Swagger 2.0 & 3.x** (JSON/YAML)
+- **Postman Collection v2.1**
+- **HAR (HTTP Archive)**
+- **WADL (Web Application Description Language)**
+- **RAML (RESTful API Modeling Language)**
+- **GraphQL Introspection Schema**
+- **API Blueprint**
+
+**API Security Modules (OWASP API Top 10):**
+- **API BOLA/IDOR** - Broken Object Level Authorization (API1:2023)
+- **Mass Assignment** - Unauthorized field modification (API6:2023)
+- **Excessive Data Exposure** - Sensitive data in responses (API3:2023)
+- **Rate Limiting** - Missing/weak rate limits (API4:2023)
+- **JWT Analysis** - Token vulnerabilities, weak secrets
+- **GraphQL Security** - Introspection, DoS, batch abuse
+- **CORS Misconfiguration** - Cross-origin policy issues
+
 ---
 
 ## 📖 Usage
@@ -99,6 +120,39 @@ python main.py -t example.com -m env_secrets --threads 10
 
 # Git exposure scanning
 python main.py -t example.com -m git --auto-report
+```
+
+### API Testing Examples
+```bash
+# Scan API from OpenAPI/Swagger spec (local file)
+python main.py --api swagger.json -apim --auto-report
+
+# Scan API from remote OpenAPI URL
+python main.py --api https://api.example.com/openapi.json -apim
+
+# Scan with Bearer token authentication (shortcut)
+python main.py --api openapi.yaml --api-auth-token "your-jwt-token" -apim
+
+# Scan with custom API key header (using standard -H flag)
+python main.py --api api-spec.json -H "X-API-Key: abc123" -apim
+
+# Auto-discover API spec from target
+python main.py -t https://api.example.com --api-discover -apim
+
+# Scan Postman collection
+python main.py --api collection.postman_collection.json -apim
+
+# Scan HAR file (recorded requests)
+python main.py --api requests.har -apim
+
+# Override base URL for API endpoints
+python main.py --api swagger.json --api-base-url https://staging.example.com -apim
+
+# Use all modules (web + API) on API spec
+python main.py --api openapi.json --api-full --auto-report
+
+# Interactive wizard for API testing
+python main.py --wizard
 ```
 
 ### Parameters
@@ -152,9 +206,54 @@ python main.py -t example.com -m git --auto-report
 | `--auto-report` | Auto-generate report after scan | False |
 | `--format` | Report format (html/txt/json/xml) | html |
 
+#### API Testing Options
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `--api, --api-spec` | API specification file or URL | - |
+| `--api-format` | Format: auto/openapi/swagger/postman/har/wadl/raml/graphql/blueprint | auto |
+| `--api-base-url` | Override base URL for API endpoints | - |
+| `--api-discover` | Auto-discover API spec from target | False |
+| `--api-auth-token` | Bearer token (shortcut for -H "Authorization: Bearer ...") | - |
+| `-apim, --api-modules` | **Use API-specific security modules only** | False |
+| `--api-full` | Use all modules including API-specific ones | False |
+
+**Note:** For custom headers/auth, use the standard `-H "Header: Value"` flag. The `--api-auth-token` is a convenience shortcut for Bearer tokens only.
+
 ---
 
-## 🔥 ROTATION 9 - Maximum Flexibility (Latest)
+## 🔥 ROTATION 10 - API Security Testing (Latest)
+
+This release adds **comprehensive API security testing** capabilities:
+
+### ✅ Universal API Specification Parser
+- **8 Format Support**: OpenAPI 2.0/3.x, Postman, HAR, WADL, RAML, GraphQL, API Blueprint
+- **Auto-Detection**: Automatically identifies specification format
+- **Remote Loading**: Fetch specs from URLs or local files
+- **Auto-Discovery**: Checks `/swagger.json`, `/openapi.json`, `/api-docs` endpoints
+
+### ✅ OWASP API Top 10 Security Modules
+- **API BOLA/IDOR (API1:2023)** - Tests object-level authorization
+- **Mass Assignment (API6:2023)** - Detects unprotected field binding
+- **Excessive Data Exposure (API3:2023)** - Finds sensitive data leaks
+- **Rate Limiting (API4:2023)** - Tests for missing rate limits
+- **JWT Analysis** - Algorithm confusion, weak secrets, missing expiration
+- **GraphQL Security** - Introspection, DoS, batch query abuse
+- **CORS Misconfiguration** - Permissive cross-origin policies
+
+### ✅ GUI Integration
+- **New "API Testing" Tab** - Dedicated interface for API security testing
+- **Multiple Source Types**: File, URL, Paste Content, Auto-Discover
+- **Authentication Support**: Bearer Token, API Key, Basic Auth, OAuth 2.0
+- **Endpoint Browser**: View and select parsed endpoints before scanning
+
+### ✅ CLI Improvements
+- **`-apim` Flag** - Run only API-specific modules (9 modules)
+- **`--api-full` Flag** - Combine web + API modules
+- **`--api-discover` Flag** - Auto-find API specs at common paths
+
+---
+
+## 🔥 ROTATION 9 - Maximum Flexibility
 
 This release adds **comprehensive scanner control and customization** requested by users:
 
@@ -309,6 +408,31 @@ modules/
 │   ├── config.json        # Module configuration
 │   ├── payloads.txt       # Attack payloads
 │   └── patterns/          # Detection patterns (optional)
+│
+├── api_bola/              # API BOLA/IDOR testing
+├── api_mass_assignment/   # Mass assignment detection
+├── api_excessive_data/    # Sensitive data exposure
+├── api_rate_limit/        # Rate limiting tests
+├── api_security/          # General API security
+├── jwt_analysis/          # JWT vulnerability analysis
+├── graphql/               # GraphQL security
+└── cors/                  # CORS misconfiguration
+```
+
+### API Parser
+```
+utils/
+├── api_parser.py          # Universal API specification parser
+│   ├── APIEndpoint        # Endpoint data class
+│   ├── APIParser          # Main parser class
+│   │   ├── _parse_openapi()    # OpenAPI/Swagger
+│   │   ├── _parse_postman()    # Postman Collection
+│   │   ├── _parse_har()        # HAR files
+│   │   ├── _parse_wadl()       # WADL
+│   │   ├── _parse_raml()       # RAML
+│   │   ├── _parse_graphql()    # GraphQL Schema
+│   │   └── _parse_blueprint()  # API Blueprint
+│   └── fetch_swagger_url()     # Auto-discovery helper
 ```
 
 ### Passive Detectors
@@ -376,8 +500,10 @@ Contributions welcome! Areas of focus:
 1. **Boolean-Based Blind SQLi** detection (TIER 1 priority)
 2. **Blind XSS with OOB** integration (infrastructure exists!)
 3. **SSL/TLS passive detector**
-4. Moving hardcoded patterns to config files
-5. Additional payload coverage
+4. **API Security Enhancements** - Additional OWASP API Top 10 checks
+5. **GraphQL mutations testing** - State-changing operation detection
+6. Moving hardcoded patterns to config files
+7. Additional payload coverage
 
 ---
 

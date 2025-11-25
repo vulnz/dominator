@@ -1,0 +1,12 @@
+# Module Configuration (TOML format)
+
+enabled = true
+name = "XPath Injection Scanner"
+description = "Detects XPath injection vulnerabilities"
+severity = "High"
+cwe = "CWE-643"
+owasp = "A03:2021"
+cvss = "8.5"
+cwe_name = "Improper Neutralization of Data within XPath Expressions ('XPath Injection')"
+owasp_name = "Injection"
+cvss_vector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N"

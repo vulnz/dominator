@@ -1,0 +1,12 @@
+# Module Configuration (TOML format)
+
+name = "Package Files Scanner"
+description = "Discovers exposed package manager files (package.json, requirements.txt, composer.json, pom.xml, Dockerfile)"
+author = "Dominator Team"
+version = "1.0"
+category = "Discovery"
+severity = "Medium"
+cwe = "CWE-200"
+owasp = "A01:2021"
+tags = ["package", "npm", "pip", "composer", "maven", "docker", "info-disclosure"]
+references = ["https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/05-Review_Webpage_Content_for_Information_Leakage"]

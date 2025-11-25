@@ -1,0 +1,12 @@
+# Module Configuration (TOML format)
+
+name = "Tabnabbing Scanner"
+description = "Detects reverse tabnabbing vulnerabilities in links with target=_blank"
+author = "Dominator Team"
+version = "1.0"
+category = "Client-Side"
+severity = "Medium"
+cwe = "CWE-1022"
+owasp = "A05:2021"
+tags = ["tabnabbing", "phishing", "client-side", "links"]
+references = ["https://owasp.org/www-community/attacks/Reverse_Tabnabbing", "https://cheatsheetseries.owasp.org/cheatsheets/HTML5_Security_Cheat_Sheet.html#tabnabbing"]

@@ -1,0 +1,20 @@
+{
+    "name": "API BOLA/IDOR Scanner",
+    "description": "Detects Broken Object Level Authorization (BOLA) vulnerabilities in REST APIs",
+    "version": "1.0",
+    "author": "Dominator Team",
+    "category": "API Testing",
+    "severity": "critical",
+    "cwe": "CWE-639",
+    "owasp": "API1:2023",
+    "cvss": "9.1",
+    "enabled": true,
+    "passive": false,
+    "api_only": true,
+    "tags": ["api", "bola", "idor", "authorization", "access-control", "owasp-api-top10"],
+    "references": [
+        "https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/",
+        "https://portswigger.net/web-security/access-control/idor",
+        "https://cwe.mitre.org/data/definitions/639.html"
+    ]
+}

@@ -108,10 +108,10 @@ NOSQL_API:{"$ne":null}
 NOSQL_API:{"$gt":""}
 NOSQL_API:{"$regex":".*"}
 
-# XSS in API responses
-XSS_API:<script>alert(1)</script>
-XSS_API:"><script>alert(1)</script>
-XSS_API:javascript:alert(1)
+# XSS in API responses - using DMNTR unique marker for strong detection
+XSS_API:<script>alert('DMNTR')</script>
+XSS_API:"><script>alert('DMNTR')</script>
+XSS_API:javascript:alert('DMNTR')
 
 # Path traversal in API
 PATH_TRAV:../../../etc/passwd

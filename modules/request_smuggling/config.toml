@@ -1,0 +1,12 @@
+# Module Configuration (TOML format)
+
+name = "Request Smuggling Scanner"
+description = "Detects HTTP Request Smuggling vulnerabilities (CL.TE, TE.CL, TE.TE)"
+author = "Dominator Team"
+version = "1.0"
+category = "Protocol"
+severity = "Critical"
+cwe = "CWE-444"
+owasp = "A05:2021"
+tags = ["http", "smuggling", "desync", "cl-te", "te-cl"]
+references = ["https://portswigger.net/research/http-desync-attacks-request-smuggling-reborn", "https://github.com/swisskyrepo/PayloadsAllTheThings/tree/master/Request%20Smuggling"]

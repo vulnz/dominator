@@ -1,0 +1,13 @@
+# Module Configuration (TOML format)
+
+name = "LFI Scanner"
+description = "Local File Inclusion vulnerability detection with multi-stage validation"
+severity = "High"
+enabled = true
+timeout = 20
+cwe = "CWE-22"
+cwe_name = "Improper Limitation of a Pathname to a Restricted Directory"
+owasp = "A03:2021"
+owasp_name = "Injection"
+cvss = "7.5"
+cvss_vector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"

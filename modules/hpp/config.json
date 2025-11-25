@@ -1,0 +1,15 @@
+{
+    "name": "HPP Scanner",
+    "description": "Detects HTTP Parameter Pollution vulnerabilities with strong proof",
+    "author": "Dominator Team",
+    "version": "1.0",
+    "category": "Injection",
+    "severity": "Medium",
+    "cwe": "CWE-235",
+    "owasp": "A03:2021",
+    "tags": ["hpp", "parameter-pollution", "waf-bypass", "injection"],
+    "references": [
+        "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/04-Testing_for_HTTP_Parameter_Pollution",
+        "https://github.com/swisskyrepo/PayloadsAllTheThings/tree/master/HTTP%20Parameter%20Pollution"
+    ]
+}

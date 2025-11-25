@@ -49,23 +49,38 @@ class RFIModule(BaseModule):
 
         logger.info(f"Starting RFI scan on {len(targets)} targets")
 
-        # RFI-prone parameter names
+        # RFI-prone parameter names (expanded list)
         rfi_param_names = [
+            # File/path related
             'file', 'page', 'include', 'path', 'template', 'document',
             'folder', 'dir', 'style', 'pdf', 'doc', 'load', 'read',
-            'filename', 'filepath', 'url', 'feed', 'lang', 'language'
+            'filename', 'filepath', 'url', 'feed', 'lang', 'language',
+            # Additional common params
+            'src', 'source', 'href', 'location', 'uri', 'view', 'display',
+            'content', 'module', 'mod', 'plugin', 'theme', 'skin', 'layout',
+            'tpl', 'wrapper', 'base', 'root', 'conf', 'config', 'setting',
+            'cat', 'category', 'action', 'type', 'data', 'show', 'resource',
+            # PHP specific
+            'require', 'inc', 'class', 'func', 'lib', 'redir', 'redirect',
+            # Common vulnerable params from real applications
+            'p', 'f', 't', 's', 'q', 'id', 'name', 'val', 'value', 'input'
         ]
 
         for target in targets:
             url = target.get('url')
             params = target.get('params', {})
 
-            # Only test parameters that might be file includes
+            if not params:
+                continue
+
+            # Test RFI-prone parameters first
             rfi_params = {k: v for k, v in params.items()
                          if any(name in k.lower() for name in rfi_param_names)}
 
+            # If no obvious RFI params, test all params with basic RFI payloads
             if not rfi_params:
-                continue
+                # Test all params but with reduced payloads
+                rfi_params = params
 
             for param_name in rfi_params.keys():
                 try:

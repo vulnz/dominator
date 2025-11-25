@@ -1,0 +1,12 @@
+# Module Configuration (TOML format)
+
+name = "IIS Config Scanner"
+description = "Discovers exposed IIS configuration files and Windows-specific misconfigurations"
+author = "Dominator Team"
+version = "1.0"
+category = "Discovery"
+severity = "varies"
+cwe = "CWE-16"
+owasp = "A05:2021"
+tags = ["iis", "web.config", "asp.net", "windows", "info-disclosure"]
+references = ["https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/", "https://docs.microsoft.com/en-us/iis/configuration/system.webserver/"]

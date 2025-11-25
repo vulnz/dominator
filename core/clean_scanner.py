@@ -54,7 +54,8 @@ class ModularScanner:
 
         # Load modules dynamically
         payload_limit = getattr(config, 'payload_limit', None)
-        self.module_loader = ModuleLoader(payload_limit=payload_limit)
+        waf_mode = getattr(config, 'waf', False) or getattr(config, 'waf_mode', False)
+        self.module_loader = ModuleLoader(payload_limit=payload_limit, waf_mode=waf_mode)
         self.modules = []
 
         # Thread-safe result collection
@@ -263,6 +264,12 @@ class ModularScanner:
         """
         from urllib.parse import urlparse
         discovered = []
+
+        # API Mode - use pre-parsed endpoints from API spec directly
+        if hasattr(self.config, 'api_mode') and self.config.api_mode:
+            logger.info(f"[API MODE] Using {len(self.config.api_targets)} pre-parsed API endpoints")
+            # API targets are already in the correct format (dict with url, method, params, headers)
+            return self.config.api_targets
 
         # Get target domain for scope checking
         target_parsed = urlparse(target)

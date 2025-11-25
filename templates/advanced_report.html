@@ -1,0 +1,2572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dominator Security Scan Report</title>
+    <link rel="icon" type="image/x-icon" id="dynamic-favicon">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem 0;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            font-weight: 300;
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+            transition: transform 0.3s ease;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .stat-card .icon {
+            font-size: 2.5rem;
+            margin-bottom: 15px;
+        }
+        
+        .stat-card.critical .icon { color: #8b0000; }
+        .stat-card.high .icon { color: #e74c3c; }
+        .stat-card.medium .icon { color: #f39c12; }
+        .stat-card.low .icon { color: #3498db; }
+        .stat-card.info .icon { color: #2ecc71; }
+        
+        .executive-summary {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            margin: 30px 0;
+            overflow: hidden;
+        }
+        
+        .summary-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .summary-header h2 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+        
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 0;
+        }
+        
+        .summary-card {
+            padding: 30px;
+            border-right: 1px solid #e9ecef;
+            min-height: 250px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .summary-card:last-child {
+            border-right: none;
+        }
+        
+        .summary-content {
+            text-align: center;
+            width: 100%;
+        }
+        
+        .summary-content h3 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.3rem;
+        }
+        
+        .risk-meter {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            background: conic-gradient(from 0deg, #2ecc71 0deg 90deg, #f39c12 90deg 180deg, #e74c3c 180deg 270deg, #8b0000 270deg 360deg);
+        }
+        
+        .risk-level {
+            width: 80px;
+            height: 80px;
+            background: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+        
+        .chart-container {
+            width: 200px;
+            height: 200px;
+            margin: 0 auto;
+            position: relative;
+        }
+        
+        .severity-critical { background: #8b0000; color: white; }
+        .severity-high { background: #fee; color: #c53030; }
+        .severity-medium { background: #fff3cd; color: #b45309; }
+        .severity-low { background: #e3f2fd; color: #1565c0; }
+        .severity-info { background: #e8f5e8; color: #2d7d32; }
+        
+        .stat-card h3 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        
+        .stat-card p {
+            color: #666;
+            font-size: 0.9rem;
+        }
+        
+        .filters {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin: 20px 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: center;
+        }
+        
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .filter-group label {
+            font-weight: 500;
+            color: #555;
+        }
+        
+        .filter-select, .filter-input {
+            padding: 8px 12px;
+            border: 2px solid #e1e8ed;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+        }
+        
+        .filter-select:focus, .filter-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .vulnerabilities {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .vuln-header {
+            background: #f8f9fa;
+            padding: 20px;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .vuln-header h2 {
+            color: #333;
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .vuln-item {
+            border-bottom: 1px solid #e9ecef;
+            transition: background-color 0.3s ease;
+        }
+        
+        .vuln-item:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .vuln-summary {
+            padding: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .vuln-info {
+            flex: 1;
+        }
+        
+        .vuln-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #333;
+        }
+        
+        .vuln-meta {
+            display: flex;
+            gap: 15px;
+            font-size: 0.9rem;
+            color: #666;
+        }
+        
+        .severity-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .severity-high { background: #fee; color: #c53030; }
+        .severity-medium { background: #fff3cd; color: #b45309; }
+        .severity-low { background: #e3f2fd; color: #1565c0; }
+        .severity-info { background: #e8f5e8; color: #2d7d32; }
+        
+        .vuln-details {
+            display: none;
+            padding: 0 20px 20px;
+            background: #f8f9fa;
+        }
+        
+        .vuln-details.active {
+            display: block;
+        }
+        
+        .detail-section {
+            margin-bottom: 20px;
+        }
+        
+        .detail-section h4 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+        }
+        
+        .detail-content {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            line-height: 1.4;
+            overflow-x: auto;
+        }
+        
+        .screenshot {
+            max-width: 100%;
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin: 10px 0;
+        }
+        
+        .tech-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .tech-item {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        
+        .tech-item .tech-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .tech-item .tech-version {
+            color: #666;
+            font-size: 0.9rem;
+        }
+        
+        .expand-icon {
+            transition: transform 0.3s ease;
+        }
+        
+        .expand-icon.rotated {
+            transform: rotate(180deg);
+        }
+        
+        .no-results {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        
+        .footer {
+            background: #333;
+            color: white;
+            text-align: center;
+            padding: 20px 0;
+            margin-top: 40px;
+        }
+        
+        /* Scope Section Styles */
+        .scope-section {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 15px;
+            padding: 25px;
+            margin: 25px 0;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .scope-header {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .scope-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        
+        .scope-item {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #28a745;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .scope-label {
+            font-weight: bold;
+            color: #28a745;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+        
+        .target-badge, .module-badge, .tech-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            margin: 3px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+        
+        .target-badge {
+            background: linear-gradient(135deg, #007bff, #0056b3);
+            color: white;
+        }
+        
+        .module-badge {
+            background: linear-gradient(135deg, #28a745, #1e7e34);
+            color: white;
+        }
+        
+        .tech-badge {
+            background: linear-gradient(135deg, #17a2b8, #138496);
+            color: white;
+        }
+        
+        .target-badge:hover, .module-badge:hover, .tech-badge:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        /* File Tree Styles */
+        .filetree-section {
+            background: #2d3748;
+            color: #e2e8f0;
+            border-radius: 15px;
+            padding: 25px;
+            margin: 25px 0;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        
+        .filetree-header {
+            background: linear-gradient(135deg, #4a5568, #2d3748);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .file-tree {
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            line-height: 1.6;
+        }
+        
+        .tree-level {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .tree-item {
+            margin: 3px 0;
+            padding: 2px 0;
+            transition: background-color 0.3s ease;
+        }
+        
+        .tree-item:hover {
+            background-color: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            padding-left: 5px;
+        }
+        
+        .folder-icon {
+            color: #ffd700;
+            margin-right: 8px;
+        }
+        
+        .file-icon {
+            color: #87ceeb;
+            margin-right: 8px;
+        }
+        
+        /* CVE and Exploit Link Styles */
+        .cve-link, .exploit-link, .method-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            margin: 2px 4px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 0.9em;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+        
+        .method-get {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+        }
+        
+        .method-post {
+            background: linear-gradient(135deg, #007bff, #0056b3);
+            color: white;
+        }
+        
+        .method-put {
+            background: linear-gradient(135deg, #ffc107, #e0a800);
+            color: black;
+        }
+        
+        .method-delete {
+            background: linear-gradient(135deg, #dc3545, #c82333);
+            color: white;
+        }
+        
+        .method-patch {
+            background: linear-gradient(135deg, #6f42c1, #5a32a3);
+            color: white;
+        }
+        
+        .method-unknown {
+            background: linear-gradient(135deg, #6c757d, #545b62);
+            color: white;
+        }
+        
+        .cve-link {
+            background: linear-gradient(135deg, #007bff, #0056b3);
+            color: white;
+        }
+        
+        .cve-link:hover {
+            background: linear-gradient(135deg, #0056b3, #004085);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,123,255,0.3);
+            border-color: #007bff;
+        }
+        
+        .exploit-link {
+            background: linear-gradient(135deg, #dc3545, #c82333);
+            color: white;
+        }
+        
+        .exploit-link:hover {
+            background: linear-gradient(135deg, #c82333, #a71e2a);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(220,53,69,0.3);
+            border-color: #dc3545;
+        }
+        
+        .cve-info, .exploit-info {
+            color: #6c757d;
+            font-size: 0.85em;
+            margin-left: 5px;
+        }
+        
+        /* Found Resources Styles */
+        .found-resources {
+            padding: 20px;
+        }
+        
+        .resources-summary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .resources-summary h3 {
+            margin-bottom: 15px;
+            font-size: 1.3rem;
+        }
+        
+        .summary-stats {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+        }
+        
+        .summary-stats span {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-weight: 500;
+        }
+        
+        .resources-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+        }
+        
+        .resource-category {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .category-header {
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+        }
+        
+        .category-header.severity-critical {
+            background: linear-gradient(135deg, #8b0000, #a00000);
+            color: white;
+        }
+        
+        .category-header.severity-high {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: white;
+        }
+        
+        .category-header.severity-medium {
+            background: linear-gradient(135deg, #f39c12, #e67e22);
+            color: white;
+        }
+        
+        .category-header.severity-low {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+        }
+        
+        .category-header.severity-info {
+            background: linear-gradient(135deg, #2ecc71, #27ae60);
+            color: white;
+        }
+        
+        .resource-count {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 0.9rem;
+        }
+        
+        .category-resources {
+            padding: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .resource-item {
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            border-left: 4px solid #ddd;
+            background: #f8f9fa;
+            transition: all 0.3s ease;
+        }
+        
+        .resource-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .resource-item.severity-critical {
+            border-left-color: #8b0000;
+            background: #fff5f5;
+        }
+        
+        .resource-item.severity-high {
+            border-left-color: #e74c3c;
+            background: #fef5f5;
+        }
+        
+        .resource-item.severity-medium {
+            border-left-color: #f39c12;
+            background: #fffbf0;
+        }
+        
+        .resource-item.severity-low {
+            border-left-color: #3498db;
+            background: #f0f8ff;
+        }
+        
+        .resource-item.severity-info {
+            border-left-color: #2ecc71;
+            background: #f0fff4;
+        }
+        
+        .resource-item.show-more {
+            border-left-color: #95a5a6;
+            background: #ecf0f1;
+            font-style: italic;
+            text-align: center;
+        }
+        
+        .resource-value {
+            font-family: 'Courier New', monospace;
+            font-weight: 600;
+            margin-bottom: 8px;
+            word-break: break-all;
+        }
+        
+        .resource-details {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        
+        .resource-type {
+            font-weight: 500;
+            color: #555;
+        }
+        
+        .resource-severity {
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .resource-context {
+            font-size: 0.85rem;
+            color: #666;
+            font-style: italic;
+            margin-top: 5px;
+        }
+        
+        /* Screenshot Thumbnail Styles */
+        .screenshot-thumbnail {
+            max-width: 200px;
+            height: auto;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .screenshot-thumbnail:hover {
+            transform: scale(1.05);
+            border-color: #007bff;
+            box-shadow: 0 4px 15px rgba(0,123,255,0.3);
+        }
+        
+        .screenshot-caption {
+            font-size: 0.8em;
+            color: #6c757d;
+            margin-top: 8px;
+            text-align: center;
+            font-style: italic;
+        }
+        
+        .passive-indicator {
+            background: linear-gradient(135deg, #17a2b8, #138496);
+            color: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+        
+        /* Passive vulnerability styling */
+        #passive-vulnerabilities .vuln-header {
+            background: linear-gradient(135deg, #17a2b8, #138496);
+        }
+
+        #passive-vulnerabilities .vuln-item {
+            border-left: 4px solid #17a2b8;
+        }
+
+        #passive-vulnerabilities .vuln-item:hover {
+            background-color: #f0f9ff;
+        }
+
+        /* Steps to Reproduce Styles */
+        .steps-list {
+            counter-reset: step-counter;
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .steps-list li {
+            counter-increment: step-counter;
+            position: relative;
+            padding: 12px 15px 12px 50px;
+            margin: 8px 0;
+            background: linear-gradient(135deg, #f8f9fa, #ffffff);
+            border-radius: 8px;
+            border-left: 3px solid #667eea;
+            transition: all 0.3s ease;
+        }
+
+        .steps-list li:hover {
+            transform: translateX(5px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .steps-list li::before {
+            content: counter(step-counter);
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 28px;
+            height: 28px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.85rem;
+        }
+
+        /* Recommendations Styles */
+        .recommendations-box {
+            background: linear-gradient(135deg, #d4edda, #c3e6cb);
+            border-radius: 10px;
+            padding: 15px;
+            border-left: 4px solid #28a745;
+        }
+
+        .recommendations-box ul {
+            margin: 10px 0 0 0;
+            padding-left: 20px;
+        }
+
+        .recommendations-box li {
+            margin: 8px 0;
+            color: #155724;
+        }
+
+        .recommendations-box .rec-title {
+            font-weight: bold;
+            color: #155724;
+            font-size: 1.05rem;
+            margin-bottom: 10px;
+        }
+
+        /* Detection Highlight Styles */
+        .detection-highlight {
+            background: linear-gradient(135deg, #fff3cd, #ffeeba);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: bold;
+            color: #856404;
+            border: 1px solid #ffc107;
+        }
+
+        .response-box {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .response-box .highlight-match {
+            background: #ffc107;
+            color: #000;
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+
+        .http-request-box {
+            background: #2d2d2d;
+            color: #9cdcfe;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .http-request-box .http-method {
+            color: #569cd6;
+            font-weight: bold;
+        }
+
+        .http-request-box .http-header {
+            color: #ce9178;
+        }
+
+        .http-request-box .http-value {
+            color: #d4d4d4;
+        }
+
+        .http-request-box .payload-marker {
+            background: #e74c3c;
+            color: white;
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+
+        @media (max-width: 768px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+            
+            .filters {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .vuln-meta {
+                flex-direction: column;
+                gap: 5px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <h1><i class="fas fa-shield-alt"></i> Dominator Security Report</h1>
+            <p>Comprehensive Web Application Security Assessment</p>
+        </div>
+    </div>
+    
+    <div class="container">
+        <!-- Executive Summary -->
+        <div class="executive-summary">
+            <div class="summary-header">
+                <h2><i class="fas fa-chart-pie"></i> Executive Summary</h2>
+                <p>Comprehensive security assessment results and risk analysis</p>
+            </div>
+            
+            <div class="summary-grid">
+                <div class="summary-card">
+                    <div class="summary-content">
+                        <h3>Security Posture</h3>
+                        <div class="risk-meter">
+                            <div class="risk-level" id="risk-level">
+                                <span class="risk-text" id="risk-text">Calculating...</span>
+                            </div>
+                        </div>
+                        <p id="risk-description">Analyzing security findings...</p>
+                    </div>
+                </div>
+                
+                <div class="summary-card">
+                    <div class="summary-content">
+                        <h3>Vulnerability Distribution</h3>
+                        <div class="chart-container">
+                            <canvas id="severityChart" width="200" height="200"></canvas>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="summary-card">
+                    <div class="summary-content">
+                        <h3>Testing Coverage</h3>
+                        <div class="chart-container">
+                            <canvas id="payloadChart" width="200" height="200"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dashboard Stats -->
+        <div class="dashboard">
+            <div class="stat-card critical">
+                <div class="icon"><i class="fas fa-skull-crossbones"></i></div>
+                <h3 id="critical-count">0</h3>
+                <p>Critical Severity</p>
+            </div>
+            <div class="stat-card high">
+                <div class="icon"><i class="fas fa-exclamation-triangle"></i></div>
+                <h3 id="high-count">0</h3>
+                <p>High Severity</p>
+            </div>
+            <div class="stat-card medium">
+                <div class="icon"><i class="fas fa-exclamation-circle"></i></div>
+                <h3 id="medium-count">0</h3>
+                <p>Medium Severity</p>
+            </div>
+            <div class="stat-card low">
+                <div class="icon"><i class="fas fa-info-circle"></i></div>
+                <h3 id="low-count">0</h3>
+                <p>Low Severity</p>
+            </div>
+            <div class="stat-card info">
+                <div class="icon"><i class="fas fa-cog"></i></div>
+                <h3 id="info-count">0</h3>
+                <p>Informational</p>
+            </div>
+        </div>
+        
+        <!-- Scan Information -->
+        <div class="stat-card" style="margin-bottom: 20px;">
+            <h3>Scan Summary</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-top: 15px; text-align: left;">
+                <div><strong>Duration:</strong> <span id="scan-duration">-</span></div>
+                <div><strong>URLs Tested:</strong> <span id="urls-tested">-</span></div>
+                <div><strong>Parameters:</strong> <span id="params-tested">-</span></div>
+                <div><strong>Requests:</strong> <span id="requests-made">-</span></div>
+                <div><strong>CVSS Score:</strong> <span id="max-cvss">-</span></div>
+                <div><strong>OWASP Top 10:</strong> <span id="owasp-categories">-</span></div>
+            </div>
+        </div>
+        
+        <!-- Technology Detection -->
+        <div id="tech-section" class="vulnerabilities" style="margin-bottom: 20px; display: none;">
+            <div class="vuln-header">
+                <h2><i class="fas fa-microchip"></i> Detected Technologies</h2>
+            </div>
+            <div class="tech-grid" id="tech-grid">
+                <!-- Technologies will be populated here -->
+            </div>
+        </div>
+        
+        <!-- Filters -->
+        <div class="filters">
+            <div class="filter-group">
+                <label for="severity-filter">Severity:</label>
+                <select id="severity-filter" class="filter-select">
+                    <option value="">All Severities</option>
+                    <option value="Critical">Critical</option>
+                    <option value="High">High</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Low">Low</option>
+                    <option value="Info">Info</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="module-filter">Module:</label>
+                <select id="module-filter" class="filter-select">
+                    <option value="">All Modules</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="search-filter">Search:</label>
+                <input type="text" id="search-filter" class="filter-input" placeholder="Search vulnerabilities...">
+            </div>
+        </div>
+        
+        <!-- Site Structure Section -->
+        <div id="site-structure-section" class="vulnerabilities" style="margin-bottom: 20px;">
+            <div class="vuln-header">
+                <h2><i class="fas fa-sitemap"></i> Site Structure</h2>
+                <p>Discovered files, directories, and parameters during scanning</p>
+            </div>
+            <div id="site-structure-content">
+                <!-- Site structure will be populated here -->
+            </div>
+        </div>
+        
+        <!-- Found Resources Section -->
+        <div id="found-resources-section" class="vulnerabilities" style="margin-bottom: 20px;">
+            <div class="vuln-header">
+                <h2><i class="fas fa-search"></i> Found Resources</h2>
+                <p>Sensitive information and resources discovered during passive analysis</p>
+            </div>
+            <div id="found-resources-content">
+                <!-- Found resources will be populated here -->
+            </div>
+        </div>
+        
+        <!-- Active Vulnerabilities List -->
+        <div class="vulnerabilities" id="active-vulnerabilities">
+            <div class="vuln-header">
+                <h2><i class="fas fa-bug"></i> Active Vulnerabilities Found</h2>
+                <p>Vulnerabilities found through active testing and payload injection</p>
+            </div>
+            <div id="active-vulnerabilities-list">
+                <!-- Active vulnerabilities will be populated here -->
+            </div>
+        </div>
+        
+        <!-- Passive Vulnerabilities List -->
+        <div class="vulnerabilities" id="passive-vulnerabilities" style="margin-top: 20px;">
+            <div class="vuln-header" style="background: linear-gradient(135deg, #17a2b8, #138496);">
+                <h2><i class="fas fa-eye"></i> Passive Vulnerabilities Found</h2>
+                <p>Vulnerabilities found through passive analysis of responses and headers</p>
+            </div>
+            <div id="passive-vulnerabilities-list">
+                <!-- Passive vulnerabilities will be populated here -->
+            </div>
+        </div>
+    </div>
+    
+    <div class="footer">
+        <div class="container">
+            <p>&copy; 2025 Dominator Web Security Scanner. Generated on <span id="report-date"></span></p>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // Report data will be injected here
+        let reportData;
+        try {
+            reportData = {report_data};
+        } catch (e) {
+            console.error('Error parsing report data:', e);
+            reportData = {
+                vulnerabilities: [],
+                scan_stats: {},
+                filetree_enabled: false,
+                benchmark_analysis: null
+            };
+        }
+        
+        // Initialize report
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeReport();
+        });
+        
+        function initializeReport() {
+            console.log('Initializing report...');
+            console.log('Report data:', reportData);
+            console.log('Vulnerabilities count:', reportData.vulnerabilities ? reportData.vulnerabilities.length : 'undefined');
+            
+            try {
+                // Set favicon from target
+                setDynamicFavicon();
+                
+                // Generate scope section
+                generateScopeSection();
+                
+                // Generate benchmark analysis if available
+                if (reportData.benchmark_analysis) {
+                    generateBenchmarkSection();
+                }
+                
+                // Generate file tree if enabled
+                if (reportData.filetree_enabled && reportData.scan_stats && reportData.scan_stats.file_tree_paths) {
+                    generateFileTreeSection();
+                }
+                
+                populateStats();
+                populateTechnologies();
+                populateVulnerabilities();
+                populateSiteStructure();
+                populateFoundResources();
+                setupFilters();
+                setupEventListeners();
+            
+                // Set report date
+                document.getElementById('report-date').textContent = new Date().toLocaleString();
+            
+                console.log('Report initialization completed successfully');
+            } catch (error) {
+                console.error('Error during report initialization:', error);
+                // Show error message to user
+                document.body.innerHTML = `
+                    <div style="padding: 50px; text-align: center; font-family: Arial, sans-serif;">
+                        <h1 style="color: #e74c3c;">Report Loading Error</h1>
+                        <p>There was an error loading the security report. Please check the console for details.</p>
+                        <p style="color: #666; font-size: 0.9em;">Error: ${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+        
+        function setDynamicFavicon() {
+            const vulnerabilities = reportData.vulnerabilities || [];
+            if (vulnerabilities.length > 0) {
+                const firstTarget = vulnerabilities[0].target;
+                if (firstTarget) {
+                    try {
+                        const url = new URL(firstTarget);
+                        const faviconUrl = `${url.protocol}//${url.host}/favicon.ico`;
+                        document.getElementById('dynamic-favicon').href = faviconUrl;
+                    } catch (e) {
+                        console.log('Could not set dynamic favicon:', e);
+                    }
+                }
+            }
+        }
+        
+        function generateScopeSection() {
+            const vulnerabilities = reportData.vulnerabilities || [];
+            const scanStats = reportData.scan_stats || {};
+            
+            // Extract unique targets
+            const targets = new Set();
+            vulnerabilities.forEach(vuln => {
+                if (vuln.target) {
+                    try {
+                        const url = new URL(vuln.target);
+                        targets.add(`${url.protocol}//${url.host}`);
+                    } catch (e) {
+                        targets.add(vuln.target);
+                    }
+                }
+            });
+            
+            // Get modules and technologies
+            const modules = Object.keys(scanStats.module_stats || {});
+            const technologies = scanStats.technologies || {};
+            const allTechs = new Set();
+            Object.values(technologies).forEach(domainTechs => {
+                if (Array.isArray(domainTechs)) {
+                    domainTechs.forEach(tech => allTechs.add(tech));
+                }
+            });
+            
+            let scopeHtml = `
+                <div class="scope-section">
+                    <div class="scope-header">
+                        <h2><i class="fas fa-crosshairs"></i> Scan Scope</h2>
+                        <p>Overview of targets, modules, and technologies analyzed</p>
+                    </div>
+                    <div class="scope-grid">
+            `;
+            
+            // Targets
+            if (targets.size > 0) {
+                scopeHtml += `
+                    <div class="scope-item">
+                        <div class="scope-label"><i class="fas fa-globe"></i> Target Domains (${targets.size})</div>
+                        <div class="scope-value">
+                `;
+                Array.from(targets).sort().forEach(target => {
+                    scopeHtml += `<span class="target-badge">${target}</span>`;
+                });
+                scopeHtml += `</div></div>`;
+            }
+            
+            // Modules
+            if (modules.length > 0) {
+                scopeHtml += `
+                    <div class="scope-item">
+                        <div class="scope-label"><i class="fas fa-cogs"></i> Security Modules (${modules.length})</div>
+                        <div class="scope-value">
+                `;
+                modules.sort().forEach(module => {
+                    scopeHtml += `<span class="module-badge">${module.toUpperCase()}</span>`;
+                });
+                scopeHtml += `</div></div>`;
+            }
+            
+            // Technologies
+            if (allTechs.size > 0) {
+                scopeHtml += `
+                    <div class="scope-item">
+                        <div class="scope-label"><i class="fas fa-microchip"></i> Technologies Detected (${allTechs.size})</div>
+                        <div class="scope-value">
+                `;
+                Array.from(allTechs).sort().forEach(tech => {
+                    scopeHtml += `<span class="tech-badge">${tech}</span>`;
+                });
+                scopeHtml += `</div></div>`;
+            }
+            
+            scopeHtml += `</div></div>`;
+            
+            // Insert before dashboard
+            const dashboard = document.querySelector('.dashboard');
+            if (dashboard) {
+                dashboard.insertAdjacentHTML('beforebegin', scopeHtml);
+            }
+        }
+        
+        function generateBenchmarkSection() {
+            const benchmarkData = reportData.benchmark_analysis;
+            if (!benchmarkData || !benchmarkData.summary) {
+                console.log('No benchmark data or summary available');
+                return;
+            }
+            
+            console.log('Generating benchmark section...');
+            
+            const summary = benchmarkData.summary || {};
+            const byCategory = benchmarkData.by_category || {};
+            
+            let benchmarkHtml = `
+                <div class="executive-summary" style="margin: 25px 0;">
+                    <div class="summary-header" style="background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);">
+                        <h2><i class="fas fa-chart-line"></i> TestPHP.VulnWeb.com Benchmark Analysis</h2>
+                        <p>Эффективность сканера по сравнению с известными уязвимостями</p>
+                    </div>
+                    <div class="summary-grid">
+                        <div class="summary-card">
+                            <div class="summary-content">
+                                <h3>Общая эффективность</h3>
+                                <div class="risk-meter">
+                                    <div class="risk-level">
+                                        <span style="font-size: 1.2rem; font-weight: bold;">${(summary.detection_rate || 0).toFixed(1)}%</span>
+                                    </div>
+                                </div>
+                                <p>Коэффициент обнаружения</p>
+                                <div style="margin-top: 15px; font-size: 0.9rem;">
+                                    <div>Найдено: ${summary.total_found_vulnerabilities || 0}</div>
+                                    <div>Известно: ${summary.total_known_vulnerabilities || 0}</div>
+                                    <div>Ложных: ${(benchmarkData.false_positives || []).length}</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="summary-card">
+                            <div class="summary-content">
+                                <h3>Результаты по категориям</h3>
+                                <div style="text-align: left;">
+            `;
+            
+            // Добавляем результаты по категориям
+            for (const [category, data] of Object.entries(byCategory)) {
+                if (data.total_known > 0) {
+                    const rate = data.detection_rate || 0;
+                    const color = rate >= 80 ? '#2ecc71' : rate >= 60 ? '#f39c12' : rate >= 40 ? '#e67e22' : '#e74c3c';
+                    
+                    benchmarkHtml += `
+                        <div style="margin: 8px 0; display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-weight: 500;">${category.toUpperCase()}:</span>
+                            <span style="color: ${color}; font-weight: bold;">${rate.toFixed(1)}%</span>
+                        </div>
+                        <div style="background: #f0f0f0; height: 4px; border-radius: 2px; margin: 4px 0;">
+                            <div style="background: ${color}; height: 100%; width: ${rate}%; border-radius: 2px;"></div>
+                        </div>
+                    `;
+                }
+            }
+            
+            benchmarkHtml += `
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="summary-card">
+                            <div class="summary-content">
+                                <h3>Качество результатов</h3>
+                                <div class="chart-container">
+                                    <canvas id="benchmarkChart" width="200" height="200"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Вставляем после scope section
+            const scopeSection = document.querySelector('.scope-section');
+            if (scopeSection) {
+                scopeSection.insertAdjacentHTML('afterend', benchmarkHtml);
+            } else {
+                // Fallback: вставляем перед dashboard
+                const dashboard = document.querySelector('.dashboard');
+                if (dashboard) {
+                    dashboard.insertAdjacentHTML('beforebegin', benchmarkHtml);
+                }
+            }
+            
+            // Создаем график бенчмарка
+            setTimeout(() => createBenchmarkChart(benchmarkData), 100);
+        }
+        
+        function createBenchmarkChart(benchmarkData) {
+            const ctx = document.getElementById('benchmarkChart');
+            if (!ctx) return;
+            
+            const summary = benchmarkData.summary || {};
+            const correctlyIdentified = (benchmarkData.correctly_identified || []).length;
+            const missed = (benchmarkData.missed_vulnerabilities || []).length;
+            const falsePositives = (benchmarkData.false_positives || []).length;
+            
+            new Chart(ctx.getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Правильно найдено', 'Пропущено', 'Ложные срабатывания'],
+                    datasets: [{
+                        data: [correctlyIdentified, missed, falsePositives],
+                        backgroundColor: ['#2ecc71', '#e74c3c', '#f39c12'],
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 10,
+                                usePointStyle: true,
+                                font: {
+                                    size: 10
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label;
+                                    const value = context.parsed;
+                                    const total = correctlyIdentified + missed + falsePositives;
+                                    const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        function generateFileTreeSection() {
+            const scanStats = reportData.scan_stats || {};
+            const filePaths = scanStats.file_tree_paths || [];
+            
+            console.log('Generating file tree section...');
+            console.log('File paths:', filePaths);
+            
+            if (filePaths.length === 0) {
+                console.log('No file paths found for tree generation');
+                return;
+            }
+            
+            // Build tree structure
+            const tree = {};
+            filePaths.forEach(path => {
+                console.log('Processing path:', path);
+                const parts = path.split('/').filter(part => part);
+                let current = tree;
+                parts.forEach((part, index) => {
+                    if (!current[part]) {
+                        current[part] = {};
+                    }
+                    current = current[part];
+                });
+            });
+            
+            console.log('Built tree structure:', tree);
+            
+            if (Object.keys(tree).length > 0) {
+                let filetreeHtml = `
+                    <div class="filetree-section">
+                        <div class="filetree-header">
+                            <h2><i class="fas fa-folder-tree"></i> Discovered File Structure</h2>
+                            <p>Files and directories found during scanning (${filePaths.length} paths discovered)</p>
+                        </div>
+                        <div class="file-tree">
+                            <div class="tree-root">
+                                <div class="tree-item root-item">
+                                    <span class="folder-icon"><i class="fas fa-globe"></i></span>
+                                    <strong>Website Root</strong>
+                                </div>
+                                ${generateTreeHtml(tree, 1)}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                console.log('Generated file tree HTML');
+                
+                // Insert after dashboard but before vulnerabilities
+                const dashboard = document.querySelector('.dashboard');
+                if (dashboard) {
+                    dashboard.insertAdjacentHTML('afterend', filetreeHtml);
+                    console.log('Inserted file tree section after dashboard');
+                } else {
+                    // Fallback: insert before vulnerabilities
+                    const vulnSection = document.querySelector('.vulnerabilities');
+                    if (vulnSection) {
+                        vulnSection.insertAdjacentHTML('beforebegin', filetreeHtml);
+                        console.log('Inserted file tree section before vulnerabilities');
+                    }
+                }
+            }
+        }
+        
+        function generateTreeHtml(tree, level) {
+            let html = '<ul class="tree-level">';
+            const entries = Object.entries(tree).sort((a, b) => {
+                // Sort folders first, then files
+                const aIsFolder = Object.keys(a[1]).length > 0;
+                const bIsFolder = Object.keys(b[1]).length > 0;
+                if (aIsFolder && !bIsFolder) return -1;
+                if (!aIsFolder && bIsFolder) return 1;
+                return a[0].localeCompare(b[0]);
+            });
+            
+            entries.forEach(([name, subtree]) => {
+                const indent = level * 20;
+                const isFolder = Object.keys(subtree).length > 0;
+                
+                html += `<li class="tree-item" style="margin-left: ${indent}px;">`;
+                
+                if (isFolder) {
+                    html += `<span class="folder-icon"><i class="fas fa-folder"></i></span><strong>${name}/</strong>`;
+                    html += generateTreeHtml(subtree, level + 1);
+                } else {
+                    // Determine file type icon
+                    let fileIcon = 'fas fa-file';
+                    const extension = name.split('.').pop().toLowerCase();
+                    switch (extension) {
+                        case 'php':
+                            fileIcon = 'fab fa-php';
+                            break;
+                        case 'html':
+                        case 'htm':
+                            fileIcon = 'fab fa-html5';
+                            break;
+                        case 'js':
+                            fileIcon = 'fab fa-js-square';
+                            break;
+                        case 'css':
+                            fileIcon = 'fab fa-css3-alt';
+                            break;
+                        case 'jpg':
+                        case 'jpeg':
+                        case 'png':
+                        case 'gif':
+                            fileIcon = 'fas fa-image';
+                            break;
+                        case 'pdf':
+                            fileIcon = 'fas fa-file-pdf';
+                            break;
+                        case 'txt':
+                            fileIcon = 'fas fa-file-alt';
+                            break;
+                        case 'xml':
+                            fileIcon = 'fas fa-file-code';
+                            break;
+                    }
+                    html += `<span class="file-icon"><i class="${fileIcon}"></i></span>${name}`;
+                }
+                
+                html += '</li>';
+            });
+            
+            html += '</ul>';
+            return html;
+        }
+        
+        function populateStats() {
+            const stats = reportData.scan_stats || {};
+            const vulnerabilities = reportData.vulnerabilities || [];
+            
+            // Count by severity
+            const counts = {
+                critical: vulnerabilities.filter(v => v.severity === 'Critical').length,
+                high: vulnerabilities.filter(v => v.severity === 'High').length,
+                medium: vulnerabilities.filter(v => v.severity === 'Medium').length,
+                low: vulnerabilities.filter(v => v.severity === 'Low').length,
+                info: vulnerabilities.filter(v => v.severity === 'Info').length
+            };
+            
+            document.getElementById('critical-count').textContent = counts.critical;
+            document.getElementById('high-count').textContent = counts.high;
+            document.getElementById('medium-count').textContent = counts.medium;
+            document.getElementById('low-count').textContent = counts.low;
+            document.getElementById('info-count').textContent = counts.info;
+            
+            // Update risk assessment
+            updateRiskAssessment(counts);
+            
+            // Create charts
+            createSeverityChart(counts);
+            createPayloadChart(stats);
+            
+            // Scan stats
+            document.getElementById('scan-duration').textContent = stats.scan_duration || '-';
+            document.getElementById('urls-tested').textContent = stats.total_urls || '-';
+            document.getElementById('params-tested').textContent = stats.total_params || '-';
+            document.getElementById('requests-made').textContent = stats.total_requests || '-';
+            
+            // Calculate max CVSS and OWASP categories
+            let maxCvss = 0;
+            let owaspCategories = new Set();
+            
+            vulnerabilities.forEach(v => {
+                if (v.cvss) {
+                    maxCvss = Math.max(maxCvss, parseFloat(v.cvss) || 0);
+                }
+                if (v.owasp) {
+                    owaspCategories.add(v.owasp);
+                }
+            });
+            
+            document.getElementById('max-cvss').textContent = maxCvss > 0 ? maxCvss.toFixed(1) : '-';
+            document.getElementById('owasp-categories').textContent = owaspCategories.size > 0 ? 
+                Array.from(owaspCategories).slice(0, 3).join(', ') + (owaspCategories.size > 3 ? '...' : '') : '-';
+        }
+        
+        function updateRiskAssessment(counts) {
+            const total = counts.critical + counts.high + counts.medium + counts.low + counts.info;
+            const riskScore = (counts.critical * 10 + counts.high * 7 + counts.medium * 4 + counts.low * 2 + counts.info * 1);
+            
+            let riskLevel, riskText, riskDescription;
+            
+            if (counts.critical > 0) {
+                riskLevel = 'critical';
+                riskText = 'CRITICAL';
+                riskDescription = `Immediate action required! ${counts.critical} critical vulnerabilities found that pose severe security risks.`;
+            } else if (counts.high > 0) {
+                riskLevel = 'high';
+                riskText = 'HIGH';
+                riskDescription = `High priority remediation needed. ${counts.high} high-severity vulnerabilities require prompt attention.`;
+            } else if (counts.medium > 0) {
+                riskLevel = 'medium';
+                riskText = 'MEDIUM';
+                riskDescription = `Moderate security concerns identified. ${counts.medium} medium-severity issues should be addressed.`;
+            } else if (counts.low > 0) {
+                riskLevel = 'low';
+                riskText = 'LOW';
+                riskDescription = `Minor security improvements recommended. ${counts.low} low-severity findings detected.`;
+            } else if (total > 0) {
+                riskLevel = 'info';
+                riskText = 'INFO';
+                riskDescription = `Security assessment complete. Only informational findings detected.`;
+            } else {
+                riskLevel = 'secure';
+                riskText = 'SECURE';
+                riskDescription = `Excellent! No security vulnerabilities detected during the assessment.`;
+            }
+            
+            document.getElementById('risk-text').textContent = riskText;
+            document.getElementById('risk-text').className = `risk-text ${riskLevel}`;
+            document.getElementById('risk-description').textContent = riskDescription;
+        }
+        
+        function createSeverityChart(counts) {
+            const ctx = document.getElementById('severityChart').getContext('2d');
+            const data = [
+                counts.critical,
+                counts.high,
+                counts.medium,
+                counts.low,
+                counts.info
+            ];
+            const labels = ['Critical', 'High', 'Medium', 'Low', 'Info'];
+            const colors = ['#8b0000', '#e74c3c', '#f39c12', '#3498db', '#2ecc71'];
+            
+            // Filter out zero values
+            const filteredData = [];
+            const filteredLabels = [];
+            const filteredColors = [];
+            
+            data.forEach((value, index) => {
+                if (value > 0) {
+                    filteredData.push(value);
+                    filteredLabels.push(labels[index]);
+                    filteredColors.push(colors[index]);
+                }
+            });
+            
+            if (filteredData.length === 0) {
+                // Show "No vulnerabilities" chart
+                filteredData.push(1);
+                filteredLabels.push('No Vulnerabilities');
+                filteredColors.push('#2ecc71');
+            }
+            
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: filteredLabels,
+                    datasets: [{
+                        data: filteredData,
+                        backgroundColor: filteredColors,
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 15,
+                                usePointStyle: true,
+                                font: {
+                                    size: 11
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        function createPayloadChart(stats) {
+            const ctx = document.getElementById('payloadChart').getContext('2d');
+            const payloadStats = stats.payload_stats || {};
+            
+            const modules = Object.keys(payloadStats);
+            const payloadCounts = modules.map(module => payloadStats[module].payloads_used || 0);
+            const successCounts = modules.map(module => payloadStats[module].successful_payloads || 0);
+            
+            if (modules.length === 0) {
+                // Show "No data" chart
+                new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['No Testing Data'],
+                        datasets: [{
+                            data: [1],
+                            backgroundColor: ['#95a5a6'],
+                            borderWidth: 2,
+                            borderColor: '#fff'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'bottom'
+                            }
+                        }
+                    }
+                });
+                return;
+            }
+            
+            // Create color palette
+            const colors = [
+                '#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
+                '#1abc9c', '#34495e', '#e67e22', '#95a5a6', '#f1c40f'
+            ];
+            
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: modules.map(m => m.toUpperCase()),
+                    datasets: [{
+                        label: 'Payloads Used',
+                        data: payloadCounts,
+                        backgroundColor: colors.slice(0, modules.length),
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 10,
+                                usePointStyle: true,
+                                font: {
+                                    size: 10
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                afterLabel: function(context) {
+                                    const moduleIndex = context.dataIndex;
+                                    const successful = successCounts[moduleIndex];
+                                    const total = payloadCounts[moduleIndex];
+                                    const rate = total > 0 ? ((successful / total) * 100).toFixed(1) : 0;
+                                    return `Success: ${successful}/${total} (${rate}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        function populateTechnologies() {
+            const technologies = reportData.scan_stats?.technologies || {};
+            const techGrid = document.getElementById('tech-grid');
+            const techSection = document.getElementById('tech-section');
+            
+            // Deduplicate technologies across all domains
+            const allTechs = new Set();
+            let hasAnyTech = false;
+            
+            for (const [domain, techs] of Object.entries(technologies)) {
+                if (techs && techs.length > 0) {
+                    hasAnyTech = true;
+                    techs.forEach(tech => {
+                        const techName = typeof tech === 'string' ? tech : (tech.name || tech);
+                        allTechs.add(techName);
+                    });
+                }
+            }
+            
+            // Create deduplicated technology items
+            if (hasAnyTech) {
+                Array.from(allTechs).sort().forEach(techName => {
+                    const techItem = document.createElement('div');
+                    techItem.className = 'tech-item';
+                    
+                    techItem.innerHTML = `
+                        <div class="tech-name">${techName}</div>
+                        <div class="tech-version">Detected</div>
+                        <div style="font-size: 0.8rem; color: #888; margin-top: 5px;">
+                            Technology Stack
+                        </div>
+                    `;
+                    techGrid.appendChild(techItem);
+                });
+                
+                techSection.style.display = 'block';
+            }
+        }
+        
+        function populateSiteStructure() {
+            console.log('Populating site structure...');
+            const siteStructure = reportData.site_structure || {};
+            const container = document.getElementById('site-structure-content');
+            
+            if (!container) {
+                console.error('Site structure container not found');
+                return;
+            }
+            
+            if (!siteStructure.domains || Object.keys(siteStructure.domains).length === 0) {
+                container.innerHTML = '<div class="no-results"><p>No site structure data available</p></div>';
+                return;
+            }
+            
+            let structureHtml = '<div class="site-structure">';
+            
+            // Summary stats
+            structureHtml += `
+                <div class="structure-summary">
+                    <h3>Site Discovery Summary</h3>
+                    <div class="summary-stats">
+                        <span><strong>URLs:</strong> ${siteStructure.total_urls || 0}</span>
+                        <span><strong>Parameters:</strong> ${siteStructure.total_parameters || 0}</span>
+                        <span><strong>Files:</strong> ${siteStructure.files ? siteStructure.files.length : 0}</span>
+                        <span><strong>Directories:</strong> ${siteStructure.directories ? siteStructure.directories.length : 0}</span>
+                    </div>
+                </div>
+            `;
+            
+            // Structure grid
+            structureHtml += '<div class="structure-grid">';
+            
+            for (const [domain, domainData] of Object.entries(siteStructure.domains)) {
+                structureHtml += `<div class="structure-section">`;
+                structureHtml += `<h4><i class="fas fa-globe"></i> ${domain}</h4>`;
+                
+                // Files
+                if (domainData.files && domainData.files.length > 0) {
+                    structureHtml += '<div class="files-section"><h5>Files:</h5>';
+                    domainData.files.forEach(file => {
+                        const ext = file.split('.').pop().toLowerCase();
+                        let icon = 'fas fa-file';
+                        
+                        switch (ext) {
+                            case 'php': icon = 'fab fa-php'; break;
+                            case 'html': case 'htm': icon = 'fab fa-html5'; break;
+                            case 'js': icon = 'fab fa-js-square'; break;
+                            case 'css': icon = 'fab fa-css3-alt'; break;
+                            case 'jpg': case 'jpeg': case 'png': case 'gif': icon = 'fas fa-image'; break;
+                            case 'pdf': icon = 'fas fa-file-pdf'; break;
+                            case 'txt': icon = 'fas fa-file-alt'; break;
+                            case 'xml': icon = 'fas fa-file-code'; break;
+                        }
+                        
+                        structureHtml += `
+                            <div class="file-item">
+                                <i class="${icon} file-icon"></i>
+                                <span>${file}</span>
+                            </div>
+                        `;
+                    });
+                    structureHtml += '</div>';
+                }
+                
+                // Directories
+                if (domainData.directories && domainData.directories.length > 0) {
+                    structureHtml += '<div class="dirs-section"><h5>Directories:</h5>';
+                    domainData.directories.forEach(dir => {
+                        structureHtml += `
+                            <div class="dir-item">
+                                <i class="fas fa-folder dir-icon"></i>
+                                <span>${dir}</span>
+                            </div>
+                        `;
+                    });
+                    structureHtml += '</div>';
+                }
+                
+                // Parameters
+                if (domainData.parameters && domainData.parameters.length > 0) {
+                    structureHtml += '<div class="params-section"><h5>Parameters:</h5>';
+                    domainData.parameters.forEach(param => {
+                        structureHtml += `
+                            <div class="param-item">
+                                <i class="fas fa-cog param-icon"></i>
+                                <span>${param}</span>
+                            </div>
+                        `;
+                    });
+                    structureHtml += '</div>';
+                }
+                
+                structureHtml += '</div>';
+            }
+            
+            structureHtml += '</div></div>';
+            container.innerHTML = structureHtml;
+        }
+        
+        function populateFoundResources() {
+            console.log('Populating found resources...');
+            const foundResources = reportData.found_resources || {};
+            const container = document.getElementById('found-resources-content');
+            
+            if (!container) {
+                console.error('Found resources container not found');
+                return;
+            }
+            
+            if (Object.keys(foundResources).length === 0) {
+                container.innerHTML = '<div class="no-results"><p>No sensitive resources found during passive analysis</p></div>';
+                return;
+            }
+            
+            let resourcesHtml = '<div class="found-resources">';
+            
+            // Calculate totals
+            let totalResources = 0;
+            let criticalCount = 0;
+            let highCount = 0;
+            let mediumCount = 0;
+            let lowCount = 0;
+            let infoCount = 0;
+            
+            for (const resources of Object.values(foundResources)) {
+                totalResources += resources.length;
+                resources.forEach(resource => {
+                    switch (resource.severity) {
+                        case 'Critical': criticalCount++; break;
+                        case 'High': highCount++; break;
+                        case 'Medium': mediumCount++; break;
+                        case 'Low': lowCount++; break;
+                        default: infoCount++; break;
+                    }
+                });
+            }
+            
+            // Summary stats
+            resourcesHtml += `
+                <div class="resources-summary">
+                    <h3>Resources Discovery Summary</h3>
+                    <div class="summary-stats">
+                        <span><strong>Total Resources:</strong> ${totalResources}</span>
+                        <span><strong>Categories:</strong> ${Object.keys(foundResources).length}</span>
+                        <span class="severity-critical"><strong>Critical:</strong> ${criticalCount}</span>
+                        <span class="severity-high"><strong>High:</strong> ${highCount}</span>
+                        <span class="severity-medium"><strong>Medium:</strong> ${mediumCount}</span>
+                        <span class="severity-low"><strong>Low:</strong> ${lowCount}</span>
+                        <span class="severity-info"><strong>Info:</strong> ${infoCount}</span>
+                    </div>
+                </div>
+            `;
+            
+            // Resources by category
+            resourcesHtml += '<div class="resources-grid">';
+            
+            // Sort categories by severity (critical first)
+            const sortedCategories = Object.entries(foundResources).sort((a, b) => {
+                const getSeverityWeight = (resources) => {
+                    let weight = 0;
+                    resources.forEach(r => {
+                        switch (r.severity) {
+                            case 'Critical': weight += 10; break;
+                            case 'High': weight += 7; break;
+                            case 'Medium': weight += 4; break;
+                            case 'Low': weight += 2; break;
+                            default: weight += 1; break;
+                        }
+                    });
+                    return weight;
+                };
+                return getSeverityWeight(b[1]) - getSeverityWeight(a[1]);
+            });
+            
+            for (const [category, resources] of sortedCategories) {
+                if (resources.length === 0) continue;
+                
+                // Get category icon
+                const categoryIcon = getCategoryIcon(category);
+                const categoryName = category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                
+                // Get highest severity in category
+                const severities = resources.map(r => r.severity);
+                let highestSeverity = 'Info';
+                if (severities.includes('Critical')) highestSeverity = 'Critical';
+                else if (severities.includes('High')) highestSeverity = 'High';
+                else if (severities.includes('Medium')) highestSeverity = 'Medium';
+                else if (severities.includes('Low')) highestSeverity = 'Low';
+                
+                resourcesHtml += `
+                    <div class="resource-category">
+                        <div class="category-header severity-${highestSeverity.toLowerCase()}">
+                            <h4><i class="${categoryIcon}"></i> ${categoryName}</h4>
+                            <span class="resource-count">${resources.length} found</span>
+                        </div>
+                        <div class="category-resources">
+                `;
+                
+                // Show first 10 resources, with option to expand
+                const displayResources = resources.slice(0, 10);
+                const hasMore = resources.length > 10;
+                
+                displayResources.forEach(resource => {
+                    const severityClass = resource.severity.toLowerCase();
+                    let displayValue = resource.value;
+                    
+                    // Special handling for sensitive data
+                    if (resource.masked_value) {
+                        displayValue = resource.masked_value;
+                    } else if (resource.formatted_value) {
+                        displayValue = resource.formatted_value;
+                    } else if (displayValue.length > 50) {
+                        displayValue = displayValue.substring(0, 50) + '...';
+                    }
+                    
+                    resourcesHtml += `
+                        <div class="resource-item severity-${severityClass}">
+                            <div class="resource-value">${displayValue}</div>
+                            <div class="resource-details">
+                                <span class="resource-type">${resource.name}</span>
+                                <span class="resource-severity severity-${severityClass}">${resource.severity}</span>
+                            </div>
+                            <div class="resource-context">${resource.context}</div>
+                        </div>
+                    `;
+                });
+                
+                if (hasMore) {
+                    resourcesHtml += `
+                        <div class="resource-item show-more">
+                            <div class="resource-value">... and ${resources.length - 10} more ${categoryName.toLowerCase()}</div>
+                        </div>
+                    `;
+                }
+                
+                resourcesHtml += `
+                        </div>
+                    </div>
+                `;
+            }
+            
+            resourcesHtml += '</div></div>';
+            container.innerHTML = resourcesHtml;
+        }
+        
+        function getCategoryIcon(category) {
+            const icons = {
+                'credit_cards': 'fas fa-credit-card',
+                'phone_numbers': 'fas fa-phone',
+                'email_addresses': 'fas fa-envelope',
+                'social_networks': 'fab fa-facebook',
+                'subdomains': 'fas fa-sitemap',
+                'ip_addresses': 'fas fa-network-wired',
+                'urls': 'fas fa-link',
+                'api_keys': 'fas fa-key',
+                'crypto_addresses': 'fab fa-bitcoin',
+                'documents': 'fas fa-file-pdf',
+                'images': 'fas fa-image',
+                'databases': 'fas fa-database',
+                'cloud_services': 'fas fa-cloud',
+                'development': 'fas fa-code',
+                'network_info': 'fas fa-network-wired',
+                'geographic': 'fas fa-map-marker-alt',
+                'financial': 'fas fa-dollar-sign',
+                'personal_data': 'fas fa-user-shield',
+                'technical': 'fas fa-cogs',
+                'business': 'fas fa-building',
+                'security': 'fas fa-shield-alt',
+                'media': 'fas fa-play-circle',
+                'infrastructure': 'fas fa-server',
+                'compliance': 'fas fa-balance-scale',
+                'analytics': 'fas fa-chart-line',
+                'communication': 'fas fa-comments',
+                'backup_storage': 'fas fa-archive',
+                'monitoring': 'fas fa-eye',
+                'certificates': 'fas fa-certificate',
+                'version_control': 'fab fa-git-alt'
+            };
+            return icons[category] || 'fas fa-search';
+        }
+        
+        function populateVulnerabilities() {
+            console.log('Populating vulnerabilities...');
+            const activeVulnerabilities = reportData.active_vulnerabilities || [];
+            const passiveVulnerabilities = reportData.passive_vulnerabilities || [];
+            const allVulnerabilities = reportData.vulnerabilities || [];
+            
+            console.log('Active vulnerabilities:', activeVulnerabilities.length);
+            console.log('Passive vulnerabilities:', passiveVulnerabilities.length);
+            console.log('Total vulnerabilities:', allVulnerabilities.length);
+            
+            const activeContainer = document.getElementById('active-vulnerabilities-list');
+            const passiveContainer = document.getElementById('passive-vulnerabilities-list');
+            
+            if (!activeContainer || !passiveContainer) {
+                console.error('Vulnerability containers not found');
+                return;
+            }
+            
+            // Sort vulnerabilities by severity
+            const severityOrder = { 'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3, 'Info': 4 };
+            const sortVulns = (vulns) => vulns.sort((a, b) => {
+                const severityA = severityOrder[a.severity] !== undefined ? severityOrder[a.severity] : 5;
+                const severityB = severityOrder[b.severity] !== undefined ? severityOrder[b.severity] : 5;
+                return severityA - severityB;
+            });
+            
+            sortVulns(activeVulnerabilities);
+            sortVulns(passiveVulnerabilities);
+            
+            // Populate module filter with all modules
+            const allModules = [...new Set(allVulnerabilities.map(v => v.module))];
+            const moduleFilter = document.getElementById('module-filter');
+            allModules.forEach(module => {
+                const option = document.createElement('option');
+                option.value = module;
+                option.textContent = module.toUpperCase();
+                moduleFilter.appendChild(option);
+            });
+            
+            // Populate active vulnerabilities
+            if (activeVulnerabilities.length === 0) {
+                activeContainer.innerHTML = '<div class="no-results"><i class="fas fa-check-circle" style="font-size: 2rem; color: #2ecc71; margin-bottom: 10px;"></i><h4>No Active Vulnerabilities Found</h4><p>No vulnerabilities found through active testing.</p></div>';
+            } else {
+                activeVulnerabilities.forEach((vuln, index) => {
+                    try {
+                        const vulnElement = createVulnerabilityElement(vuln, index, 'active');
+                        activeContainer.appendChild(vulnElement);
+                    } catch (error) {
+                        console.error(`Error creating active vulnerability element ${index}:`, error, vuln);
+                    }
+                });
+            }
+            
+            // Populate passive vulnerabilities
+            if (passiveVulnerabilities.length === 0) {
+                passiveContainer.innerHTML = '<div class="no-results"><i class="fas fa-info-circle" style="font-size: 2rem; color: #17a2b8; margin-bottom: 10px;"></i><h4>No Passive Vulnerabilities Found</h4><p>No vulnerabilities found through passive analysis.</p></div>';
+            } else {
+                passiveVulnerabilities.forEach((vuln, index) => {
+                    try {
+                        const vulnElement = createVulnerabilityElement(vuln, index + activeVulnerabilities.length, 'passive');
+                        passiveContainer.appendChild(vulnElement);
+                    } catch (error) {
+                        console.error(`Error creating passive vulnerability element ${index}:`, error, vuln);
+                    }
+                });
+            }
+            
+            // Hide sections if no vulnerabilities
+            if (activeVulnerabilities.length === 0) {
+                document.getElementById('active-vulnerabilities').style.display = 'none';
+            }
+            if (passiveVulnerabilities.length === 0) {
+                document.getElementById('passive-vulnerabilities').style.display = 'none';
+            }
+        }
+        
+        function createVulnerabilityElement(vuln, index, type = 'active') {
+            const vulnDiv = document.createElement('div');
+            vulnDiv.className = 'vuln-item';
+            vulnDiv.dataset.severity = vuln.severity || 'Unknown';
+            vulnDiv.dataset.module = vuln.module || 'unknown';
+            vulnDiv.dataset.type = type;
+            vulnDiv.dataset.searchText = `${vuln.vulnerability || ''} ${vuln.target || ''} ${vuln.parameter || ''} ${vuln.evidence || ''}`.toLowerCase();
+
+            // Add visual indicator for passive vulnerabilities
+            const typeIndicator = type === 'passive' ? '<span class="passive-indicator">[PASSIVE]</span> ' : '';
+
+            // Generate steps to reproduce
+            const stepsToReproduce = generateStepsToReproduce(vuln);
+
+            // Generate recommendations
+            const recommendations = generateRecommendations(vuln);
+
+            // Generate HTTP request display
+            const httpRequestDisplay = generateHttpRequest(vuln);
+
+            // Generate response with highlights
+            const responseWithHighlights = generateResponseWithHighlights(vuln);
+
+            vulnDiv.innerHTML = `
+                <div class="vuln-summary" onclick="toggleDetails(${index})">
+                    <div class="vuln-info">
+                        <div class="vuln-title">${typeIndicator}${vuln.vulnerability || 'Unknown Vulnerability'}</div>
+                        <div class="vuln-meta">
+                            <span><i class="fas fa-globe"></i> ${vuln.target || 'Unknown Target'}</span>
+                            <span><i class="fas fa-tag"></i> ${vuln.parameter || 'N/A'}</span>
+                            <span><i class="fas fa-cog"></i> ${(vuln.module || 'unknown').toUpperCase()}</span>
+                            ${vuln.http_method ? `<span class="method-badge method-${vuln.http_method.toLowerCase()}">${vuln.http_method}</span>` : (vuln.method ? `<span class="method-badge method-${vuln.method.toLowerCase()}">${vuln.method}</span>` : '<span class="method-badge method-unknown">Unknown</span>')}
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <span class="severity-badge severity-${(vuln.severity || 'unknown').toLowerCase()}">${vuln.severity || 'Unknown'}</span>
+                        <i class="fas fa-chevron-down expand-icon" id="icon-${index}"></i>
+                    </div>
+                </div>
+                <div class="vuln-details" id="details-${index}">
+                    <div class="detail-section">
+                        <h4><i class="fas fa-list-ol"></i> Steps to Reproduce</h4>
+                        <ol class="steps-list">
+                            ${stepsToReproduce}
+                        </ol>
+                    </div>
+                    <div class="detail-section">
+                        <h4><i class="fas fa-info-circle"></i> Evidence</h4>
+                        <div class="detail-content">${escapeHtml(vuln.evidence || 'N/A')}</div>
+                    </div>
+                    <div class="detail-section">
+                        <h4><i class="fas fa-code"></i> Payload Used</h4>
+                        <div class="detail-content">${escapeHtml(vuln.payload || 'N/A')}</div>
+                    </div>
+                    <div class="detail-section">
+                        <h4><i class="fas fa-paper-plane"></i> HTTP Request</h4>
+                        <div class="http-request-box">${httpRequestDisplay}</div>
+                    </div>
+                    <div class="detail-section">
+                        <h4><i class="fas fa-reply"></i> Response (Detection Highlighted)</h4>
+                        <div class="response-box">${responseWithHighlights}</div>
+                    </div>
+                    ${vuln.screenshot_base64 ? `
+                    <div class="detail-section">
+                        <h4><i class="fas fa-camera"></i> Proof of Concept Screenshot</h4>
+                        <a href="data:image/png;base64,${vuln.screenshot_base64}" target="_blank">
+                            <img src="data:image/png;base64,${vuln.screenshot_base64}" class="screenshot-thumbnail" alt="Vulnerability Screenshot">
+                        </a>
+                        <div class="screenshot-caption">Click to view full size</div>
+                    </div>
+                    ` : ''}
+                    ${vuln.cve_links && vuln.cve_links.length > 0 ? `
+                    <div class="detail-section">
+                        <h4><i class="fas fa-shield-alt"></i> CVE References</h4>
+                        <div class="detail-content">
+                            ${vuln.cve_links.slice(0, 5).map(cve =>
+                                `<a href="${cve.url}" target="_blank" class="cve-link">${cve.cve_id}</a>
+                                 <span class="cve-info">(CVSS: ${cve.score || 'N/A'}, ${cve.severity || 'Unknown'})</span>`
+                            ).join('<br>')}
+                            ${vuln.cve_links.length > 5 ? `<br><em>... and ${vuln.cve_links.length - 5} more CVEs</em>` : ''}
+                        </div>
+                    </div>
+                    ` : ''}
+                    ${vuln.exploit_links && vuln.exploit_links.length > 0 ? `
+                    <div class="detail-section">
+                        <h4><i class="fas fa-bomb"></i> Exploit References</h4>
+                        <div class="detail-content">
+                            ${vuln.exploit_links.slice(0, 3).map(exploit =>
+                                `<a href="${exploit.url}" target="_blank" class="exploit-link">${exploit.exploit_id}</a>
+                                 <span class="exploit-info">(${exploit.type || 'Unknown'})</span>`
+                            ).join('<br>')}
+                            ${vuln.exploit_links.length > 3 ? `<br><em>... and ${vuln.exploit_links.length - 3} more exploits</em>` : ''}
+                        </div>
+                    </div>
+                    ` : ''}
+                    <div class="detail-section">
+                        <h4><i class="fas fa-shield-alt"></i> Security Information</h4>
+                        <div class="detail-content">
+                            <strong>CVSS Score:</strong> ${vuln.cvss || 'N/A'}<br>
+                            <strong>CWE:</strong> ${vuln.cwe || 'N/A'} ${vuln.cwe_name ? `- ${vuln.cwe_name}` : ''}<br>
+                            <strong>OWASP:</strong> ${vuln.owasp || 'N/A'} ${vuln.owasp_name ? `- ${vuln.owasp_name}` : ''}
+                        </div>
+                    </div>
+                    <div class="detail-section">
+                        <h4><i class="fas fa-lightbulb"></i> Recommendations</h4>
+                        <div class="recommendations-box">
+                            <div class="rec-title"><i class="fas fa-check-circle"></i> How to Fix This Vulnerability</div>
+                            <ul>${recommendations}</ul>
+                        </div>
+                    </div>
+                    <div class="detail-section">
+                        <h4><i class="fas fa-search"></i> Detection Method</h4>
+                        <div class="detail-content">${escapeHtml(vuln.detector || 'Pattern matching')}</div>
+                    </div>
+                </div>
+            `;
+
+            return vulnDiv;
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function generateStepsToReproduce(vuln) {
+            const steps = [];
+            const method = vuln.http_method || vuln.method || 'GET';
+            const target = vuln.target || vuln.request_url || 'target URL';
+            const param = vuln.parameter || 'vulnerable parameter';
+            const payload = vuln.payload || 'malicious payload';
+            const module = (vuln.module || 'unknown').toLowerCase();
+
+            // Step 1: Navigate to target
+            steps.push(`<li>Navigate to <code>${escapeHtml(target)}</code></li>`);
+
+            // Step 2: Identify injection point based on module type
+            if (module.includes('xss')) {
+                steps.push(`<li>Locate the input field or parameter: <code>${escapeHtml(param)}</code></li>`);
+                steps.push(`<li>Enter the XSS payload: <code>${escapeHtml(payload)}</code></li>`);
+                steps.push(`<li>Submit the form or trigger the request</li>`);
+                steps.push(`<li>Observe that the payload is reflected/executed in the response</li>`);
+            } else if (module.includes('sqli') || module.includes('sql')) {
+                steps.push(`<li>Identify the SQL injection point in parameter: <code>${escapeHtml(param)}</code></li>`);
+                steps.push(`<li>Inject the SQL payload: <code>${escapeHtml(payload)}</code></li>`);
+                steps.push(`<li>Execute the ${method} request</li>`);
+                steps.push(`<li>Verify database response or error message indicates SQL injection</li>`);
+            } else if (module.includes('cmdi') || module.includes('command')) {
+                steps.push(`<li>Find the command injection point in: <code>${escapeHtml(param)}</code></li>`);
+                steps.push(`<li>Inject OS command payload: <code>${escapeHtml(payload)}</code></li>`);
+                steps.push(`<li>Submit the request via ${method}</li>`);
+                steps.push(`<li>Confirm command execution in response</li>`);
+            } else if (module.includes('ssti')) {
+                steps.push(`<li>Identify template injection point: <code>${escapeHtml(param)}</code></li>`);
+                steps.push(`<li>Inject template payload: <code>${escapeHtml(payload)}</code></li>`);
+                steps.push(`<li>Submit and observe template engine evaluation</li>`);
+            } else if (module.includes('lfi') || module.includes('rfi') || module.includes('path')) {
+                steps.push(`<li>Find file inclusion parameter: <code>${escapeHtml(param)}</code></li>`);
+                steps.push(`<li>Modify path to: <code>${escapeHtml(payload)}</code></li>`);
+                steps.push(`<li>Submit request and verify file content is included</li>`);
+            } else if (module.includes('redirect') || module.includes('open_redirect')) {
+                steps.push(`<li>Locate redirect parameter: <code>${escapeHtml(param)}</code></li>`);
+                steps.push(`<li>Set redirect URL to: <code>${escapeHtml(payload)}</code></li>`);
+                steps.push(`<li>Follow redirect and confirm external redirection</li>`);
+            } else if (module.includes('csrf')) {
+                steps.push(`<li>Create malicious HTML page with form targeting: <code>${escapeHtml(target)}</code></li>`);
+                steps.push(`<li>Include form with hidden fields matching the vulnerable endpoint</li>`);
+                steps.push(`<li>Trick authenticated user into visiting the malicious page</li>`);
+                steps.push(`<li>Observe unauthorized action executed on behalf of user</li>`);
+            } else {
+                // Generic steps
+                steps.push(`<li>Send a ${method} request to the target</li>`);
+                steps.push(`<li>Include payload <code>${escapeHtml(payload)}</code> in parameter <code>${escapeHtml(param)}</code></li>`);
+                steps.push(`<li>Analyze the response for vulnerability indicators</li>`);
+                steps.push(`<li>Evidence found: <code>${escapeHtml(vuln.evidence || 'See evidence section')}</code></li>`);
+            }
+
+            return steps.join('');
+        }
+
+        function generateRecommendations(vuln) {
+            const recs = [];
+            const module = (vuln.module || 'unknown').toLowerCase();
+
+            // Add custom remediation if available
+            if (vuln.remediation || vuln.recommendation) {
+                recs.push(`<li><strong>Specific Fix:</strong> ${escapeHtml(vuln.remediation || vuln.recommendation)}</li>`);
+            }
+
+            // Module-specific recommendations
+            if (module.includes('xss')) {
+                recs.push(`<li>Implement context-aware output encoding (HTML, JavaScript, URL, CSS)</li>`);
+                recs.push(`<li>Use Content Security Policy (CSP) headers to mitigate XSS impact</li>`);
+                recs.push(`<li>Validate and sanitize all user inputs on server-side</li>`);
+                recs.push(`<li>Consider using framework auto-escaping features</li>`);
+            } else if (module.includes('sqli') || module.includes('sql')) {
+                recs.push(`<li>Use parameterized queries / prepared statements</li>`);
+                recs.push(`<li>Implement input validation with whitelist approach</li>`);
+                recs.push(`<li>Apply principle of least privilege to database accounts</li>`);
+                recs.push(`<li>Enable WAF rules for SQL injection patterns</li>`);
+            } else if (module.includes('cmdi') || module.includes('command')) {
+                recs.push(`<li>Avoid passing user input to system commands</li>`);
+                recs.push(`<li>Use safe APIs that don't invoke shell interpreters</li>`);
+                recs.push(`<li>Implement strict input validation with whitelist</li>`);
+                recs.push(`<li>Apply sandboxing and containerization</li>`);
+            } else if (module.includes('ssti')) {
+                recs.push(`<li>Use logic-less templates or sandboxed template engines</li>`);
+                recs.push(`<li>Never pass user input directly to template rendering</li>`);
+                recs.push(`<li>Implement strict input validation</li>`);
+            } else if (module.includes('lfi') || module.includes('rfi') || module.includes('path')) {
+                recs.push(`<li>Validate file paths against whitelist of allowed files</li>`);
+                recs.push(`<li>Use realpath() and compare with allowed directories</li>`);
+                recs.push(`<li>Disable allow_url_include in PHP configuration</li>`);
+                recs.push(`<li>Implement chroot jails for file operations</li>`);
+            } else if (module.includes('redirect') || module.includes('open_redirect')) {
+                recs.push(`<li>Validate redirect URLs against whitelist of allowed domains</li>`);
+                recs.push(`<li>Use relative URLs instead of full URLs for redirects</li>`);
+                recs.push(`<li>Implement redirect confirmation page for external URLs</li>`);
+            } else if (module.includes('csrf')) {
+                recs.push(`<li>Implement anti-CSRF tokens in all state-changing forms</li>`);
+                recs.push(`<li>Use SameSite cookie attribute</li>`);
+                recs.push(`<li>Verify Origin/Referer headers</li>`);
+                recs.push(`<li>Require re-authentication for sensitive operations</li>`);
+            } else if (module.includes('xxe')) {
+                recs.push(`<li>Disable external entity processing in XML parsers</li>`);
+                recs.push(`<li>Use less complex data formats like JSON when possible</li>`);
+                recs.push(`<li>Validate and sanitize XML input</li>`);
+            } else if (module.includes('ssl') || module.includes('tls')) {
+                recs.push(`<li>Use TLS 1.2 or higher</li>`);
+                recs.push(`<li>Disable weak cipher suites</li>`);
+                recs.push(`<li>Implement HSTS headers</li>`);
+                recs.push(`<li>Use valid certificates from trusted CAs</li>`);
+            } else {
+                // Generic recommendations
+                recs.push(`<li>Validate and sanitize all user inputs</li>`);
+                recs.push(`<li>Implement defense in depth with multiple security layers</li>`);
+                recs.push(`<li>Follow secure coding guidelines (OWASP)</li>`);
+                recs.push(`<li>Conduct regular security assessments</li>`);
+            }
+
+            return recs.join('');
+        }
+
+        function generateHttpRequest(vuln) {
+            const method = vuln.http_method || vuln.method || 'GET';
+            const url = vuln.request_url || vuln.target || '/';
+            const payload = vuln.payload || '';
+            const param = vuln.parameter || '';
+
+            let request = '';
+
+            try {
+                const urlObj = new URL(url, 'http://example.com');
+                const path = urlObj.pathname + urlObj.search;
+                const host = urlObj.host || 'target-host';
+
+                // Request line with method highlighted
+                request += `<span class="http-method">${method}</span> ${escapeHtml(path)} HTTP/1.1\n`;
+                request += `<span class="http-header">Host:</span> <span class="http-value">${escapeHtml(host)}</span>\n`;
+                request += `<span class="http-header">User-Agent:</span> <span class="http-value">Dominator Scanner</span>\n`;
+                request += `<span class="http-header">Accept:</span> <span class="http-value">*/*</span>\n`;
+
+                if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
+                    request += `<span class="http-header">Content-Type:</span> <span class="http-value">application/x-www-form-urlencoded</span>\n`;
+                    request += `\n`;
+                    // Show POST body with payload highlighted
+                    if (param && payload) {
+                        request += `${escapeHtml(param)}=<span class="payload-marker">${escapeHtml(payload)}</span>`;
+                    } else if (payload) {
+                        request += `<span class="payload-marker">${escapeHtml(payload)}</span>`;
+                    }
+                } else if (method === 'GET' && payload) {
+                    // For GET, payload is in URL - already shown above
+                    request += `\n<span class="http-header">// Payload in URL parameter:</span> <span class="payload-marker">${escapeHtml(payload)}</span>`;
+                }
+            } catch (e) {
+                // Fallback for invalid URLs
+                request = `<span class="http-method">${method}</span> ${escapeHtml(url)} HTTP/1.1\n`;
+                request += `<span class="http-header">Host:</span> <span class="http-value">target</span>\n`;
+                if (payload) {
+                    request += `\n<span class="http-header">Payload:</span> <span class="payload-marker">${escapeHtml(payload)}</span>`;
+                }
+            }
+
+            return request;
+        }
+
+        function generateResponseWithHighlights(vuln) {
+            const evidence = vuln.evidence || '';
+            const payload = vuln.payload || '';
+            let response = vuln.response_snippet || '';
+
+            // If no response snippet, create a summary
+            if (!response) {
+                response = `[Response contains vulnerability indicator]\n\n`;
+                response += `Detection Evidence: ${evidence}\n`;
+                if (payload) {
+                    response += `Payload Found: ${payload}`;
+                }
+            }
+
+            // Escape HTML first
+            response = escapeHtml(response);
+
+            // Truncate if too long (show first 500 chars with context)
+            if (response.length > 1000) {
+                // Try to find where the evidence appears and show context around it
+                const evidenceEscaped = escapeHtml(evidence);
+                const evidenceIndex = response.toLowerCase().indexOf(evidenceEscaped.toLowerCase());
+
+                if (evidenceIndex > 200) {
+                    // Show context around the evidence
+                    const start = Math.max(0, evidenceIndex - 200);
+                    const end = Math.min(response.length, evidenceIndex + evidenceEscaped.length + 300);
+                    response = '...' + response.substring(start, end) + '...';
+                } else {
+                    response = response.substring(0, 1000) + '\n\n[... truncated ...]';
+                }
+            }
+
+            // Highlight the evidence/payload in the response
+            if (evidence && evidence.length > 2) {
+                const evidenceEscaped = escapeHtml(evidence);
+                // Use case-insensitive replacement
+                const regex = new RegExp(escapeRegex(evidenceEscaped), 'gi');
+                response = response.replace(regex, `<span class="highlight-match">$&</span>`);
+            }
+
+            // Also highlight the payload if different from evidence
+            if (payload && payload.length > 2 && payload !== evidence) {
+                const payloadEscaped = escapeHtml(payload);
+                const regex = new RegExp(escapeRegex(payloadEscaped), 'gi');
+                response = response.replace(regex, `<span class="highlight-match">$&</span>`);
+            }
+
+            return response || 'No response data available';
+        }
+
+        function escapeRegex(string) {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+        
+        function toggleDetails(index) {
+            const details = document.getElementById(`details-${index}`);
+            const icon = document.getElementById(`icon-${index}`);
+            
+            details.classList.toggle('active');
+            icon.classList.toggle('rotated');
+        }
+        
+        function setupFilters() {
+            const severityFilter = document.getElementById('severity-filter');
+            const moduleFilter = document.getElementById('module-filter');
+            const searchFilter = document.getElementById('search-filter');
+            
+            [severityFilter, moduleFilter, searchFilter].forEach(filter => {
+                filter.addEventListener('change', applyFilters);
+                filter.addEventListener('input', applyFilters);
+            });
+        }
+        
+        function applyFilters() {
+            const severityFilter = document.getElementById('severity-filter').value;
+            const moduleFilter = document.getElementById('module-filter').value;
+            const searchFilter = document.getElementById('search-filter').value.toLowerCase();
+            
+            const vulnItems = document.querySelectorAll('.vuln-item');
+            
+            vulnItems.forEach(item => {
+                let show = true;
+                
+                if (severityFilter && item.dataset.severity !== severityFilter) {
+                    show = false;
+                }
+                
+                if (moduleFilter && item.dataset.module !== moduleFilter) {
+                    show = false;
+                }
+                
+                if (searchFilter && !item.dataset.searchText.includes(searchFilter)) {
+                    show = false;
+                }
+                
+                item.style.display = show ? 'block' : 'none';
+            });
+        }
+        
+        function setupEventListeners() {
+            // Add any additional event listeners here
+        }
+    </script>
+</body>
+</html>

@@ -227,6 +227,16 @@ def main():
         launch_gui(args)
         return
 
+    # Launch Terminal Wizard if --wizard flag is present
+    wizard_used = False
+    if getattr(args, 'wizard', False):
+        from utils.terminal_wizard import run_wizard
+        wizard_args = run_wizard()
+        # Re-parse with wizard-generated arguments
+        args = parser.parse_args(wizard_args)
+        args = process_args(args)
+        wizard_used = True
+
     # Print banner
     print_banner()
 
@@ -240,13 +250,16 @@ def main():
 
 
     # Check required parameters
-    if not args.target and not args.file:
-        print("Error: Must specify target (-t) or targets file (-f)")
+    # API spec can be used instead of target
+    api_spec = getattr(args, 'api_spec', None)
+    if not args.target and not args.file and not api_spec:
+        print("Error: Must specify target (-t), targets file (-f), or API spec (--api)")
         parser.print_help()
         sys.exit(1)
-    
-    # Process arguments using menu module
-    args = process_args(args)
+
+    # Process arguments using menu module (skip if wizard already processed)
+    if not wizard_used:
+        args = process_args(args)
     
     # Check if modules are specified
     if not args.modules and not args.all and not args.filetree:
@@ -420,8 +433,12 @@ def main():
             # Limit filename length to avoid errors
             if len(target_name) > 150:
                 target_name = target_name[:150]
-            
-            base_filename = f"scan_report_{target_name}_{timestamp}"
+
+            # Use reports/ directory for output
+            import os
+            reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports')
+            os.makedirs(reports_dir, exist_ok=True)
+            base_filename = os.path.join(reports_dir, f"scan_report_{target_name}_{timestamp}")
             
             report_formats = [f.strip() for f in args.format.split(',')]
             

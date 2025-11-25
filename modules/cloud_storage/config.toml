@@ -1,0 +1,17 @@
+# Module Configuration (TOML format)
+
+name = "Cloud Storage Enumeration"
+description = "Discovers exposed cloud storage buckets (AWS S3, Azure, GCP, Firebase) and checks public/private access"
+enabled = true
+severity = "High"
+cwe = "CWE-200"
+cvss = 7.5
+cvss_vector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+owasp = "A01:2021"
+payload_limit = 30
+early_exit = false
+check_firebase = true
+check_aws_s3 = true
+check_azure = true
+check_gcp = true
+common_bucket_names = ["backup", "backups", "dev", "development", "prod", "production", "staging", "test", "assets", "uploads", "files", "public", "private", "data", "images", "media"]

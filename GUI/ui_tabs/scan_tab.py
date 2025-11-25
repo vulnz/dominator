@@ -3,6 +3,10 @@ Scan Configuration Tab - Modern, Clean Design
 Logical grouping with clear descriptions and large, readable fonts
 """
 
+import json
+import os
+from pathlib import Path
+
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QGroupBox, QLabel, QLineEdit, QTextEdit, QPushButton,
@@ -11,40 +15,147 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt
 
 
+def load_modules_from_folder():
+    """Dynamically load all modules from modules/ directory with categories"""
+    modules = {}
+
+    # Find modules directory
+    script_dir = Path(__file__).parent.parent.parent  # Go up to dominator root
+    modules_dir = script_dir / "modules"
+
+    if not modules_dir.exists():
+        return modules
+
+    # Default icons by category/type
+    DEFAULT_ICONS = {
+        "injection": "💉", "xss": "🔥", "sqli": "💉", "cmdi": "⚡", "ssti": "📝",
+        "xxe": "📄", "lfi": "📁", "rfi": "🌐", "ssrf": "🔗", "csrf": "🎭",
+        "idor": "🔓", "redirect": "↪️", "upload": "📤", "file": "📁",
+        "api": "🔌", "auth": "🔑", "crypto": "🔐", "recon": "🔍",
+        "dir": "🗂️", "git": "📦", "backup": "💾", "config": "⚙️",
+        "header": "📋", "ssl": "🔒", "cors": "🌐", "jwt": "🎫",
+        "websocket": "🔌", "graphql": "📊", "subdomain": "🌍",
+        "port": "🔌", "js": "📜", "dom": "💻", "session": "🍪",
+        "security": "🛡️", "sensitive": "🔍", "default": "🔧"
+    }
+
+    # Category mappings for modules
+    CATEGORY_MAP = {
+        # Injection
+        "sqli": "Injection", "xss": "Injection", "cmdi": "Injection", "ssti": "Injection",
+        "xxe": "Injection", "xpath": "Injection", "nosql": "Injection", "ldap": "Injection",
+        "ssi": "Injection", "formula": "Injection", "crlf": "Injection", "header_injection": "Injection",
+        # File & Path
+        "lfi": "File & Path", "rfi": "File & Path", "path": "File & Path", "file_upload": "File & Path",
+        # Authentication & Session
+        "csrf": "Auth & Session", "session": "Auth & Session", "jwt": "Auth & Session",
+        "weak_credentials": "Auth & Session", "idor": "Auth & Session", "auth": "Auth & Session",
+        # API Security
+        "api": "API Security", "graphql": "API Security", "soap": "API Security", "websocket": "API Security",
+        # Recon & Discovery
+        "dirbrute": "Recon", "subdomain": "Recon", "port": "Recon", "param": "Recon",
+        "favicon": "Recon", "robots": "Recon", "sensitive": "Recon",
+        # Information Disclosure
+        "git": "Info Disclosure", "env": "Info Disclosure", "backup": "Info Disclosure",
+        "config": "Info Disclosure", "debug": "Info Disclosure", "package": "Info Disclosure",
+        "phpinfo": "Info Disclosure", "db_exposure": "Info Disclosure", "base64": "Info Disclosure",
+        # Server & Network
+        "ssrf": "Server & Network", "redirect": "Server & Network", "smuggling": "Server & Network",
+        "host_header": "Server & Network", "cors": "Server & Network", "http_methods": "Server & Network",
+        "forbidden": "Server & Network", "cgi": "Server & Network", "iis": "Server & Network", "hpp": "Server & Network",
+        # Security Headers & Config
+        "ssl": "Security Config", "security_headers": "Security Config", "csp": "Security Config",
+        "tabnabbing": "Security Config", "cspt": "Security Config",
+        # Advanced Attacks
+        "dom_xss": "Advanced", "prototype": "Advanced", "php_object": "Advanced",
+        "type_juggling": "Advanced", "request_smuggling": "Advanced",
+        # Cloud & Storage
+        "cloud": "Cloud", "storage": "Cloud",
+    }
+
+    for module_path in sorted(modules_dir.iterdir()):
+        if not module_path.is_dir() or module_path.name.startswith('_'):
+            continue
+
+        # Skip utility modules that don't have scanning capability
+        if module_path.name in ['oob_detection']:
+            continue
+
+        config_file = module_path / "config.json"
+        toml_file = module_path / "config.toml"
+
+        # Default values
+        module_id = module_path.name
+        name = module_id.replace('_', ' ').title()
+        desc = f"Module: {module_id}"
+        passive = False
+        enabled = True
+        category = "Other"
+
+        # Try to load config (prefer TOML, fallback to JSON)
+        config = {}
+        if toml_file.exists():
+            try:
+                import tomllib
+                with open(toml_file, 'rb') as f:
+                    config = tomllib.load(f)
+            except:
+                pass
+
+        if not config and config_file.exists():
+            try:
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+            except:
+                pass
+
+        if config:
+            name = config.get('name', name)
+            desc = config.get('description', desc)
+            passive = config.get('passive', False)
+            enabled = config.get('enabled', True)
+            category = config.get('category', category)
+
+        # Skip disabled modules
+        if not enabled:
+            continue
+
+        # Auto-detect category from module name if not in config
+        if category == "Other":
+            module_lower = module_id.lower()
+            for key, cat in CATEGORY_MAP.items():
+                if key in module_lower:
+                    category = cat
+                    break
+
+        # Determine icon based on module name
+        icon = "🔧"
+        module_lower = module_id.lower()
+        for key, emoji in DEFAULT_ICONS.items():
+            if key in module_lower:
+                icon = emoji
+                break
+
+        # Truncate description if too long
+        if len(desc) > 40:
+            desc = desc[:37] + "..."
+
+        modules[module_id] = {
+            "name": name,
+            "desc": desc,
+            "active": not passive,
+            "icon": icon,
+            "category": category
+        }
+
+    return modules
+
+
 class ScanTabBuilder:
     """Builder class for creating the Scan Configuration tab"""
 
-    # Module information with Active/Passive classification
-    MODULE_INFO = {
-        # ACTIVE Modules - send modified/malicious requests
-        "sqli": {"name": "SQL Injection", "desc": "Database manipulation attacks", "active": True, "icon": "💉"},
-        "xss": {"name": "Cross-Site Scripting", "desc": "JavaScript injection", "active": True, "icon": "🔥"},
-        "cmdi": {"name": "Command Injection", "desc": "OS command execution", "active": True, "icon": "⚡"},
-        "ssti": {"name": "Template Injection", "desc": "Server-side templates", "active": True, "icon": "📝"},
-        "xpath": {"name": "XPath Injection", "desc": "XML query attacks", "active": True, "icon": "🔍"},
-        "xxe": {"name": "XML External Entity", "desc": "XXE attacks", "active": True, "icon": "📄"},
-        "lfi": {"name": "Local File Inclusion", "desc": "Read server files", "active": True, "icon": "📁"},
-        "rfi": {"name": "Remote File Inclusion", "desc": "Include remote files", "active": True, "icon": "🌐"},
-        "file_upload": {"name": "File Upload", "desc": "Malicious file upload", "active": True, "icon": "📤"},
-        "ssrf": {"name": "Server-Side Request Forgery", "desc": "Force server requests", "active": True, "icon": "🔗"},
-        "idor": {"name": "Insecure Direct Object Ref", "desc": "Access control bypass", "active": True, "icon": "🔓"},
-        "csrf": {"name": "Cross-Site Request Forgery", "desc": "Forged requests", "active": True, "icon": "🎭"},
-        "redirect": {"name": "Open Redirect", "desc": "URL redirection", "active": True, "icon": "↪️"},
-        "dom_xss": {"name": "DOM XSS", "desc": "Client-side XSS", "active": True, "icon": "💻"},
-        "weak_credentials": {"name": "Weak Credentials", "desc": "Default passwords", "active": True, "icon": "🔑"},
-        "php_object_injection": {"name": "PHP Object Injection", "desc": "PHP unserialize", "active": True, "icon": "🐘"},
-
-        # PASSIVE Modules - only observe, no attacks
-        "dirbrute": {"name": "Directory Brute", "desc": "Find hidden paths", "active": False, "icon": "🗂️"},
-        "git": {"name": "Git Exposure", "desc": "Exposed .git", "active": False, "icon": "📦"},
-        "env_secrets": {"name": "Env Secrets", "desc": "Leaked .env", "active": False, "icon": "🔐"},
-        "db_exposure": {"name": "DB Exposure", "desc": "Database files", "active": False, "icon": "🗄️"},
-        "backup_files": {"name": "Backup Files", "desc": ".bak, .sql", "active": False, "icon": "💾"},
-        "config_files": {"name": "Config Files", "desc": "Exposed configs", "active": False, "icon": "⚙️"},
-        "svn_hg": {"name": "SVN/Mercurial", "desc": ".svn/.hg folders", "active": False, "icon": "📚"},
-        "debug_pages": {"name": "Debug Pages", "desc": "phpinfo(), debug", "active": False, "icon": "🐛"},
-        "api_docs": {"name": "API Docs", "desc": "Swagger/OpenAPI", "active": False, "icon": "📖"},
-    }
+    # Dynamically load modules from modules/ folder
+    MODULE_INFO = load_modules_from_folder()
 
     # Legacy module descriptions for backwards compatibility
     MODULE_DESCRIPTIONS = {k: v["desc"] for k, v in MODULE_INFO.items()}
@@ -137,7 +248,8 @@ class ScanTabBuilder:
             "• 192.168.1.0/24 (CIDR)\n"
             "• 192.168.1.1-50 (range)"
         )
-        self.gui.target_input.setMaximumHeight(100)
+        self.gui.target_input.setMinimumHeight(140)
+        self.gui.target_input.setMaximumHeight(180)
         self.gui.target_input.setStyleSheet("""
             QTextEdit {
                 background-color: #ffffff;
@@ -268,11 +380,106 @@ class ScanTabBuilder:
         self.gui.wizard_btn.clicked.connect(self.gui.show_scan_wizard)
         btn_layout.addWidget(self.gui.wizard_btn)
 
+        # Debug Toggle Button
+        self.gui.debug_btn = QPushButton("🐛 Debug: OFF")
+        self.gui.debug_btn.setCheckable(True)
+        self.gui.debug_btn.setChecked(False)
+        self._update_debug_btn_style(False)
+        self.gui.debug_btn.clicked.connect(self._toggle_debug)
+        btn_layout.addWidget(self.gui.debug_btn)
+
+        # Raw Scan Toggle Button - shows ALL output without filtering
+        self.gui.raw_scan_btn = QPushButton("📋 Raw Output: OFF")
+        self.gui.raw_scan_btn.setCheckable(True)
+        self.gui.raw_scan_btn.setChecked(False)
+        self._update_raw_btn_style(False)
+        self.gui.raw_scan_btn.clicked.connect(self._toggle_raw_scan)
+        self.gui.raw_scan_btn.setToolTip("Show raw unfiltered scan output")
+        btn_layout.addWidget(self.gui.raw_scan_btn)
+
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
 
         group.setLayout(layout)
         return group
+
+    def _toggle_debug(self):
+        """Toggle debug mode on/off"""
+        is_on = self.gui.debug_btn.isChecked()
+        self.gui.debug_mode = is_on
+        self.gui.debug_btn.setText(f"🐛 Debug: {'ON' if is_on else 'OFF'}")
+        self._update_debug_btn_style(is_on)
+
+        # Also update menu checkbox if exists
+        if hasattr(self.gui, 'debug_mode_action'):
+            self.gui.debug_mode_action.setChecked(is_on)
+
+        status = "enabled - verbose output" if is_on else "disabled - clean output"
+        self.gui.statusBar().showMessage(f"Debug mode {status}", 3000)
+
+    def _update_debug_btn_style(self, is_on):
+        """Update debug button style based on state"""
+        if is_on:
+            self.gui.debug_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #9C27B0;
+                    color: white;
+                    font-size: 12px;
+                    font-weight: bold;
+                    padding: 10px 15px;
+                    border-radius: 6px;
+                }
+                QPushButton:hover {background-color: #7B1FA2;}
+            """)
+        else:
+            self.gui.debug_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #607D8B;
+                    color: white;
+                    font-size: 12px;
+                    font-weight: bold;
+                    padding: 10px 15px;
+                    border-radius: 6px;
+                }
+                QPushButton:hover {background-color: #455A64;}
+            """)
+
+    def _toggle_raw_scan(self):
+        """Toggle raw output mode on/off"""
+        is_on = self.gui.raw_scan_btn.isChecked()
+        self.gui.raw_output_mode = is_on
+        self.gui.raw_scan_btn.setText(f"📋 Raw Output: {'ON' if is_on else 'OFF'}")
+        self._update_raw_btn_style(is_on)
+
+        status = "enabled - all output shown" if is_on else "disabled - filtered output"
+        self.gui.statusBar().showMessage(f"Raw output mode {status}", 3000)
+
+    def _update_raw_btn_style(self, is_on):
+        """Update raw output button style based on state"""
+        if is_on:
+            self.gui.raw_scan_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #FF5722;
+                    color: white;
+                    font-size: 12px;
+                    font-weight: bold;
+                    padding: 10px 15px;
+                    border-radius: 6px;
+                }
+                QPushButton:hover {background-color: #E64A19;}
+            """)
+        else:
+            self.gui.raw_scan_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #607D8B;
+                    color: white;
+                    font-size: 12px;
+                    font-weight: bold;
+                    padding: 10px 15px;
+                    border-radius: 6px;
+                }
+                QPushButton:hover {background-color: #455A64;}
+            """)
 
     def _create_presets_section(self):
         """Quick scan presets with clear descriptions"""
@@ -379,7 +586,7 @@ class ScanTabBuilder:
         return card
 
     def _create_modules_section(self):
-        """Module selection - Active/Passive split"""
+        """Module selection with collapsible categories in 3-column grid"""
         group = QGroupBox("📦 Vulnerability Modules")
         group.setStyleSheet("""
             QGroupBox {
@@ -401,91 +608,127 @@ class ScanTabBuilder:
             }
         """)
 
-        layout = QVBoxLayout()
-        layout.setSpacing(12)
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(8)
 
         # Select all
         all_layout = QHBoxLayout()
-        self.gui.all_modules_cb = QCheckBox("✓ SELECT ALL MODULES (25 total)")
+        module_count = len(self.MODULE_INFO)
+        self.gui.all_modules_cb = QCheckBox(f"✓ SELECT ALL ({module_count} modules)")
         self.gui.all_modules_cb.setChecked(True)
-        self.gui.all_modules_cb.setStyleSheet("font-size: 13px; font-weight: bold; color: #6A1B9A;")
+        self.gui.all_modules_cb.setStyleSheet("font-size: 12px; font-weight: bold; color: #6A1B9A;")
         self.gui.all_modules_cb.toggled.connect(self.gui.toggle_module_selection)
         all_layout.addWidget(self.gui.all_modules_cb)
         all_layout.addStretch()
-        layout.addLayout(all_layout)
+        main_layout.addLayout(all_layout)
 
         self.gui.module_checkboxes = {}
         self.gui.module_descriptions = self.MODULE_DESCRIPTIONS
 
-        # ACTIVE Modules
-        active_label = QLabel("🔴 ACTIVE MODULES (send attack payloads, may trigger alerts)")
-        active_label.setStyleSheet("font-size: 13px; font-weight: bold; color: #d32f2f; margin-top: 8px;")
-        layout.addWidget(active_label)
+        # Category icons and colors
+        CATEGORY_STYLES = {
+            "Injection": {"icon": "💉", "color": "#d32f2f", "bg": "#ffebee"},
+            "File & Path": {"icon": "📁", "color": "#e65100", "bg": "#fff3e0"},
+            "Auth & Session": {"icon": "🔑", "color": "#7b1fa2", "bg": "#f3e5f5"},
+            "API Security": {"icon": "🔌", "color": "#1565c0", "bg": "#e3f2fd"},
+            "Recon": {"icon": "🔍", "color": "#2e7d32", "bg": "#e8f5e9"},
+            "Info Disclosure": {"icon": "📦", "color": "#f57c00", "bg": "#fff8e1"},
+            "Server & Network": {"icon": "🌐", "color": "#00838f", "bg": "#e0f7fa"},
+            "Security Config": {"icon": "🛡️", "color": "#5d4037", "bg": "#efebe9"},
+            "Advanced": {"icon": "⚡", "color": "#c62828", "bg": "#ffcdd2"},
+            "Cloud": {"icon": "☁️", "color": "#0277bd", "bg": "#e1f5fe"},
+            "Other": {"icon": "🔧", "color": "#616161", "bg": "#fafafa"},
+        }
 
-        active_grid = QGridLayout()
-        active_grid.setSpacing(6)
-        row, col = 0, 0
-        for mid, info in sorted(self.MODULE_INFO.items()):
-            if info["active"]:
+        # Group modules by category
+        categories = {}
+        for mid, info in self.MODULE_INFO.items():
+            cat = info.get("category", "Other")
+            if cat not in categories:
+                categories[cat] = []
+            categories[cat].append((mid, info))
+
+        # Sort categories by priority
+        category_order = ["Injection", "File & Path", "Auth & Session", "API Security",
+                         "Recon", "Info Disclosure", "Server & Network", "Security Config",
+                         "Advanced", "Cloud", "Other"]
+
+        # Grid layout for categories - 3 columns per row
+        cat_grid = QGridLayout()
+        cat_grid.setSpacing(10)
+        cat_grid.setContentsMargins(5, 5, 5, 5)
+        cat_row, cat_col = 0, 0
+        COLS = 3
+
+        for cat_name in category_order:
+            if cat_name not in categories:
+                continue
+
+            modules_in_cat = categories[cat_name]
+            style = CATEGORY_STYLES.get(cat_name, CATEGORY_STYLES["Other"])
+
+            # Create collapsible box with readable styling
+            cat_box = self.CollapsibleBox(f"{style['icon']} {cat_name} ({len(modules_in_cat)})")
+            cat_box.toggle_button.setStyleSheet(f"""
+                QToolButton {{
+                    border: 2px solid {style['color']};
+                    background-color: {style['bg']};
+                    color: {style['color']};
+                    font-weight: bold;
+                    font-size: 12px;
+                    padding: 8px 10px;
+                    text-align: left;
+                    border-radius: 6px;
+                    min-height: 28px;
+                }}
+                QToolButton:hover {{
+                    background-color: {style['color']};
+                    color: white;
+                }}
+            """)
+
+            # Vertical list for modules in category
+            cat_layout = QVBoxLayout()
+            cat_layout.setSpacing(4)
+            cat_layout.setContentsMargins(8, 8, 8, 8)
+
+            for mid, info in sorted(modules_in_cat, key=lambda x: x[1]['name']):
                 cb = QCheckBox(f"{info['icon']} {info['name']}")
-                cb.setChecked(True)  # Enable by default since "select all" is checked
+                cb.setChecked(True)
                 cb.setToolTip(f"{info['name']}\n{info['desc']}")
-                cb.setStyleSheet("""
-                    QCheckBox {
+                cb.setStyleSheet(f"""
+                    QCheckBox {{
                         font-size: 12px;
-                        color: #424242;
-                        padding: 4px;
-                    }
-                    QCheckBox:hover {
-                        background-color: #ffebee;
+                        color: {'#333333' if info['active'] else '#666'};
+                        padding: 4px 2px;
+                        min-height: 20px;
+                    }}
+                    QCheckBox:hover {{
+                        background-color: {style['bg']};
                         border-radius: 4px;
-                    }
+                    }}
+                    QCheckBox::indicator {{
+                        width: 16px;
+                        height: 16px;
+                    }}
                 """)
-                # Connect individual checkbox to update "select all" state
                 cb.toggled.connect(lambda checked, cb_ref=cb: self._on_individual_module_toggled())
                 self.gui.module_checkboxes[mid] = cb
-                active_grid.addWidget(cb, row, col)
-                col += 1
-                if col > 3:
-                    col = 0
-                    row += 1
-        layout.addLayout(active_grid)
+                cat_layout.addWidget(cb)
 
-        # PASSIVE Modules
-        passive_label = QLabel("🟢 PASSIVE MODULES (only observe, stealthy)")
-        passive_label.setStyleSheet("font-size: 13px; font-weight: bold; color: #388E3C; margin-top: 12px;")
-        layout.addWidget(passive_label)
+            cat_box.setContentLayout(cat_layout)
+            # More space per module: 45px each + 40px padding
+            cat_box.setContentHeight(max(100, len(modules_in_cat) * 45 + 40))
 
-        passive_grid = QGridLayout()
-        passive_grid.setSpacing(6)
-        row, col = 0, 0
-        for mid, info in sorted(self.MODULE_INFO.items()):
-            if not info["active"]:
-                cb = QCheckBox(f"{info['icon']} {info['name']}")
-                cb.setChecked(True)  # Enable by default since "select all" is checked
-                cb.setToolTip(f"{info['name']}\n{info['desc']}")
-                cb.setStyleSheet("""
-                    QCheckBox {
-                        font-size: 12px;
-                        color: #424242;
-                        padding: 4px;
-                    }
-                    QCheckBox:hover {
-                        background-color: #e8f5e9;
-                        border-radius: 4px;
-                    }
-                """)
-                # Connect individual checkbox to update "select all" state
-                cb.toggled.connect(lambda checked, cb_ref=cb: self._on_individual_module_toggled())
-                self.gui.module_checkboxes[mid] = cb
-                passive_grid.addWidget(cb, row, col)
-                col += 1
-                if col > 3:
-                    col = 0
-                    row += 1
-        layout.addLayout(passive_grid)
+            # Add to grid
+            cat_grid.addWidget(cat_box, cat_row, cat_col)
+            cat_col += 1
+            if cat_col >= COLS:
+                cat_col = 0
+                cat_row += 1
 
-        group.setLayout(layout)
+        main_layout.addLayout(cat_grid)
+        group.setLayout(main_layout)
         return group
 
     def _on_individual_module_toggled(self):
@@ -524,7 +767,100 @@ class ScanTabBuilder:
         layout.setSpacing(12)
 
         label_style = "font-size: 12px; color: #424242; font-weight: normal;"
-        input_style = "font-size: 12px; padding: 6px;"
+
+        # Better spinbox style with visible up/down buttons
+        spinbox_style = """
+            QSpinBox {
+                font-size: 13px;
+                padding: 8px 12px;
+                border: 2px solid #e0e0e0;
+                border-radius: 6px;
+                background-color: white;
+                min-width: 80px;
+                min-height: 32px;
+            }
+            QSpinBox:focus {
+                border: 2px solid #FF9800;
+            }
+            QSpinBox::up-button {
+                subcontrol-origin: border;
+                subcontrol-position: top right;
+                width: 24px;
+                height: 16px;
+                border-left: 1px solid #e0e0e0;
+                border-bottom: 1px solid #e0e0e0;
+                border-top-right-radius: 4px;
+                background-color: #f5f5f5;
+            }
+            QSpinBox::up-button:hover {
+                background-color: #FF9800;
+            }
+            QSpinBox::up-button:pressed {
+                background-color: #E65100;
+            }
+            QSpinBox::up-arrow {
+                width: 10px;
+                height: 10px;
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-bottom: 6px solid #666;
+            }
+            QSpinBox::up-arrow:hover {
+                border-bottom: 6px solid white;
+            }
+            QSpinBox::down-button {
+                subcontrol-origin: border;
+                subcontrol-position: bottom right;
+                width: 24px;
+                height: 16px;
+                border-left: 1px solid #e0e0e0;
+                border-bottom-right-radius: 4px;
+                background-color: #f5f5f5;
+            }
+            QSpinBox::down-button:hover {
+                background-color: #FF9800;
+            }
+            QSpinBox::down-button:pressed {
+                background-color: #E65100;
+            }
+            QSpinBox::down-arrow {
+                width: 10px;
+                height: 10px;
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 6px solid #666;
+            }
+            QSpinBox::down-arrow:hover {
+                border-top: 6px solid white;
+            }
+        """
+
+        combo_style = """
+            QComboBox {
+                font-size: 13px;
+                padding: 8px 12px;
+                border: 2px solid #e0e0e0;
+                border-radius: 6px;
+                background-color: white;
+                min-width: 100px;
+                min-height: 32px;
+            }
+            QComboBox:focus {
+                border: 2px solid #FF9800;
+            }
+            QComboBox::drop-down {
+                width: 24px;
+                border-left: 1px solid #e0e0e0;
+                background-color: #f5f5f5;
+                border-top-right-radius: 4px;
+                border-bottom-right-radius: 4px;
+            }
+            QComboBox::drop-down:hover {
+                background-color: #FF9800;
+            }
+        """
 
         # Threads
         lbl1 = QLabel("🧵 Concurrent Threads:")
@@ -533,7 +869,7 @@ class ScanTabBuilder:
         self.gui.threads_spin = QSpinBox()
         self.gui.threads_spin.setRange(1, 50)
         self.gui.threads_spin.setValue(10)
-        self.gui.threads_spin.setStyleSheet(input_style)
+        self.gui.threads_spin.setStyleSheet(spinbox_style)
         self.gui.threads_spin.setToolTip("Higher = faster but noisier")
         layout.addWidget(self.gui.threads_spin, 0, 1)
 
@@ -544,7 +880,7 @@ class ScanTabBuilder:
         self.gui.timeout_spin = QSpinBox()
         self.gui.timeout_spin.setRange(5, 300)
         self.gui.timeout_spin.setValue(15)
-        self.gui.timeout_spin.setStyleSheet(input_style)
+        self.gui.timeout_spin.setStyleSheet(spinbox_style)
         layout.addWidget(self.gui.timeout_spin, 0, 3)
 
         # Max Time
@@ -554,7 +890,7 @@ class ScanTabBuilder:
         self.gui.max_time_spin = QSpinBox()
         self.gui.max_time_spin.setRange(1, 300)
         self.gui.max_time_spin.setValue(45)
-        self.gui.max_time_spin.setStyleSheet(input_style)
+        self.gui.max_time_spin.setStyleSheet(spinbox_style)
         layout.addWidget(self.gui.max_time_spin, 1, 1)
 
         # Output Format
@@ -564,7 +900,7 @@ class ScanTabBuilder:
         self.gui.format_combo = QComboBox()
         self.gui.format_combo.addItems(["html", "json", "txt", "html,json,txt"])
         self.gui.format_combo.setCurrentText("html,json,txt")
-        self.gui.format_combo.setStyleSheet(input_style)
+        self.gui.format_combo.setStyleSheet(combo_style)
         layout.addWidget(self.gui.format_combo, 1, 3)
 
         group.setLayout(layout)

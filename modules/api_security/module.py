@@ -388,27 +388,41 @@ class APISecurityScanner(BaseModule):
         return None
 
     def _test_injection(self, client: HTTPClient, url: str, injection_type: str, payload: str) -> Dict[str, Any]:
-        """Test for injection vulnerabilities in API parameters"""
+        """Test for injection vulnerabilities in API parameters with STRONG detection"""
+
+        # IMPORTANT: Don't add payload to NEW parameter - this causes false positives!
+        # Instead, test on existing parameters from the target
+        # For now, skip this test if no existing params (avoid FP)
+        if '?' not in url:
+            return None  # No existing parameters to test
 
         # Add payload to URL parameters
-        test_url = f"{url}?test={payload}"
+        test_url = f"{url}&test={payload}"
         response = client.get(test_url)
 
         if response:
-            # Check for injection indicators
+            # STRONG detection indicators - use unique markers, not generic words
             indicators = {
-                'SQLI_API': ['sql', 'mysql', 'syntax error', 'database'],
-                'NOSQL_API': ['mongo', 'bson', 'parse error'],
-                'XSS_API': [payload],
-                'PATH_TRAV': ['root:', 'windows', '[boot loader]'],
-                'CMDI_API': ['uid=', 'gid=', 'whoami', 'root'],
-                'SSRF_API': ['metadata', 'internal'],
-                'XXE_API': ['root:', 'ENTITY']
+                'SQLI_API': ['you have an error in your sql syntax', 'mysql_fetch', 'ora-01756', 'sqlite_error', 'postgresql error'],
+                'NOSQL_API': ['mongodb error:', 'bson parse error', 'couchdb error'],
+                # XSS_API: Use UNIQUE MARKER not the payload itself!
+                'XSS_API': ['DMNTR'],  # Must use unique marker like <script>alert('DMNTR')</script>
+                'PATH_TRAV': ['root:x:0:0:', '[boot loader]', 'windows\\system32'],
+                'CMDI_API': ['uid=0(root)', 'uid=1000', 'gid=0(root)'],
+                'SSRF_API': ['ec2.internal', 'instance-id', 'ami-id'],
+                'XXE_API': ['<!ENTITY', '<!DOCTYPE']
             }
 
             if injection_type in indicators:
                 for indicator in indicators[injection_type]:
                     if indicator.lower() in response.text.lower():
+                        # Additional confidence check - avoid FP on generic words
+                        confidence = 0.80
+
+                        # Lower confidence for generic indicators
+                        if len(indicator) < 10 and injection_type not in ['XSS_API']:
+                            confidence = 0.60
+
                         return {
                             'vulnerability': True,
                             'module': self.module_name,
@@ -418,9 +432,9 @@ class APISecurityScanner(BaseModule):
                             'parameter': 'test',
                             'payload': payload,
                             'method': 'GET',
-                            'confidence': 0.80,
+                            'confidence': confidence,
                             'description': f'{injection_type.replace("_API", "")} vulnerability in API parameter.',
-                            'evidence': f'Indicator "{indicator}" found in response',
+                            'evidence': f'Strong indicator "{indicator}" found in response',
                             'recommendation': 'Implement input validation and output encoding. Use parameterized queries.',
                             'cwe': 'CWE-89' if 'SQL' in injection_type else 'CWE-78',
                             'cvss': 9.0 if 'SQL' in injection_type or 'CMD' in injection_type else 7.5,

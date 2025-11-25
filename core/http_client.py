@@ -123,6 +123,29 @@ class HTTPClient:
         return self._request('POST', url, data=data, json=json, headers=headers,
                            allow_redirects=allow_redirects, **kwargs)
 
+    def request(self, method: str, url: str, data: Optional[Dict[str, Any]] = None,
+                json: Optional[Dict[str, Any]] = None, params: Optional[Dict[str, Any]] = None,
+                headers: Optional[Dict[str, str]] = None,
+                allow_redirects: bool = True, **kwargs) -> Optional[HTTPResponse]:
+        """
+        Send HTTP request with arbitrary method
+
+        Args:
+            method: HTTP method (GET, POST, PUT, DELETE, PATCH, etc.)
+            url: Target URL
+            data: Form data (for POST/PUT/PATCH)
+            json: JSON data (for POST/PUT/PATCH)
+            params: Query parameters (for GET)
+            headers: Additional headers
+            allow_redirects: Follow redirects
+            **kwargs: Additional requests arguments
+
+        Returns:
+            HTTPResponse object or None on error
+        """
+        return self._request(method.upper(), url, data=data, json=json, params=params,
+                           headers=headers, allow_redirects=allow_redirects, **kwargs)
+
     def _request(self, method: str, url: str, **kwargs) -> Optional[HTTPResponse]:
         """
         Internal method to send HTTP request

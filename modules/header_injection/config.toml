@@ -1,0 +1,28 @@
+# Module Configuration (TOML format)
+
+name = "Header Injection Scanner"
+description = "Tests for injection vulnerabilities in HTTP headers (User-Agent, Cookie, X-Forwarded-For, Referer)"
+version = "1.0"
+author = "Dominator Team"
+category = "Injection"
+severity = "High"
+cwe = "CWE-113"
+owasp = "A03:2021"
+cvss = "7.5"
+enabled = true
+passive = false
+tags = ["injection", "headers", "user-agent", "cookie", "xss", "sqli", "log-injection"]
+injectable_headers = ["User-Agent", "Referer", "X-Forwarded-For", "X-Real-IP", "X-Originating-IP", "X-Client-IP", "X-Remote-IP", "X-Remote-Addr", "X-Host", "X-Forwarded-Host", "Accept-Language", "Accept-Encoding", "Accept", "Origin", "True-Client-IP", "CF-Connecting-IP", "X-Custom-Header"]
+
+[test_injection_types]
+xss = {"enabled": true, "description": "Test for XSS via header reflection"}
+sqli = {"enabled": true, "description": "Test for SQL Injection via header values logged to DB"}
+log_injection = {"enabled": true, "description": "Test for log injection/forgery"}
+ssti = {"enabled": true, "description": "Test for Server-Side Template Injection"}
+cmdi = {"enabled": true, "description": "Test for Command Injection via headers"}
+
+[cookie_injection]
+enabled = true
+description = "Test injection through Cookie header values"
+test_all_cookies = true
+references = ["https://owasp.org/www-community/attacks/HTTP_Response_Splitting", "https://portswigger.net/web-security/host-header", "https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html"]

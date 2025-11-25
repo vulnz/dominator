@@ -292,7 +292,7 @@ class DirectoryEnumerationModule(BaseModule):
         if not responses:
             return None
 
-        # Check if all responses are identical (classic sign of fake 404)
+        # Check if all responses are identical (classic sign of fake 404 or auth-protected API)
         first_resp = responses[0]
         all_identical = all(
             r['status'] == first_resp['status'] and
@@ -301,22 +301,38 @@ class DirectoryEnumerationModule(BaseModule):
             for r in responses
         )
 
-        if all_identical and first_resp['status'] == 200:
-            logger.info(f"[REAL 404 DETECTED] {base_url} returns HTTP 200 for non-existent paths (size: {first_resp['size']} bytes)")
-            return first_resp
+        if all_identical:
+            status = first_resp['status']
+            if status == 200:
+                logger.info(f"[REAL 404 DETECTED] {base_url} returns HTTP 200 for non-existent paths (size: {first_resp['size']} bytes)")
+                return first_resp
+            elif status == 401:
+                # API requires authentication - all paths return 401
+                # This should NOT be treated as "found paths"
+                logger.info(f"[AUTH PROTECTED] {base_url} returns HTTP 401 for all paths (API requires authentication)")
+                return first_resp
+            elif status == 403:
+                # Forbidden for all paths
+                logger.info(f"[FORBIDDEN] {base_url} returns HTTP 403 for all paths")
+                return first_resp
 
         return None
 
     def _is_fake_404(self, response: Any, base_url: str) -> bool:
         """
-        Check if response is a fake 404 (server returns 200 but page doesn't exist)
+        Check if response is a fake 404 or matches auth-protected baseline
+
+        This detects:
+        - Fake 404s (server returns 200 but page doesn't exist)
+        - Auth-protected APIs (all paths return 401)
+        - Forbidden responses (all paths return 403)
 
         Args:
             response: Response object
             base_url: Base URL being tested
 
         Returns:
-            True if this is a fake 404, False if it's a real finding
+            True if this matches the baseline (not a real finding), False if it's a real finding
         """
         import hashlib
 
@@ -326,6 +342,11 @@ class DirectoryEnumerationModule(BaseModule):
         baseline = self.baseline_404_responses[base_url]
         if not baseline:
             return False
+
+        # If baseline is 401/403 and response is same status, it's not a real finding
+        # (API just requires auth for everything)
+        if baseline['status'] in [401, 403] and response.status_code == baseline['status']:
+            return True
 
         # Check if response matches the baseline
         resp_text = getattr(response, 'text', '')

@@ -1,0 +1,48 @@
+# Module Configuration (TOML format)
+
+name = "Subdomain Enumeration"
+description = "Discovers subdomains using multiple passive and active techniques"
+version = "2.0"
+author = "Dominator Team"
+category = "recon"
+severity = "Info"
+cwe = "CWE-200"
+owasp = "A05:2021"
+cvss = "0.0"
+enabled = true
+passive = false
+tags = ["recon", "subdomain", "dns", "enumeration", "osint"]
+
+[detection_methods]
+passive = {"crt_sh": {"enabled": true, "description": "Query Certificate Transparency logs via crt.sh API", "effectiveness": "high", "rate_limited": false, "api_url": "https://crt.sh/?q=%.{domain}&output=json", "notes": "Best passive source - finds subdomains from SSL certificates"}, "ssl_sans": {"enabled": true, "description": "Extract Subject Alternative Names from SSL certificates", "effectiveness": "medium", "rate_limited": false, "notes": "Direct SSL connection to extract SANs from certificate"}, "dns_records": {"enabled": true, "description": "Enumerate DNS records (MX, NS, TXT, SOA, CAA)", "effectiveness": "medium", "record_types": ["A", "AAAA", "MX", "NS", "TXT", "SOA", "CNAME", "CAA"], "notes": "Extracts hosting/mail/DNS provider intelligence"}, "virustotal": {"enabled": false, "description": "Query VirusTotal API for passive DNS data", "effectiveness": "high", "api_key_required": true, "api_url": "https://www.virustotal.com/vtapi/v2/domain/report", "notes": "Requires API key - excellent historical data"}, "securitytrails": {"enabled": false, "description": "Query SecurityTrails API for subdomain history", "effectiveness": "very_high", "api_key_required": true, "api_url": "https://api.securitytrails.com/v1/domain/{domain}/subdomains", "notes": "Premium API - most comprehensive database"}, "shodan": {"enabled": false, "description": "Query Shodan for hosts related to domain", "effectiveness": "high", "api_key_required": true, "api_url": "https://api.shodan.io/dns/domain/{domain}", "notes": "Great for finding exposed services"}, "censys": {"enabled": false, "description": "Query Censys certificates database", "effectiveness": "high", "api_key_required": true, "notes": "Alternative to crt.sh with better filtering"}, "hackertarget": {"enabled": true, "description": "Query HackerTarget free API", "effectiveness": "medium", "rate_limited": true, "api_url": "https://api.hackertarget.com/hostsearch/?q={domain}", "notes": "Free API with rate limits"}, "threatcrowd": {"enabled": false, "description": "Query ThreatCrowd passive DNS", "effectiveness": "medium", "api_url": "https://www.threatcrowd.org/searchApi/v2/domain/report/?domain={domain}", "notes": "Free but sometimes slow"}, "bufferover": {"enabled": true, "description": "Query BufferOver.run API", "effectiveness": "medium", "api_url": "https://dns.bufferover.run/dns?q=.{domain}", "notes": "Good free alternative"}, "wayback": {"enabled": false, "description": "Extract subdomains from Wayback Machine", "effectiveness": "low", "api_url": "http://web.archive.org/cdx/search/cdx?url=*.{domain}/*&output=json&collapse=urlkey", "notes": "Historical subdomains - may find decommissioned assets"}, "dnshistory": {"enabled": false, "description": "Query DNS history databases", "effectiveness": "medium", "notes": "Finds previously used subdomains"}, "github_dorking": {"enabled": false, "description": "Search GitHub for exposed subdomains in code/configs", "effectiveness": "medium", "notes": "Finds subdomains mentioned in source code"}, "spf_record_parsing": {"enabled": true, "description": "Extract domains from SPF include records", "effectiveness": "low", "notes": "Finds mail-related infrastructure"}}
+active = {"zone_transfer": {"enabled": true, "description": "Attempt DNS zone transfer (AXFR)", "effectiveness": "very_high", "risk": "low", "vulnerability_if_successful": true, "notes": "Misconfigured DNS servers may allow full zone dump"}, "dns_bruteforce": {"enabled": true, "description": "DNS brute force with wordlist", "effectiveness": "medium", "risk": "low", "wordlist": "wordlist.txt", "max_threads": 30, "timeout": 120, "notes": "Tests common subdomain prefixes"}, "reverse_dns": {"enabled": true, "description": "Reverse DNS lookup on discovered IPs", "effectiveness": "low", "notes": "May reveal additional hosts on same IP"}, "vhost_bruteforce": {"enabled": false, "description": "Virtual host enumeration via HTTP Host header", "effectiveness": "medium", "risk": "low", "notes": "Finds virtual hosts on shared servers"}, "tls_grabbing": {"enabled": true, "description": "TLS certificate grabbing on common ports", "effectiveness": "medium", "ports": [443, 8443, 8080, 8000, 9443], "notes": "Grabs certificates from non-standard HTTPS ports"}, "dns_recursion": {"enabled": false, "description": "DNS recursion brute force via public resolvers", "effectiveness": "medium", "resolvers": ["8.8.8.8", "1.1.1.1", "9.9.9.9"], "notes": "Uses multiple DNS resolvers to avoid rate limits"}, "wildcard_detection": {"enabled": true, "description": "Detect and handle wildcard DNS responses", "effectiveness": "n/a", "notes": "Required to avoid false positives on wildcard domains"}}
+
+[intelligence_extraction]
+enabled = true
+extract_hosting_provider = true
+extract_mail_provider = true
+extract_dns_provider = true
+extract_cdn_provider = true
+extract_technologies = true
+extract_spf_dmarc = true
+extract_ca_info = true
+hosting_signatures = {"amazonaws.com": "Amazon AWS", "cloudfront.net": "Amazon CloudFront", "elasticbeanstalk.com": "AWS Elastic Beanstalk", "azure": "Microsoft Azure", "azurewebsites.net": "Azure App Service", "cloudflare": "Cloudflare", "fastly": "Fastly CDN", "akamai": "Akamai", "googleusercontent.com": "Google Cloud", "appspot.com": "Google App Engine", "herokuapp.com": "Heroku", "netlify": "Netlify", "vercel": "Vercel", "github.io": "GitHub Pages", "digitalocean": "DigitalOcean", "linode": "Linode", "vultr": "Vultr", "ovh": "OVH", "hetzner": "Hetzner", "shopify": "Shopify", "squarespace": "Squarespace", "wix": "Wix"}
+mail_signatures = {"google.com": "Google Workspace", "googlemail.com": "Google Workspace", "outlook.com": "Microsoft 365", "protection.outlook.com": "Microsoft 365 (EOP)", "pphosted.com": "Proofpoint", "mimecast": "Mimecast", "barracuda": "Barracuda", "mailgun": "Mailgun", "sendgrid": "SendGrid", "mailchimp": "Mailchimp", "zoho": "Zoho Mail", "protonmail": "ProtonMail", "fastmail": "Fastmail"}
+dns_signatures = {"cloudflare.com": "Cloudflare DNS", "awsdns": "Amazon Route 53", "azure-dns": "Azure DNS", "googledomains": "Google Domains", "domaincontrol.com": "GoDaddy DNS", "nsone.net": "NS1", "ultradns": "Neustar UltraDNS"}
+
+[output]
+include_dns_records = true
+include_http_status = true
+include_ip_addresses = true
+include_server_headers = true
+include_technologies = true
+max_subdomains_display = 100
+
+[performance]
+max_threads = 30
+dns_timeout = 3
+http_timeout = 5
+max_wordlist_size = 500
+rate_limit_delay = 0.1
+recommended_wordlists = [{"name": "built-in", "file": "wordlist.txt", "size": "469 entries", "description": "Common subdomain prefixes"}, {"name": "SecLists small", "url": "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/subdomains-top1million-5000.txt", "size": "5000 entries", "description": "Top 5000 subdomains"}, {"name": "SecLists medium", "url": "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/subdomains-top1million-20000.txt", "size": "20000 entries", "description": "Top 20000 subdomains"}, {"name": "SecLists large", "url": "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/subdomains-top1million-110000.txt", "size": "110000 entries", "description": "Comprehensive wordlist"}, {"name": "Assetnote", "url": "https://wordlists-cdn.assetnote.io/data/manual/best-dns-wordlist.txt", "size": "9M entries", "description": "Most comprehensive wordlist"}]
+references = ["https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/04-Review_Old_Backup_and_Unreferenced_Files_for_Sensitive_Information", "https://github.com/OWASP/Amass", "https://github.com/projectdiscovery/subfinder", "https://crt.sh/", "https://securitytrails.com/"]

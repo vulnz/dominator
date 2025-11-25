@@ -29,12 +29,14 @@ from GUI.ui_tabs.modules_tab import ModulesTabBuilder
 from GUI.ui_tabs.plugins_tab import PluginsTabBuilder
 from GUI.ui_tabs.scope_tab import ScopeTabBuilder
 from GUI.ui_tabs.results_tab import ResultsTabBuilder
+from GUI.ui_tabs.api_testing_tab import APITestingTabBuilder
 from GUI.scan_thread import ScanThread
 from GUI.theme_manager import ThemeManager
 from GUI.config_handler import ConfigHandler
 from GUI.results_handler import ResultsHandler
 from GUI.dialogs.options_dialog import OptionsDialog
 from GUI.utils.message_box import show_warning, show_question, show_information
+from GUI.components.widgets import CollapsibleBox
 
 try:
     from PyQt5.QtWidgets import (
@@ -54,99 +56,6 @@ except ImportError:
     sys.exit(1)
 
 
-class CollapsibleBox(QWidget):
-    """A collapsible box widget that can be expanded/collapsed"""
-
-    def __init__(self, title="", parent=None):
-        super().__init__(parent)
-
-        self.toggle_button = QToolButton()
-        self.toggle_button.setStyleSheet("""
-            QToolButton {
-                border: 1px solid #cccccc;
-                background-color: #f5f5f5;
-                color: #333333;
-                font-weight: bold;
-                font-size: 12px;
-                padding: 8px;
-                text-align: left;
-            }
-            QToolButton:hover {
-                background-color: #e0e0e0;
-            }
-        """)
-        self.toggle_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.toggle_button.setArrowType(Qt.RightArrow)
-        self.toggle_button.setText(title)
-        self.toggle_button.setCheckable(True)
-        self.toggle_button.setChecked(False)
-        self.toggle_button.clicked.connect(self.on_toggle)
-
-        self.content_area = QWidget()
-        self.content_area.setMaximumHeight(0)
-        self.content_area.setMinimumHeight(0)
-        self.content_area.setStyleSheet("background-color: #fafafa; border-radius: 4px;")
-
-        self.content_layout = QVBoxLayout()
-        self.content_layout.setContentsMargins(10, 10, 10, 10)
-        self.content_area.setLayout(self.content_layout)
-
-        main_layout = QVBoxLayout()
-        main_layout.setSpacing(0)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.addWidget(self.toggle_button)
-        main_layout.addWidget(self.content_area)
-
-        self.setLayout(main_layout)
-
-        self._collapsed_height = 0
-        self._content_height = 200  # Default height
-
-    def on_toggle(self, checked):
-        """Toggle the collapsible box"""
-        if checked:
-            self.toggle_button.setArrowType(Qt.DownArrow)
-            self.content_area.setMaximumHeight(16777215)  # QWIDGETSIZE_MAX
-            self.content_area.setMinimumHeight(self._content_height)
-        else:
-            self.toggle_button.setArrowType(Qt.RightArrow)
-            self.content_area.setMaximumHeight(0)
-            self.content_area.setMinimumHeight(0)
-
-    def setContentLayout(self, layout):
-        """Set the layout for the content area"""
-        # Clear existing layout
-        while self.content_layout.count():
-            item = self.content_layout.takeAt(0)
-            if item.widget():
-                item.widget().setParent(None)
-
-        # Create a container widget for the new layout
-        container = QWidget()
-        container.setLayout(layout)
-        self.content_layout.addWidget(container)
-
-        # Calculate content height
-        self._content_height = layout.sizeHint().height() + 20
-        if self._content_height < 100:
-            self._content_height = 100
-
-    def setContentHeight(self, height):
-        """Set the content height when expanded"""
-        self._content_height = height
-        if self.toggle_button.isChecked():
-            self.content_area.setMinimumHeight(height)
-
-    def expand(self):
-        """Expand the collapsible box by default"""
-        self.toggle_button.setChecked(True)
-        self.on_toggle(True)
-
-    def collapse(self):
-        """Collapse the collapsible box"""
-        self.toggle_button.setChecked(False)
-        self.on_toggle(False)
-
 
 class DominatorGUI(QMainWindow):
     """Main GUI window for Dominator scanner"""
@@ -154,12 +63,23 @@ class DominatorGUI(QMainWindow):
     def __init__(self):
         super().__init__()
         self.scan_thread = None
-        self.vuln_counts = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0}
+        self.time_update_timer = QTimer(self)  # Timer for time display updates
+        self.time_update_timer.timeout.connect(self._update_scan_time)
+        self.vuln_counts = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0, 'INFO': 0}
         self.current_project_file = None  # Track current project file
         self.project_manager = ProjectManager()  # Project management
         self.theme_manager = ThemeManager(self)  # Theme management
         self.config_handler = ConfigHandler(self)  # Configuration file handling
         self.results_handler = ResultsHandler(self)  # Results/vulnerability handling
+
+        # Performance optimization: Debug mode and output throttling
+        self.debug_mode = False  # Off by default - reduces lag
+        self.raw_output_mode = False  # Off by default - shows filtered output
+        self._output_buffer = []  # Buffer for throttled output
+        self._last_output_time = 0  # Last time output was flushed
+        self._output_throttle_ms = 100  # Minimum ms between UI updates
+        self._output_flush_timer = None  # Timer for flushing output buffer
+
         self.init_ui()
         self.theme_manager.apply_theme("light")  # Default theme - white with black text
 
@@ -505,6 +425,10 @@ class DominatorGUI(QMainWindow):
         plugins_tab = self.create_plugins_tab()
         self.tabs.addTab(plugins_tab, "Plugins")
 
+        # API Testing Tab
+        api_tab = self.create_api_testing_tab()
+        self.tabs.addTab(api_tab, "API Testing")
+
         # Browser Integration Tab
         self.browser_tab = BrowserTab(main_gui=self)
         self.browser_tab.scan_page_requested.connect(self.on_scan_page_requested)
@@ -703,6 +627,15 @@ class DominatorGUI(QMainWindow):
         reset_warnings_action.triggered.connect(self.reset_all_warnings)
         settings_menu.addAction(reset_warnings_action)
 
+        settings_menu.addSeparator()
+
+        # Debug mode toggle - off by default for better performance
+        self.debug_mode_action = QAction("Debug Mode (Verbose Output)", self)
+        self.debug_mode_action.setCheckable(True)
+        self.debug_mode_action.setChecked(self.debug_mode)
+        self.debug_mode_action.triggered.connect(self.toggle_debug_mode)
+        settings_menu.addAction(self.debug_mode_action)
+
         # Themes menu
         themes_menu = menubar.addMenu("Themes")
 
@@ -832,12 +765,16 @@ class DominatorGUI(QMainWindow):
         self.results_tab_builder = builder  # Store reference for Site Tree and Debug access
         return builder.build()
 
+    def create_api_testing_tab(self):
+        """Create API Testing tab for loading and testing API specifications"""
+        builder = APITestingTabBuilder(self, CollapsibleBox)
+        self.api_tab_builder = builder  # Store reference for API scan access
+        return builder.build()
+
     def toggle_module_selection(self, checked):
-        """Toggle individual module selection"""
+        """Toggle all module checkboxes when 'Select All' is clicked"""
         for cb in self.module_checkboxes.values():
-            cb.setEnabled(not checked)
-            if checked:
-                cb.setChecked(False)
+            cb.setChecked(checked)  # Check all when Select All is checked, uncheck when unchecked
 
     def filter_modules(self, search_text):
         """Filter modules based on search text"""
@@ -984,8 +921,21 @@ class DominatorGUI(QMainWindow):
 
         command = [sys.executable, str(main_script)]
 
-        # Target
-        if self.target_file_input.text():
+        # Check for API targets first (from API Testing tab)
+        if hasattr(self, 'api_scan_targets') and self.api_scan_targets:
+            # Write API targets to temp JSON file for full method/params/body support
+            import tempfile
+            import json
+            temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json', encoding='utf-8')
+            json.dump(self.api_scan_targets, temp_file, indent=2)
+            temp_file.close()
+            command.extend(["--api-targets-file", temp_file.name])
+            # Store temp file path for cleanup later
+            self._api_targets_temp_file = temp_file.name
+            # Clear api_scan_targets after using
+            self.api_scan_targets = None
+        # Target file
+        elif self.target_file_input.text():
             command.extend(["-f", self.target_file_input.text()])
         elif self.target_input.toPlainText().strip():
             # Get all targets from text area (comma-separated or newline-separated)
@@ -1093,7 +1043,7 @@ class DominatorGUI(QMainWindow):
         wizard.exec_()
 
     def apply_wizard_config(self, config):
-        """Apply configuration from scan wizard"""
+        """Apply configuration from scan wizard and start scan automatically"""
         # Set target
         if config.get('target'):
             self.target_input.setPlainText(config['target'])
@@ -1128,16 +1078,25 @@ class DominatorGUI(QMainWindow):
             if index >= 0:
                 self.format_combo.setCurrentIndex(index)
 
-        # Switch to Scan Configuration tab
-        self.tabs.setCurrentIndex(0)
+        # Switch to Results/Findings tab (index 2 based on start_scan method)
+        results_tab_index = 2
+        for i in range(self.tabs.count()):
+            tab_text = self.tabs.tabText(i).lower()
+            if 'result' in tab_text or 'finding' in tab_text:
+                results_tab_index = i
+                break
+        self.tabs.setCurrentIndex(results_tab_index)
 
-        # Show confirmation
-        show_information(
-            self, "Wizard Complete",
-            "Scan configuration has been applied.\n\n"
-            "Click 'Start' to begin scanning.",
-            setting_key="info_wizard_complete"
-        )
+        # Update status to show we're starting
+        self.statusBar().showMessage("Starting scan from wizard...")
+
+        # Process events to update UI before starting scan
+        from PyQt5.QtWidgets import QApplication
+        QApplication.processEvents()
+
+        # Start scan automatically after a short delay (gives UI time to update)
+        from PyQt5.QtCore import QTimer
+        QTimer.singleShot(200, self.start_scan)
 
     def start_scan(self):
         """Start the vulnerability scan"""
@@ -1180,15 +1139,20 @@ class DominatorGUI(QMainWindow):
                         temp_payload_file.close()
                     return
 
-            # Update UI
+            # Update UI - batch updates to reduce lag
             self.start_btn.setEnabled(False)
             self.stop_btn.setEnabled(True)
             self.pause_btn.setEnabled(True)
-            self.output_console.clear()
-            self.output_console.append(f"[*] Starting scan with command:\n{' '.join(command)}\n")
-            self.statusBar().showMessage("Scan running...")
+            self.statusBar().showMessage("Initializing scan...")
             self.progress_bar.setValue(0)
             self.current_module_label.setText("Initializing scan...")
+
+            # Process events to keep UI responsive
+            QApplication.processEvents()
+
+            # Clear output console
+            self.output_console.clear()
+            self.output_console.append(f"[*] Starting scan...")
 
             # Reset vulnerability counters and list
             self.vuln_counts = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0}
@@ -1197,16 +1161,15 @@ class DominatorGUI(QMainWindow):
             # Reset results tab color
             self.tabs.tabBar().setTabTextColor(2, QColor('white'))  # Results tab (index 2)
 
-            # Clear resources tables
-            self.social_media_table.setRowCount(0)
-            self.emails_table.setRowCount(0)
-            self.phones_table.setRowCount(0)
-            self.leaked_keys_table.setRowCount(0)
+            # Process events before clearing tables
+            QApplication.processEvents()
 
-            # Clear scope tables
-            self.scope_table.setRowCount(0)
-            self.tech_table.setRowCount(0)
-            self.geo_table.setRowCount(0)
+            # Clear tables with updates suspended for performance
+            for table in [self.social_media_table, self.emails_table, self.phones_table,
+                         self.leaked_keys_table, self.scope_table, self.tech_table, self.geo_table]:
+                table.setUpdatesEnabled(False)
+                table.setRowCount(0)
+                table.setUpdatesEnabled(True)
 
             # Initialize Progress & Plan tab
             import datetime
@@ -1214,11 +1177,23 @@ class DominatorGUI(QMainWindow):
             self.scan_start_label.setText(self.scan_start_time.strftime("%Y-%m-%d %H:%M:%S"))
             self.time_update_timer.start(1000)  # Update every second
 
+            # Process events before heavy operations
+            QApplication.processEvents()
+
             # Populate scan plan based on selected modules
             self.populate_scan_plan(command)
 
-            # Start scan thread
-            self.scan_thread = ScanThread(command)
+            # Show command in output (after initialization)
+            if self.debug_mode:
+                self.output_console.append(f"[*] Command: {' '.join(command)}\n")
+
+            self.statusBar().showMessage("Scan running...")
+
+            # Get max_time for time remaining calculation
+            max_time_minutes = self.max_time_spin.value() if hasattr(self, 'max_time_spin') else 0
+
+            # Start scan thread with max_time for time tracking
+            self.scan_thread = ScanThread(command, max_time=max_time_minutes)
             self.scan_thread.output_signal.connect(self.append_output)
             self.scan_thread.finished_signal.connect(self.scan_finished)
             self.scan_thread.progress_signal.connect(self.update_progress)
@@ -1227,6 +1202,7 @@ class DominatorGUI(QMainWindow):
             self.scan_thread.resource_signal.connect(self.results_handler.add_resource)
             self.scan_thread.scope_signal.connect(self.results_handler.add_scope_info)
             self.scan_thread.report_signal.connect(self.results_handler.set_current_report)
+            self.scan_thread.time_signal.connect(self.update_time_display)
             self.scan_thread.start()
 
             # Switch to Results tab to show progress and findings
@@ -1295,36 +1271,107 @@ class DominatorGUI(QMainWindow):
                 self.output_console.append("\n[||] Scan paused")
                 self.statusBar().showMessage("Scan paused")
 
+    def toggle_debug_mode(self, checked):
+        """Toggle debug mode on/off"""
+        self.debug_mode = checked
+        status = "enabled" if checked else "disabled"
+        self.statusBar().showMessage(f"Debug mode {status}", 3000)
+        if checked:
+            self.output_console.append(f"[*] Debug mode enabled - verbose output will be shown")
+        else:
+            self.output_console.append(f"[*] Debug mode disabled - only important messages shown")
+
     def append_output(self, text):
-        """Append text to output console and scan output table"""
-        # Strip ANSI color codes for clean display
+        """Append text to output console with throttling to reduce UI lag"""
         import re
+        import time
+
+        # Check if output logging is enabled
+        if hasattr(self, 'output_enabled_cb') and not self.output_enabled_cb.isChecked():
+            return  # Skip logging if disabled
+
+        # Strip ANSI color codes for clean display
         text_clean = re.sub(r'\x1b\[[0-9;]*m', '', text)
         # Also strip any remaining [XXm patterns (colorama on Windows)
         text_clean = re.sub(r'\[([0-9]{1,2}(;[0-9]{1,2})?)?m', '', text_clean)
 
-        # Filter out noisy debug/error messages from OOB detection
-        skip_patterns = [
-            'Error checking Pipedream:',
-            'Error checking Requestbin:',
-            'Max retries exceeded',
-            'Read timed out',
-            'SSL: UNEXPECTED_EOF_WHILE_READING',
-            'SSLError',
-            'SSLEOFError'
-        ]
+        # RAW OUTPUT MODE - bypass all filtering when enabled
+        if not self.raw_output_mode:
+            # Filter out noisy debug/error messages from OOB detection
+            skip_patterns = [
+                'Error checking Pipedream:',
+                'Error checking Requestbin:',
+                'Max retries exceeded',
+                'Read timed out',
+                'SSL: UNEXPECTED_EOF_WHILE_READING',
+                'SSLError',
+                'SSLEOFError'
+            ]
 
-        # Skip line if it contains any of the noisy patterns
-        if any(pattern in text_clean for pattern in skip_patterns):
+            # Skip line if it contains any of the noisy patterns
+            if any(pattern in text_clean for pattern in skip_patterns):
+                return
+
+            # Debug mode filtering - skip ONLY truly verbose/noisy messages when debug is off
+            # Important messages (vulnerabilities, module status, results) always show
+            if not self.debug_mode:
+                # Only filter out actual debug/trace messages, not important scan output
+                verbose_patterns = [
+                    '[DEBUG]', '[VERBOSE]', '[TRACE]',
+                    'Parsed parameters:', 'Parameters:',
+                    'Testing parameter:', 'Checking URL:',
+                    'Request headers:', 'Response headers:',
+                    'DEBUG -', 'TRACE -',
+                ]
+                # Check if it's a verbose message but NOT an important one
+                is_verbose = any(pattern in text_clean for pattern in verbose_patterns)
+                # Important patterns that should ALWAYS show
+                important_patterns = [
+                    'Running module:', 'Module', 'completed:',
+                    'VULNERABILITY', 'vulnerability', 'FOUND', 'Found:',
+                    '[CRITICAL]', '[HIGH]', '[MEDIUM]', '[LOW]',
+                    'XSS', 'SQLi', 'SQL Injection', 'CSRF', 'SSRF', 'LFI', 'RFI',
+                    'Target:', 'Scan', 'Error:', 'Warning:',
+                    'Total vulnerabilities', 'findings',
+                ]
+                is_important = any(pattern in text_clean for pattern in important_patterns)
+                if is_verbose and not is_important:
+                    return
+
+        # Add to buffer for throttled display
+        self._output_buffer.append(text_clean)
+
+        # Check if we should flush now
+        current_time = time.time() * 1000  # ms
+        time_since_last = current_time - self._last_output_time
+
+        if time_since_last >= self._output_throttle_ms:
+            # Flush immediately
+            self._flush_output_buffer()
+        else:
+            # Schedule a delayed flush if not already scheduled
+            if self._output_flush_timer is None:
+                remaining = self._output_throttle_ms - time_since_last
+                self._output_flush_timer = QTimer.singleShot(int(remaining), self._flush_output_buffer)
+
+    def _flush_output_buffer(self):
+        """Flush buffered output to console"""
+        import time
+
+        self._output_flush_timer = None
+
+        if not self._output_buffer:
             return
 
-        self.output_console.append(text_clean)
-        # Auto-scroll to bottom
+        # Batch update - join all buffered lines
+        batch_text = '\n'.join(self._output_buffer)
+        self._output_buffer.clear()
+
+        # Update main output console only (debug tab is separate)
+        self.output_console.append(batch_text)
         self.output_console.moveCursor(QTextCursor.End)
 
-        # Also send to scan output table and debug tab via results_tab_builder
-        if hasattr(self, 'results_tab_builder') and text_clean.strip():
-            self.results_tab_builder.add_scan_output_line(text_clean)
+        self._last_output_time = time.time() * 1000
 
     def update_progress(self, value, message):
         """Update progress bar and status"""
@@ -1350,6 +1397,66 @@ class DominatorGUI(QMainWindow):
             elif "Crawling" in message:
                 self.progress_tab_builder.add_activity_log(message, "info")
 
+    def update_time_display(self, elapsed_seconds, remaining_seconds):
+        """Update time elapsed and remaining display"""
+        def format_time(seconds):
+            """Format seconds into MM:SS or HH:MM:SS"""
+            if seconds < 0:
+                return "∞"
+            hours = seconds // 3600
+            minutes = (seconds % 3600) // 60
+            secs = seconds % 60
+            if hours > 0:
+                return f"{hours}:{minutes:02d}:{secs:02d}"
+            return f"{minutes:02d}:{secs:02d}"
+
+        elapsed_str = format_time(elapsed_seconds)
+        remaining_str = format_time(remaining_seconds)
+
+        # Update time label (if exists)
+        if hasattr(self, 'time_elapsed_label'):
+            self.time_elapsed_label.setText(f"⏱️ Elapsed: {elapsed_str}")
+
+        if hasattr(self, 'time_remaining_label'):
+            if remaining_seconds < 0:
+                self.time_remaining_label.setText("⏳ Time Left: Unlimited")
+            elif remaining_seconds == 0:
+                self.time_remaining_label.setText("⏳ Time Left: 00:00 (limit reached)")
+                self.time_remaining_label.setStyleSheet("color: #ef4444; font-weight: bold;")
+            else:
+                self.time_remaining_label.setText(f"⏳ Time Left: {remaining_str}")
+                # Change color when less than 1 minute remaining
+                if remaining_seconds < 60:
+                    self.time_remaining_label.setStyleSheet("color: #f97316; font-weight: bold;")
+                elif remaining_seconds < 300:
+                    self.time_remaining_label.setStyleSheet("color: #eab308;")
+                else:
+                    self.time_remaining_label.setStyleSheet("color: #22c55e;")
+
+        # Update progress tab if available
+        if hasattr(self, 'progress_tab_builder') and hasattr(self.progress_tab_builder, 'update_time_display'):
+            self.progress_tab_builder.update_time_display(elapsed_str, remaining_str)
+
+    def _update_scan_time(self):
+        """Update scan time display from timer (fallback if scan_thread doesn't emit)"""
+        if not hasattr(self, 'scan_start_time') or not self.scan_start_time:
+            return
+
+        import datetime
+        elapsed = (datetime.datetime.now() - self.scan_start_time).total_seconds()
+        elapsed_seconds = int(elapsed)
+
+        # Get max_time from spin box
+        max_time_minutes = self.max_time_spin.value() if hasattr(self, 'max_time_spin') else 0
+
+        if max_time_minutes > 0:
+            max_seconds = max_time_minutes * 60
+            remaining = max(0, max_seconds - elapsed_seconds)
+        else:
+            remaining = -1
+
+        self.update_time_display(elapsed_seconds, remaining)
+
     def scan_finished(self, return_code):
         """Handle scan completion"""
         self.start_btn.setEnabled(True)
@@ -1369,6 +1476,9 @@ class DominatorGUI(QMainWindow):
             self.output_console.append("\n[+] Scan completed successfully!")
             self.progress_bar.setValue(100)
             self.current_module_label.setText("Scan complete!")
+
+            # Load full findings from JSON report to show all details
+            self._load_findings_from_report()
 
             # Update progress tab builder
             if hasattr(self, 'progress_tab_builder'):
@@ -1405,6 +1515,116 @@ class DominatorGUI(QMainWindow):
 
             # Send notifications for stopped/failed scan
             self._send_scan_notifications("Scan Stopped", False)
+
+    def _load_findings_from_report(self):
+        """Load full findings data from JSON report after scan completion"""
+        import json
+        from pathlib import Path
+        from GUI.ui_tabs.results_tab import add_finding_to_table
+
+        try:
+            parent_dir = Path(__file__).parent.parent
+
+            # Look for latest JSON report
+            json_reports = list(parent_dir.glob("scan_report_*.json"))
+            if not json_reports:
+                self.output_console.append("[*] No JSON report found - showing live results only")
+                return
+
+            # Get latest report
+            latest_report = max(json_reports, key=lambda p: p.stat().st_mtime)
+            self.output_console.append(f"[+] Loading full findings from: {latest_report.name}")
+
+            # Load JSON report
+            with open(latest_report, 'r', encoding='utf-8') as f:
+                report_data = json.load(f)
+
+            # JSON report uses 'results' key (not 'findings')
+            findings = report_data.get('results', [])
+            if not findings:
+                self.output_console.append("[*] No findings in JSON report")
+                return
+
+            self.output_console.append(f"[+] Found {len(findings)} results in report")
+
+            # Clear existing findings and reload with full data
+            self.results_table.setRowCount(0)
+
+            # Reset vuln counts (include INFO)
+            self.vuln_counts = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0, 'INFO': 0}
+
+            loaded_count = 0
+            # Add each finding with full data
+            for finding in findings:
+                # Only include findings marked as vulnerability, info, or recon
+                is_vuln = finding.get('vulnerability', False)
+                is_info = finding.get('info', False)
+                is_recon = finding.get('type') == 'recon' or finding.get('severity', '').lower() == 'info'
+
+                if not is_vuln and not is_info and not is_recon:
+                    continue
+
+                # Normalize severity to uppercase
+                severity = finding.get('severity', 'MEDIUM').upper()
+                if severity not in self.vuln_counts:
+                    severity = 'MEDIUM'  # Default fallback
+
+                title = finding.get('type', finding.get('description', 'Unknown'))
+                module = finding.get('module', '')
+                target = finding.get('url', '')
+
+                # Full finding data for detail panel - include ALL available fields
+                finding_data = {
+                    'parameter': finding.get('parameter', ''),
+                    'payload': finding.get('payload', ''),
+                    'evidence': finding.get('evidence', ''),
+                    'cvss': finding.get('cvss', finding.get('cvss_score', '')),
+                    'cvss_vector': finding.get('cvss_vector', ''),
+                    'cwe': finding.get('cwe', finding.get('cwe_id', '')),
+                    'cwe_name': finding.get('cwe_name', ''),
+                    'owasp': finding.get('owasp', finding.get('owasp_category', '')),
+                    'owasp_name': finding.get('owasp_name', ''),
+                    'description': finding.get('description', title),  # Use title as fallback
+                    'remediation': finding.get('remediation', finding.get('fix', '')),
+                    'request': finding.get('request', ''),
+                    'response': finding.get('response', ''),
+                    'method': finding.get('method', 'GET'),
+                    'confidence': finding.get('confidence', 0.8),
+                    'timestamp': finding.get('timestamp', ''),
+                }
+
+                # Add to table with full data
+                add_finding_to_table(self, severity, title, module, target, finding_data)
+
+                # Update counts
+                self.vuln_counts[severity] += 1
+                loaded_count += 1
+
+            self.output_console.append(f"[+] Loaded {loaded_count} findings with full details")
+
+            # Update all displays
+            self.results_handler.update_vuln_display()
+
+            # Update stats cards if available
+            if hasattr(self, 'total_card'):
+                self.total_card.set_value(loaded_count)
+            if hasattr(self, 'critical_card'):
+                self.critical_card.set_value(self.vuln_counts['CRITICAL'])
+            if hasattr(self, 'high_card'):
+                self.high_card.set_value(self.vuln_counts['HIGH'])
+            if hasattr(self, 'medium_card'):
+                self.medium_card.set_value(self.vuln_counts['MEDIUM'])
+            if hasattr(self, 'low_card'):
+                self.low_card.set_value(self.vuln_counts['LOW'])
+
+            # Update pie chart
+            if hasattr(self, 'pie_chart'):
+                self.pie_chart.set_data(self.vuln_counts)
+
+        except Exception as e:
+            import traceback
+            self.output_console.append(f"[!] Error loading findings from report: {e}")
+            self.output_console.append(f"[!] Traceback: {traceback.format_exc()}")
 
     def _send_scan_notifications(self, title, success):
         """Send notifications about scan completion"""

