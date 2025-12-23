@@ -1,0 +1,43 @@
+# Dominator Web Scanner - Requirements
+# Install with: pip install -r requirements.txt
+
+# Core HTTP and networking
+requests>=2.31.0
+urllib3>=2.0.0
+
+# GUI Framework (PyQt5)
+PyQt5>=5.15.0
+PyQtWebEngine>=5.15.0
+
+# Report Generation
+reportlab>=3.6.0
+python-docx>=0.8.11
+
+# Certificate Management
+cryptography>=41.0.0
+
+# Optional: Brotli compression support (recommended)
+# Uncomment if needed for br-compressed responses
+# brotli>=1.0.9
+
+# Standard library dependencies (included with Python)
+# These are listed for documentation purposes only:
+# - json
+# - re
+# - typing
+# - dataclasses
+# - pathlib
+# - datetime
+# - argparse
+# - threading
+# - subprocess
+# - logging
+# - abc
+# - enum
+# - difflib
+# - gzip
+# - zlib
+# - urllib.request
+# - urllib.parse
+# - html
+# - xml
