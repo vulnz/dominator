@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "Environment Files & API Keys Scanner",
-  "description": "Detects exposed .env files, configuration files, and leaked API keys/secrets",
+  "description": "Comprehensive scanner for exposed configuration files, environment files, and 80+ API key/secret patterns including AWS, GCP, Azure, GitHub, GitLab, Slack, Stripe, and more",
   "severity": "Critical",
   "cwe": "CWE-798",
   "owasp": "A02:2021",
@@ -9,5 +9,14 @@
   "cwe_name": "Use of Hard-coded Credentials",
   "owasp_name": "Cryptographic Failures",
   "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
-  "remediation": "Never commit .env files to version control. Use environment variables or secret management services (AWS Secrets Manager, Azure Key Vault, HashiCorp Vault). Add .env to .gitignore. Rotate all exposed keys immediately."
+  "category": "Secrets Detection",
+  "version": "2.0",
+  "author": "Dominator Team",
+  "tags": ["secrets", "api-keys", "credentials", "env-files", "config", "tokens", "cloud", "aws", "gcp", "azure"],
+  "references": [
+    "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/05-Review_Web_Server_Metafiles_for_Information_Leakage",
+    "https://github.com/zricethezav/gitleaks",
+    "https://github.com/trufflesecurity/trufflehog"
+  ],
+  "remediation": "Never commit .env files to version control. Use environment variables or secret management services (AWS Secrets Manager, Azure Key Vault, HashiCorp Vault). Add .env to .gitignore. Rotate all exposed keys immediately. Use pre-commit hooks to prevent secret commits."
 }

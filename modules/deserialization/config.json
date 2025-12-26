@@ -1,0 +1,23 @@
+{
+    "name": "Insecure Deserialization",
+    "description": "Detects insecure deserialization vulnerabilities in Java, PHP, Python, Ruby, and .NET applications",
+    "author": "Dominator Team",
+    "version": "1.0",
+    "category": "Injection",
+    "severity": "Critical",
+    "cwe": "CWE-502",
+    "cwe_name": "Deserialization of Untrusted Data",
+    "owasp": "A08:2021",
+    "owasp_name": "Software and Data Integrity Failures",
+    "cvss": "9.8",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+    "enabled": true,
+    "passive": false,
+    "tags": ["deserialization", "java", "php", "python", "rce", "gadget"],
+    "remediation": "Never deserialize untrusted data. Use safe serialization formats like JSON. Implement integrity checks for serialized objects.",
+    "references": [
+        "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/16-Testing_for_HTTP_Incoming_Requests",
+        "https://github.com/frohoff/ysoserial",
+        "https://github.com/ambionics/phpggc"
+    ]
+}

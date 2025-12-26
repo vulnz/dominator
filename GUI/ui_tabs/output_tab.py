@@ -88,7 +88,7 @@ class OutputTabBuilder:
         output_control_layout = QHBoxLayout()
 
         self.gui.output_enabled_cb = QCheckBox("Enable Scan Output Logging")
-        self.gui.output_enabled_cb.setChecked(False)  # Disabled by default
+        self.gui.output_enabled_cb.setChecked(True)  # FIXED: Enabled by default for better UX
         self.gui.output_enabled_cb.setStyleSheet("""
             QCheckBox {
                 font-size: 12px;
@@ -112,8 +112,13 @@ class OutputTabBuilder:
         self.gui.output_console = QTextEdit()
         self.gui.output_console.setReadOnly(True)
         self.gui.output_console.setFont(QFont("Consolas", 9))
-        self.gui.output_console.setEnabled(False)  # Disabled by default
-        self.gui.output_console.setPlaceholderText("Output logging is disabled. Enable checkbox above to see scan output.")
+        self.gui.output_console.setEnabled(True)  # FIXED: Enabled by default for better UX
+        self.gui.output_console.setPlaceholderText("")
+
+        # PERFORMANCE FIX: Limit output console to 5000 lines to prevent memory bloat
+        # This prevents UI slowdown during long scans with verbose output
+        self.gui.output_console.document().setMaximumBlockCount(5000)
+
         # Stylesheet will be applied in apply_theme()
         layout.addWidget(self.gui.output_console)
 

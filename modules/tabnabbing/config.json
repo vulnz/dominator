@@ -6,10 +6,15 @@
     "category": "Client-Side",
     "severity": "Medium",
     "cwe": "CWE-1022",
+    "cwe_name": "Use of Web Link to Untrusted Target with window.opener Access",
     "owasp": "A05:2021",
+    "owasp_name": "Security Misconfiguration",
+    "cvss": "4.3",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N",
     "tags": ["tabnabbing", "phishing", "client-side", "links"],
     "references": [
         "https://owasp.org/www-community/attacks/Reverse_Tabnabbing",
         "https://cheatsheetseries.owasp.org/cheatsheets/HTML5_Security_Cheat_Sheet.html#tabnabbing"
-    ]
+    ],
+    "remediation": "Add rel='noopener noreferrer' to all links with target='_blank'. Use CSP frame-ancestors directive."
 }

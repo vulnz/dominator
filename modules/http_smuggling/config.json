@@ -4,11 +4,14 @@
   "enabled": true,
   "severity": "Critical",
   "cwe": "CWE-444",
-  "cvss": 9.1,
+  "cwe_name": "Inconsistent Interpretation of HTTP Requests ('HTTP Request/Response Smuggling')",
+  "cvss": "9.1",
   "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
   "owasp": "A03:2021",
+  "owasp_name": "Injection",
   "payload_limit": 10,
   "early_exit": true,
   "time_based_detection": true,
-  "delay_threshold": 5
+  "delay_threshold": 5,
+  "remediation": "Use HTTP/2 end-to-end. Ensure consistent interpretation of Content-Length and Transfer-Encoding. Use same web server software throughout."
 }

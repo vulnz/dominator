@@ -140,6 +140,10 @@ class ResultsTabBuilder:
         site_tree_content = self._create_site_tree_tab()
         self.results_subtabs.addTab(site_tree_content, "🌳 Site Tree")
 
+        # === Target Profile subtab ===
+        target_profile_content = self._create_target_profile_tab()
+        self.results_subtabs.addTab(target_profile_content, "🎯 Target Profile")
+
         main_layout.addWidget(self.results_subtabs)
 
         return widget
@@ -793,6 +797,8 @@ class ResultsTabBuilder:
         self.gui.results_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.gui.results_table.setSortingEnabled(True)
         self.gui.results_table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.gui.results_table.setWordWrap(False)  # Prevent text wrapping, use ellipsis
+        self.gui.results_table.setTextElideMode(Qt.ElideRight)  # Show ... for long text
 
         # Connect signals
         self.gui.results_table.doubleClicked.connect(self._on_row_double_clicked)
@@ -1013,6 +1019,48 @@ class ResultsTabBuilder:
         """)
         remed_layout.addWidget(self.gui.detail_remediation)
         detail_layout.addWidget(remed_group)
+
+        # === HTTP REQUEST SECTION ===
+        request_group = QGroupBox("📤 HTTP Request")
+        request_group.setStyleSheet(info_group.styleSheet().replace('#60a5fa', '#a78bfa'))
+        request_layout = QVBoxLayout(request_group)
+
+        self.gui.detail_request = QTextEdit()
+        self.gui.detail_request.setReadOnly(True)
+        self.gui.detail_request.setMaximumHeight(100)
+        self.gui.detail_request.setFont(QFont("Consolas", 9))
+        self.gui.detail_request.setStyleSheet("""
+            QTextEdit {
+                background-color: #1e1e2e;
+                border: 1px solid #4a4a7a;
+                border-radius: 4px;
+                color: #a78bfa;
+                padding: 8px;
+            }
+        """)
+        request_layout.addWidget(self.gui.detail_request)
+        detail_layout.addWidget(request_group)
+
+        # === HTTP RESPONSE SECTION ===
+        response_group = QGroupBox("📥 HTTP Response")
+        response_group.setStyleSheet(info_group.styleSheet().replace('#60a5fa', '#60a5fa'))
+        response_layout = QVBoxLayout(response_group)
+
+        self.gui.detail_response = QTextEdit()
+        self.gui.detail_response.setReadOnly(True)
+        self.gui.detail_response.setMaximumHeight(100)
+        self.gui.detail_response.setFont(QFont("Consolas", 9))
+        self.gui.detail_response.setStyleSheet("""
+            QTextEdit {
+                background-color: #1e1e2e;
+                border: 1px solid #4a4a7a;
+                border-radius: 4px;
+                color: #60a5fa;
+                padding: 8px;
+            }
+        """)
+        response_layout.addWidget(self.gui.detail_response)
+        detail_layout.addWidget(response_group)
 
         # View full details button
         view_full_btn = QPushButton("🔎 View Full Details")
@@ -1746,6 +1794,146 @@ class ResultsTabBuilder:
 
         return widget
 
+    def _create_target_profile_tab(self):
+        """Create the Target Profile tab showing pre-scan intelligence"""
+        from GUI.components.target_profile_panel import TargetProfilePanel
+
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
+
+        # Header with title and controls
+        header_layout = QHBoxLayout()
+
+        title_label = QLabel("🎯 Target Intelligence Profile")
+        title_label.setFont(QFont("Segoe UI", 14, QFont.Bold))
+        title_label.setStyleSheet("color: #4CAF50;")
+        header_layout.addWidget(title_label)
+
+        header_layout.addStretch()
+
+        # Refresh button
+        refresh_btn = QPushButton("🔄 Refresh Profile")
+        refresh_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
+        refresh_btn.clicked.connect(self._refresh_target_profile)
+        header_layout.addWidget(refresh_btn)
+
+        # Clear button
+        clear_btn = QPushButton("🗑️ Clear")
+        clear_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f44336;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #d32f2f;
+            }
+        """)
+        clear_btn.clicked.connect(self._clear_target_profile)
+        header_layout.addWidget(clear_btn)
+
+        layout.addLayout(header_layout)
+
+        # Info banner
+        info_frame = QFrame()
+        info_frame.setStyleSheet("""
+            QFrame {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #2196F3, stop:1 #4CAF50);
+                border-radius: 8px;
+                padding: 10px;
+            }
+            QLabel {
+                color: white;
+                background: transparent;
+            }
+        """)
+        info_layout = QHBoxLayout(info_frame)
+
+        info_text = QLabel(
+            "📊 Pre-scan intelligence about your target including technology stack, "
+            "WAF detection, security headers, SSL info, and geolocation."
+        )
+        info_text.setFont(QFont("Segoe UI", 10))
+        info_text.setWordWrap(True)
+        info_layout.addWidget(info_text)
+
+        layout.addWidget(info_frame)
+
+        # Target Profile Panel
+        self.gui.target_profile_panel = TargetProfilePanel()
+        layout.addWidget(self.gui.target_profile_panel)
+
+        # Store profile data
+        self.gui.current_target_profile = None
+
+        return widget
+
+    def _refresh_target_profile(self):
+        """Refresh the target profile by re-running profiling"""
+        if not hasattr(self.gui, 'target_input'):
+            return
+
+        target = self.gui.target_input.toPlainText().strip().split('\n')[0]
+        if not target:
+            QMessageBox.warning(self.gui, "No Target",
+                "Please enter a target URL in the Scan Config tab first.")
+            return
+
+        # Run profiling in background
+        from threading import Thread
+
+        def run_profile():
+            try:
+                from core.target_profiler import TargetProfiler
+                from core.http_client import HTTPClient
+
+                http_client = HTTPClient(timeout=15)
+                profiler = TargetProfiler(http_client)
+                profile = profiler.profile(target)
+
+                # Update GUI in main thread
+                from PyQt5.QtCore import QMetaObject, Qt, Q_ARG
+
+                if hasattr(self.gui, 'target_profile_panel'):
+                    self.gui.current_target_profile = profile.to_dict()
+                    self.gui.target_profile_panel.update_profile(profile.to_dict())
+
+            except Exception as e:
+                print(f"Profile refresh error: {e}")
+
+        thread = Thread(target=run_profile, daemon=True)
+        thread.start()
+
+    def _clear_target_profile(self):
+        """Clear the target profile panel"""
+        if hasattr(self.gui, 'target_profile_panel'):
+            self.gui.target_profile_panel.clear()
+        self.gui.current_target_profile = None
+
+    def update_target_profile(self, profile_dict):
+        """Update the target profile panel with new data"""
+        if hasattr(self.gui, 'target_profile_panel'):
+            self.gui.current_target_profile = profile_dict
+            self.gui.target_profile_panel.update_profile(profile_dict)
+
     def add_url_to_tree(self, url, params=None, vuln_info=None):
         """Add a URL to the site tree, building the path hierarchy"""
         from urllib.parse import urlparse, parse_qs
@@ -2052,8 +2240,9 @@ class ResultsTabBuilder:
 
             # Set as target in GUI
             if hasattr(self.gui, 'target_input'):
+                from GUI.dominator_gui import DominatorGUI
                 self.gui.target_input.setText(url)
-                self.gui.tabs.setCurrentIndex(0)  # Switch to Scan Configuration tab
+                self.gui.tabs.setCurrentIndex(DominatorGUI.TAB_SCAN_CONFIG)
                 QMessageBox.information(self.gui, "Target Set",
                     f"Target URL set to:\n{url}\n\nClick 'Start' to begin scanning.")
 
@@ -2216,6 +2405,19 @@ class ResultsTabBuilder:
         remediation = data.get('remediation', '')
         if hasattr(self.gui, 'detail_remediation'):
             self.gui.detail_remediation.setPlainText(remediation if remediation else "No remediation advice available")
+
+        # HTTP Request
+        request = data.get('request', '')
+        if hasattr(self.gui, 'detail_request'):
+            self.gui.detail_request.setPlainText(request if request else "No request data available")
+
+        # HTTP Response
+        response = data.get('response', '')
+        if hasattr(self.gui, 'detail_response'):
+            # Truncate response for display if too long
+            if len(response) > 2000:
+                response = response[:2000] + "\n\n... [Response truncated, view full details for complete response]"
+            self.gui.detail_response.setPlainText(response if response else "No response data available")
 
     def _show_context_menu(self, position):
         """Show context menu for results table"""
@@ -2684,8 +2886,88 @@ class ResultsTabBuilder:
                 <div class="label">Info</div>
             </div>
         </div>
+"""
 
-        <h2 class="section-title">Vulnerability Findings</h2>
+        # Add Target Profile section if available
+        if hasattr(self.gui, 'current_target_profile') and self.gui.current_target_profile:
+            profile = self.gui.current_target_profile
+            profile_html = """
+        <h2 class="section-title">🎯 Target Profile</h2>
+        <div class="finding" style="border-left-color: #6366f1;">
+            <div class="details-grid">
+"""
+            if profile.get('url'):
+                profile_html += f'''
+                <div class="detail-item">
+                    <div class="label">Target URL</div>
+                    <div class="value" style="color: #60a5fa;">{profile.get('url')}</div>
+                </div>'''
+            if profile.get('ip_address'):
+                profile_html += f'''
+                <div class="detail-item">
+                    <div class="label">IP Address</div>
+                    <div class="value">{profile.get('ip_address')}</div>
+                </div>'''
+            if profile.get('web_server'):
+                profile_html += f'''
+                <div class="detail-item">
+                    <div class="label">Web Server</div>
+                    <div class="value" style="color: #22c55e;">{profile.get('web_server')}</div>
+                </div>'''
+            if profile.get('programming_language'):
+                profile_html += f'''
+                <div class="detail-item">
+                    <div class="label">Language</div>
+                    <div class="value" style="color: #a78bfa;">{profile.get('programming_language')}</div>
+                </div>'''
+            if profile.get('framework'):
+                profile_html += f'''
+                <div class="detail-item">
+                    <div class="label">Framework</div>
+                    <div class="value" style="color: #fb923c;">{profile.get('framework')}</div>
+                </div>'''
+            if profile.get('cms'):
+                profile_html += f'''
+                <div class="detail-item">
+                    <div class="label">CMS</div>
+                    <div class="value" style="color: #ec4899;">{profile.get('cms')}</div>
+                </div>'''
+            if profile.get('waf_detected'):
+                profile_html += f'''
+                <div class="detail-item">
+                    <div class="label">WAF Detected</div>
+                    <div class="value" style="color: #ef4444; font-weight: bold;">⚠️ {profile.get('waf_detected')}</div>
+                </div>'''
+            if profile.get('country'):
+                profile_html += f'''
+                <div class="detail-item">
+                    <div class="label">Country</div>
+                    <div class="value">{profile.get('country')} ({profile.get('country_code', '')})</div>
+                </div>'''
+            if profile.get('ssl_enabled'):
+                ssl_grade = profile.get('ssl_grade', 'N/A')
+                grade_color = '#22c55e' if ssl_grade in ['A+', 'A'] else '#eab308' if ssl_grade in ['B', 'C'] else '#ef4444'
+                profile_html += f'''
+                <div class="detail-item">
+                    <div class="label">SSL/TLS</div>
+                    <div class="value" style="color: {grade_color};">Grade: {ssl_grade}</div>
+                </div>'''
+            missing_headers = profile.get('missing_security_headers', [])
+            if missing_headers:
+                profile_html += f'''
+                <div class="detail-item">
+                    <div class="label">Missing Headers</div>
+                    <div class="value" style="color: #f97316;">{', '.join(missing_headers[:5])}</div>
+                </div>'''
+
+            profile_html += """
+            </div>
+        </div>
+"""
+            html += profile_html
+
+        html += """
+        <h2 class="section-title">🔍 Vulnerability Findings</h2>
 """
 
         # Add findings with full details - grouped by severity
@@ -2740,7 +3022,38 @@ class ResultsTabBuilder:
                         <div class="value owasp">{f.get('owasp')}{' - ' + owasp_name if owasp_name else ''}</div>
                     </div>'''
 
+                if f.get('cvss_vector'):
+                    details_html += f'''
+                    <div class="detail-item">
+                        <div class="label">CVSS Vector</div>
+                        <div class="value" style="font-size: 0.85em; color: #9ca3af;">{f.get('cvss_vector')}</div>
+                    </div>'''
+
+                if f.get('method'):
+                    details_html += f'''
+                    <div class="detail-item">
+                        <div class="label">HTTP Method</div>
+                        <div class="value" style="color: #818cf8;">{f.get('method')}</div>
+                    </div>'''
+
+                if f.get('confidence'):
+                    conf = f.get('confidence', '')
+                    conf_color = '#22c55e' if conf.lower() == 'high' else '#eab308' if conf.lower() == 'medium' else '#94a3b8'
+                    details_html += f'''
+                    <div class="detail-item">
+                        <div class="label">Confidence</div>
+                        <div class="value" style="color: {conf_color}; font-weight: bold;">{conf}</div>
+                    </div>'''
+
                 details_html += '</div>'
+
+                # Description section (full vulnerability description)
+                if f.get('description'):
+                    details_html += f'''
+                    <details open>
+                        <summary>📝 Description</summary>
+                        <pre style="color: #e2e8f0; white-space: pre-wrap;">{f.get('description')}</pre>
+                    </details>'''
 
                 # Evidence section
                 if f.get('evidence'):
@@ -2772,8 +3085,33 @@ class ResultsTabBuilder:
                 if f.get('remediation'):
                     details_html += f'''
                     <details>
-                        <summary>Remediation</summary>
-                        <pre style="color: #22c55e;">{f.get('remediation')}</pre>
+                        <summary>🛡️ Remediation</summary>
+                        <pre style="color: #22c55e; white-space: pre-wrap;">{f.get('remediation')}</pre>
+                    </details>'''
+
+                # References
+                refs = f.get('references', [])
+                if refs:
+                    if isinstance(refs, str):
+                        refs = [refs]
+                    refs_html = '<ul style="margin: 10px; padding-left: 20px;">'
+                    for ref in refs[:10]:  # Limit to 10 references
+                        refs_html += f'<li><a href="{ref}" target="_blank" style="color: #60a5fa;">{ref}</a></li>'
+                    refs_html += '</ul>'
+                    details_html += f'''
+                    <details>
+                        <summary>📚 References</summary>
+                        <div style="background: #0f0f1a; padding: 10px; border-radius: 0 0 8px 8px;">
+                            {refs_html}
+                        </div>
+                    </details>'''
+
+                # Impact
+                if f.get('impact'):
+                    details_html += f'''
+                    <details>
+                        <summary>💥 Impact</summary>
+                        <pre style="color: #f97316; white-space: pre-wrap;">{f.get('impact')}</pre>
                     </details>'''
 
                 html += f'''
@@ -2844,7 +3182,12 @@ class ResultsTabBuilder:
         dialog.exec_()
 
     def _get_finding_from_row(self, row):
-        """Get finding data from a table row (9-column structure)"""
+        """Get finding data from a table row (9-column structure)
+
+        Extracts all available data including stored full finding data from Qt.UserRole.
+        This ensures live reports contain all fields: evidence, request, response,
+        remediation, CWE, OWASP, description, references, etc.
+        """
         # Columns: 0=#, 1=Severity, 2=Module, 3=Vulnerability, 4=URL, 5=Parameter, 6=Payload, 7=CVSS, 8=Time
         finding = {
             'id': self.gui.results_table.item(row, 0).text() if self.gui.results_table.item(row, 0) else "",
@@ -2860,8 +3203,25 @@ class ResultsTabBuilder:
 
         # Add stored data if available (contains full payload, evidence, CWE, OWASP, etc.)
         stored_data = self.gui.results_table.item(row, 0).data(Qt.UserRole) if self.gui.results_table.item(row, 0) else {}
-        if stored_data:
-            finding.update(stored_data)
+        if stored_data and isinstance(stored_data, dict):
+            # Merge stored data, preserving existing values if stored ones are empty
+            for key, value in stored_data.items():
+                if value and (key not in finding or not finding.get(key)):
+                    finding[key] = value
+                elif value and key not in finding:
+                    finding[key] = value
+
+            # Ensure all important fields are extracted from stored data
+            important_fields = [
+                'description', 'evidence', 'request', 'response', 'remediation',
+                'cwe', 'cwe_name', 'owasp', 'owasp_name', 'cvss_vector',
+                'references', 'confidence', 'method', 'type', 'category',
+                'impact', 'likelihood', 'risk_rating', 'false_positive',
+                'verified', 'tags', 'screenshots', 'raw_response'
+            ]
+            for field in important_fields:
+                if field in stored_data and stored_data[field]:
+                    finding[field] = stored_data[field]
 
         return finding
 

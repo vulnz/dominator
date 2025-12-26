@@ -6,10 +6,15 @@
     "category": "Client-Side",
     "severity": "Medium",
     "cwe": "CWE-22",
+    "cwe_name": "Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')",
     "owasp": "A01:2021",
+    "owasp_name": "Broken Access Control",
+    "cvss": "5.3",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
     "tags": ["cspt", "path-traversal", "client-side", "javascript"],
     "references": [
         "https://github.com/nickcano/csptrecon",
         "https://www.doyensec.com/resources/Doyensec_CSPT_CSSB.pdf"
-    ]
+    ],
+    "remediation": "Validate file paths on server-side. Use allowlists for permitted paths. Sanitize path separators in client-side code."
 }

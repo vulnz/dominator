@@ -6,9 +6,14 @@
     "category": "Discovery",
     "severity": "Medium",
     "cwe": "CWE-200",
+    "cwe_name": "Exposure of Sensitive Information to an Unauthorized Actor",
     "owasp": "A01:2021",
+    "owasp_name": "Broken Access Control",
+    "cvss": "5.3",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
     "tags": ["package", "npm", "pip", "composer", "maven", "docker", "info-disclosure"],
     "references": [
         "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/05-Review_Webpage_Content_for_Information_Leakage"
-    ]
+    ],
+    "remediation": "Block access to package manager files. Configure web server to deny access to *.json, requirements.txt, etc. Remove sensitive files from webroot."
 }

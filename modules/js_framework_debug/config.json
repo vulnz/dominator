@@ -1,0 +1,30 @@
+{
+    "name": "JavaScript Framework Debug Mode",
+    "description": "Detects JavaScript frameworks running in development/debug mode. Vue.js, React, Angular, and other frameworks expose debug tools, source maps, and developer consoles in production which can leak source code and sensitive information.",
+    "author": "Dominator Team",
+    "version": "1.0.0",
+    "category": "misconfiguration",
+    "severity": "Medium",
+    "cwe": "CWE-489",
+    "cwe_name": "Active Debug Code",
+    "owasp": "A05:2021",
+    "owasp_name": "Security Misconfiguration",
+    "cvss": "5.3",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
+    "remediation": "Disable debug mode in production builds. For Vue.js: set Vue.config.devtools = false and use production build. For React: use production build and remove React DevTools. For Angular: use ng build --prod. Remove source maps from production. Disable console logging.",
+    "references": [
+        "https://vuejs.org/v2/api/#devtools",
+        "https://reactjs.org/docs/optimizing-performance.html#use-the-production-build",
+        "https://angular.io/guide/deployment#production-optimizations",
+        "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
+    ],
+    "enabled": true,
+    "risk_level": "medium",
+    "tags": ["javascript", "debug", "devtools", "sourcemaps", "misconfiguration"],
+    "parameters": {
+        "check_source_maps": true,
+        "check_devtools": true,
+        "check_console": true,
+        "timeout": 10
+    }
+}

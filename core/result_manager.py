@@ -5,6 +5,8 @@ Centralized result management and aggregation
 from typing import List, Dict, Any
 from collections import defaultdict
 import logging
+import json
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +59,36 @@ class ResultManager:
         # Track tested URL
         if result.get('url'):
             self.urls_tested.add(result['url'])
+
+        # Emit JSON finding for GUI parsing
+        # Format: GUI_FINDING_JSON:{...json data...}
+        # This allows the GUI to receive full finding details in real-time
+        if result.get('vulnerability'):
+            try:
+                # Create a clean copy for JSON output (avoid serialization issues)
+                gui_finding = {
+                    'severity': result.get('severity', 'Medium'),
+                    'type': result.get('type', 'Unknown'),
+                    'module': result.get('module', ''),
+                    'url': result.get('url', ''),
+                    'parameter': result.get('parameter', ''),
+                    'payload': result.get('payload', ''),
+                    'evidence': result.get('evidence', ''),
+                    'description': result.get('description', ''),
+                    'remediation': result.get('remediation', ''),
+                    'request': result.get('request', ''),
+                    'response': result.get('response', '')[:3000] if result.get('response') else '',  # Truncate long responses
+                    'cvss': result.get('cvss', ''),
+                    'cwe': result.get('cwe', ''),
+                    'cwe_name': result.get('cwe_name', ''),
+                    'owasp': result.get('owasp', ''),
+                    'owasp_name': result.get('owasp_name', ''),
+                }
+                json_str = json.dumps(gui_finding, ensure_ascii=False)
+                # Print to stdout for GUI to capture
+                print(f"GUI_FINDING_JSON:{json_str}", flush=True)
+            except Exception as e:
+                logger.debug(f"Error emitting GUI finding JSON: {e}")
 
         return True
 

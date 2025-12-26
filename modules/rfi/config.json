@@ -6,13 +6,17 @@
     "category": "Injection",
     "severity": "critical",
     "cwe": "CWE-98",
+    "cwe_name": "Improper Control of Filename for Include/Require Statement in PHP Program",
     "owasp": "A03:2021",
+    "owasp_name": "Injection",
     "cvss": "9.8",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
     "enabled": true,
     "passive": false,
     "tags": ["rfi", "file-inclusion", "remote", "php", "injection", "oob"],
     "confidence_threshold": 0.75,
     "enable_oob": true,
     "oob_wait_time": 3,
-    "timeout": 5
+    "timeout": 5,
+    "remediation": "Disable allow_url_include in PHP. Use allowlists for file includes. Validate and sanitize all file path inputs. Use absolute paths."
 }

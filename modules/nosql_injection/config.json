@@ -8,11 +8,15 @@
     "enabled": true,
     "passive": false,
     "cwe": "CWE-943",
+    "cwe_name": "Improper Neutralization of Special Elements in Data Query Logic",
     "owasp": "A03:2021",
-    "cvss": 8.6,
+    "owasp_name": "Injection",
+    "cvss": "8.6",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:H",
     "tags": ["nosql", "mongodb", "injection", "database", "authentication-bypass"],
     "references": [
         "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/05.6-Testing_for_NoSQL_Injection",
         "https://book.hacktricks.xyz/pentesting-web/nosql-injection"
-    ]
+    ],
+    "remediation": "Use parameterized queries. Validate input types and formats. Sanitize special characters ($, {, }). Implement proper authentication and access controls."
 }

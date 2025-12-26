@@ -954,13 +954,99 @@ class ModulesTabBuilder:
                 print(f"Error toggling module: {e}")
 
     def _reset_current_module(self):
-        """Reset current module to default (placeholder - would need backup files)"""
+        """Reset current module to its default configuration from backup or template"""
         from PyQt5.QtWidgets import QMessageBox
-        QMessageBox.information(
+
+        current_item = self.gui.module_list.currentItem()
+        if not current_item:
+            QMessageBox.warning(self.gui, "No Module Selected", "Please select a module first")
+            return
+
+        module_folder = current_item.data(Qt.UserRole)
+        parent_dir = Path(__file__).parent.parent.parent
+        module_path = parent_dir / "modules" / module_folder
+        config_file = module_path / "config.json"
+        payloads_file = module_path / "payloads.txt"
+
+        # Check for backup files
+        config_backup = module_path / "config.json.default"
+        payloads_backup = module_path / "payloads.txt.default"
+
+        # Ask user what to reset
+        reply = QMessageBox.question(
             self.gui, "Reset Module",
-            "This would reset the module to its default configuration.\n"
-            "Feature coming soon!"
+            f"Reset '{module_folder}' module?\n\n"
+            "This will:\n"
+            "• Reset config.json to default values\n"
+            "• Reset payloads.txt to default payloads (if backup exists)\n\n"
+            "Your current configuration will be backed up first.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
         )
+
+        if reply != QMessageBox.Yes:
+            return
+
+        try:
+            # Backup current files before reset
+            backup_time = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+            if config_file.exists():
+                backup_path = module_path / f"config.json.backup_{backup_time}"
+                import shutil
+                shutil.copy(config_file, backup_path)
+
+            if payloads_file.exists():
+                backup_path = module_path / f"payloads.txt.backup_{backup_time}"
+                import shutil
+                shutil.copy(payloads_file, backup_path)
+
+            reset_count = 0
+
+            # Reset config.json
+            if config_backup.exists():
+                # Use backup file if exists
+                import shutil
+                shutil.copy(config_backup, config_file)
+                reset_count += 1
+            else:
+                # Create default config
+                default_config = {
+                    "name": module_folder.upper().replace('_', ' '),
+                    "description": f"{module_folder} vulnerability scanner",
+                    "enabled": True,
+                    "severity": "Medium",
+                    "timeout": 20,
+                    "max_payloads": 100
+                }
+                with open(config_file, 'w', encoding='utf-8') as f:
+                    json.dump(default_config, f, indent=2)
+                reset_count += 1
+
+            # Reset payloads.txt if backup exists
+            if payloads_backup.exists():
+                import shutil
+                shutil.copy(payloads_backup, payloads_file)
+                reset_count += 1
+
+            # Reload the module in the editor
+            self.gui.load_module_data(module_folder)
+
+            # Update info panel
+            update_module_info_panel(self.gui, module_folder)
+
+            QMessageBox.information(
+                self.gui, "Reset Complete",
+                f"Module '{module_folder}' has been reset.\n\n"
+                f"• {reset_count} file(s) reset\n"
+                f"• Backup saved with timestamp: {backup_time}"
+            )
+
+        except Exception as e:
+            QMessageBox.critical(
+                self.gui, "Reset Error",
+                f"Failed to reset module:\n{str(e)}"
+            )
 
     def _on_current_item_changed(self, current, previous):
         """Handle arrow key navigation - update info panel when selection changes"""

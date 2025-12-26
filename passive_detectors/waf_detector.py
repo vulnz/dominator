@@ -141,12 +141,16 @@ class WAFDetector:
 
         return {
             'module': module_name,
+            'url': url,  # Standard field for report generator
             'target': url,
-            'vulnerability': f'WAF Detected: {waf_name}',
+            'type': 'waf_detected',  # Standard type field
+            'vulnerability': True,  # Boolean for filtering
+            'name': f'WAF Detected: {waf_name}',
             'severity': 'Info',
             'parameter': 'N/A',
             'payload': payload,
             'evidence': reason,
+            'description': f'{waf_name} Web Application Firewall detected. WAF may block attack payloads.',
             'request_url': url,
             'detector': detector,
             'response_snippet': reason,

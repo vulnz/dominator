@@ -4,5 +4,10 @@
   "enabled": true,
   "severity": "High",
   "cwe": "CWE-444",
-  "cvss": 7.5
+  "cwe_name": "Inconsistent Interpretation of HTTP Requests ('HTTP Request/Response Smuggling')",
+  "owasp": "A05:2021",
+  "owasp_name": "Security Misconfiguration",
+  "cvss": "7.5",
+  "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N",
+  "remediation": "Validate Host header against allowlist. Use absolute URLs in password reset links. Configure web server to reject requests with invalid Host headers."
 }

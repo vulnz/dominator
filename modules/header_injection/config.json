@@ -6,11 +6,15 @@
     "category": "Injection",
     "severity": "High",
     "cwe": "CWE-113",
+    "cwe_name": "Improper Neutralization of CRLF Sequences in HTTP Headers ('HTTP Request/Response Splitting')",
     "owasp": "A03:2021",
+    "owasp_name": "Injection",
     "cvss": "7.5",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N",
     "enabled": true,
     "passive": false,
     "tags": ["injection", "headers", "user-agent", "cookie", "xss", "sqli", "log-injection"],
+    "remediation": "Sanitize all user-controlled input before including in HTTP headers or log files. Validate header values against strict patterns.",
 
     "injectable_headers": [
         "User-Agent",

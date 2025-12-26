@@ -1,5 +1,11 @@
 """
 Web crawler module for finding pages and parameters
+
+Performance optimizations:
+- Pre-compiled regex patterns for URL/link extraction
+- Connection pooling via HTTPClient
+- Efficient URL deduplication
+- WAF bypass via cloudscraper or headless browser
 """
 
 import requests
@@ -20,15 +26,71 @@ from passive_detectors.waf_detector import WAFDetector
 from passive_detectors.api_endpoint_detector import APIEndpointDetector
 from passive_detectors.js_secrets_detector import JSSecretsDetector
 
+# Import WAF bypass module (optional)
+try:
+    from core.waf_bypass import WAFBypass, WAFDetector as WAFBypassDetector, check_waf_and_suggest, is_bypass_available
+    WAF_BYPASS_AVAILABLE = True
+except ImportError:
+    WAF_BYPASS_AVAILABLE = False
+
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+
+# =============================================================================
+# PRE-COMPILED REGEX PATTERNS - Performance optimization
+# Compiling once at module load instead of every function call
+# =============================================================================
+
+# Link extraction patterns
+RE_HREF = re.compile(r'href\s*=\s*["\']([^"\']+)["\']', re.IGNORECASE)
+RE_SRC = re.compile(r'src\s*=\s*["\']([^"\']+)["\']', re.IGNORECASE)
+RE_ACTION = re.compile(r'action\s*=\s*["\']([^"\']+)["\']', re.IGNORECASE)
+
+# JavaScript URL extraction
+RE_JS_URL = re.compile(r'["\']((https?://[^"\']+)|(/[^"\']+))["\']')
+RE_JS_ENDPOINT = re.compile(r'["\']/(api|v\d|rest|graphql)/[^"\']*["\']', re.IGNORECASE)
+RE_JS_FETCH = re.compile(r'fetch\s*\(\s*["\']([^"\']+)["\']', re.IGNORECASE)
+RE_JS_AXIOS = re.compile(r'axios\.[a-z]+\s*\(\s*["\']([^"\']+)["\']', re.IGNORECASE)
+RE_JS_XHR = re.compile(r'\.open\s*\(\s*["\'][A-Z]+["\']\s*,\s*["\']([^"\']+)["\']', re.IGNORECASE)
+
+# Sitemap and robots patterns
+RE_SITEMAP_LOC = re.compile(r'<loc>(.*?)</loc>', re.IGNORECASE)
+RE_ROBOTS_DISALLOW = re.compile(r'Disallow:\s*(/[^\s]*)', re.IGNORECASE)
+RE_ROBOTS_ALLOW = re.compile(r'Allow:\s*(/[^\s]*)', re.IGNORECASE)
+
+# Form extraction
+RE_FORM = re.compile(r'<form[^>]*>(.*?)</form>', re.IGNORECASE | re.DOTALL)
+RE_INPUT = re.compile(r'<input[^>]*>', re.IGNORECASE)
+RE_SELECT = re.compile(r'<select[^>]*name\s*=\s*["\']([^"\']+)["\']', re.IGNORECASE)
+RE_TEXTAREA = re.compile(r'<textarea[^>]*name\s*=\s*["\']([^"\']+)["\']', re.IGNORECASE)
+
+# Directory listing detection
+RE_DATETIME = re.compile(r'\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}')
+RE_DIR_TABLE = re.compile(
+    r'<(?:table|pre)[^>]*>.*?(?:name|size|modified|date|type).*?</(?:table|pre)>',
+    re.IGNORECASE | re.DOTALL
+)
+
+# Misc patterns
+RE_HASH_LIKE = re.compile(r'^[a-f0-9]{8,}$')
+RE_META_REDIRECT = re.compile(r'<meta[^>]*http-equiv\s*=\s*["\']refresh["\'][^>]*content\s*=\s*["\'][^"\']*url\s*=\s*([^"\']+)["\']', re.IGNORECASE)
 
 class WebCrawler:
     """Web crawler for finding pages with parameters"""
 
-    def __init__(self, config):
-        """Initialize crawler"""
+    def __init__(self, config, http_client=None, use_browser=False):
+        """Initialize crawler
+
+        Args:
+            config: Scanner configuration
+            http_client: HTTPClient instance for proxy support (FIXED: was missing)
+            use_browser: Use headless browser for WAF bypass (requires playwright)
+        """
         self.config = config
+        self.http_client = http_client  # FIXED: Store http_client for proxy/session support
+        self.use_browser = use_browser
+        self.browser = None  # Headless browser instance
         self.url_parser = URLParser()
         self.visited_urls: Set[str] = set()
         self.analyzed_urls: Set[str] = set()  # Track URLs that have been passively analyzed
@@ -46,25 +108,129 @@ class WebCrawler:
         self.sensitive_data_leaks: List[Dict[str, Any]] = []
         self.detected_technologies: List[Dict[str, Any]] = []
         self.version_disclosures: List[Dict[str, Any]] = []
-        
+
+        # Initialize headless browser if requested
+        if self.use_browser:
+            self._init_browser()
+
+    def _init_browser(self):
+        """Initialize WAF bypass client (cloudscraper or headless browser)"""
+        if not WAF_BYPASS_AVAILABLE:
+            print(f"    [CRAWLER] WARNING: WAF bypass requested but dependencies not available")
+            print(f"    [CRAWLER] Install with: pip install cloudscraper")
+            self.use_browser = False
+            return
+
+        try:
+            proxy = getattr(self.config, 'proxy', None)
+            timeout = getattr(self.config, 'timeout', 30)
+
+            # Use WAFBypass which auto-selects best method (cloudscraper preferred)
+            self.browser = WAFBypass(
+                proxy=proxy,
+                timeout=timeout,
+                prefer_browser=False  # Prefer cloudscraper (faster)
+            )
+            print(f"    [CRAWLER] WAF bypass initialized (method: {self.browser._method})")
+        except ImportError as e:
+            print(f"    [CRAWLER] WARNING: Could not initialize WAF bypass: {e}")
+            self.use_browser = False
+        except Exception as e:
+            print(f"    [CRAWLER] ERROR: Failed to start WAF bypass: {e}")
+            self.use_browser = False
+
+    def _browser_request(self, url: str):
+        """Make request using WAF bypass (cloudscraper or browser)"""
+        if not self.browser:
+            return None
+
+        try:
+            response = self.browser.get(url)
+            if response:
+                # Response is already in proper format from WAFBypass
+                return response
+        except Exception as e:
+            print(f"    [CRAWLER] WAF bypass request error: {e}")
+        return None
+
+    def close_browser(self):
+        """Close WAF bypass client if running"""
+        if self.browser:
+            try:
+                if hasattr(self.browser, 'close'):
+                    self.browser.close()
+                self.browser = None
+            except:
+                pass
+
+    def _make_request(self, url: str, timeout: int = None, **kwargs):
+        """
+        Make HTTP request using browser, http_client, or direct requests
+
+        Priority:
+        1. Headless browser (if enabled) - for WAF bypass
+        2. http_client - for proxy support and session pooling
+        3. Direct requests - fallback
+
+        Args:
+            url: URL to request
+            timeout: Request timeout
+            **kwargs: Additional arguments (headers, verify, etc.)
+
+        Returns:
+            Response object or None
+        """
+        # Try headless browser first for WAF bypass
+        if self.use_browser and self.browser:
+            response = self._browser_request(url)
+            if response and response.status_code == 200:
+                return response
+            # If browser fails or returns non-200, fall through to normal requests
+
+        if self.http_client:
+            # Use http_client for proxy support and session pooling
+            response = self.http_client.get(url, **kwargs)
+            if response:
+                # Convert HTTPResponse to requests.Response-like object
+                return response
+            return None
+        else:
+            # Fallback to direct requests (backward compatibility)
+            if timeout is None:
+                timeout = self.config.timeout if self.config.timeout else 15
+
+            # Add browser-like headers to avoid WAF/bot detection
+            fallback_headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+            }
+            # Merge with any custom headers
+            if 'headers' in kwargs and kwargs['headers']:
+                fallback_headers.update(kwargs['headers'])
+            kwargs['headers'] = fallback_headers
+
+            return requests.get(url, timeout=timeout, verify=False, **kwargs)
+
     def crawl_for_pages(self, base_url: str, max_pages: int = 50) -> List[str]:
         """Crawl website to find pages with parameters"""
         found_urls = []
-        
+        normalized_urls = []  # FIX: Initialize here to prevent unbound variable error
+
         try:
             print(f"    [CRAWLER] Starting crawl of {base_url} (max_pages: {max_pages})")
-            
+
             # First, get data from sitemap and robots.txt
             print(f"    [CRAWLER] Extracting URLs from sitemap and robots.txt...")
             self._extract_sitemap_urls(base_url)
             self._extract_robots_urls(base_url)
-            
-            response = requests.get(
-                base_url,
-                timeout=self.config.timeout,
-                headers=self.config.headers,
-                verify=False
-            )
+
+            # FIXED: Use http_client for proxy support instead of direct requests
+            timeout = self.config.timeout if self.config.timeout else 15
+            response = self._make_request(base_url, timeout=timeout, headers=self.config.headers)
             
             no_ping = getattr(self.config, 'no_ping', False)
             if response.status_code == 200 or no_ping:
@@ -101,7 +267,14 @@ class WebCrawler:
                     
                 # Run passive analysis on initial response
                 self._run_passive_analysis(response.headers, response.text, base_url)
-                    
+
+                # CRITICAL FIX: Extract forms from initial page (was missing!)
+                initial_forms = self.url_parser.extract_forms(response.text)
+                for form in initial_forms:
+                    form['url'] = base_url  # Add source URL
+                    self.found_forms.append(form)
+                    print(f"    [CRAWLER] Found form on main page: {form['method']} {form.get('action', '(same page)')} with {len(form.get('inputs', []))} inputs")
+
                 # Extract JavaScript and AJAX endpoints
                 self._extract_js_endpoints(response.text, base_url)
                 
@@ -151,7 +324,24 @@ class WebCrawler:
                         
             else:
                 print(f"    [CRAWLER] HTTP {response.status_code} response from {base_url}")
-                
+                # Detect WAF/Cloudflare blocks
+                if response.status_code == 403:
+                    # Check for Cloudflare indicators
+                    cf_indicators = ['cloudflare', 'cf-ray', 'cf-request-id', '__cf_bm']
+                    headers_str = str(response.headers).lower()
+                    content_str = response.text.lower() if hasattr(response, 'text') else ''
+                    if any(ind in headers_str or ind in content_str for ind in cf_indicators):
+                        print(f"    [CRAWLER] WARNING: Cloudflare protection detected!")
+                        print(f"    [CRAWLER] The site uses bot detection that blocks automated requests.")
+                        print(f"    [CRAWLER] Try using: --waf-mode, browser interceptor, or a different target.")
+                    else:
+                        print(f"    [CRAWLER] WARNING: Access denied (403). Site may have WAF protection.")
+                # FIX: Even if main page is blocked, still use sitemap/robots URLs
+                if self.sitemap_urls or self.robots_urls:
+                    print(f"    [CRAWLER] Using {len(self.sitemap_urls)} sitemap + {len(self.robots_urls)} robots URLs despite main page block")
+                    all_urls = self.sitemap_urls + self.robots_urls
+                    normalized_urls = self._normalize_and_filter_urls(all_urls, base_url, max_pages * 2)
+
         except Exception as e:
             print(f"    [CRAWLER] Error crawling {base_url}: {e}")
         
@@ -161,13 +351,35 @@ class WebCrawler:
             # FIX: Pass discovered URLs to deep crawl so it can extract forms from them
             found_urls = self._deep_crawl(base_url, max_pages, initial_urls=normalized_urls)
         
+        # ENHANCEMENT: Also include pages with forms as scan targets
+        form_urls = [form.get('url', base_url) for form in self.found_forms if form.get('url')]
+        for form_url in form_urls:
+            if form_url not in found_urls:
+                found_urls.append(form_url)
+
+        # ENHANCEMENT: Include API endpoints as scan targets (WordPress wp-json, xmlrpc, etc.)
+        api_patterns = ['wp-json', 'xmlrpc.php', '/api/', '/rest/', '/graphql']
+        try:
+            for url in normalized_urls:
+                if any(pattern in url.lower() for pattern in api_patterns):
+                    if url not in found_urls:
+                        found_urls.append(url)
+                        print(f"    [CRAWLER] Added API endpoint as target: {url}")
+        except NameError:
+            pass  # normalized_urls not defined in this code path
+
+        # Include AJAX endpoints as targets
+        for ajax_url in self.ajax_endpoints:
+            if ajax_url not in found_urls:
+                found_urls.append(ajax_url)
+
         print(f"    [CRAWLER] Found {len(found_urls)} pages with parameters")
         print(f"    [CRAWLER] Found {len(self.found_forms)} forms")
         print(f"    [CRAWLER] Found {len(self.ajax_endpoints)} AJAX endpoints")
-        
+
         # Print passive detection summary
         self.print_passive_summary()
-        
+
         return found_urls
     
     def _extract_js_endpoints(self, html_content: str, base_url: str):
@@ -329,10 +541,17 @@ class WebCrawler:
             url = url.replace('https:/', 'https://')
         elif url.startswith('http:/') and not url.startswith('http://'):
             url = url.replace('http:/', 'http://')
-        
-        # Skip invalid URLs
-        if any(invalid in url for invalid in ['javascript:', 'mailto:', 'tel:', 'ftp:', '#']):
+
+        # Skip invalid URL schemes (but NOT fragment URLs)
+        if any(invalid in url for invalid in ['javascript:', 'mailto:', 'tel:', 'ftp:', 'data:']):
             return ""
+
+        # Strip URL fragments - they are client-side only, not sent to server
+        # e.g., https://example.com/page#section -> https://example.com/page
+        if '#' in url:
+            url = url.split('#')[0]
+            if not url:  # URL was just a fragment like "#section"
+                return ""
         
         # Additional validation - URL should not contain quotes in the middle
         if '"' in url or "'" in url:
@@ -369,15 +588,17 @@ class WebCrawler:
             return ""
     
     def _should_skip_url(self, url: str) -> bool:
-        """Check if URL should be skipped"""
-        # Only skip obvious static files, be less aggressive
-        skip_extensions = PayloadLoader.load_wordlist('skip_extensions')
-        if not skip_extensions:
-            print("    [CRAWLER] Warning: Skip extensions not loaded, using fallback.")
-            skip_extensions = [
-                '.css', '.js', '.jpg', '.jpeg', '.png', '.gif', '.svg', '.ico',
-                '.mp3', '.mp4', '.avi', '.mov', '.wmv', '.flv'
-            ]
+        """Check if URL should be skipped during crawling
+
+        Skips:
+        1. Static files (.jpg, .css, .pdf, etc.) - can't have injections
+        2. Apache directory listing sort parameters - not real injection points
+        3. URLs with only control parameters (C=N&O=D)
+
+        Does NOT skip:
+        - URLs with query parameters (even if static extension) - might be dynamic
+        """
+        from core.url_filter import is_static_file
 
         parsed = urlparse(url)
         path = parsed.path.lower()
@@ -397,36 +618,50 @@ class WebCrawler:
                     return True
 
         # Don't skip if URL has OTHER query parameters (might be dynamic)
+        # e.g., /image.jpg?id=123 might be a dynamic endpoint
         if parsed.query:
             return False
 
-        return any(path.endswith(ext) for ext in skip_extensions)
+        # Use centralized static file detection
+        return is_static_file(url)
     
     def _get_url_pattern(self, url: str) -> str:
-        """Get URL pattern for deduplication"""
+        """Get URL pattern for deduplication
+
+        Uses centralized URLFilter for consistent pattern detection.
+        Replaces numeric IDs, hashes, UUIDs, and dates with placeholders.
+
+        Examples:
+            /products/123 -> /products/[NUM]
+            /image/12345.jpg -> /image/[FILE].jpg
+            /users/abc123def456 -> /users/[HASH]
+        """
         try:
+            from core.url_filter import URLFilter
+            return URLFilter().get_url_pattern(url)
+        except ImportError:
+            # Fallback to basic pattern detection
             parsed = urlparse(url)
-            # Create pattern based on path structure
             path_parts = [part for part in parsed.path.split('/') if part]
-            
+
             # Replace numeric IDs with placeholder
             pattern_parts = []
             for part in path_parts:
                 if part.isdigit():
                     pattern_parts.append('[ID]')
-                elif re.match(r'^[a-f0-9]{8,}$', part):  # Hash-like strings
+                elif RE_HASH_LIKE.match(part):  # Hash-like strings
                     pattern_parts.append('[HASH]')
                 else:
                     pattern_parts.append(part)
-            
+
             pattern = f"{parsed.netloc}/{'/'.join(pattern_parts)}"
-            
+
             # Add query parameter pattern
             if parsed.query:
                 query_params = parse_qs(parsed.query)
                 param_pattern = sorted(query_params.keys())
                 pattern += f"?{','.join(param_pattern)}"
-            
+
             return pattern
         except Exception:
             return url
@@ -443,13 +678,9 @@ class WebCrawler:
             
             try:
                 print(f"    [CRAWLER] Crawling individual page: {url}")
-                
-                response = requests.get(
-                    url,
-                    timeout=self.config.timeout,
-                    headers=self.config.headers,
-                    verify=False
-                )
+
+                # FIXED: Use http_client for proxy support
+                response = self._make_request(url, timeout=self.config.timeout, headers=self.config.headers)
                 
                 if response.status_code == 200:
                     # Run passive analysis on each crawled page
@@ -538,13 +769,9 @@ class WebCrawler:
             
             try:
                 print(f"    [CRAWLER] Deep crawling page {crawled_count}: {current_url}")
-                
-                response = requests.get(
-                    current_url,
-                    timeout=self.config.timeout,
-                    headers=self.config.headers,
-                    verify=False
-                )
+
+                # FIXED: Use http_client for proxy support
+                response = self._make_request(current_url, timeout=self.config.timeout, headers=self.config.headers)
                 
                 if response.status_code == 200:
                     # Run passive analysis on deep crawled pages
@@ -599,12 +826,8 @@ class WebCrawler:
     def _crawl_single_page(self, url: str) -> List[str]:
         """Crawl a single page for URLs"""
         try:
-            response = requests.get(
-                url,
-                timeout=self.config.timeout,
-                headers=self.config.headers,
-                verify=False
-            )
+            # FIXED: Use http_client for proxy support
+            response = self._make_request(url, timeout=self.config.timeout, headers=self.config.headers)
             
             if response.status_code == 200:
                 return self._extract_all_urls(response.text, url)
@@ -644,12 +867,8 @@ class WebCrawler:
             
             for sitemap_url in sitemap_urls:
                 try:
-                    response = requests.get(
-                        sitemap_url,
-                        timeout=self.config.timeout,
-                        headers=self.config.headers,
-                        verify=False
-                    )
+                    # FIXED: Use http_client for proxy support
+                    response = self._make_request(sitemap_url, timeout=self.config.timeout, headers=self.config.headers)
                     
                     if response.status_code == 200:
                         print(f"    [CRAWLER] Found sitemap: {sitemap_url}")
@@ -681,13 +900,9 @@ class WebCrawler:
         try:
             from urllib.parse import urljoin
             robots_url = urljoin(base_url, '/robots.txt')
-            
-            response = requests.get(
-                robots_url,
-                timeout=self.config.timeout,
-                headers=self.config.headers,
-                verify=False
-            )
+
+            # FIXED: Use http_client for proxy support
+            response = self._make_request(robots_url, timeout=self.config.timeout, headers=self.config.headers)
             
             if response.status_code == 200:
                 print(f"    [CRAWLER] Found robots.txt: {robots_url}")
@@ -841,12 +1056,8 @@ class WebCrawler:
             
             try:
                 print(f"    [CRAWLER] Fetching JS file: {js_url}")
-                response = requests.get(
-                    js_url,
-                    timeout=self.config.timeout,
-                    headers=self.config.headers,
-                    verify=False
-                )
+                # FIXED: Use http_client for proxy support
+                response = self._make_request(js_url, timeout=self.config.timeout, headers=self.config.headers)
                 self.visited_urls.add(js_url)
 
                 if response.status_code == 200:

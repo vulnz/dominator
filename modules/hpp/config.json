@@ -6,10 +6,15 @@
     "category": "Injection",
     "severity": "Medium",
     "cwe": "CWE-235",
+    "cwe_name": "Improper Handling of Extra Parameters",
     "owasp": "A03:2021",
+    "owasp_name": "Injection",
+    "cvss": "5.3",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N",
     "tags": ["hpp", "parameter-pollution", "waf-bypass", "injection"],
     "references": [
         "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/04-Testing_for_HTTP_Parameter_Pollution",
         "https://github.com/swisskyrepo/PayloadsAllTheThings/tree/master/HTTP%20Parameter%20Pollution"
-    ]
+    ],
+    "remediation": "Use consistent parameter handling across application layers. Accept only the first or last occurrence of duplicate parameters. Validate all parameters."
 }

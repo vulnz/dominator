@@ -6,10 +6,15 @@
     "category": "Injection",
     "severity": "High",
     "cwe": "CWE-97",
+    "cwe_name": "Improper Neutralization of Server-Side Includes (SSI) Within a Web Page",
     "owasp": "A03:2021",
+    "owasp_name": "Injection",
+    "cvss": "8.6",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:H",
     "tags": ["ssi", "injection", "rce", "lfi"],
     "references": [
         "https://owasp.org/www-community/attacks/Server-Side_Includes_(SSI)_Injection",
         "https://github.com/swisskyrepo/PayloadsAllTheThings/tree/master/Server%20Side%20Include%20Injection"
-    ]
+    ],
+    "remediation": "Disable SSI if not required. Sanitize input that appears in SSI-enabled pages. Use allowlists for SSI directives."
 }

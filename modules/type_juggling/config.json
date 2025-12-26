@@ -8,11 +8,15 @@
     "enabled": true,
     "passive": false,
     "cwe": "CWE-1024",
+    "cwe_name": "Comparison Using Wrong Factors",
     "owasp": "A07:2021",
-    "cvss": 8.1,
+    "owasp_name": "Identification and Authentication Failures",
+    "cvss": "8.1",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
     "tags": ["php", "type-juggling", "magic-hash", "authentication-bypass", "loose-comparison"],
     "references": [
         "https://owasp.org/www-pdf-archive/PHPMagicTricks-TypeJuggling.pdf",
         "https://github.com/swisskyrepo/PayloadsAllTheThings/blob/master/Type%20Juggling/README.md"
-    ]
+    ],
+    "remediation": "Use strict comparison (===) instead of loose comparison (==) in PHP. Use password_verify() for password checks. Cast input to expected types."
 }

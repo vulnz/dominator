@@ -86,6 +86,23 @@ class TerminalWizard:
             print("\n\nWizard cancelled.")
             sys.exit(0)
 
+    def get_int(self, prompt: str, default: int, min_val: int = 1, max_val: int = 1000) -> int:
+        """Get integer input with validation"""
+        while True:
+            try:
+                value = input(f"{prompt} [{default}]: ").strip()
+                if not value:
+                    return default
+                num = int(value)
+                if min_val <= num <= max_val:
+                    return num
+                print(f"  Please enter a number between {min_val} and {max_val}.")
+            except ValueError:
+                print(f"  Invalid input. Please enter a number (e.g., {default}).")
+            except KeyboardInterrupt:
+                print("\n\nWizard cancelled.")
+                sys.exit(0)
+
     def get_yes_no(self, prompt: str, default: bool = True) -> bool:
         """Get yes/no response"""
         default_str = "Y/n" if default else "y/N"
@@ -186,11 +203,11 @@ class TerminalWizard:
         if not self.config['fast_mode']:
             self.config['fast_mode'] = self.get_yes_no("Enable fast mode (quicker but less thorough)?", False)
 
-        self.config['threads'] = int(self.get_input("Number of threads", "10"))
-        self.config['timeout'] = int(self.get_input("Request timeout (seconds)", "20"))
+        self.config['threads'] = self.get_int("Number of threads", 10, min_val=1, max_val=100)
+        self.config['timeout'] = self.get_int("Request timeout (seconds)", 20, min_val=5, max_val=300)
 
         if self.get_yes_no("Limit payload count per module?", False):
-            self.config['payload_limit'] = int(self.get_input("Max payloads per module", "10"))
+            self.config['payload_limit'] = self.get_int("Max payloads per module", 10, min_val=1, max_val=1000)
 
         # Step 4: Crawling Options (skip for API mode - uses explicit endpoints)
         if not self.config.get('api_mode'):
@@ -198,7 +215,7 @@ class TerminalWizard:
             self.config['crawl'] = self.get_yes_no("Enable crawling (discover more pages)?", True)
 
             if self.config['crawl']:
-                self.config['max_crawl_pages'] = int(self.get_input("Max pages to crawl", "50"))
+                self.config['max_crawl_pages'] = self.get_int("Max pages to crawl", 50, min_val=1, max_val=500)
 
         # Step 5: Authentication & Headers (skip if already configured in API mode)
         if not self.config.get('api_mode'):
@@ -225,24 +242,53 @@ class TerminalWizard:
                         break
                     self.config['headers'].append(header)
 
-        # Step 6: WAF Detection (skip for API mode)
+        # Step 6: WAF Detection & Pre-scan Check (skip for API mode)
         if not self.config.get('api_mode'):
-            self.print_step(6, total_steps, "WAF DETECTION")
-            print("WAF (Web Application Firewall) detection can help identify")
-            print("security mechanisms and recommend appropriate bypass techniques.\n")
+            self.print_step(6, total_steps, "WAF DETECTION & PRE-SCAN CHECK")
 
-            waf_options = [
-                "No WAF detection",
-                "Detect WAF only (no bypass)",
-                "Detect WAF and use bypass payloads if found"
-            ]
-            waf_choice = self.get_choice("WAF handling:", waf_options)[0]
+            # Pre-scan check: detect WAF and technologies
+            print("Checking target for WAF protection and technologies...")
+            self._run_prescan_check()
 
-            if "use bypass" in waf_choice.lower():
-                self.config['waf_mode'] = True
-                self.config['wafiffound'] = True
-            elif "Detect WAF only" in waf_choice:
-                self.config['waf_detect'] = True
+            # Ask about WAF bypass if WAF was detected
+            if self.config.get('waf_detected'):
+                print("\n" + "!" * 60)
+                print("  WAF PROTECTION DETECTED - ACTION REQUIRED")
+                print("!" * 60)
+
+                waf_options = [
+                    "Enable WAF bypass mode (recommended) - Use cloudscraper/browser",
+                    "Continue without bypass - May fail with blocked requests",
+                    "Abort scan - Choose different target"
+                ]
+                waf_choice = self.get_choice("\nHow to handle WAF protection?", waf_options)[0]
+
+                if "Enable WAF bypass" in waf_choice:
+                    self.config['waf_mode'] = True
+                    self.config['use_browser'] = True
+                    print("\n  WAF bypass mode enabled!")
+                    if not self.config.get('bypass_available'):
+                        print("  NOTE: Install cloudscraper for best results: pip install cloudscraper")
+                elif "Abort" in waf_choice:
+                    print("\nScan aborted.")
+                    sys.exit(0)
+                else:
+                    print("\n  Continuing without WAF bypass (requests may be blocked)")
+            else:
+                # No WAF detected, offer standard options
+                print("\nNo WAF protection detected - site appears accessible.\n")
+
+                waf_options = [
+                    "Standard mode - No WAF bypass needed",
+                    "Enable WAF detection during scan",
+                    "Enable preventive WAF bypass (for safety)"
+                ]
+                waf_choice = self.get_choice("WAF handling:", waf_options)[0]
+
+                if "preventive" in waf_choice.lower():
+                    self.config['waf_mode'] = True
+                elif "detection" in waf_choice.lower():
+                    self.config['waf_detect'] = True
 
         # Step 7: Output Settings
         self.print_step(7, total_steps, "OUTPUT SETTINGS")
@@ -267,6 +313,102 @@ class TerminalWizard:
         else:
             print("\nScan cancelled.")
             sys.exit(0)
+
+    def _run_prescan_check(self):
+        """Run pre-scan check for WAF detection and technology fingerprinting"""
+        if not self.config['targets']:
+            print("  No targets to check.\n")
+            return
+
+        target = self.config['targets'][0]
+
+        # Ensure target has protocol
+        if not target.startswith(('http://', 'https://')):
+            target = f"https://{target}"
+
+        print(f"\n  Checking: {target}")
+
+        try:
+            # Import WAF bypass module
+            try:
+                from core.waf_bypass import check_waf_and_suggest, is_bypass_available
+                waf_available = True
+            except ImportError:
+                waf_available = False
+
+            if waf_available:
+                # Use advanced WAF detection
+                waf_info, message = check_waf_and_suggest(target)
+
+                if waf_info.detected:
+                    self.config['waf_detected'] = True
+                    self.config['waf_type'] = waf_info.waf_type
+                    self.config['bypass_available'] = waf_info.bypass_available
+
+                    print(f"\n  [!] WAF DETECTED: {waf_info.waf_type}")
+                    print(f"      Confidence: {waf_info.confidence * 100:.0f}%")
+                    if waf_info.details:
+                        print(f"      Details: {waf_info.details}")
+                    if waf_info.bypass_available:
+                        print(f"      Bypass: Available ({waf_info.bypass_method})")
+                    else:
+                        print(f"      Bypass: Not available")
+                        print(f"      Install: pip install cloudscraper")
+                else:
+                    print(f"  [OK] No WAF protection detected")
+
+                # Check bypass availability
+                self.config['bypass_available'] = is_bypass_available()
+
+            else:
+                # Fallback: Simple HTTP check
+                import requests
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+                try:
+                    response = requests.get(target, headers=headers, timeout=10, verify=False)
+
+                    if response.status_code == 403:
+                        # Possible WAF
+                        cf_indicators = ['cloudflare', 'cf-ray', 'checking your browser']
+                        content_lower = response.text.lower()
+                        headers_lower = str(response.headers).lower()
+
+                        if any(ind in content_lower or ind in headers_lower for ind in cf_indicators):
+                            self.config['waf_detected'] = True
+                            self.config['waf_type'] = "Cloudflare"
+                            print(f"\n  [!] WAF DETECTED: Cloudflare (HTTP 403)")
+                            print(f"      Install cloudscraper for bypass: pip install cloudscraper")
+                        else:
+                            self.config['waf_detected'] = True
+                            self.config['waf_type'] = "Unknown"
+                            print(f"\n  [!] Access Denied (HTTP 403) - Possible WAF")
+
+                    elif response.status_code == 200:
+                        print(f"  [OK] Target accessible (HTTP {response.status_code})")
+
+                        # Technology detection hint
+                        server = response.headers.get('Server', '')
+                        powered = response.headers.get('X-Powered-By', '')
+                        if server:
+                            print(f"      Server: {server}")
+                        if powered:
+                            print(f"      Technology: {powered}")
+                    else:
+                        print(f"  [?] HTTP {response.status_code} - Check target URL")
+
+                except requests.exceptions.SSLError:
+                    print(f"  [!] SSL Error - Try with http:// instead")
+                except requests.exceptions.ConnectionError:
+                    print(f"  [!] Connection failed - Check target is reachable")
+                except Exception as e:
+                    print(f"  [!] Error: {e}")
+
+        except Exception as e:
+            print(f"  [!] Pre-scan check failed: {e}")
+
+        print()  # Empty line for spacing
 
     def _select_modules(self):
         """Interactive module selection"""
@@ -472,9 +614,11 @@ class TerminalWizard:
         if self.config['auth_type']:
             args.extend(['-a', self.config['auth_type']])
 
-        # WAF
+        # WAF and browser bypass
         if self.config.get('waf_mode'):
-            args.append('--waf')
+            args.append('--waf-mode')
+        if self.config.get('use_browser'):
+            args.append('--browser')
         if self.config.get('wafiffound'):
             args.append('--wafiffound')
         if self.config.get('waf_detect'):

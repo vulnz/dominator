@@ -1,0 +1,22 @@
+{
+    "name": "Web Cache Poisoning",
+    "description": "Detects web cache poisoning and cache deception vulnerabilities",
+    "author": "Dominator Team",
+    "version": "1.0",
+    "category": "Cache",
+    "severity": "High",
+    "cwe": "CWE-444",
+    "cwe_name": "Inconsistent Interpretation of HTTP Requests",
+    "owasp": "A05:2021",
+    "owasp_name": "Security Misconfiguration",
+    "cvss": "7.5",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N",
+    "enabled": true,
+    "passive": false,
+    "tags": ["cache", "poisoning", "cdn", "varnish", "cloudflare", "akamai"],
+    "remediation": "Configure caching rules to include all relevant headers in cache keys. Disable caching for sensitive endpoints. Use Vary header correctly.",
+    "references": [
+        "https://portswigger.net/research/practical-web-cache-poisoning",
+        "https://portswigger.net/research/web-cache-entanglement"
+    ]
+}

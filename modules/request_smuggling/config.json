@@ -6,10 +6,15 @@
     "category": "Protocol",
     "severity": "Critical",
     "cwe": "CWE-444",
+    "cwe_name": "Inconsistent Interpretation of HTTP Requests ('HTTP Request/Response Smuggling')",
     "owasp": "A05:2021",
+    "owasp_name": "Security Misconfiguration",
+    "cvss": "9.8",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
     "tags": ["http", "smuggling", "desync", "cl-te", "te-cl"],
     "references": [
         "https://portswigger.net/research/http-desync-attacks-request-smuggling-reborn",
         "https://github.com/swisskyrepo/PayloadsAllTheThings/tree/master/Request%20Smuggling"
-    ]
+    ],
+    "remediation": "Use HTTP/2 end-to-end. Normalize Content-Length and Transfer-Encoding handling. Use same server software on frontend and backend."
 }

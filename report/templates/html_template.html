@@ -268,7 +268,16 @@
         }}
 
         .vulnerability-item.expanded .vulnerability-details {{
-            max-height: 1000px;
+            max-height: none;
+            overflow: visible;
+        }}
+
+        /* Ensure collapsed details are still copyable (hidden but in DOM) */
+        @media print {{
+            .vulnerability-details {{
+                max-height: none !important;
+                overflow: visible !important;
+            }}
         }}
 
         .details-content {{

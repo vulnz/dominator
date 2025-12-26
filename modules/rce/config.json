@@ -1,0 +1,33 @@
+{
+    "name": "Remote Code Execution (RCE)",
+    "description": "Detects Remote Code Execution vulnerabilities through various attack vectors including unsafe deserialization, file inclusion leading to RCE, insecure file uploads, and other code execution flaws",
+    "author": "Dominator Team",
+    "version": "1.0.0",
+    "category": "injection",
+    "severity": "Critical",
+    "cwe": "CWE-94",
+    "cwe_name": "Improper Control of Generation of Code ('Code Injection')",
+    "owasp": "A03:2021",
+    "owasp_name": "Injection",
+    "cvss": "9.8",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+    "remediation": "Validate and sanitize all user inputs. Avoid using unsafe functions like eval(), exec(), system(). Implement proper input validation and output encoding. Use allowlists for file operations. Disable dangerous PHP functions. Update all frameworks and libraries to patched versions.",
+    "references": [
+        "https://owasp.org/www-community/attacks/Code_Injection",
+        "https://cwe.mitre.org/data/definitions/94.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Injection_Prevention_Cheat_Sheet.html",
+        "https://portswigger.net/web-security/os-command-injection"
+    ],
+    "enabled": true,
+    "risk_level": "critical",
+    "tags": ["rce", "code-execution", "critical", "injection"],
+    "parameters": {
+        "test_get": true,
+        "test_post": true,
+        "test_headers": true,
+        "test_cookies": false,
+        "max_payloads": 30,
+        "timeout": 15,
+        "time_based_delay": 5
+    }
+}

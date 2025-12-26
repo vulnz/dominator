@@ -1,0 +1,20 @@
+{
+    "name": "Subdomain Takeover",
+    "description": "Detects vulnerable subdomains that can be taken over due to dangling DNS records pointing to unclaimed cloud services",
+    "version": "1.0",
+    "author": "Dominator Team",
+    "category": "recon",
+    "severity": "High",
+    "cwe": "CWE-284",
+    "cwe_name": "Improper Access Control",
+    "owasp": "A05:2021",
+    "owasp_name": "Security Misconfiguration",
+    "cvss": "8.0",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
+    "enabled": true,
+    "passive": false,
+    "tags": ["recon", "subdomain", "takeover", "dns", "cloud", "security"],
+    "services_count": 30,
+    "detection_methods": ["cname_analysis", "nxdomain_check", "response_fingerprinting"],
+    "remediation": "Remove dangling DNS records pointing to unclaimed services. Regularly audit DNS records. Claim or reclaim cloud resources before DNS changes."
+}

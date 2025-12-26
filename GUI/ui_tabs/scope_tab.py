@@ -492,6 +492,9 @@ class ScopeTabBuilder:
         self.gui.scope_table.setAlternatingRowColors(True)
         self.gui.scope_table.setFont(QFont("Segoe UI", 10))
         self.gui.scope_table.setMinimumHeight(300)
+        # Prevent text overflow - use ellipsis for long text
+        self.gui.scope_table.setWordWrap(False)
+        self.gui.scope_table.setTextElideMode(Qt.ElideRight)
 
         # Column sizing
         header = self.gui.scope_table.horizontalHeader()
@@ -733,6 +736,9 @@ class ScopeTabBuilder:
         self.gui.tech_table.setAlternatingRowColors(True)
         self.gui.tech_table.setFont(QFont("Segoe UI", 10))
         self.gui.tech_table.setMinimumHeight(200)
+        # Prevent text overflow - use ellipsis for long text
+        self.gui.tech_table.setWordWrap(False)
+        self.gui.tech_table.setTextElideMode(Qt.ElideRight)
 
         # Column sizing
         header = self.gui.tech_table.horizontalHeader()
@@ -931,6 +937,9 @@ class ScopeTabBuilder:
         self.gui.geo_table.setAlternatingRowColors(True)
         self.gui.geo_table.setFont(QFont("Segoe UI", 10))
         self.gui.geo_table.setMinimumHeight(200)
+        # Prevent text overflow - use ellipsis for long text
+        self.gui.geo_table.setWordWrap(False)
+        self.gui.geo_table.setTextElideMode(Qt.ElideRight)
 
         # Column sizing
         header = self.gui.geo_table.horizontalHeader()

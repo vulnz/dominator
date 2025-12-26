@@ -6,9 +6,13 @@
     "category": "Misconfiguration",
     "severity": "high",
     "cwe": "CWE-749",
+    "cwe_name": "Exposed Dangerous Method or Function",
     "owasp": "A05:2021",
+    "owasp_name": "Security Misconfiguration",
     "cvss": "7.5",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N",
     "enabled": true,
     "passive": false,
-    "tags": ["http-methods", "put", "delete", "trace", "webdav", "nikto"]
+    "tags": ["http-methods", "put", "delete", "trace", "webdav", "nikto"],
+    "remediation": "Disable unnecessary HTTP methods (PUT, DELETE, TRACE) on production servers. Configure web server to only allow GET, POST, HEAD as needed."
 }

@@ -1,0 +1,22 @@
+{
+    "name": "XSLT Injection Scanner",
+    "description": "Detects XSLT (Extensible Stylesheet Language Transformations) injection vulnerabilities that can lead to server-side code execution, file disclosure, and SSRF.",
+    "author": "Dominator Team",
+    "version": "1.0",
+    "enabled": true,
+    "category": "Injection",
+    "severity": "High",
+    "cwe": "CWE-91",
+    "cwe_name": "XML Injection (aka Blind XPath Injection)",
+    "owasp": "A03:2021",
+    "owasp_name": "Injection",
+    "cvss": "8.6",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:L",
+    "tags": ["injection", "xslt", "xml", "rce", "file-read", "ssrf"],
+    "references": [
+        "https://owasp.org/www-community/attacks/XSLT_Injection",
+        "https://cwe.mitre.org/data/definitions/91.html",
+        "https://vulncat.fortify.com/en/detail?id=desc.dataflow.java.xslt_injection"
+    ],
+    "remediation": "Avoid using user input in XSLT transformations. If necessary, use strict allowlisting and disable dangerous XSLT functions. Use XSLT 1.0 without extensions."
+}

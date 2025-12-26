@@ -26,49 +26,39 @@ class JSAnalysisModule(BaseModule):
     """JavaScript file analyzer for secrets and misconfigurations"""
 
     # Regex patterns for secrets/sensitive data
+    # IMPORTANT: Patterns must be specific to avoid false positives
     SECRET_PATTERNS = {
-        # API Keys
-        'AWS Access Key': r'AKIA[0-9A-Z]{16}',
-        'AWS Secret Key': r'[A-Za-z0-9/+=]{40}',
+        # API Keys - HIGH CONFIDENCE patterns only
+        'AWS Access Key': r'(?<![A-Z0-9])AKIA[0-9A-Z]{16}(?![A-Z0-9])',
         'Google API Key': r'AIza[0-9A-Za-z\-_]{35}',
-        'Google OAuth': r'[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com',
-        'Firebase API Key': r'AIza[0-9A-Za-z\-_]{35}',
         'Slack Token': r'xox[baprs]-[0-9a-zA-Z]{10,48}',
         'Slack Webhook': r'https://hooks\.slack\.com/services/T[a-zA-Z0-9_]{8}/B[a-zA-Z0-9_]{8}/[a-zA-Z0-9_]{24}',
-        'GitHub Token': r'gh[pousr]_[A-Za-z0-9_]{36}',
-        'GitHub OAuth': r'[0-9a-fA-F]{40}',
-        'Stripe API Key': r'sk_live_[0-9a-zA-Z]{24}',
-        'Stripe Publishable': r'pk_live_[0-9a-zA-Z]{24}',
-        'Square Access Token': r'sq0atp-[0-9A-Za-z\-_]{22}',
-        'Square OAuth': r'sq0csp-[0-9A-Za-z\-_]{43}',
+        'GitHub Token': r'gh[pousr]_[A-Za-z0-9_]{36,}',
+        'Stripe Secret Key': r'sk_live_[0-9a-zA-Z]{24,}',
+        'Stripe Publishable': r'pk_live_[0-9a-zA-Z]{24,}',
         'Twilio API Key': r'SK[0-9a-fA-F]{32}',
-        'Mailgun API Key': r'key-[0-9a-zA-Z]{32}',
-        'Mailchimp API Key': r'[0-9a-f]{32}-us[0-9]{1,2}',
         'SendGrid API Key': r'SG\.[a-zA-Z0-9_-]{22}\.[a-zA-Z0-9_-]{43}',
-        'Heroku API Key': r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}',
-        'JWT Token': r'eyJ[A-Za-z0-9-_=]+\.eyJ[A-Za-z0-9-_=]+\.?[A-Za-z0-9-_.+/=]*',
+        'JWT Token': r'eyJ[A-Za-z0-9-_]{10,}\.eyJ[A-Za-z0-9-_]{10,}\.[A-Za-z0-9-_.+/=]{10,}',
         'Private Key': r'-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----',
 
-        # Cloud Storage
-        'S3 Bucket': r'[a-z0-9.-]+\.s3\.amazonaws\.com',
-        'S3 Bucket URL': r's3://[a-z0-9.-]+',
-        'Azure Blob': r'[a-z0-9]+\.blob\.core\.windows\.net',
-        'GCP Storage': r'storage\.googleapis\.com/[a-z0-9.-]+',
-        'Firebase Storage': r'[a-z0-9-]+\.appspot\.com',
+        # Cloud Storage - specific patterns
+        'S3 Bucket': r'[a-z0-9][a-z0-9.-]{2,62}\.s3\.amazonaws\.com',
+        'Azure Blob': r'[a-z0-9]{3,24}\.blob\.core\.windows\.net',
         'Firebase DB': r'[a-z0-9-]+\.firebaseio\.com',
 
-        # Internal/API endpoints
-        'Internal IP': r'(?:10|172\.(?:1[6-9]|2[0-9]|3[01])|192\.168)\.[0-9]{1,3}\.[0-9]{1,3}',
-        'Localhost URL': r'(?:localhost|127\.0\.0\.1):[0-9]+',
+        # Database connection strings with credentials
+        'MongoDB URI with Auth': r'mongodb(?:\+srv)?://[^:]+:[^@]+@[^\s"\']+',
+        'MySQL URI with Auth': r'mysql://[^:]+:[^@]+@[^\s"\']+',
+        'PostgreSQL URI with Auth': r'postgres(?:ql)?://[^:]+:[^@]+@[^\s"\']+',
 
-        # Passwords/Credentials
-        'Password Field': r'["\']?(?:password|passwd|pwd|secret|token)["\']?\s*[:=]\s*["\'][^"\']{4,}["\']',
-        'API Key Generic': r'["\']?(?:api_?key|apikey|api_?secret)["\']?\s*[:=]\s*["\'][a-zA-Z0-9_\-]{16,}["\']',
-
-        # Database connection strings
-        'MongoDB URI': r'mongodb(?:\+srv)?://[^\s"\']+',
-        'MySQL URI': r'mysql://[^\s"\']+',
-        'PostgreSQL URI': r'postgres(?:ql)?://[^\s"\']+',
+        # REMOVED patterns that cause false positives:
+        # - 'AWS Secret Key' - too generic (40 chars alphanumeric)
+        # - 'GitHub OAuth' - too generic (40 hex chars)
+        # - 'Heroku API Key' - matches UUIDs
+        # - 'Password Field' - matches form fields, not actual passwords
+        # - 'API Key Generic' - matches configuration keys
+        # - 'Internal IP' - matches legitimate internal references
+        # - 'Localhost URL' - development environments
     }
 
     # Debug mode indicators
@@ -322,11 +312,14 @@ class JSAnalysisModule(BaseModule):
         return results
 
     def _is_false_positive(self, secret_type: str, match: str) -> bool:
-        """Check for common false positives"""
+        """Check for common false positives - ENHANCED"""
         # Skip example/placeholder values
         false_positive_patterns = [
-            'example', 'test', 'demo', 'placeholder', 'your-',
-            'xxx', 'XXXX', '000000', '123456', 'sample',
+            'example', 'test', 'demo', 'placeholder', 'your-', 'your_',
+            'xxx', 'XXXX', '000000', '123456', 'sample', 'dummy',
+            'fake', 'mock', 'stub', 'replace', 'insert', 'enter',
+            'xxxxxxxx', 'abcdefgh', 'qwertyui', 'asdfghjk',
+            'changeme', 'password123', 'admin123', 'secret123',
         ]
 
         match_lower = match.lower()
@@ -335,8 +328,27 @@ class JSAnalysisModule(BaseModule):
                 return True
 
         # Skip very short matches
-        if len(match) < 10:
+        if len(match) < 12:
             return True
+
+        # Skip if it's all the same character repeated
+        if len(set(match.replace('-', '').replace('_', ''))) < 6:
+            return True
+
+        # Skip Google Maps API keys (they are public/client-side by design)
+        if secret_type == 'Google API Key' and match.startswith('AIzaSy'):
+            # Google Maps API keys are intended to be public in client-side code
+            return True
+
+        # Skip publishable Stripe keys (they are designed to be public)
+        if secret_type == 'Stripe Publishable':
+            return True  # pk_live_* keys are meant to be exposed
+
+        # Skip common CDN/vendor patterns
+        cdn_patterns = ['cloudflare', 'challenge', 'captcha', 'recaptcha']
+        for cdn in cdn_patterns:
+            if cdn in match_lower:
+                return True
 
         return False
 

@@ -1,0 +1,30 @@
+{
+    "name": "Secrets and API Keys Scanner",
+    "description": "Scans JavaScript files and HTTP responses for exposed secrets, API keys, tokens, and sensitive credentials. Shows context around each finding for accurate assessment. Detects AWS, Google Cloud, Azure, Stripe, Twilio, Zendesk, and many other API keys.",
+    "author": "Dominator Team",
+    "version": "1.0.0",
+    "category": "exposure",
+    "severity": "High",
+    "cwe": "CWE-798",
+    "cwe_name": "Use of Hard-coded Credentials",
+    "owasp": "A02:2021",
+    "owasp_name": "Cryptographic Failures",
+    "cvss": "7.5",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+    "remediation": "Remove hardcoded secrets from source code. Use environment variables or secure secret management (AWS Secrets Manager, HashiCorp Vault). Rotate any exposed credentials immediately. Use .gitignore for config files. Implement secret scanning in CI/CD pipelines.",
+    "references": [
+        "https://owasp.org/www-community/vulnerabilities/Use_of_hard-coded_password",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
+        "https://github.com/trufflesecurity/trufflehog",
+        "https://github.com/gitleaks/gitleaks"
+    ],
+    "enabled": true,
+    "risk_level": "high",
+    "tags": ["secrets", "api-keys", "credentials", "exposure", "hardcoded"],
+    "parameters": {
+        "scan_js_files": true,
+        "scan_html": true,
+        "context_lines": 3,
+        "max_file_size": 5242880
+    }
+}

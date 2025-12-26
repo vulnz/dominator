@@ -1,0 +1,30 @@
+{
+    "name": "Text Injection",
+    "description": "Detects text/content injection vulnerabilities where user input is reflected in the response without proper validation or encoding, potentially allowing manipulation of displayed content",
+    "author": "Dominator Team",
+    "version": "1.0.0",
+    "category": "injection",
+    "severity": "Medium",
+    "cwe": "CWE-74",
+    "cwe_name": "Improper Neutralization of Special Elements in Output Used by a Downstream Component ('Injection')",
+    "owasp": "A03:2021",
+    "owasp_name": "Injection",
+    "cvss": "5.3",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
+    "remediation": "Implement proper input validation and output encoding. Use context-aware encoding when displaying user input. Apply Content Security Policy headers. Validate and sanitize all user inputs before reflection.",
+    "references": [
+        "https://owasp.org/www-community/attacks/Content_Spoofing",
+        "https://cwe.mitre.org/data/definitions/74.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html"
+    ],
+    "enabled": true,
+    "risk_level": "medium",
+    "tags": ["injection", "content-spoofing", "text", "reflection"],
+    "parameters": {
+        "test_get": true,
+        "test_post": true,
+        "test_cookies": false,
+        "max_payloads": 15,
+        "timeout": 10
+    }
+}

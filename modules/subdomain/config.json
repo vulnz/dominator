@@ -6,11 +6,15 @@
     "category": "recon",
     "severity": "Info",
     "cwe": "CWE-200",
+    "cwe_name": "Exposure of Sensitive Information to an Unauthorized Actor",
     "owasp": "A05:2021",
+    "owasp_name": "Security Misconfiguration",
     "cvss": "0.0",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N",
     "enabled": true,
     "passive": false,
     "tags": ["recon", "subdomain", "dns", "enumeration", "osint"],
+    "remediation": "Audit all subdomains regularly. Remove unused DNS records. Secure or decommission development/staging subdomains.",
 
     "detection_methods": {
         "passive": {

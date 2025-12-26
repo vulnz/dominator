@@ -436,6 +436,9 @@ class APITestingTabBuilder:
         self.gui.api_endpoints_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
         self.gui.api_endpoints_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.gui.api_endpoints_table.setAlternatingRowColors(True)
+        # Prevent text overflow - use ellipsis for long text
+        self.gui.api_endpoints_table.setWordWrap(False)
+        self.gui.api_endpoints_table.setTextElideMode(Qt.ElideRight)
         layout.addWidget(self.gui.api_endpoints_table)
 
         # Selection buttons
@@ -922,7 +925,8 @@ class APITestingTabBuilder:
         self.gui.single_page_cb.setChecked(True)
 
         # Switch to scan tab
-        self.gui.tabs.setCurrentIndex(0)
+        from GUI.dominator_gui import DominatorGUI
+        self.gui.tabs.setCurrentIndex(DominatorGUI.TAB_SCAN_CONFIG)
 
         # Show brief notification
         self.gui.statusBar().showMessage(

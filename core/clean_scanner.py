@@ -3,16 +3,20 @@ Clean modular scanner - Just a module launcher!
 NO hardcoded vulnerability logic - modules handle everything
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
+from pathlib import Path
 from core.http_client import HTTPClient
 from core.result_manager import ResultManager
 from core.report_generator import ReportGenerator
 from core.module_loader import ModuleLoader
 from core.crawler import WebCrawler
 from core.url_parser import URLParser
+from core.url_filter import URLFilter
+from core.language_optimizer import LanguageOptimizer, get_scan_mode_config, SLOW_MODULES
+from core.target_profiler import TargetProfiler, TargetProfile
 from core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -44,13 +48,32 @@ class ModularScanner:
             headers=config.headers,
             cookies=config.cookies,
             rate_limit=config.request_limit,
-            rotate_agent=config.rotate_agent  # ROTATION 9
+            rotate_agent=config.rotate_agent,  # ROTATION 9
+            proxy=getattr(config, 'proxy', None)  # FIXED: Pass proxy to HTTPClient
         )
 
         self.result_manager = ResultManager()
-        self.crawler = WebCrawler(config)
+
+        # Check if WAF bypass/browser mode is enabled
+        use_browser = getattr(config, 'browser', False) or getattr(config, 'use_browser', False) or getattr(config, 'waf_mode', False)
+        self.crawler = WebCrawler(config, http_client=self.http_client, use_browser=use_browser)
+
         self.url_parser = URLParser()
+        self.url_filter = URLFilter(strict=True)  # Filter static files and deduplicate URLs
         self.report_generator = ReportGenerator()
+
+        # Language optimizer for technology-based scanning
+        self.language_optimizer = LanguageOptimizer()
+        self.detected_technologies = []
+
+        # Target profiler for pre-scan intelligence
+        self.target_profiler = TargetProfiler(self.http_client)
+        self.target_profiles: Dict[str, TargetProfile] = {}
+
+        # Apply scan mode configuration if specified
+        scan_mode = getattr(config, 'scan_mode', None) or getattr(config, 'scan_type', 'standard')
+        mode_config = get_scan_mode_config(scan_mode)
+        self._apply_scan_mode(mode_config, scan_mode)
 
         # Load modules dynamically
         payload_limit = getattr(config, 'payload_limit', None)
@@ -62,6 +85,35 @@ class ModularScanner:
         self.result_lock = Lock()
 
         logger.info(f"Scanner initialized")
+
+    def _apply_scan_mode(self, mode_config: dict, mode_name: str):
+        """Apply scan mode configuration"""
+        if mode_name == 'standard':
+            return  # Don't modify standard settings
+
+        logger.info(f"[SCAN MODE] Applying '{mode_name}' mode settings:")
+
+        # Apply payload limit if not already set
+        if not getattr(self.config, 'payload_limit', None):
+            self.config.payload_limit = mode_config.get('payload_limit', 0)
+            if self.config.payload_limit:
+                logger.info(f"  - Payload limit: {self.config.payload_limit}")
+
+        # Apply thread count if not specified
+        if not getattr(self.config, 'threads', None):
+            self.config.threads = mode_config.get('threads', 8)
+            logger.info(f"  - Threads: {self.config.threads}")
+
+        # Apply max depth for crawling
+        if hasattr(self.config, 'depth') and mode_config.get('max_depth'):
+            if not self.config.depth or self.config.depth > mode_config['max_depth']:
+                self.config.depth = mode_config['max_depth']
+                logger.info(f"  - Max depth: {self.config.depth}")
+
+        # Store mode settings for later use
+        self.scan_mode_config = mode_config
+        self.skip_slow_modules = mode_config.get('skip_slow_modules', False)
+        self.priority_only = mode_config.get('priority_only', False)
 
     def scan(self) -> List[Dict[str, Any]]:
         """
@@ -82,7 +134,74 @@ class ModularScanner:
             logger.error("No targets specified")
             return []
 
+        # Handle subdomain enumeration and scanning
+        if self.config.enum_subdomains or self.config.scan_subdomains:
+            targets = self._enumerate_and_add_subdomains(targets)
+
         logger.info(f"Scanning {len(targets)} target(s)")
+
+        # Run pre-scan profiling if enabled (respects --no-profile flag)
+        profile_enabled = getattr(self.config, 'profile', True) and not getattr(self.config, 'no_profile', False)
+        capture_screenshot = getattr(self.config, 'screenshot', False)
+        profile_only = getattr(self.config, 'profile_only', False)
+        profile_output = getattr(self.config, 'profile_output', None)
+
+        if profile_enabled:
+            from core.screenshot import ScreenshotCapture
+            screenshot_capturer = ScreenshotCapture() if capture_screenshot else None
+            profiles_data = []
+
+            for target in targets:
+                logger.info(f"\n[PRE-SCAN PROFILING] {target}")
+                try:
+                    profile = self.target_profiler.profile(target)
+                    self.target_profiles[target] = profile
+
+                    # Capture screenshot if enabled
+                    if screenshot_capturer:
+                        logger.info(f"  [*] Capturing screenshot...")
+                        screenshot_path = screenshot_capturer.capture(target)
+                        if screenshot_path:
+                            profile.screenshot_path = screenshot_path
+                            logger.info(f"  [+] Screenshot saved: {screenshot_path}")
+
+                    # Use profile for technology-based optimization
+                    if profile.technologies:
+                        self.detected_technologies.extend(profile.technologies)
+
+                    # Print profile summary
+                    print(self.target_profiler.generate_report(profile))
+
+                    # Emit profile data as JSON for GUI
+                    import json
+                    profile_json = json.dumps(profile.to_dict(), default=str)
+                    print(f"GUI_PROFILE_JSON:{profile_json}")
+
+                    # Check for WAF warning
+                    if profile.waf_detected:
+                        logger.warning(f"[!] WAF DETECTED: {profile.waf_detected} - Consider using --waf flag for bypass payloads")
+
+                    # Collect for JSON output
+                    if profile_output:
+                        profiles_data.append(profile.to_dict())
+
+                except Exception as e:
+                    logger.warning(f"Profiling failed for {target}: {e}")
+
+            # Save profiles to JSON if requested
+            if profile_output and profiles_data:
+                import json
+                try:
+                    with open(profile_output, 'w', encoding='utf-8') as f:
+                        json.dump(profiles_data, f, indent=2, default=str)
+                    logger.info(f"[+] Profile data saved to: {profile_output}")
+                except Exception as e:
+                    logger.error(f"Failed to save profile data: {e}")
+
+            # If profile-only mode, exit here
+            if profile_only:
+                logger.info("\n[PROFILE-ONLY MODE] Profiling complete. Exiting without vulnerability scanning.")
+                return []
 
         # Load modules
         self._load_modules()
@@ -106,8 +225,16 @@ class ModularScanner:
             discovered_urls = self._discover_pages(target)
             logger.info(f"Discovered {len(discovered_urls)} URLs")
 
+            # CRITICAL: Filter out static files and deduplicate similar URLs
+            # This prevents testing .jpg, .css, etc. and avoids testing /1.jpg, /2.jpg, etc.
+            original_count = len(discovered_urls)
+            self.url_filter.reset()  # Reset for each target
+            discovered_urls = self.url_filter.filter_urls(discovered_urls)
+            if original_count != len(discovered_urls):
+                logger.info(f"[URL_FILTER] Reduced from {original_count} to {len(discovered_urls)} URLs (filtered static files & duplicates)")
+
             # DEBUG: Log target breakdown
-            logger.debug(f"DEBUG: Target breakdown:")
+            logger.debug(f"DEBUG: Target breakdown (after filtering):")
             logger.debug(f"  - Total targets: {len(discovered_urls)}")
             logger.debug(f"  - From pages: {len([t for t in discovered_urls if t.get('source') != 'form'])}")
             logger.debug(f"  - From forms: {len([t for t in discovered_urls if t.get('source') == 'form'])}")
@@ -120,8 +247,11 @@ class ModularScanner:
                 logger.info(f"[RECON-ONLY MODE] Passive findings collected during crawl")
                 continue
 
-            # Run modules with multi-threading if configured
-            threads = getattr(self.config, 'threads', 1)
+            # Run modules with multi-threading (default to optimal CPU-based threading)
+            # Use configured threads or calculate optimal value
+            import os
+            default_threads = max(4, min(os.cpu_count() or 4, 16))  # 4-16 based on CPU cores
+            threads = getattr(self.config, 'threads', None) or default_threads
 
             if threads > 1:
                 logger.info(f"\n[MULTI-THREADING] Using {threads} threads for faster scanning")
@@ -131,6 +261,16 @@ class ModularScanner:
                 for module in self.modules:
                     if self.stop_requested:
                         break
+
+                    # FIXED: Check for skip module signal file
+                    skip_signal_file = Path(".skip_module")
+                    if skip_signal_file.exists():
+                        logger.info(f"[*] Skip signal detected - skipping module: {module.get_name()}")
+                        try:
+                            skip_signal_file.unlink()  # Remove signal file
+                        except:
+                            pass
+                        continue  # Skip to next module
 
                     logger.info(f"\nRunning module: {module.get_name()}")
                     logger.info(f"Description: {module.get_description()}")
@@ -168,6 +308,16 @@ class ModularScanner:
         logger.info(f"Scan completed in {duration:.2f} seconds")
         logger.info(f"{'='*80}\n")
 
+        # Print HTTP client statistics
+        http_stats = self.http_client.get_stats()
+        if http_stats.get('total_requests', 0) > 0:
+            logger.info(f"HTTP Statistics:")
+            logger.info(f"  Total requests: {http_stats['total_requests']}")
+            logger.info(f"  Avg response time: {http_stats.get('avg_response_time', 0):.3f}s")
+            logger.info(f"  Success rate: {http_stats.get('success_rate', 0):.1f}%")
+            if http_stats.get('errors'):
+                logger.info(f"  Errors: {http_stats['errors']}")
+
         # Print statistics
         self.result_manager.print_summary()
 
@@ -190,6 +340,16 @@ class ModularScanner:
             """Execute a single module and return results"""
             if self.stop_requested:
                 return []
+
+            # FIXED: Check for skip module signal file
+            skip_signal_file = Path(".skip_module")
+            if skip_signal_file.exists():
+                logger.info(f"[Thread] Skip signal detected - skipping module: {module.get_name()}")
+                try:
+                    skip_signal_file.unlink()  # Remove signal file
+                except:
+                    pass
+                return []  # Skip this module
 
             logger.info(f"\n[Thread] Running module: {module.get_name()}")
             logger.info(f"[Thread] Description: {module.get_description()}")
@@ -238,7 +398,7 @@ class ModularScanner:
         return all_results
 
     def _load_modules(self):
-        """Load modules based on configuration"""
+        """Load modules based on configuration and detected technology"""
         logger.info(f"\nLoading modules: {self.config.modules}")
 
         self.modules = self.module_loader.load_modules(self.config.modules)
@@ -247,10 +407,37 @@ class ModularScanner:
             logger.error("No modules loaded!")
             logger.info("\nAvailable modules:")
             self.module_loader.print_available_modules()
-        else:
-            logger.info(f"Successfully loaded {len(self.modules)} module(s):")
-            for module in self.modules:
-                logger.info(f"  - {module.get_name()}: {module.get_description()}")
+            return
+
+        # Apply language-based optimization if technologies were detected
+        if self.detected_technologies:
+            self.language_optimizer.detect_from_technologies(self.detected_technologies)
+            skip_modules = self.language_optimizer.get_skip_modules()
+
+            if skip_modules:
+                original_count = len(self.modules)
+                self.modules = [m for m in self.modules if m.get_name().lower() not in skip_modules]
+                if len(self.modules) < original_count:
+                    logger.info(f"[TECH OPTIMIZER] Skipped {original_count - len(self.modules)} irrelevant modules")
+
+        # Apply scan mode filters
+        if hasattr(self, 'skip_slow_modules') and self.skip_slow_modules:
+            original_count = len(self.modules)
+            self.modules = [m for m in self.modules if m.get_name().lower() not in SLOW_MODULES]
+            if len(self.modules) < original_count:
+                logger.info(f"[SCAN MODE] Skipped {original_count - len(self.modules)} slow modules")
+
+        if hasattr(self, 'priority_only') and self.priority_only and self.detected_technologies:
+            priority = self.language_optimizer.get_priority_modules()
+            if priority:
+                original_count = len(self.modules)
+                self.modules = [m for m in self.modules if m.get_name().lower() in priority]
+                if len(self.modules) < original_count:
+                    logger.info(f"[SCAN MODE] Running priority modules only ({len(self.modules)} modules)")
+
+        logger.info(f"Successfully loaded {len(self.modules)} module(s):")
+        for module in self.modules:
+            logger.info(f"  - {module.get_name()}: {module.get_description()}")
 
     def _discover_pages(self, target: str) -> List[Dict[str, Any]]:
         """
@@ -442,3 +629,162 @@ class ModularScanner:
         """Request scan to stop gracefully"""
         logger.warning("Stop requested - scan will terminate")
         self.stop_requested = True
+
+    def _enumerate_and_add_subdomains(self, targets: List[str]) -> List[str]:
+        """
+        Enumerate subdomains for targets and optionally add them to scan
+
+        Args:
+            targets: Original target list
+
+        Returns:
+            Updated target list with subdomains
+        """
+        from urllib.parse import urlparse
+
+        logger.info("\n" + "="*60)
+        logger.info("SUBDOMAIN ENUMERATION")
+        logger.info("="*60)
+
+        all_subdomains = {}  # domain -> list of subdomains
+        all_targets = list(targets)  # Start with original targets
+
+        try:
+            # Try to import subdomain module
+            from modules.subdomain.module import get_module as get_subdomain_module
+
+            for target in targets:
+                parsed = urlparse(target)
+                domain = parsed.netloc.split(':')[0] if parsed.netloc else target
+
+                # Skip if already processed this domain
+                if domain in all_subdomains:
+                    continue
+
+                logger.info(f"\nEnumerating subdomains for: {domain}")
+
+                # Get subdomain module
+                module_path = "modules/subdomain"
+                subdomain_module = get_subdomain_module(module_path)
+
+                # Configure passive-only if requested
+                if self.config.subdomain_passive_only:
+                    logger.info("  [Passive-only mode]")
+
+                # Prepare target for subdomain module
+                target_dict = {'url': target, 'domain': domain}
+
+                # Run subdomain enumeration
+                subdomain_results = subdomain_module.scan([target_dict], self.http_client)
+
+                # Extract discovered subdomains
+                discovered = []
+                for result in subdomain_results:
+                    if result.get('subdomains'):
+                        discovered.extend(result['subdomains'])
+                    # Also check evidence for subdomain list
+                    if 'evidence' in result and 'Found subdomains' in str(result.get('evidence', '')):
+                        # Parse subdomains from evidence
+                        pass
+
+                all_subdomains[domain] = list(set(discovered))
+                logger.info(f"  Found {len(all_subdomains[domain])} subdomains")
+
+                # Add subdomain results to main results
+                self.result_manager.add_results(subdomain_results)
+
+        except ImportError as e:
+            logger.warning(f"Subdomain module not available: {e}")
+            logger.info("Proceeding without subdomain enumeration")
+            return targets
+        except Exception as e:
+            logger.error(f"Error during subdomain enumeration: {e}")
+            import traceback
+            traceback.print_exc()
+            return targets
+
+        # Run subdomain takeover check if requested
+        if self.config.subdomain_takeover:
+            self._check_subdomain_takeover(all_subdomains)
+
+        # If --scan-subdomains, add subdomains to target list
+        if self.config.scan_subdomains:
+            subdomain_limit = self.config.subdomain_limit
+            logger.info(f"\n[SCAN-SUBDOMAINS] Adding discovered subdomains (limit: {subdomain_limit})")
+
+            added_count = 0
+            for domain, subdomains in all_subdomains.items():
+                # Sort by priority (www first, then alphabetically)
+                sorted_subs = sorted(subdomains, key=lambda x: (0 if x.startswith('www.') else 1, x))
+
+                for subdomain in sorted_subs[:subdomain_limit]:
+                    subdomain_url = f"https://{subdomain}"
+                    if subdomain_url not in all_targets:
+                        all_targets.append(subdomain_url)
+                        added_count += 1
+                        logger.info(f"  + Added: {subdomain_url}")
+
+                    if added_count >= subdomain_limit:
+                        break
+
+                if added_count >= subdomain_limit:
+                    break
+
+            logger.info(f"\nTotal targets after subdomain addition: {len(all_targets)}")
+
+        logger.info("="*60 + "\n")
+        return all_targets
+
+    def _check_subdomain_takeover(self, subdomains_by_domain: Dict[str, List[str]]):
+        """
+        Check discovered subdomains for takeover vulnerabilities
+
+        Args:
+            subdomains_by_domain: Dict mapping domains to their subdomains
+        """
+        logger.info("\n" + "-"*40)
+        logger.info("SUBDOMAIN TAKEOVER CHECK")
+        logger.info("-"*40)
+
+        try:
+            from modules.subdomain_takeover.module import get_module as get_takeover_module
+
+            # Get takeover module
+            module_path = "modules/subdomain_takeover"
+            takeover_module = get_takeover_module(module_path)
+
+            total_checked = 0
+            takeover_results = []
+
+            for domain, subdomains in subdomains_by_domain.items():
+                logger.info(f"\nChecking {len(subdomains)} subdomains of {domain}")
+
+                # Prepare targets for takeover module
+                targets = [{'url': f"https://{sub}", 'subdomain': sub} for sub in subdomains]
+
+                # Run takeover check
+                results = takeover_module.scan(targets, self.http_client)
+                takeover_results.extend(results)
+                total_checked += len(subdomains)
+
+            # Add results
+            if takeover_results:
+                vulnerable_count = len([r for r in takeover_results if r.get('vulnerable')])
+                logger.info(f"\nSubdomain Takeover Results:")
+                logger.info(f"  Checked: {total_checked} subdomains")
+                logger.info(f"  Vulnerable: {vulnerable_count}")
+
+                for result in takeover_results:
+                    if result.get('vulnerable'):
+                        logger.warning(f"  ! TAKEOVER: {result.get('url')} -> {result.get('service', 'Unknown')}")
+
+                self.result_manager.add_results(takeover_results)
+            else:
+                logger.info(f"\nNo subdomain takeover vulnerabilities found ({total_checked} checked)")
+
+        except ImportError as e:
+            logger.warning(f"Subdomain takeover module not available: {e}")
+        except Exception as e:
+            logger.error(f"Error during subdomain takeover check: {e}")
+            import traceback
+            traceback.print_exc()

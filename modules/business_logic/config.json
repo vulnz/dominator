@@ -1,0 +1,22 @@
+{
+    "name": "Business Logic Scanner",
+    "description": "Detects business logic flaws including price manipulation, quantity tampering, and workflow bypass",
+    "author": "Dominator Team",
+    "version": "1.0",
+    "category": "Logic",
+    "severity": "High",
+    "cwe": "CWE-840",
+    "cwe_name": "Business Logic Errors",
+    "owasp": "A04:2021",
+    "owasp_name": "Insecure Design",
+    "cvss": "8.6",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:H/A:L",
+    "enabled": true,
+    "passive": false,
+    "tags": ["logic", "price", "quantity", "bypass", "workflow", "ecommerce"],
+    "remediation": "Implement server-side validation for all business logic. Never trust client-side calculations. Validate complete workflow state transitions.",
+    "references": [
+        "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/10-Business_Logic_Testing/",
+        "https://cwe.mitre.org/data/definitions/840.html"
+    ]
+}

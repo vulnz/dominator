@@ -1,13 +1,25 @@
 {
-  "name": "Command Injection Scanner",
-  "description": "OS Command Injection vulnerability detection",
+  "name": "OS Command Injection Scanner",
+  "description": "Detects OS Command Injection vulnerabilities where user input is passed to system shell commands, allowing arbitrary command execution on the server",
+  "author": "Dominator Team",
+  "version": "1.0.0",
+  "category": "injection",
   "severity": "Critical",
   "enabled": true,
   "timeout": 20,
   "cwe": "CWE-78",
-  "cwe_name": "Improper Neutralization of Special Elements used in an OS Command",
+  "cwe_name": "Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')",
   "owasp": "A03:2021",
   "owasp_name": "Injection",
   "cvss": "9.8",
-  "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+  "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+  "remediation": "Avoid passing user input directly to system commands. Use parameterized APIs instead of shell commands. If shell commands are necessary, use strict allowlists for input validation. Escape all special shell characters. Use least privilege for the application process.",
+  "references": [
+    "https://owasp.org/www-community/attacks/Command_Injection",
+    "https://cwe.mitre.org/data/definitions/78.html",
+    "https://cheatsheetseries.owasp.org/cheatsheets/OS_Command_Injection_Defense_Cheat_Sheet.html",
+    "https://portswigger.net/web-security/os-command-injection"
+  ],
+  "risk_level": "critical",
+  "tags": ["injection", "command", "os", "rce", "critical"]
 }

@@ -777,8 +777,16 @@ class ProgressTabBuilder:
 
     def _skip_module(self):
         """Skip the current module"""
-        # This would need backend support - for now just log
-        self.gui.live_log.add_log("Skip module requested (not implemented in scanner)", "warning")
+        # FIXED: Implement skip module functionality via signal file
+        if hasattr(self.gui, 'scan_thread') and self.gui.scan_thread:
+            success = self.gui.scan_thread.skip_module()
+            if success:
+                self.gui.live_log.add_log("Skip module signal sent - current module will be skipped", "info")
+                self.gui.output_console.append("[*] Skip module signal sent")
+            else:
+                self.gui.live_log.add_log("Failed to send skip module signal", "error")
+        else:
+            self.gui.live_log.add_log("No scan running", "warning")
 
     def _update_all_displays(self):
         """Update all time-related displays"""

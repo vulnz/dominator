@@ -48,7 +48,7 @@ try:
         QHeaderView, QAbstractItemView, QActionGroup, QToolButton, QSizePolicy,
         QInputDialog
     )
-    from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl, QParallelAnimationGroup, QPropertyAnimation, QAbstractAnimation, QSize
+    from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl, QParallelAnimationGroup, QPropertyAnimation, QAbstractAnimation, QSize, QMutex, QMutexLocker
     from PyQt5.QtGui import QFont, QColor, QPalette, QIcon, QTextCursor, QDesktopServices
 except ImportError:
     print("ERROR: PyQt5 is required for the GUI")
@@ -60,12 +60,26 @@ except ImportError:
 class DominatorGUI(QMainWindow):
     """Main GUI window for Dominator scanner"""
 
+    # Tab index constants - prevents hardcoded indices throughout the codebase
+    TAB_SCAN_CONFIG = 0
+    TAB_PAYLOADS = 1
+    TAB_RESULTS = 2
+    TAB_SCOPE = 3
+    TAB_MODULES = 4
+    TAB_PLUGINS = 5
+    TAB_API_TESTING = 6
+    TAB_INTERCEPTOR = 7
+
     def __init__(self):
         super().__init__()
         self.scan_thread = None
         self.time_update_timer = QTimer(self)  # Timer for time display updates
         self.time_update_timer.timeout.connect(self._update_scan_time)
-        self.vuln_counts = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0, 'INFO': 0}
+
+        # Thread-safe vulnerability counts with mutex protection
+        self._vuln_counts_mutex = QMutex()
+        self._vuln_counts = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0, 'INFO': 0}
+
         self.current_project_file = None  # Track current project file
         self.project_manager = ProjectManager()  # Project management
         self.theme_manager = ThemeManager(self)  # Theme management
@@ -82,6 +96,29 @@ class DominatorGUI(QMainWindow):
 
         self.init_ui()
         self.theme_manager.apply_theme("light")  # Default theme - white with black text
+
+    @property
+    def vuln_counts(self):
+        """Thread-safe getter for vulnerability counts"""
+        with QMutexLocker(self._vuln_counts_mutex):
+            return self._vuln_counts.copy()
+
+    @vuln_counts.setter
+    def vuln_counts(self, value):
+        """Thread-safe setter for vulnerability counts"""
+        with QMutexLocker(self._vuln_counts_mutex):
+            self._vuln_counts = value
+
+    def increment_vuln_count(self, severity):
+        """Thread-safe increment of vulnerability count"""
+        with QMutexLocker(self._vuln_counts_mutex):
+            if severity in self._vuln_counts:
+                self._vuln_counts[severity] += 1
+
+    def get_total_vulns(self):
+        """Thread-safe total vulnerability count"""
+        with QMutexLocker(self._vuln_counts_mutex):
+            return sum(self._vuln_counts.values())
 
     def show_startup_dialog(self):
         """Show project selection dialog on startup"""
@@ -319,8 +356,9 @@ class DominatorGUI(QMainWindow):
                             lambda checked, p=project['path']: self.open_recent_project(p)
                         )
                         self.recent_projects_menu.addAction(action)
-            except:
-                pass
+            except (json.JSONDecodeError, KeyError, IOError) as e:
+                # Log error but don't crash - recent projects is non-critical
+                print(f"[!] Error loading recent projects: {e}")
 
         if self.recent_projects_menu.isEmpty():
             no_recent = QAction("No recent projects", self)
@@ -393,7 +431,39 @@ class DominatorGUI(QMainWindow):
 
         # Tab widget for different sections
         self.tabs = QTabWidget()
-        self.tabs.setStyleSheet("QTabWidget::pane { border: 1px solid #e0e0e0; }")
+        self.tabs.setStyleSheet("""
+            QTabWidget::pane {
+                border: 1px solid #e0e0e0;
+                background-color: #ffffff;
+                border-radius: 4px;
+            }
+            QTabBar::tab {
+                background-color: #f5f5f5;
+                color: #424242;
+                padding: 10px 16px;
+                margin-right: 2px;
+                border: 1px solid #e0e0e0;
+                border-bottom: none;
+                border-top-left-radius: 6px;
+                border-top-right-radius: 6px;
+                font-size: 12px;
+                font-weight: 500;
+                min-width: 80px;
+            }
+            QTabBar::tab:selected {
+                background-color: #ffffff;
+                color: #1976D2;
+                font-weight: bold;
+                border-bottom: 2px solid #1976D2;
+            }
+            QTabBar::tab:hover:!selected {
+                background-color: #e3f2fd;
+                color: #1565c0;
+            }
+            QTabBar::tab:disabled {
+                color: #9e9e9e;
+            }
+        """)
 
         # Scan Configuration Tab (includes Advanced Options)
         scan_tab = self.create_scan_tab()
@@ -437,7 +507,7 @@ class DominatorGUI(QMainWindow):
         main_layout.addWidget(self.tabs)
 
         # Set default tab to Scan Configuration (first tab)
-        self.tabs.setCurrentIndex(0)
+        self.tabs.setCurrentIndex(self.TAB_SCAN_CONFIG)
 
         # Status bar
         self.statusBar().showMessage("Ready to scan")
@@ -445,14 +515,49 @@ class DominatorGUI(QMainWindow):
 
     def closeEvent(self, event):
         """Handle application close - cleanup proxy and other resources"""
+        # Stop any running scan and cleanup
+        if self.scan_thread and self.scan_thread.isRunning():
+            print("[*] Stopping running scan...")
+            self.scan_thread.stop()
+            self.scan_thread.wait(5000)  # Wait up to 5 seconds for graceful stop
+            self._disconnect_scan_signals()
+
         # Stop proxy if running
         if hasattr(self, 'browser_tab') and self.browser_tab.proxy and self.browser_tab.proxy.running:
             print("[*] Shutting down proxy...")
             self.browser_tab.proxy.stop()
             print("[+] Proxy stopped")
 
+        # Stop timers
+        if hasattr(self, 'time_update_timer') and self.time_update_timer.isActive():
+            self.time_update_timer.stop()
+        if hasattr(self, 'scheduler_status_timer') and self.scheduler_status_timer.isActive():
+            self.scheduler_status_timer.stop()
+        if hasattr(self, '_output_flush_timer') and self._output_flush_timer:
+            self._output_flush_timer.stop()
+
         # Accept the close event
         event.accept()
+
+    def _disconnect_scan_signals(self):
+        """Disconnect all scan thread signals to prevent memory leaks"""
+        if not self.scan_thread:
+            return
+
+        try:
+            self.scan_thread.output_signal.disconnect()
+            self.scan_thread.finished_signal.disconnect()
+            self.scan_thread.progress_signal.disconnect()
+            self.scan_thread.vulnerability_signal.disconnect()
+            self.scan_thread.vulnerability_data_signal.disconnect()
+            self.scan_thread.stats_signal.disconnect()
+            self.scan_thread.resource_signal.disconnect()
+            self.scan_thread.scope_signal.disconnect()
+            self.scan_thread.report_signal.disconnect()
+            self.scan_thread.time_signal.disconnect()
+        except (TypeError, RuntimeError):
+            # Signals may already be disconnected
+            pass
 
     def create_menu_bar(self):
         """Create menu bar"""
@@ -589,31 +694,31 @@ class DominatorGUI(QMainWindow):
         view_menu = menubar.addMenu("View")
 
         view_scan_tab_action = QAction("Scan Configuration", self)
-        view_scan_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(0))
+        view_scan_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(self.TAB_SCAN_CONFIG))
         view_menu.addAction(view_scan_tab_action)
 
         view_payloads_tab_action = QAction("Custom Payloads", self)
-        view_payloads_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(1))
+        view_payloads_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(self.TAB_PAYLOADS))
         view_menu.addAction(view_payloads_tab_action)
 
         view_results_tab_action = QAction("Results", self)
-        view_results_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(2))
+        view_results_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(self.TAB_RESULTS))
         view_menu.addAction(view_results_tab_action)
 
         view_scope_tab_action = QAction("Scope", self)
-        view_scope_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(3))
+        view_scope_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(self.TAB_SCOPE))
         view_menu.addAction(view_scope_tab_action)
 
         view_modules_tab_action = QAction("Modules", self)
-        view_modules_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(4))
+        view_modules_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(self.TAB_MODULES))
         view_menu.addAction(view_modules_tab_action)
 
         view_plugins_tab_action = QAction("Plugins", self)
-        view_plugins_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(5))
+        view_plugins_tab_action.triggered.connect(lambda: self.tabs.setCurrentIndex(self.TAB_PLUGINS))
         view_menu.addAction(view_plugins_tab_action)
 
         view_interceptor_action = QAction("Interceptor", self)
-        view_interceptor_action.triggered.connect(lambda: self.tabs.setCurrentIndex(6))
+        view_interceptor_action.triggered.connect(lambda: self.tabs.setCurrentIndex(self.TAB_INTERCEPTOR))
         view_menu.addAction(view_interceptor_action)
 
         # Settings menu
@@ -942,9 +1047,20 @@ class DominatorGUI(QMainWindow):
             targets_text = self.target_input.toPlainText().strip()
             # Split by newlines and/or commas, filter empty strings
             targets = [t.strip() for t in targets_text.replace('\n', ',').split(',') if t.strip()]
+
+            # Auto-fix URLs missing scheme (http:// or https://)
+            fixed_targets = []
+            for target in targets:
+                if not target.startswith(('http://', 'https://')):
+                    fixed_target = f'https://{target}'
+                    self.output_console.append(f"[*] Auto-fixed URL: '{target}' -> '{fixed_target}'")
+                    fixed_targets.append(fixed_target)
+                else:
+                    fixed_targets.append(target)
+
             # Pass each target as separate argument: -t target1 target2 target3
             command.append("-t")
-            command.extend(targets)
+            command.extend(fixed_targets)
         else:
             return None
 
@@ -1078,6 +1194,37 @@ class DominatorGUI(QMainWindow):
             if index >= 0:
                 self.format_combo.setCurrentIndex(index)
 
+        # Set custom headers (FIXED: Was missing)
+        if config.get('custom_headers'):
+            headers_text = '\n'.join([f"{k}: {v}" for k, v in config['custom_headers'].items()])
+            self.headers_input.setPlainText(headers_text)
+
+        # Set cookies (FIXED: Was missing)
+        if config.get('cookies'):
+            self.cookies_input.setText(config['cookies'])
+
+        # Set authentication (FIXED: Was missing)
+        if config.get('auth_type'):
+            auth_type = config['auth_type']
+            # Map wizard auth type to Advanced tab auth combo
+            auth_map = {
+                'None': 0,
+                'Basic Auth': 1,
+                'Bearer Token': 2,
+                'API Key': 3,
+                'OAuth 2.0': 4,
+                'Custom Header': 5
+            }
+            auth_index = auth_map.get(auth_type, 0)
+            if hasattr(self, 'auth_combo'):
+                self.auth_combo.setCurrentIndex(auth_index)
+
+            # Set auth credentials
+            if config.get('auth_username') and hasattr(self, 'auth_username_input'):
+                self.auth_username_input.setText(config['auth_username'])
+            if config.get('auth_password') and hasattr(self, 'auth_password_input'):
+                self.auth_password_input.setText(config['auth_password'])
+
         # Switch to Results/Findings tab (index 2 based on start_scan method)
         results_tab_index = 2
         for i in range(self.tabs.count()):
@@ -1159,7 +1306,7 @@ class DominatorGUI(QMainWindow):
             self.results_handler.update_vuln_display()
             self.vulns_list.clear()
             # Reset results tab color
-            self.tabs.tabBar().setTabTextColor(2, QColor('white'))  # Results tab (index 2)
+            self.tabs.tabBar().setTabTextColor(self.TAB_RESULTS, QColor('white'))
 
             # Process events before clearing tables
             QApplication.processEvents()
@@ -1198,15 +1345,17 @@ class DominatorGUI(QMainWindow):
             self.scan_thread.finished_signal.connect(self.scan_finished)
             self.scan_thread.progress_signal.connect(self.update_progress)
             self.scan_thread.vulnerability_signal.connect(self.results_handler.add_vulnerability)
+            self.scan_thread.vulnerability_data_signal.connect(self.results_handler.add_vulnerability_with_data)
             self.scan_thread.stats_signal.connect(self.results_handler.update_stats)
             self.scan_thread.resource_signal.connect(self.results_handler.add_resource)
             self.scan_thread.scope_signal.connect(self.results_handler.add_scope_info)
             self.scan_thread.report_signal.connect(self.results_handler.set_current_report)
             self.scan_thread.time_signal.connect(self.update_time_display)
+            self.scan_thread.profile_signal.connect(self.update_target_profile)
             self.scan_thread.start()
 
             # Switch to Results tab to show progress and findings
-            self.tabs.setCurrentIndex(2)  # Switch to "Results" tab (index 2)
+            self.tabs.setCurrentIndex(self.TAB_RESULTS)
 
         except Exception as e:
             self.output_console.append(f"[!] ERROR starting scan: {str(e)}")
@@ -1433,6 +1582,15 @@ class DominatorGUI(QMainWindow):
                 else:
                     self.time_remaining_label.setStyleSheet("color: #22c55e;")
 
+    def update_target_profile(self, profile_data):
+        """Update target profile panel with new profile data"""
+        if hasattr(self, 'results_tab_builder') and hasattr(self.results_tab_builder, 'update_target_profile'):
+            self.results_tab_builder.update_target_profile(profile_data)
+            self.output_console.append("[+] Target profile updated")
+        elif hasattr(self, 'target_profile_panel'):
+            self.target_profile_panel.update_profile(profile_data)
+            self.output_console.append("[+] Target profile updated")
+
         # Update progress tab if available
         if hasattr(self, 'progress_tab_builder') and hasattr(self.progress_tab_builder, 'update_time_display'):
             self.progress_tab_builder.update_time_display(elapsed_str, remaining_str)
@@ -1466,6 +1624,9 @@ class DominatorGUI(QMainWindow):
 
         # Stop time update timer
         self.time_update_timer.stop()
+
+        # MEMORY LEAK FIX: Disconnect scan thread signals to prevent accumulation
+        self._disconnect_scan_signals()
 
         # Update progress tab builder
         if hasattr(self, 'progress_tab_builder'):
@@ -1501,7 +1662,7 @@ class DominatorGUI(QMainWindow):
                 self.output_console.append(f"[+] Project auto-saved to: {self.project_manager.project_path}")
 
             # Switch to results tab
-            self.tabs.setCurrentIndex(3)  # Results tab (index 3 after consolidating tabs)
+            self.tabs.setCurrentIndex(self.TAB_RESULTS)
 
             # Send notifications
             self._send_scan_notifications("Scan Completed", True)
@@ -1521,6 +1682,7 @@ class DominatorGUI(QMainWindow):
         import json
         from pathlib import Path
         from GUI.ui_tabs.results_tab import add_finding_to_table
+        from GUI.utils.loading_dialog import LoadingDialog
 
         try:
             parent_dir = Path(__file__).parent.parent
@@ -1553,9 +1715,17 @@ class DominatorGUI(QMainWindow):
             # Reset vuln counts (include INFO)
             self.vuln_counts = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0, 'INFO': 0}
 
+            # Show loading dialog for large reports (>50 findings)
+            loading_dialog = None
+            if len(findings) > 50:
+                loading_dialog = LoadingDialog(self, f"Loading {len(findings)} findings...")
+                loading_dialog.set_determinate(len(findings))
+                loading_dialog.show()
+                QApplication.processEvents()
+
             loaded_count = 0
             # Add each finding with full data
-            for finding in findings:
+            for i, finding in enumerate(findings):
                 # Only include findings marked as vulnerability, info, or recon
                 is_vuln = finding.get('vulnerability', False)
                 is_info = finding.get('info', False)
@@ -1599,6 +1769,14 @@ class DominatorGUI(QMainWindow):
                 # Update counts
                 self.vuln_counts[severity] += 1
                 loaded_count += 1
+
+                # Update loading dialog progress every 10 findings
+                if loading_dialog and i % 10 == 0:
+                    loading_dialog.update_progress(i + 1, f"Loading finding {i + 1} of {len(findings)}...")
+
+            # Close loading dialog
+            if loading_dialog:
+                loading_dialog.close()
 
             self.output_console.append(f"[+] Loaded {loaded_count} findings with full details")
 
@@ -1684,7 +1862,7 @@ class DominatorGUI(QMainWindow):
         self.results_handler.update_vuln_display()
         self.progress_bar.setValue(0)
         self.current_module_label.setText("")
-        self.tabs.setCurrentIndex(0)
+        self.tabs.setCurrentIndex(self.TAB_SCAN_CONFIG)
 
         # Reset project file and window title
         self.current_project_file = None
@@ -1735,7 +1913,8 @@ class DominatorGUI(QMainWindow):
                             module_name = config.get('name', module_path.name)
                             module_desc = config.get('description', 'No description')
                             severity = config.get('severity', 'Info')
-                    except:
+                    except (json.JSONDecodeError, IOError, UnicodeDecodeError):
+                        # Fall back to folder name if config is malformed
                         module_name = module_path.name
                 else:
                     module_name = module_path.name
@@ -1774,8 +1953,9 @@ class DominatorGUI(QMainWindow):
                     with open(config_file_check, 'r', encoding='utf-8') as f:
                         config_check = json.load(f)
                         enabled = config_check.get('enabled', True)
-                except:
-                    pass
+                except (json.JSONDecodeError, IOError, UnicodeDecodeError):
+                    # Default to enabled if config is unreadable
+                    enabled = True
 
             status_icon = "ON" if enabled else "OFF"
             item_text = f"{module['name']}\n{desc_preview}\n{severity_marker} {module['severity']} | {status_icon}"
@@ -2157,7 +2337,7 @@ class DominatorGUI(QMainWindow):
         self.max_crawl_spin.setValue(1)  # Set max crawl pages to 1
 
         # Switch to Scan Configuration tab
-        self.tabs.setCurrentIndex(0)
+        self.tabs.setCurrentIndex(self.TAB_SCAN_CONFIG)
 
         # Show message
         module_text = "all modules" if not modules else ", ".join(modules)
@@ -2174,30 +2354,71 @@ class DominatorGUI(QMainWindow):
         # self.start_scan()
 
 
+def handle_exception(exc_type, exc_value, exc_tb):
+    """Global exception handler to catch uncaught exceptions"""
+    import traceback
+    from PyQt5.QtWidgets import QMessageBox
+
+    # Don't catch keyboard interrupt
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_tb)
+        return
+
+    # Log the error
+    error_msg = ''.join(traceback.format_exception(exc_type, exc_value, exc_tb))
+    print(f"\n[CRITICAL ERROR]\n{error_msg}")
+
+    # Try to show a message box
+    try:
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Critical)
+        msg.setWindowTitle("Dominator - Critical Error")
+        msg.setText("An unexpected error occurred.")
+        msg.setInformativeText(str(exc_value))
+        msg.setDetailedText(error_msg)
+        msg.setStandardButtons(QMessageBox.Ok)
+        msg.exec_()
+    except Exception:
+        # If we can't show a dialog, just print
+        pass
+
+
 def main():
     """Main function to run the GUI"""
+    # Install global exception handler
+    sys.excepthook = handle_exception
+
     app = QApplication(sys.argv)
     app.setApplicationName("Dominator Scanner")
 
     # Set app icon (optional)
     # app.setWindowIcon(QIcon("icon.png"))
 
-    window = DominatorGUI()
+    try:
+        window = DominatorGUI()
 
-    # Show project selection dialog
-    if not window.show_startup_dialog():
-        # User cancelled, exit
-        sys.exit(0)
+        # Show project selection dialog
+        if not window.show_startup_dialog():
+            # User cancelled, exit
+            sys.exit(0)
 
-    window.show()
+        window.show()
 
-    # Start background scheduler
-    window.start_scheduler_background()
+        # Start background scheduler
+        window.start_scheduler_background()
 
-    # Check for due scheduled scans after window is shown
-    QTimer.singleShot(1000, window.check_scheduled_scans_on_startup)
+        # Check for due scheduled scans after window is shown
+        QTimer.singleShot(1000, window.check_scheduled_scans_on_startup)
 
-    sys.exit(app.exec_())
+        sys.exit(app.exec_())
+
+    except Exception as e:
+        import traceback
+        print(f"\n[FATAL ERROR] Failed to start Dominator GUI:\n{traceback.format_exc()}")
+        from PyQt5.QtWidgets import QMessageBox
+        QMessageBox.critical(None, "Fatal Error",
+            f"Failed to start Dominator:\n\n{str(e)}\n\nCheck console for details.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

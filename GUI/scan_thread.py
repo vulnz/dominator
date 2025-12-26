@@ -4,10 +4,12 @@ Scan Thread - Background thread for running vulnerability scans
 """
 
 import sys
+import os
 import subprocess
 import re
 import threading
 import time
+import json
 from pathlib import Path
 
 from PyQt5.QtCore import QThread, pyqtSignal, QTimer
@@ -18,12 +20,14 @@ class ScanThread(QThread):
     output_signal = pyqtSignal(str)
     finished_signal = pyqtSignal(int)
     progress_signal = pyqtSignal(int, str)
-    vulnerability_signal = pyqtSignal(str, str)  # (severity, description)
+    vulnerability_signal = pyqtSignal(str, str)  # (severity, description) - legacy
+    vulnerability_data_signal = pyqtSignal(str, str, str, str, object)  # (severity, description, module, target, finding_data)
     stats_signal = pyqtSignal(int, int, int)  # (total, modules_done, modules_total)
     resource_signal = pyqtSignal(str, str, str, str)  # (type, value, extra, source)
     scope_signal = pyqtSignal(str, str, str, str)  # (type, data1, data2, data3)
     report_signal = pyqtSignal(str)  # (report_filename) - emitted when report is saved
     time_signal = pyqtSignal(int, int)  # (elapsed_seconds, remaining_seconds)
+    profile_signal = pyqtSignal(object)  # (target_profile_dict) - target profiling data
 
     def __init__(self, command, module_count=None, max_time=None):
         super().__init__()
@@ -115,18 +119,31 @@ class ScanThread(QThread):
                         command[0] = pythonw
                 self.command = command
 
+            # Force Python to run unbuffered (-u flag) to ensure real-time output capture
+            env = os.environ.copy()
+            env['PYTHONUNBUFFERED'] = '1'
+
+            # Insert -u flag after python to force unbuffered output
+            command = list(self.command)
+            if command and ('python' in command[0].lower()):
+                # Add -u flag right after python executable if not already present
+                if len(command) > 1 and command[1] != '-u':
+                    command.insert(1, '-u')
+            self.command = command
+
             self.process = subprocess.Popen(
                 self.command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                bufsize=1,
+                bufsize=0,  # Unbuffered for real-time output
                 universal_newlines=True,
                 encoding='utf-8',
                 errors='ignore',
                 cwd=str(parent_dir),  # Set working directory to scanner root
                 creationflags=creation_flags,  # Hide console window
-                startupinfo=startupinfo  # Additional window hiding
+                startupinfo=startupinfo,  # Additional window hiding
+                env=env  # Use modified environment with unbuffered Python
             )
 
             for line in iter(self.process.stdout.readline, ''):
@@ -177,6 +194,51 @@ class ScanThread(QThread):
         # Strip ALL ANSI color codes (more robust pattern)
         line_clean = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', line)
         line_clean = line_clean.strip()
+
+        # Parse JSON findings from scanner (GUI_FINDING_JSON:{...})
+        # This provides full finding data including request, response, evidence, remediation
+        if line_clean.startswith('GUI_FINDING_JSON:'):
+            try:
+                json_str = line_clean[len('GUI_FINDING_JSON:'):]
+                finding_data = json.loads(json_str)
+
+                # Extract key fields
+                severity = finding_data.get('severity', 'Medium').upper()
+                vuln_type = finding_data.get('type', 'Unknown')
+                module = finding_data.get('module', '')
+                url = finding_data.get('url', '')
+                description = finding_data.get('description', vuln_type)
+
+                # Emit the full finding data signal
+                self.vulnerability_data_signal.emit(
+                    severity,
+                    description,
+                    module,
+                    url,
+                    finding_data  # Full data including request, response, evidence, remediation
+                )
+
+                # Don't emit regular vulnerability_signal - data signal covers it
+                return  # Skip other parsing for this line
+
+            except json.JSONDecodeError as e:
+                # Fall through to normal parsing if JSON is invalid
+                pass
+            except Exception as e:
+                pass
+
+        # Parse target profile data (GUI_PROFILE_JSON:{...})
+        # This provides pre-scan intelligence about the target
+        if line_clean.startswith('GUI_PROFILE_JSON:'):
+            try:
+                json_str = line_clean[len('GUI_PROFILE_JSON:'):]
+                profile_data = json.loads(json_str)
+                self.profile_signal.emit(profile_data)
+                return
+            except json.JSONDecodeError:
+                pass
+            except Exception:
+                pass
 
         # Detect resources (emails, phones, social media, leaked keys)
         self.detect_resources(line_clean)
@@ -499,3 +561,20 @@ class ScanThread(QThread):
         """Stop the running scan"""
         if self.process:
             self.process.terminate()
+
+    def skip_module(self):
+        """Skip the current module being executed
+
+        Creates a signal file that the scanner checks to skip current module.
+        """
+        import os
+        from pathlib import Path
+
+        try:
+            # Create signal file in scanner root directory
+            signal_file = Path(__file__).parent.parent / ".skip_module"
+            signal_file.write_text("skip", encoding='utf-8')
+            return True
+        except Exception as e:
+            print(f"Error creating skip signal: {e}")
+            return False

@@ -20,6 +20,27 @@ logger = get_logger(__name__)
 class XSSModule(BaseModule):
     """Improved XSS vulnerability scanner module"""
 
+    # Internal/framework parameters that should NOT be tested for injection
+    # These are hidden form fields that contain metadata, not user input
+    SKIP_PARAMETERS = {
+        # WordPress Contact Form 7
+        '_wpcf7', '_wpcf7_version', '_wpcf7_locale', '_wpcf7_unit_tag',
+        '_wpcf7_container_post', '_wpcf7_posted_data_hash', '_wpcf7dtx_version',
+        '_extcf7_conditional_options', '_extcf7_redirect_options',
+        # WordPress general
+        '_wpnonce', '_wp_http_referer', 'action', 'wp_customize',
+        # CSRF tokens (various frameworks)
+        'csrf_token', 'csrfmiddlewaretoken', '__RequestVerificationToken',
+        '_token', 'authenticity_token', '_csrf', 'XSRF-TOKEN',
+        # Other framework internals
+        '__VIEWSTATE', '__VIEWSTATEGENERATOR', '__EVENTVALIDATION',
+        '__EVENTTARGET', '__EVENTARGUMENT', '__PREVIOUSPAGE',
+        # reCAPTCHA
+        'g-recaptcha-response', 'cf7sr-recaptcha', 'h-captcha-response',
+        # Hidden tracking/metadata
+        'referring-page', 'referrer', 'source', 'utm_source', 'utm_medium',
+    }
+
     def __init__(self, module_path: str, payload_limit: int = None, waf_mode: bool = False):
         """Initialize XSS module"""
         super().__init__(module_path, payload_limit=payload_limit)
@@ -58,81 +79,175 @@ class XSSModule(BaseModule):
         logger.info(f"Starting XSS scan on {len(targets)} targets")
 
         for target in targets:
+            # Check if scan should stop (timeout/user interrupt)
+            if self.should_stop():
+                logger.warning("XSS scan stopped due to timeout or user interrupt")
+                break
             url = target.get('url')
             params = target.get('params', {})
             method = target.get('method', 'GET').upper()
 
-            if not params:
-                logger.debug(f"Skipping {url} - no parameters")
-                continue
+            # PHASE 1: Test URL path segments for XSS injection points
+            # Example: https://example.com/product/123/reviews -> inject in "123" segment
+            from urllib.parse import urlparse, urlunparse
+            parsed_url = urlparse(url)
+            path_segments = [seg for seg in parsed_url.path.split('/') if seg]
 
-            # Test each parameter
-            for param_name in params:
-                logger.debug(f"Testing XSS in parameter: {param_name} via {method}")
+            if path_segments:
+                logger.debug(f"Testing XSS in {len(path_segments)} URL path segments")
 
-                # Get payloads - include WAF bypass payloads if enabled
-                all_payloads = list(self.get_limited_payloads())
-                if self.waf_mode and self.waf_bypass_payloads:
-                    # Add WAF bypass payloads (prioritized at the end)
-                    all_payloads.extend(self.waf_bypass_payloads)
-                    logger.debug(f"Using {len(all_payloads)} payloads (including WAF bypass)")
-
-                # Try each payload (limited)
-                for payload in all_payloads:
-                    # Create test parameters
-                    test_params = params.copy()
-                    test_params[param_name] = payload
-
-                    # Send request using appropriate method
-                    if method == 'POST':
-                        response = http_client.post(url, data=test_params)
-                    else:
-                        response = http_client.get(url, params=test_params)
-
-                    if not response:
+                # Test each path segment
+                for segment_index, segment in enumerate(path_segments):
+                    # Skip static segments (common paths that likely aren't dynamic)
+                    if segment.lower() in ['api', 'admin', 'user', 'product', 'page', 'search',
+                                           'category', 'view', 'edit', 'delete', 'index', 'home',
+                                           'static', 'assets', 'js', 'css', 'images', 'img']:
                         continue
 
-                    # PASSIVE ANALYSIS: Check for path disclosure, DB errors in response
-                    self.analyze_payload_response(response, url, payload)
+                    # Skip very short segments (likely static)
+                    if len(segment) <= 2:
+                        continue
 
-                    # IMPROVED DETECTION
-                    detected, confidence, evidence = self._detect_xss_improved(
-                        payload, response
-                    )
+                    logger.debug(f"Testing XSS in URL path segment [{segment_index}]: {segment}")
 
-                    if detected:
-                        # Build full URL with payload for evidence
-                        from urllib.parse import urlencode, urlparse, parse_qs
-                        parsed = urlparse(url)
-                        params = parse_qs(parsed.query) if parsed.query else {}
-                        params[param_name] = [payload]
-                        full_url_with_payload = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{urlencode(params, doseq=True)}"
+                    # Get limited payloads for path injection
+                    all_payloads = list(self.get_limited_payloads())
+                    if self.waf_mode and self.waf_bypass_payloads:
+                        all_payloads.extend(self.waf_bypass_payloads)
 
-                        # Prepend full URL to evidence
-                        evidence_with_url = f"Vulnerable URL: {full_url_with_payload}\n\n{evidence}"
+                    # Try each payload in this path segment
+                    for payload in all_payloads[:10]:  # Limit path testing to 10 payloads per segment
+                        # Build new URL with payload injected in path segment
+                        new_path_segments = path_segments.copy()
+                        new_path_segments[segment_index] = payload
+                        new_path = '/' + '/'.join(new_path_segments)
 
-                        result = self.create_result(
-                            vulnerable=True,
-                            url=url,
-                            parameter=param_name,
-                            payload=payload,
-                            evidence=evidence_with_url,
-                            description="Reflected Cross-Site Scripting (XSS) vulnerability detected. "
-                                       "User input is reflected in HTML output without proper sanitization.",
-                            confidence=confidence
+                        test_url = urlunparse((
+                            parsed_url.scheme,
+                            parsed_url.netloc,
+                            new_path,
+                            parsed_url.params,
+                            parsed_url.query,
+                            parsed_url.fragment
+                        ))
+
+                        # Send request
+                        if method == 'POST':
+                            response = http_client.post(test_url, data=params if params else {})
+                        else:
+                            response = http_client.get(test_url, params=params if params else {})
+
+                        if not response:
+                            continue
+
+                        # Analyze response for passive findings
+                        self.analyze_payload_response(response, test_url, payload)
+
+                        # Detect XSS
+                        detected, confidence, evidence = self._detect_xss_improved(payload, response)
+
+                        if detected:
+                            result = self.create_result(
+                                vulnerable=True,
+                                url=url,
+                                parameter=f"URL_PATH_SEGMENT[{segment_index}]",
+                                payload=payload,
+                                evidence=f"Vulnerable URL: {test_url}\n\nOriginal segment: '{segment}'\nInjected payload: '{payload}'\n\n{evidence}",
+                                description=f"Path-based Cross-Site Scripting (XSS) vulnerability detected in URL path segment. "
+                                           f"The URL path segment at position {segment_index} ('{segment}') reflects user input without sanitization.",
+                                confidence=confidence
+                            )
+
+                            result['cwe'] = self.config.get('cwe', 'CWE-79')
+                            result['owasp'] = self.config.get('owasp', 'A03:2021')
+                            result['cvss'] = self.config.get('cvss', '7.3')
+                            result['xss_type'] = 'Path-based Reflected XSS'
+
+                            results.append(result)
+                            logger.info(f"✓ Path-based XSS found in {test_url} (segment: {segment_index}, confidence: {confidence:.2f})")
+                            break  # Move to next segment after finding vuln
+
+            # PHASE 2: Test query parameters (original behavior)
+            if not params:
+                logger.debug(f"No query parameters to test for {url}")
+            else:
+                # Test each parameter
+                for param_name in params:
+                    # Check timeout before testing each parameter
+                    if self.should_stop():
+                        logger.warning("XSS scan stopped during parameter testing")
+                        return results
+
+                    # OPTIMIZATION: Skip internal/framework parameters (not user input)
+                    if param_name in self.SKIP_PARAMETERS or param_name.startswith('_wpcf7'):
+                        logger.debug(f"Skipping internal parameter: {param_name}")
+                        continue
+
+                    logger.debug(f"Testing XSS in parameter: {param_name} via {method}")
+
+                    # Get payloads - include WAF bypass payloads if enabled
+                    all_payloads = list(self.get_limited_payloads())
+                    if self.waf_mode and self.waf_bypass_payloads:
+                        # Add WAF bypass payloads (prioritized at the end)
+                        all_payloads.extend(self.waf_bypass_payloads)
+                        logger.debug(f"Using {len(all_payloads)} payloads (including WAF bypass)")
+
+                    # Try each payload (limited)
+                    for payload in all_payloads:
+                        # Create test parameters
+                        test_params = params.copy()
+                        test_params[param_name] = payload
+
+                        # Send request using appropriate method
+                        if method == 'POST':
+                            response = http_client.post(url, data=test_params)
+                        else:
+                            response = http_client.get(url, params=test_params)
+
+                        if not response:
+                            continue
+
+                        # PASSIVE ANALYSIS: Check for path disclosure, DB errors in response
+                        self.analyze_payload_response(response, url, payload)
+
+                        # IMPROVED DETECTION
+                        detected, confidence, evidence = self._detect_xss_improved(
+                            payload, response
                         )
 
-                        # Add metadata from config
-                        result['cwe'] = self.config.get('cwe', 'CWE-79')
-                        result['owasp'] = self.config.get('owasp', 'A03:2021')
-                        result['cvss'] = self.config.get('cvss', '7.3')
-                        result['xss_type'] = 'Reflected XSS'  # Specify XSS type
+                        if detected:
+                            # Build full URL with payload for evidence
+                            from urllib.parse import urlencode, urlparse, parse_qs
+                            parsed = urlparse(url)
+                            params = parse_qs(parsed.query) if parsed.query else {}
+                            params[param_name] = [payload]
+                            full_url_with_payload = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{urlencode(params, doseq=True)}"
 
-                        results.append(result)
-                        logger.info(f"✓ Reflected XSS found in {url} (parameter: {param_name}, confidence: {confidence:.2f})")
+                            # Prepend full URL to evidence
+                            evidence_with_url = f"Vulnerable URL: {full_url_with_payload}\n\n{evidence}"
 
-                        # Move to next parameter after finding vuln
-                        break
+                            result = self.create_result(
+                                vulnerable=True,
+                                url=url,
+                                parameter=param_name,
+                                payload=payload,
+                                evidence=evidence_with_url,
+                                description="Reflected Cross-Site Scripting (XSS) vulnerability detected. "
+                                           "User input is reflected in HTML output without proper sanitization.",
+                                confidence=confidence
+                            )
+
+                            # Add metadata from config
+                            result['cwe'] = self.config.get('cwe', 'CWE-79')
+                            result['owasp'] = self.config.get('owasp', 'A03:2021')
+                            result['cvss'] = self.config.get('cvss', '7.3')
+                            result['xss_type'] = 'Reflected XSS'  # Specify XSS type
+
+                            results.append(result)
+                            logger.info(f"✓ Reflected XSS found in {url} (parameter: {param_name}, confidence: {confidence:.2f})")
+
+                            # Move to next parameter after finding vuln
+                            break
 
         # STORED XSS DETECTION
         # Test for stored XSS vulnerabilities (persistent XSS)

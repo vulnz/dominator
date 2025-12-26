@@ -1,0 +1,22 @@
+{
+    "name": "Race Condition Scanner",
+    "description": "Detects race condition vulnerabilities in concurrent request handling",
+    "author": "Dominator Team",
+    "version": "1.0",
+    "category": "Logic",
+    "severity": "High",
+    "cwe": "CWE-362",
+    "cwe_name": "Concurrent Execution using Shared Resource with Improper Synchronization",
+    "owasp": "A04:2021",
+    "owasp_name": "Insecure Design",
+    "cvss": "8.1",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N",
+    "enabled": true,
+    "passive": false,
+    "tags": ["race", "toctou", "concurrency", "logic", "voucher", "redeem"],
+    "remediation": "Implement proper locking mechanisms. Use database transactions. Apply idempotency keys for critical operations.",
+    "references": [
+        "https://portswigger.net/research/smashing-the-state-machine",
+        "https://owasp.org/www-community/attacks/Race_condition"
+    ]
+}

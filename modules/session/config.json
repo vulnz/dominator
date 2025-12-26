@@ -4,13 +4,16 @@
   "enabled": true,
   "severity": "High",
   "cwe": "CWE-384",
-  "cvss": 7.5,
+  "cwe_name": "Session Fixation",
+  "cvss": "7.5",
   "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
   "owasp": "A07:2021",
+  "owasp_name": "Identification and Authentication Failures",
   "payload_limit": 15,
   "early_exit": false,
   "session_timeout_threshold": 3600,
   "test_concurrent_sessions": true,
   "test_session_fixation": true,
-  "test_session_hijacking": true
+  "test_session_hijacking": true,
+  "remediation": "Regenerate session ID after login. Set secure cookie flags (HttpOnly, Secure, SameSite). Implement proper session timeout and invalidation."
 }

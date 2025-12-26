@@ -4,13 +4,16 @@
   "enabled": true,
   "severity": "Medium",
   "cwe": "CWE-327",
-  "cvss": 5.9,
+  "cwe_name": "Use of a Broken or Risky Cryptographic Algorithm",
+  "cvss": "5.9",
   "cvss_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N",
   "owasp": "A02:2021",
+  "owasp_name": "Cryptographic Failures",
   "payload_limit": 20,
   "early_exit": false,
   "check_weak_ciphers": true,
   "check_old_protocols": true,
   "check_certificate": true,
-  "minimum_tls_version": "1.2"
+  "minimum_tls_version": "1.2",
+  "remediation": "Disable SSLv3, TLS 1.0, TLS 1.1. Use TLS 1.2+ with strong cipher suites. Enable HSTS. Use valid certificates from trusted CAs."
 }

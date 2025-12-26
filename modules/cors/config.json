@@ -8,11 +8,15 @@
     "enabled": true,
     "passive": false,
     "cwe": "CWE-942",
+    "cwe_name": "Permissive Cross-domain Policy with Untrusted Domains",
     "owasp": "A05:2021",
-    "cvss": 5.3,
+    "owasp_name": "Security Misconfiguration",
+    "cvss": "5.3",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
     "tags": ["cors", "misconfiguration", "cross-origin", "access-control"],
     "references": [
         "https://portswigger.net/web-security/cors",
         "https://owasp.org/www-community/attacks/CORS_OriginHeaderScrutiny"
-    ]
+    ],
+    "remediation": "Configure strict CORS policy with explicit allowed origins. Never use wildcard (*) with credentials. Validate Origin header against whitelist."
 }

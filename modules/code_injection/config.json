@@ -1,0 +1,30 @@
+{
+    "name": "Code Injection",
+    "description": "Detects server-side code injection vulnerabilities where user input is evaluated as code by the application runtime (PHP eval, Python exec, Ruby eval, etc.)",
+    "author": "Dominator Team",
+    "version": "1.0.0",
+    "category": "injection",
+    "severity": "Critical",
+    "cwe": "CWE-94",
+    "cwe_name": "Improper Control of Generation of Code ('Code Injection')",
+    "owasp": "A03:2021",
+    "owasp_name": "Injection",
+    "cvss": "9.8",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+    "remediation": "Never use eval() or similar functions with user input. Use safe alternatives like parameterized functions. Implement strict input validation with allowlists. Use sandboxed environments for code execution if absolutely necessary.",
+    "references": [
+        "https://owasp.org/www-community/attacks/Code_Injection",
+        "https://cwe.mitre.org/data/definitions/94.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Injection_Prevention_Cheat_Sheet.html"
+    ],
+    "enabled": true,
+    "risk_level": "critical",
+    "tags": ["injection", "code", "eval", "rce", "critical"],
+    "parameters": {
+        "test_get": true,
+        "test_post": true,
+        "test_cookies": false,
+        "max_payloads": 25,
+        "timeout": 15
+    }
+}

@@ -20,6 +20,27 @@ logger = get_logger(__name__)
 class SQLiModule(BaseModule):
     """Improved SQL Injection scanner module"""
 
+    # Internal/framework parameters that should NOT be tested for injection
+    # These are hidden form fields that contain metadata, not user input
+    SKIP_PARAMETERS = {
+        # WordPress Contact Form 7
+        '_wpcf7', '_wpcf7_version', '_wpcf7_locale', '_wpcf7_unit_tag',
+        '_wpcf7_container_post', '_wpcf7_posted_data_hash', '_wpcf7dtx_version',
+        '_extcf7_conditional_options', '_extcf7_redirect_options',
+        # WordPress general
+        '_wpnonce', '_wp_http_referer', 'action', 'wp_customize',
+        # CSRF tokens (various frameworks)
+        'csrf_token', 'csrfmiddlewaretoken', '__RequestVerificationToken',
+        '_token', 'authenticity_token', '_csrf', 'XSRF-TOKEN',
+        # Other framework internals
+        '__VIEWSTATE', '__VIEWSTATEGENERATOR', '__EVENTVALIDATION',
+        '__EVENTTARGET', '__EVENTARGUMENT', '__PREVIOUSPAGE',
+        # reCAPTCHA
+        'g-recaptcha-response', 'cf7sr-recaptcha', 'h-captcha-response',
+        # Hidden tracking/metadata
+        'referring-page', 'referrer', 'source', 'utm_source', 'utm_medium',
+    }
+
     def __init__(self, module_path: str, payload_limit: int = None, waf_mode: bool = False):
         """Initialize SQLi module"""
         super().__init__(module_path, payload_limit=payload_limit)
@@ -65,6 +86,11 @@ class SQLiModule(BaseModule):
         logger.info(f"Prioritized {len(post_targets)} POST forms, {len(get_targets)} GET targets")
 
         for target in prioritized_targets:
+            # Check if scan should stop (timeout/user interrupt)
+            if self.should_stop():
+                logger.warning("SQLi scan stopped due to timeout or user interrupt")
+                break
+
             url = target.get('url')
             params = target.get('params', {})
             method = target.get('method', 'GET').upper()
@@ -74,6 +100,16 @@ class SQLiModule(BaseModule):
 
             # Test each parameter
             for param_name in params:
+                # Check timeout before testing each parameter
+                if self.should_stop():
+                    logger.warning("SQLi scan stopped during parameter testing")
+                    return results
+
+                # OPTIMIZATION: Skip internal/framework parameters (not user input)
+                if param_name in self.SKIP_PARAMETERS or param_name.startswith('_wpcf7'):
+                    logger.debug(f"Skipping internal parameter: {param_name}")
+                    continue
+
                 logger.debug(f"Testing SQLi in parameter: {param_name} via {method}")
 
                 # CRITICAL FIX: Get baseline response FIRST (without SQL payload)
@@ -190,9 +226,15 @@ class SQLiModule(BaseModule):
         # STAGE 2: Check multiple error patterns (требуем минимум 2 for reliability)
         response_text = getattr(response, 'text', '')
 
-        # Debug logging
+        # Debug logging (avoid printing binary content)
         logger.debug(f"Response status: {response.status_code}, text length: {len(response_text)}")
-        logger.debug(f"Response preview: {response_text[:200]}")
+        # Only log preview if it looks like text (not binary)
+        preview = response_text[:200]
+        non_printable = sum(1 for c in preview if ord(c) < 32 and c not in '\n\r\t')
+        if len(preview) == 0 or non_printable / max(len(preview), 1) < 0.1:
+            logger.debug(f"Response preview: {preview}")
+        else:
+            logger.debug(f"Response preview: [binary content, {non_printable} non-printable chars]")
         logger.debug(f"Checking {len(self.error_patterns)} patterns")
 
         detected, matches = BaseDetector.check_multiple_patterns(

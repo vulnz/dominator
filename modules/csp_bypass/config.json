@@ -8,11 +8,15 @@
     "enabled": true,
     "passive": true,
     "cwe": "CWE-79",
+    "cwe_name": "Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')",
     "owasp": "A05:2021",
-    "cvss": 7.2,
+    "owasp_name": "Security Misconfiguration",
+    "cvss": "7.2",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:L/I:L/A:N",
     "tags": ["csp", "bypass", "xss", "jsonp", "angular", "cdn", "policy"],
     "references": [
         "https://cspbypass.com",
         "https://book.hacktricks.xyz/pentesting-web/content-security-policy-csp-bypass"
-    ]
+    ],
+    "remediation": "Use strict CSP with nonces or hashes. Avoid unsafe-inline and unsafe-eval. Remove JSONP endpoints from script-src. Use CSP report-uri for monitoring."
 }

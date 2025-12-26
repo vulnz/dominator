@@ -28,8 +28,9 @@ class APIRateLimitModule(BaseModule):
     ]
 
     # Number of requests to send for rate limit testing
-    BURST_SIZE = 20
-    BURST_INTERVAL = 0.1  # seconds between requests
+    # INCREASED to reduce false positives - 20 was too low
+    BURST_SIZE = 50  # More requests needed to confirm no rate limiting
+    BURST_INTERVAL = 0.05  # Faster to test actual rate limits
 
     def __init__(self, module_path: str, payload_limit: int = None):
         super().__init__(module_path, payload_limit=payload_limit)
@@ -88,34 +89,44 @@ class APIRateLimitModule(BaseModule):
                 except Exception:
                     break
 
-            # Analyze results
-            if blocked_at is None and success_count >= 15:
-                # No rate limiting detected
-                evidence = f"No rate limiting detected on sensitive endpoint!\n\n"
+            # Analyze results - STRICT thresholds to avoid FP
+            # Must have at least 40 successful requests to confirm no rate limiting
+            if blocked_at is None and success_count >= 40:
+                # No rate limiting detected - CONFIRMED
+                evidence = f"**CONFIRMED: No Rate Limiting on Sensitive Endpoint**\n\n"
                 evidence += f"**Endpoint:** {url}\n"
                 evidence += f"**Method:** {method}\n"
                 evidence += f"**Requests sent:** {self.BURST_SIZE}\n"
-                evidence += f"**Successful requests:** {success_count}\n"
+                evidence += f"**Successful (non-429):** {success_count}\n"
                 evidence += f"**Response codes:** {list(set(status_codes))}\n\n"
-                evidence += f"**Impact:** Brute force attacks, DoS, credential stuffing\n"
-                evidence += f"**Recommendation:** Implement rate limiting (e.g., 10 requests/minute)"
+                evidence += f"**Attack Scenarios:**\n"
+                evidence += f"- Brute force login attacks\n"
+                evidence += f"- Credential stuffing\n"
+                evidence += f"- Account enumeration\n"
+                evidence += f"- API abuse/scraping\n\n"
+                evidence += f"**Recommendation:** Implement rate limiting:\n"
+                evidence += f"- Login endpoints: 5-10 requests/minute\n"
+                evidence += f"- Password reset: 3 requests/hour\n"
+                evidence += f"- General API: 100 requests/minute"
 
                 result = self.create_result(
                     vulnerable=True,
                     url=url,
                     parameter="Rate Limit",
-                    payload=f"Sent {self.BURST_SIZE} rapid requests",
+                    payload=f"Sent {self.BURST_SIZE} rapid requests, {success_count} succeeded",
                     evidence=evidence,
-                    description="No rate limiting on sensitive endpoint allows brute force attacks",
-                    confidence=0.85
+                    description=f"No rate limiting: {success_count}/{self.BURST_SIZE} requests succeeded",
+                    confidence=0.90  # High confidence with 40+ successful requests
                 )
                 result['cwe'] = 'CWE-770'
+                result['cwe_name'] = 'Allocation of Resources Without Limits or Throttling'
                 result['owasp'] = 'API4:2023'
+                result['owasp_name'] = 'Unrestricted Resource Consumption'
                 result['severity'] = 'medium'
                 return result
 
-            elif blocked_at and blocked_at < 5:
-                # Rate limiting is too strict, might indicate WAF
+            elif blocked_at and blocked_at < 10:
+                # Rate limiting is active
                 logger.info(f"Rate limiting active at {blocked_at} requests on {url}")
 
         except Exception as e:

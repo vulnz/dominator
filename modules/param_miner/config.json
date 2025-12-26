@@ -8,11 +8,15 @@
     "enabled": true,
     "passive": false,
     "cwe": "CWE-200",
+    "cwe_name": "Exposure of Sensitive Information to an Unauthorized Actor",
     "owasp": "A01:2021",
-    "cvss": 3.7,
+    "owasp_name": "Broken Access Control",
+    "cvss": "3.7",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N",
     "tags": ["parameter", "discovery", "hidden", "fuzzing", "recon"],
     "references": [
         "https://portswigger.net/bappstore/17d2949a985c4b7ca092728dba871943",
         "https://github.com/s0md3v/Arjun"
-    ]
+    ],
+    "remediation": "Remove undocumented parameters. Implement proper input validation. Use allowlists for accepted parameters."
 }

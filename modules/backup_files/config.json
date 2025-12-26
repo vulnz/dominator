@@ -6,9 +6,13 @@
     "category": "Information Disclosure",
     "severity": "high",
     "cwe": "CWE-538",
+    "cwe_name": "Insertion of Sensitive Information into Externally-Accessible File or Directory",
     "owasp": "A05:2021",
+    "owasp_name": "Security Misconfiguration",
     "cvss": "6.5",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
     "enabled": true,
     "passive": false,
-    "tags": ["backup", "sensitive-files", "git", "source-code", "nikto", "wapiti"]
+    "tags": ["backup", "sensitive-files", "git", "source-code", "nikto", "wapiti"],
+    "remediation": "Remove backup files from production servers. Configure web server to deny access to sensitive file extensions (.bak, .old, .swp, etc.)."
 }

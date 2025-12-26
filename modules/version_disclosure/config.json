@@ -1,0 +1,21 @@
+{
+    "name": "Version Disclosure Scanner",
+    "description": "Detects server, framework, and software version information disclosure",
+    "author": "Dominator Team",
+    "version": "1.0",
+    "category": "Information Disclosure",
+    "severity": "Low",
+    "cwe": "CWE-200",
+    "cwe_name": "Exposure of Sensitive Information to an Unauthorized Actor",
+    "owasp": "A05:2021",
+    "owasp_name": "Security Misconfiguration",
+    "cvss": "5.3",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
+    "enabled": true,
+    "passive": true,
+    "tags": ["version", "disclosure", "fingerprint", "server", "framework"],
+    "remediation": "Configure servers and frameworks to suppress version information. Remove Server, X-Powered-By, and other revealing headers.",
+    "references": [
+        "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server"
+    ]
+}

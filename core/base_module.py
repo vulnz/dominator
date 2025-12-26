@@ -4,9 +4,10 @@ Each module is completely independent and self-contained
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Callable
+from typing import List, Dict, Any, Callable, Optional
 import os
 import json
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from core.logger import get_logger
 
@@ -23,6 +24,11 @@ class BaseModule(ABC):
     3. Implement scan() method
     4. Return standardized results
     """
+
+    # Class-level flag for timeout enforcement (shared across all modules)
+    # Thread-safe implementation with lock protection
+    _global_stop_requested = False
+    _stop_lock = threading.Lock()
 
     def __init__(self, module_path: str, payload_limit: int = None):
         """
@@ -246,6 +252,36 @@ class BaseModule(ABC):
         """
         return self.payload_passive_findings
 
+    def should_stop(self) -> bool:
+        """
+        Check if module should stop execution (timeout/user interrupt)
+
+        Modules should call this periodically during long-running scans
+        to respect --max-time limits and user interrupts.
+
+        Thread-safe: Uses lock to ensure consistent reads across threads.
+
+        Returns:
+            True if module should stop immediately
+        """
+        with BaseModule._stop_lock:
+            return BaseModule._global_stop_requested
+
+    @classmethod
+    def set_global_stop(cls, stop: bool = True) -> None:
+        """
+        Set global stop flag for all modules
+
+        Thread-safe: Uses lock to ensure consistent writes across threads.
+
+        Args:
+            stop: True to stop all modules
+        """
+        with cls._stop_lock:
+            cls._global_stop_requested = stop
+            if stop:
+                logger.info("Global stop signal sent to all modules")
+
     def is_enabled(self) -> bool:
         """Check if module is enabled"""
         return self.config.get("enabled", True)
@@ -378,25 +414,39 @@ class BaseModule(ABC):
 
     def create_result(self, vulnerable: bool = False, url: str = "", parameter: str = "",
                      payload: str = "", evidence: str = "", description: str = "",
-                     confidence: float = 0.0, severity: str = None, **kwargs) -> Dict[str, Any]:
+                     confidence: float = 0.0, severity: str = None,
+                     request: str = "", response: str = "", **kwargs) -> Dict[str, Any]:
         """
         Create standardized result dictionary with full security metadata
+
+        REQUIRED FIELDS for professional reports:
+        - CWE: Common Weakness Enumeration ID
+        - Title: Vulnerability name/type
+        - Severity: Critical/High/Medium/Low/Info
+        - Description: What the vulnerability is
+        - Solution/Remediation: How to fix it
+        - Evidence: Proof of vulnerability (matched pattern, reflection, etc.)
+        - Request: Full HTTP request that triggered the vulnerability
+        - Response: Relevant part of HTTP response showing the vulnerability
 
         Args:
             vulnerable: Whether vulnerability was found
             url: Target URL
             parameter: Vulnerable parameter
             payload: Payload used
-            evidence: Evidence of vulnerability
-            description: Description
+            evidence: Evidence of vulnerability (REQUIRED - matched pattern/reflection)
+            description: Description of vulnerability
             confidence: Detection confidence (0.0-1.0)
             severity: Override severity from config
+            request: Full HTTP request (method, headers, body)
+            response: Relevant response content showing vulnerability
             **kwargs: Additional fields
 
         Returns:
-            Standardized result dictionary with CWE, OWASP, CVSS, remediation
+            Standardized result dictionary with all required fields
         """
         from datetime import datetime
+        from urllib.parse import urlparse
 
         # Get proper vulnerability name (remove "Scanner" suffix)
         vuln_name = self.config.get('name', 'Unknown Vulnerability')
@@ -411,28 +461,52 @@ class BaseModule(ABC):
         cvss = self.config.get('cvss', '0.0')
         cvss_vector = self.config.get('cvss_vector', '')
 
-        # Get remediation (from config or generic based on CWE)
+        # Get remediation/solution (from config or generic based on CWE)
         remediation = self.config.get('remediation', self._get_generic_remediation(cwe))
 
+        # Build HTTP request if not provided
+        if not request and url:
+            method = kwargs.get('method', 'GET')
+            parsed = urlparse(url)
+            request = self._build_http_request(method, parsed, parameter, payload)
+
+        # Ensure evidence is meaningful
+        if not evidence or evidence in ['', 'N/A', 'None']:
+            if response:
+                # Try to extract evidence from response
+                evidence = self._extract_evidence_from_response(response, payload)
+            else:
+                evidence = f"Vulnerability detected with payload: {payload}" if payload else "Vulnerability detected"
+
+        # Ensure description is meaningful
+        if not description:
+            description = self.config.get('description', f"{vuln_name} vulnerability detected")
+
         result = {
+            # === REQUIRED FIELDS ===
             'vulnerability': vulnerable,
-            'type': vuln_name,
+            'type': vuln_name,                          # Title
             'module': self.config.get('name', self.name),
+            'severity': severity or self.get_severity(),
+            'cwe': cwe,                                 # CWE ID
+            'cwe_name': cwe_name,                       # CWE Name
+            'description': description,                 # What is the vulnerability
+            'remediation': remediation,                 # Solution - how to fix
+            'evidence': evidence,                       # Proof of vulnerability
+            'request': request,                         # Full HTTP request
+            'response': response[:5000] if response else '',  # Response (truncated)
+
+            # === ADDITIONAL METADATA ===
             'url': url,
             'parameter': parameter,
             'payload': payload,
-            'evidence': evidence,
-            'description': description or self.get_description(),
+            'method': kwargs.get('method', 'GET'),
             'confidence': confidence,
-            'severity': severity or self.get_severity(),
-            'cwe': cwe,
-            'cwe_name': cwe_name,
             'owasp': owasp,
             'owasp_name': owasp_name,
             'cvss': cvss,
             'cvss_vector': cvss_vector,
-            'remediation': remediation,
-            'exploitation_steps': kwargs.get('exploitation_steps', []),  # Step-by-step exploit guide
+            'exploitation_steps': kwargs.get('exploitation_steps', []),
             'timestamp': datetime.now().isoformat()
         }
 
@@ -440,6 +514,46 @@ class BaseModule(ABC):
         result.update(kwargs)
 
         return result
+
+    def _build_http_request(self, method: str, parsed_url, parameter: str, payload: str) -> str:
+        """Build HTTP request string for evidence"""
+        path = parsed_url.path or '/'
+        if parsed_url.query:
+            path += f"?{parsed_url.query}"
+
+        request_lines = [
+            f"{method} {path} HTTP/1.1",
+            f"Host: {parsed_url.netloc}",
+            "User-Agent: Dominator-Scanner/1.0",
+            "Accept: */*",
+            "Connection: close"
+        ]
+
+        if method == 'POST' and parameter and payload:
+            body = f"{parameter}={payload}"
+            request_lines.append("Content-Type: application/x-www-form-urlencoded")
+            request_lines.append(f"Content-Length: {len(body)}")
+            request_lines.append("")
+            request_lines.append(body)
+
+        return "\n".join(request_lines)
+
+    def _extract_evidence_from_response(self, response: str, payload: str) -> str:
+        """Extract evidence showing vulnerability from response"""
+        if not response:
+            return "No response captured"
+
+        # If payload is reflected, show context around it
+        if payload and payload in response:
+            context = self.extract_response_context(response, payload, 150, 100)
+            if context:
+                return f"Payload reflected in response:\n{context}"
+
+        # Show first 500 chars of response as evidence
+        preview = response[:500]
+        if len(response) > 500:
+            preview += "\n... (truncated)"
+        return f"Response preview:\n{preview}"
 
     def test_payloads_concurrent(self,
                                  payloads: List[str],

@@ -8,11 +8,15 @@
     "enabled": true,
     "passive": true,
     "cwe": "CWE-1385",
+    "cwe_name": "Missing Origin Validation in WebSockets",
     "owasp": "A07:2021",
-    "cvss": 6.5,
+    "owasp_name": "Identification and Authentication Failures",
+    "cvss": "6.5",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:N/A:N",
     "tags": ["websocket", "ws", "wss", "realtime", "cswsh", "hijacking"],
     "references": [
         "https://portswigger.net/web-security/websockets",
         "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/11-Client-side_Testing/10-Testing_WebSockets"
-    ]
+    ],
+    "remediation": "Validate Origin header on WebSocket connections. Use WSS (TLS) for encryption. Implement proper authentication and authorization on all messages."
 }

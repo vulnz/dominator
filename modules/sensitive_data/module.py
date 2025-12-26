@@ -20,31 +20,11 @@ class SensitiveDataScanner(BaseModule):
         self.module_name = "Sensitive Data Scanner"
         self.logger = logger
 
-        # Sensitive data patterns
+        # Sensitive data patterns - COMPREHENSIVE with high-confidence patterns
+        # Only patterns that indicate real security issues
         self.patterns = {
-            # Email addresses
-            'email': {
-                'pattern': r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
-                'severity': 'Low',
-                'description': 'Email address exposed',
-                'cwe': 'CWE-200'
-            },
-
-            # Phone numbers (various formats)
-            'phone_us': {
-                'pattern': r'\b(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b',
-                'severity': 'Low',
-                'description': 'US phone number exposed',
-                'cwe': 'CWE-200'
-            },
-            'phone_intl': {
-                'pattern': r'\b\+[0-9]{1,3}[-.\s]?[0-9]{1,4}[-.\s]?[0-9]{1,4}[-.\s]?[0-9]{1,9}\b',
-                'severity': 'Low',
-                'description': 'International phone number exposed',
-                'cwe': 'CWE-200'
-            },
-
-            # Credit card numbers
+            # ===== CREDIT CARDS =====
+            # Credit card numbers - validated by Luhn algorithm
             'credit_card_visa': {
                 'pattern': r'\b4[0-9]{3}[-\s]?[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{4}\b',
                 'severity': 'Critical',
@@ -60,90 +40,272 @@ class SensitiveDataScanner(BaseModule):
             'credit_card_amex': {
                 'pattern': r'\b3[47][0-9]{2}[-\s]?[0-9]{6}[-\s]?[0-9]{5}\b',
                 'severity': 'Critical',
-                'description': 'American Express credit card number exposed',
+                'description': 'American Express card number exposed',
+                'cwe': 'CWE-311'
+            },
+            'credit_card_discover': {
+                'pattern': r'\b6(?:011|5[0-9]{2})[-\s]?[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{4}\b',
+                'severity': 'Critical',
+                'description': 'Discover card number exposed',
+                'cwe': 'CWE-311'
+            },
+            'credit_card_cvv': {
+                'pattern': r'(?:cvv|cvc|csc|cvv2|cvc2)\s*[=:]\s*["\']?\d{3,4}["\']?',
+                'severity': 'Critical',
+                'description': 'Card CVV/CVC code exposed',
                 'cwe': 'CWE-311'
             },
 
-            # SSN
-            'ssn': {
-                'pattern': r'\b[0-9]{3}[-\s]?[0-9]{2}[-\s]?[0-9]{4}\b',
-                'severity': 'Critical',
-                'description': 'Social Security Number exposed',
-                'cwe': 'CWE-359'
-            },
-
-            # Hashes (excluding SRI hashes)
-            'md5_hash': {
-                'pattern': r'\b[a-fA-F0-9]{32}\b',
-                'severity': 'Medium',
-                'description': 'MD5 hash exposed (potential password hash)',
-                'cwe': 'CWE-327'
-            },
-            'sha1_hash': {
-                'pattern': r'\b[a-fA-F0-9]{40}\b',
-                'severity': 'Medium',
-                'description': 'SHA-1 hash exposed (potential password hash)',
-                'cwe': 'CWE-327'
-            },
-            'sha256_hash': {
-                'pattern': r'\b[a-fA-F0-9]{64}\b',
-                'severity': 'Medium',
-                'description': 'SHA-256 hash exposed (potential password hash)',
-                'cwe': 'CWE-327'
-            },
-
-            # API keys and tokens
+            # ===== CLOUD PROVIDER KEYS =====
+            # AWS Access Key - very specific pattern
             'aws_access_key': {
-                'pattern': r'\bAKIA[0-9A-Z]{16}\b',
+                'pattern': r'\b(?:A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}\b',
                 'severity': 'Critical',
                 'description': 'AWS Access Key ID exposed',
                 'cwe': 'CWE-798'
             },
-            'aws_secret_key': {
-                'pattern': r'(?i)aws(.{0,20})?[\'"][0-9a-zA-Z/+]{40}[\'"]',
+            'gcp_service_account': {
+                'pattern': r'"type"\s*:\s*"service_account"',
                 'severity': 'Critical',
-                'description': 'AWS Secret Key exposed',
+                'description': 'GCP Service Account key exposed',
                 'cwe': 'CWE-798'
             },
+            'azure_storage_key': {
+                'pattern': r'DefaultEndpointsProtocol=https;AccountName=[^;]+;AccountKey=[A-Za-z0-9+/=]{86,88};',
+                'severity': 'Critical',
+                'description': 'Azure Storage connection string exposed',
+                'cwe': 'CWE-798'
+            },
+
+            # ===== VERSION CONTROL TOKENS =====
+            # GitHub token - very specific pattern
             'github_token': {
-                'pattern': r'\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36}\b',
+                'pattern': r'\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,}\b',
                 'severity': 'Critical',
                 'description': 'GitHub token exposed',
                 'cwe': 'CWE-798'
             },
-            'jwt_token': {
-                'pattern': r'\beyJ[A-Za-z0-9-_]+\.eyJ[A-Za-z0-9-_]+\.[A-Za-z0-9-_.+/=]*\b',
-                'severity': 'High',
-                'description': 'JWT token exposed',
-                'cwe': 'CWE-200'
-            },
-            'generic_api_key': {
-                'pattern': r'(?i)(api[_-]?key|apikey|api[_-]?secret)[\'"\s:=]+[\'"]?[A-Za-z0-9_-]{20,}[\'"]?',
-                'severity': 'High',
-                'description': 'API key/secret exposed',
+            'github_fine_grained_pat': {
+                'pattern': r'\bgithub_pat_[A-Za-z0-9_]{22,82}\b',
+                'severity': 'Critical',
+                'description': 'GitHub Fine-Grained PAT exposed',
                 'cwe': 'CWE-798'
             },
+            'gitlab_token': {
+                'pattern': r'\bglpat-[A-Za-z0-9\-_]{20,}\b',
+                'severity': 'Critical',
+                'description': 'GitLab token exposed',
+                'cwe': 'CWE-798'
+            },
+            'bitbucket_token': {
+                'pattern': r'\bATBB[A-Za-z0-9_]{32}\b',
+                'severity': 'Critical',
+                'description': 'Bitbucket App Password exposed',
+                'cwe': 'CWE-798'
+            },
+
+            # ===== COMMUNICATION SERVICES =====
+            'slack_token': {
+                'pattern': r'\bxox[pborsa]-[0-9]{10,13}-[0-9]{10,13}-[a-zA-Z0-9]{24,}\b',
+                'severity': 'Critical',
+                'description': 'Slack token exposed',
+                'cwe': 'CWE-798'
+            },
+            'slack_webhook': {
+                'pattern': r'https://hooks\.slack\.com/services/T[a-zA-Z0-9_]+/B[a-zA-Z0-9_]+/[a-zA-Z0-9_]{24}',
+                'severity': 'High',
+                'description': 'Slack webhook URL exposed',
+                'cwe': 'CWE-200'
+            },
+            'discord_token': {
+                'pattern': r'[MN][A-Za-z0-9]{23,}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}',
+                'severity': 'Critical',
+                'description': 'Discord bot token exposed',
+                'cwe': 'CWE-798'
+            },
+            'discord_webhook': {
+                'pattern': r'https://discord(?:app)?\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]+',
+                'severity': 'High',
+                'description': 'Discord webhook URL exposed',
+                'cwe': 'CWE-200'
+            },
+            'telegram_token': {
+                'pattern': r'\b[0-9]{8,10}:[A-Za-z0-9_-]{35}\b',
+                'severity': 'Critical',
+                'description': 'Telegram bot token exposed',
+                'cwe': 'CWE-798'
+            },
+
+            # ===== PAYMENT SERVICES =====
+            'stripe_secret_key': {
+                'pattern': r'\bsk_live_[0-9a-zA-Z]{24,}\b',
+                'severity': 'Critical',
+                'description': 'Stripe secret key exposed',
+                'cwe': 'CWE-798'
+            },
+            'stripe_restricted_key': {
+                'pattern': r'\brk_live_[0-9a-zA-Z]{24,}\b',
+                'severity': 'Critical',
+                'description': 'Stripe restricted key exposed',
+                'cwe': 'CWE-798'
+            },
+            'square_access_token': {
+                'pattern': r'\bsq0atp-[A-Za-z0-9_-]{22}\b',
+                'severity': 'Critical',
+                'description': 'Square access token exposed',
+                'cwe': 'CWE-798'
+            },
+            'braintree_token': {
+                'pattern': r'access_token\$production\$[0-9a-z]{16}\$[0-9a-f]{32}',
+                'severity': 'Critical',
+                'description': 'Braintree access token exposed',
+                'cwe': 'CWE-798'
+            },
+
+            # ===== EMAIL/SMS SERVICES =====
+            'twilio_api_key': {
+                'pattern': r'\bSK[a-f0-9]{32}\b',
+                'severity': 'Critical',
+                'description': 'Twilio API key exposed',
+                'cwe': 'CWE-798'
+            },
+            'sendgrid_key': {
+                'pattern': r'\bSG\.[a-zA-Z0-9_\-]{22}\.[a-zA-Z0-9_\-]{43}\b',
+                'severity': 'Critical',
+                'description': 'SendGrid API key exposed',
+                'cwe': 'CWE-798'
+            },
+            'mailgun_key': {
+                'pattern': r'\bkey-[0-9a-zA-Z]{32}\b',
+                'severity': 'Critical',
+                'description': 'Mailgun API key exposed',
+                'cwe': 'CWE-798'
+            },
+            'mailchimp_key': {
+                'pattern': r'\b[a-f0-9]{32}-us[0-9]{1,2}\b',
+                'severity': 'High',
+                'description': 'Mailchimp API key exposed',
+                'cwe': 'CWE-798'
+            },
+
+            # ===== PRIVATE KEYS & CERTIFICATES =====
             'private_key': {
-                'pattern': r'-----BEGIN (RSA |DSA |EC |OPENSSH )?PRIVATE KEY-----',
+                'pattern': r'-----BEGIN (RSA |DSA |EC |OPENSSH |PGP )?PRIVATE KEY-----',
                 'severity': 'Critical',
                 'description': 'Private key exposed',
                 'cwe': 'CWE-321'
             },
-
-            # Database connection strings
-            'db_connection': {
-                'pattern': r'(?i)(mongodb|mysql|postgresql|redis|mssql)://[^\s\'\"<>]+',
+            'encrypted_private_key': {
+                'pattern': r'-----BEGIN ENCRYPTED PRIVATE KEY-----',
+                'severity': 'High',
+                'description': 'Encrypted private key exposed',
+                'cwe': 'CWE-321'
+            },
+            'pgp_private_key': {
+                'pattern': r'-----BEGIN PGP PRIVATE KEY BLOCK-----',
                 'severity': 'Critical',
-                'description': 'Database connection string exposed',
+                'description': 'PGP private key exposed',
+                'cwe': 'CWE-321'
+            },
+
+            # ===== DATABASE CONNECTIONS =====
+            'db_connection_with_auth': {
+                'pattern': r'(?i)(mongodb|mongodb\+srv|mysql|postgresql|postgres|redis|amqp|mssql)://[^:]+:[^@]+@[^\s\'\"<>]+',
+                'severity': 'Critical',
+                'description': 'Database connection string with credentials exposed',
                 'cwe': 'CWE-200'
             },
 
-            # IP addresses (internal)
-            'internal_ip': {
-                'pattern': r'\b(10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9]{1,3}\.[0-9]{1,3}|192\.168\.[0-9]{1,3}\.[0-9]{1,3})\b',
-                'severity': 'Low',
-                'description': 'Internal IP address exposed',
+            # ===== PACKAGE MANAGERS =====
+            'npm_token': {
+                'pattern': r'\bnpm_[A-Za-z0-9]{36}\b',
+                'severity': 'Critical',
+                'description': 'NPM token exposed',
+                'cwe': 'CWE-798'
+            },
+            'pypi_token': {
+                'pattern': r'pypi-AgEIcHlwaS5vcmc[A-Za-z0-9-_]{70,}',
+                'severity': 'Critical',
+                'description': 'PyPI token exposed',
+                'cwe': 'CWE-798'
+            },
+            'rubygems_key': {
+                'pattern': r'\brubygems_[a-f0-9]{48}\b',
+                'severity': 'Critical',
+                'description': 'RubyGems API key exposed',
+                'cwe': 'CWE-798'
+            },
+
+            # ===== MONITORING/LOGGING =====
+            'sentry_dsn': {
+                'pattern': r'https://[a-f0-9]{32}@[a-z0-9.]+\.ingest\.sentry\.io/[0-9]+',
+                'severity': 'High',
+                'description': 'Sentry DSN exposed',
                 'cwe': 'CWE-200'
+            },
+            'datadog_key': {
+                'pattern': r'\bdd[a-z]{1,2}_[a-zA-Z0-9]{32,40}\b',
+                'severity': 'Critical',
+                'description': 'Datadog API key exposed',
+                'cwe': 'CWE-798'
+            },
+            'newrelic_key': {
+                'pattern': r'\bNRAK-[A-Z0-9]{27}\b',
+                'severity': 'Critical',
+                'description': 'New Relic API key exposed',
+                'cwe': 'CWE-798'
+            },
+
+            # ===== OTHER TOKENS =====
+            'shopify_token': {
+                'pattern': r'\bshp(at|ss|pa|ca)_[a-f0-9]{32}\b',
+                'severity': 'Critical',
+                'description': 'Shopify token exposed',
+                'cwe': 'CWE-798'
+            },
+            'digitalocean_token': {
+                'pattern': r'\bdo[por]_v1_[a-f0-9]{64}\b',
+                'severity': 'Critical',
+                'description': 'DigitalOcean token exposed',
+                'cwe': 'CWE-798'
+            },
+            'firebase_key': {
+                'pattern': r'\bAAAA[A-Za-z0-9_-]{7}:[A-Za-z0-9_-]{140}\b',
+                'severity': 'Critical',
+                'description': 'Firebase Cloud Messaging key exposed',
+                'cwe': 'CWE-798'
+            },
+            'hubspot_key': {
+                'pattern': r'\bpat-[a-z]{2,}-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\b',
+                'severity': 'High',
+                'description': 'HubSpot API key exposed',
+                'cwe': 'CWE-798'
+            },
+
+            # ===== CREDENTIALS =====
+            'basic_auth_header': {
+                'pattern': r'[Aa]uthorization:\s*Basic\s+[A-Za-z0-9+/=]{20,}',
+                'severity': 'Critical',
+                'description': 'Basic Auth header with credentials exposed',
+                'cwe': 'CWE-798'
+            },
+            'bearer_token_header': {
+                'pattern': r'[Aa]uthorization:\s*Bearer\s+[A-Za-z0-9._-]{20,}',
+                'severity': 'High',
+                'description': 'Bearer token in header exposed',
+                'cwe': 'CWE-798'
+            },
+            'password_in_url': {
+                'pattern': r'https?://[a-zA-Z0-9_]+:[a-zA-Z0-9_!@#$%^&*]+@[a-zA-Z0-9\-\.]+',
+                'severity': 'Critical',
+                'description': 'Password exposed in URL',
+                'cwe': 'CWE-798'
+            },
+            'hardcoded_password': {
+                'pattern': r'(?:password|passwd|pwd)\s*[=:]\s*[\'"][^\'"]{8,64}[\'"]',
+                'severity': 'High',
+                'description': 'Hardcoded password detected',
+                'cwe': 'CWE-798'
             },
         }
 
@@ -306,6 +468,26 @@ class SensitiveDataScanner(BaseModule):
 
     def _validate_match(self, data_type: str, match: str, content: str) -> bool:
         """Validate if match is a real finding or false positive"""
+        # General false positive checks
+        placeholders = [
+            'example', 'placeholder', 'your_', 'insert_', 'replace_',
+            'xxxxxxxx', '12345678', 'abcdefgh', 'test_key', 'sample_',
+            'demo_', 'fake_', 'null', 'none', 'undefined', 'xxx',
+            'change_me', 'todo', 'fixme', 'enter_', 'put_', 'add_',
+            'my_key', 'your_key', 'secret_here', 'token_here',
+            'api_key_here', 'key_goes_here', 'paste_', '<your',
+            '${', '{{', '%{', 'process.env', 'os.environ', 'getenv',
+            'dummy', 'mock', 'stub', 'template', 'default'
+        ]
+
+        match_lower = match.lower()
+        if any(p in match_lower for p in placeholders):
+            return False
+
+        # Skip values with too little entropy (repeated chars)
+        if len(set(match.replace('-', '').replace('_', ''))) < 4:
+            return False
+
         # SSN validation - exclude common false positives
         if data_type == 'ssn':
             # Check if it looks like a date or other number
@@ -319,7 +501,7 @@ class SensitiveDataScanner(BaseModule):
                     return False
 
         # Credit card - validate with Luhn algorithm
-        if data_type.startswith('credit_card'):
+        if data_type.startswith('credit_card') and 'cvv' not in data_type:
             digits = re.sub(r'[-\s]', '', match)
             if not self._luhn_check(digits):
                 return False
@@ -331,6 +513,19 @@ class SensitiveDataScanner(BaseModule):
                 context = content[max(0, idx - 100):idx + len(match) + 50].lower()
                 # Skip if it's clearly a file hash or commit hash
                 if 'commit' in context or 'version' in context or 'checksum' in context:
+                    return False
+
+        # Password validation - ensure it's not just a config key name
+        if data_type == 'hardcoded_password':
+            # Extract the actual value
+            pwd_match = re.search(r'[\'"]([^\'"]+)[\'"]', match)
+            if pwd_match:
+                pwd_value = pwd_match.group(1)
+                # Skip if it looks like a placeholder or env var reference
+                if any(p in pwd_value.lower() for p in placeholders):
+                    return False
+                # Skip if too short
+                if len(pwd_value) < 8:
                     return False
 
         return True

@@ -1,0 +1,31 @@
+{
+    "name": "Vulnerable JavaScript Libraries",
+    "description": "Detects JavaScript libraries with known security vulnerabilities. Similar to Retire.js, identifies outdated jQuery, Angular, React, Vue, Bootstrap, Lodash and 50+ other libraries with CVEs.",
+    "author": "Dominator Team",
+    "version": "1.0.0",
+    "category": "components",
+    "severity": "Medium",
+    "cwe": "CWE-1035",
+    "cwe_name": "Using Components with Known Vulnerabilities",
+    "owasp": "A06:2021",
+    "owasp_name": "Vulnerable and Outdated Components",
+    "cvss": "7.5",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+    "remediation": "Update all JavaScript libraries to their latest secure versions. Implement a dependency management system. Use tools like npm audit, Snyk, or Dependabot for automated vulnerability scanning. Remove unused libraries. Consider using CDN integrity checks (SRI).",
+    "references": [
+        "https://github.com/RetireJS/retire.js",
+        "https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/",
+        "https://cwe.mitre.org/data/definitions/1035.html",
+        "https://snyk.io/vuln"
+    ],
+    "enabled": true,
+    "risk_level": "medium",
+    "tags": ["javascript", "libraries", "components", "outdated", "cve"],
+    "parameters": {
+        "check_inline": true,
+        "check_external": true,
+        "check_source_maps": true,
+        "max_js_files": 50,
+        "timeout": 10
+    }
+}

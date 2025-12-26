@@ -1,0 +1,31 @@
+{
+    "name": "HTTP Login Bruteforce",
+    "description": "Bruteforce HTTP login forms with CSRF token support. Detects login forms automatically, handles CSRF tokens, and determines successful authentication. Supports custom username/password lists and integrates with nndefaccts default credentials database.",
+    "author": "Dominator Team",
+    "version": "1.0.0",
+    "category": "authentication",
+    "severity": "Critical",
+    "cwe": "CWE-307",
+    "cwe_name": "Improper Restriction of Excessive Authentication Attempts",
+    "owasp": "A07:2021",
+    "owasp_name": "Identification and Authentication Failures",
+    "cvss": "9.8",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+    "remediation": "Implement account lockout after failed attempts. Use rate limiting. Implement CAPTCHA after failed attempts. Use multi-factor authentication. Monitor and alert on bruteforce attempts.",
+    "references": [
+        "https://owasp.org/www-community/controls/Blocking_Brute_Force_Attacks",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html",
+        "https://github.com/nnposter/nndefaccts"
+    ],
+    "enabled": true,
+    "risk_level": "critical",
+    "tags": ["bruteforce", "authentication", "login", "csrf", "default-credentials"],
+    "parameters": {
+        "max_attempts": 50,
+        "delay_between_requests": 0.5,
+        "detect_lockout": true,
+        "follow_redirects": true,
+        "timeout": 10,
+        "use_default_credentials": true
+    }
+}

@@ -73,23 +73,42 @@ class MaxTimeHandler:
         self.scanner = scanner
         self.timer = None
         self.stopped = False
-    
+        self.start_time = time.time()
+
     def timeout_handler(self):
         """Handle max time timeout"""
         self.stopped = True
-        print(f"\nMaximum scan time ({self.max_minutes} minutes) reached!")
-        print("Stopping scan and generating report with current results...")
-        # Set a flag in scanner to stop gracefully
+        elapsed = (time.time() - self.start_time) / 60
+        print(f"\n{'='*80}")
+        print(f"MAXIMUM SCAN TIME REACHED: {self.max_minutes} minutes")
+        print(f"Actual elapsed time: {elapsed:.1f} minutes")
+        print(f"Stopping scan and generating report with current results...")
+        print(f"{'='*80}\n")
+
+        # Set flags to stop scanner and all modules
         if hasattr(self.scanner, 'stop_requested'):
             self.scanner.stop_requested = True
+
+        # Set global module stop flag
+        try:
+            from core.base_module import BaseModule
+            BaseModule.set_global_stop(True)
+        except Exception as e:
+            print(f"Warning: Could not set module stop flag: {e}")
     
     def start(self):
         """Start max time timer"""
         if self.max_minutes:
+            self.start_time = time.time()
             timeout_seconds = self.max_minutes * 60
             self.timer = threading.Timer(timeout_seconds, self.timeout_handler)
+            self.timer.daemon = True  # Ensure timer thread doesn't prevent exit
             self.timer.start()
-            print(f"Maximum scan time set to {self.max_minutes} minutes")
+            print(f"{'='*80}")
+            print(f"TIMEOUT ENFORCEMENT ENABLED")
+            print(f"Maximum scan time: {self.max_minutes} minutes ({timeout_seconds} seconds)")
+            print(f"Scan will be forcibly stopped after this time")
+            print(f"{'='*80}\n")
     
     def cancel(self):
         """Cancel max time timer"""
@@ -289,19 +308,15 @@ def main():
         # scanner.waf = getattr(args, 'waf', False)
         # scanner.waf_if_found = getattr(args, 'wafiffound', False)
 
+        # FIXED: WAF detection is a passive detector, not a module
         # If only WAF detection is requested, adjust config
         if getattr(args, 'waf_detect', False):
-            config.modules = ['wafdetect']
-            config.nopassive = True # Disable other passive scans
-        
+            config.modules = ['security_headers']  # Lightweight module to trigger WAF detection
+            config.nopassive = False  # Enable passive detection for WAF detector
+
         # Enable module coordination for conflict prevention
         if hasattr(config, 'enable_module_coordination') and config.enable_module_coordination:
             print("Module coordination enabled - optimizing execution order to prevent conflicts")
-            
-            # If WAF detection is not explicitly requested but other modules are, add it automatically
-            if 'wafdetect' not in config.modules and len(config.modules) > 1:
-                config.modules.insert(0, 'wafdetect')
-                print("WAF detection automatically added for better module coordination")
         
         # Set up max time handler if specified
         max_time_handler = None
@@ -468,6 +483,45 @@ def main():
             timeout_handler.cancel()
         if 'max_time_handler' in locals() and max_time_handler:
             max_time_handler.cancel()
+
+        # FIXED: Generate reports even when scan is stopped/interrupted
+        if 'results' in locals() and results and args.auto_report:
+            print("\n[*] Generating partial scan reports...")
+            import datetime
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+            # Handle multiple targets for filename
+            targets = config.get_targets()
+            if targets:
+                if len(targets) > 1:
+                    target_name = "_".join([t.replace(':', '_').replace('/', '_').replace('\\', '_').replace('?', '_').replace('=', '_').replace('&', '_') for t in targets[:3]])
+                    if len(targets) > 3:
+                        target_name += f"_and_{len(targets)-3}_more"
+                else:
+                    target_name = targets[0].replace(':', '_').replace('/', '_').replace('\\', '_').replace('?', '_').replace('=', '_').replace('&', '_')
+            else:
+                target_name = "unknown_target"
+
+            # Limit filename length to avoid errors
+            if len(target_name) > 150:
+                target_name = target_name[:150]
+
+            # Use reports/ directory for output
+            reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports')
+            os.makedirs(reports_dir, exist_ok=True)
+            base_filename = os.path.join(reports_dir, f"scan_report_PARTIAL_{target_name}_{timestamp}")
+
+            report_formats = [f.strip() for f in args.format.split(',')]
+
+            for report_format in report_formats:
+                auto_filename = f"{base_filename}.{report_format}"
+                try:
+                    report_mode = getattr(args, 'report_mode', 'full')
+                    scanner.save_report(results, auto_filename, report_format, report_mode)
+                    print(f"[+] Partial {report_format.upper()} report saved to {auto_filename}")
+                except Exception as e:
+                    print(f"[!] Error saving partial {report_format.upper()} report: {e}")
+
         os._exit(1)
     except Exception as e:
         print(f"Error: {e}")

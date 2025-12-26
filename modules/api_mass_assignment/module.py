@@ -5,9 +5,12 @@ Detects Mass Assignment vulnerabilities by:
 - Adding privileged fields to requests (role, admin, isAdmin, etc.)
 - Testing field injection in PUT/POST requests
 - Checking if hidden fields can be modified
+
+IMPORTANT: Only reports CONFIRMED vulnerabilities where injected
+fields are reflected in the response with our values.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from core.base_module import BaseModule
 from core.logger import get_logger
 import json
@@ -16,75 +19,37 @@ logger = get_logger(__name__)
 
 
 class APIMassAssignmentModule(BaseModule):
-    """API Mass Assignment vulnerability scanner"""
+    """API Mass Assignment vulnerability scanner with FP prevention"""
 
-    # Fields that could lead to privilege escalation if modifiable
-    PRIVILEGED_FIELDS = [
+    # HIGH IMPACT fields - privilege escalation (requires confirmation)
+    HIGH_IMPACT_FIELDS = [
         # Role/Permission fields
         ('role', 'admin'),
-        ('role', 'administrator'),
-        ('role_id', 1),
-        ('roles', ['admin']),
-        ('user_role', 'admin'),
-        ('userRole', 'admin'),
-        ('permission', 'admin'),
-        ('permissions', ['*']),
-        ('access_level', 'admin'),
-        ('accessLevel', 9999),
-
-        # Admin flags
-        ('admin', True),
         ('isAdmin', True),
         ('is_admin', True),
         ('is_superuser', True),
-        ('isSuperuser', True),
-        ('superuser', True),
-        ('privileged', True),
-        ('is_staff', True),
-        ('isStaff', True),
+        ('admin', True),
+        ('permissions', ['admin', 'write', 'delete']),
+        ('access_level', 999),
+    ]
 
-        # Account status
+    # MEDIUM IMPACT fields - account manipulation
+    MEDIUM_IMPACT_FIELDS = [
         ('verified', True),
         ('is_verified', True),
-        ('isVerified', True),
-        ('active', True),
-        ('is_active', True),
-        ('isActive', True),
-        ('approved', True),
-        ('is_approved', True),
-        ('enabled', True),
+        ('email_verified', True),
         ('banned', False),
         ('is_banned', False),
+        ('is_active', True),
+        ('approved', True),
+    ]
 
-        # Financial/Credit
+    # FINANCIAL fields - money/credits
+    FINANCIAL_FIELDS = [
         ('balance', 999999),
         ('credits', 999999),
-        ('credit', 999999),
-        ('points', 999999),
         ('discount', 100),
         ('price', 0),
-        ('amount', 0),
-
-        # Ownership
-        ('owner_id', 1),
-        ('ownerId', 1),
-        ('user_id', 1),
-        ('userId', 1),
-        ('created_by', 1),
-        ('createdBy', 1),
-
-        # Subscription/Plan
-        ('plan', 'enterprise'),
-        ('subscription', 'premium'),
-        ('tier', 'enterprise'),
-        ('level', 'premium'),
-
-        # Internal fields
-        ('internal', True),
-        ('debug', True),
-        ('hidden', False),
-        ('deleted', False),
-        ('is_deleted', False),
     ]
 
     def __init__(self, module_path: str, payload_limit: int = None):
@@ -107,6 +72,10 @@ class APIMassAssignmentModule(BaseModule):
             if method not in ['POST', 'PUT', 'PATCH']:
                 continue
 
+            # Skip if no body or not a data endpoint
+            if not self._is_data_endpoint(url):
+                continue
+
             # Test mass assignment
             result = self._test_mass_assignment(url, method, body, headers, http_client)
             if result:
@@ -115,92 +84,183 @@ class APIMassAssignmentModule(BaseModule):
         logger.info(f"Mass Assignment scan complete: {len(results)} vulnerabilities found")
         return results
 
+    def _is_data_endpoint(self, url: str) -> bool:
+        """Check if URL looks like a data/resource endpoint"""
+        url_lower = url.lower()
+
+        # Skip static/auth endpoints
+        skip_patterns = [
+            '/login', '/logout', '/auth', '/oauth', '/token',
+            '/static/', '/assets/', '/images/', '/css/', '/js/'
+        ]
+        if any(p in url_lower for p in skip_patterns):
+            return False
+
+        # Target resource endpoints
+        target_patterns = [
+            '/user', '/profile', '/account', '/settings',
+            '/api/', '/v1/', '/v2/', '/update', '/edit',
+            '/register', '/signup'
+        ]
+        return any(p in url_lower for p in target_patterns)
+
     def _test_mass_assignment(self, url: str, method: str, body: Dict,
                                headers: Dict, http_client: Any) -> Optional[Dict]:
-        """Test endpoint for mass assignment"""
+        """Test endpoint for mass assignment with strict confirmation"""
         try:
-            # Ensure Content-Type is JSON
             test_headers = headers.copy()
             test_headers['Content-Type'] = 'application/json'
 
-            # Get baseline response
+            # Get baseline response for comparison
             baseline = http_client.request(method, url, json=body, headers=test_headers)
-            if not baseline:
+            if not baseline or baseline.status_code not in [200, 201, 204]:
                 return None
 
-            baseline_status = baseline.status_code
+            # Test fields by category
+            confirmed_findings = []
 
-            # Test each privileged field
-            vulnerable_fields = []
+            # Test HIGH IMPACT fields first
+            for field_name, field_value in self.HIGH_IMPACT_FIELDS:
+                result = self._test_field(url, method, body, test_headers,
+                                         http_client, field_name, field_value, 'high')
+                if result:
+                    confirmed_findings.append(result)
+                    break  # One high impact is enough
 
-            for field_name, field_value in self.PRIVILEGED_FIELDS[:20]:  # Limit tests
-                # Skip if field already exists in body
-                if field_name in body:
-                    continue
+            # Test MEDIUM IMPACT if no high found
+            if not confirmed_findings:
+                for field_name, field_value in self.MEDIUM_IMPACT_FIELDS[:5]:
+                    result = self._test_field(url, method, body, test_headers,
+                                             http_client, field_name, field_value, 'medium')
+                    if result:
+                        confirmed_findings.append(result)
+                        break
 
-                # Create test body with injected field
-                test_body = body.copy() if isinstance(body, dict) else {}
-                test_body[field_name] = field_value
+            # Test FINANCIAL fields
+            for field_name, field_value in self.FINANCIAL_FIELDS[:3]:
+                result = self._test_field(url, method, body, test_headers,
+                                         http_client, field_name, field_value, 'high')
+                if result:
+                    confirmed_findings.append(result)
+                    break
 
-                try:
-                    response = http_client.request(method, url, json=test_body, headers=test_headers)
-                    if not response:
-                        continue
+            # Only report if we have CONFIRMED findings
+            if confirmed_findings:
+                severity = 'critical' if any(f['impact'] == 'high' for f in confirmed_findings) else 'high'
 
-                    # Check for successful injection
-                    if response.status_code in [200, 201, 204]:
-                        # Check if field was accepted
-                        try:
-                            # FIX: HTTPResponse doesn't have .json() method
-                            response_data = json.loads(response.text) if response.text and response.text.strip().startswith(('{', '[')) else {}
+                evidence = "**CONFIRMED Mass Assignment Vulnerability**\n\n"
+                evidence += "The following privileged fields were accepted and reflected:\n\n"
 
-                            # Field appears in response = likely accepted
-                            if isinstance(response_data, dict):
-                                if field_name in response_data:
-                                    if response_data[field_name] == field_value:
-                                        vulnerable_fields.append((field_name, field_value))
-                                        continue
+                for finding in confirmed_findings:
+                    evidence += f"**Field:** `{finding['field']}`\n"
+                    evidence += f"**Injected Value:** `{finding['value']}`\n"
+                    evidence += f"**Response Value:** `{finding['response_value']}`\n"
+                    evidence += f"**Impact:** {finding['impact'].upper()}\n\n"
 
-                            # No error returned when adding field = potentially vulnerable
-                            if response.status_code == baseline_status:
-                                vulnerable_fields.append((field_name, field_value))
-
-                        except json.JSONDecodeError:
-                            # Non-JSON response but success status = potentially vulnerable
-                            if response.status_code in [200, 201]:
-                                vulnerable_fields.append((field_name, field_value))
-
-                except Exception as e:
-                    logger.debug(f"Error testing field {field_name}: {e}")
-
-            # Report findings
-            if vulnerable_fields:
-                evidence = "Mass Assignment vulnerability detected!\n\n"
-                evidence += "**Injected privileged fields accepted:**\n"
-                for field, value in vulnerable_fields[:10]:
-                    evidence += f"  - {field}: {value}\n"
-                evidence += f"\n**Impact:** Potential privilege escalation, unauthorized data modification\n"
-                evidence += f"**Recommendation:** Implement allowlist for accepted fields"
+                evidence += "**Attack Impact:**\n"
+                evidence += "- Privilege escalation (admin access)\n"
+                evidence += "- Account manipulation\n"
+                evidence += "- Unauthorized data modification\n\n"
+                evidence += "**Remediation:** Implement strict field allowlist. "
+                evidence += "Never bind request data directly to model objects."
 
                 result = self.create_result(
                     vulnerable=True,
                     url=url,
                     parameter="Request Body",
-                    payload=f"Injected {len(vulnerable_fields)} privileged fields",
+                    payload=f"Injected: {', '.join(f['field'] for f in confirmed_findings)}",
                     evidence=evidence,
-                    description=f"Mass Assignment vulnerability allows injecting privileged fields: "
-                              f"{', '.join([f[0] for f in vulnerable_fields[:5]])}",
-                    confidence=0.80
+                    description=f"Mass Assignment: {len(confirmed_findings)} privileged fields accepted",
+                    confidence=0.95  # High confidence - confirmed reflection
                 )
                 result['cwe'] = 'CWE-915'
+                result['cwe_name'] = 'Improperly Controlled Modification of Dynamically-Determined Object Attributes'
                 result['owasp'] = 'API6:2023'
-                result['severity'] = 'high'
+                result['owasp_name'] = 'Unrestricted Access to Sensitive Business Flows'
+                result['severity'] = severity
                 return result
 
         except Exception as e:
             logger.debug(f"Error in mass assignment test: {e}")
 
         return None
+
+    def _test_field(self, url: str, method: str, body: Dict, headers: Dict,
+                    http_client: Any, field_name: str, field_value: Any,
+                    impact: str) -> Optional[Dict]:
+        """Test a single field and check for CONFIRMED reflection"""
+        try:
+            # Skip if field already in body
+            if field_name in body:
+                return None
+
+            # Create test body
+            test_body = body.copy() if isinstance(body, dict) else {}
+            test_body[field_name] = field_value
+
+            response = http_client.request(method, url, json=test_body, headers=headers)
+            if not response or response.status_code not in [200, 201, 204]:
+                return None
+
+            # Parse response
+            if not response.text or len(response.text) < 10:
+                return None
+
+            try:
+                response_data = json.loads(response.text)
+            except json.JSONDecodeError:
+                return None
+
+            # STRICT CHECK: Field must appear in response with our value
+            if isinstance(response_data, dict):
+                # Direct field match
+                if field_name in response_data:
+                    response_value = response_data[field_name]
+                    if self._values_match(response_value, field_value):
+                        return {
+                            'field': field_name,
+                            'value': field_value,
+                            'response_value': response_value,
+                            'impact': impact
+                        }
+
+                # Check nested 'data' or 'user' objects
+                for nested_key in ['data', 'user', 'result', 'body']:
+                    if nested_key in response_data and isinstance(response_data[nested_key], dict):
+                        nested = response_data[nested_key]
+                        if field_name in nested:
+                            response_value = nested[field_name]
+                            if self._values_match(response_value, field_value):
+                                return {
+                                    'field': field_name,
+                                    'value': field_value,
+                                    'response_value': response_value,
+                                    'impact': impact
+                                }
+
+        except Exception as e:
+            logger.debug(f"Error testing field {field_name}: {e}")
+
+        return None
+
+    def _values_match(self, response_value: Any, injected_value: Any) -> bool:
+        """Check if response value matches injected value"""
+        # Direct equality
+        if response_value == injected_value:
+            return True
+
+        # String comparison
+        if str(response_value).lower() == str(injected_value).lower():
+            return True
+
+        # Boolean variations
+        if isinstance(injected_value, bool):
+            if response_value in [True, 'true', 'True', 1, '1'] and injected_value is True:
+                return True
+            if response_value in [False, 'false', 'False', 0, '0'] and injected_value is False:
+                return True
+
+        return False
 
 
 def get_module(module_path: str, payload_limit: int = None):

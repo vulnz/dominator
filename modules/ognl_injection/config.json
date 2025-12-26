@@ -1,0 +1,23 @@
+{
+    "name": "OGNL Injection Scanner",
+    "description": "Detects Object-Graph Navigation Language (OGNL) injection vulnerabilities in Java applications, particularly Apache Struts. Can lead to Remote Code Execution.",
+    "author": "Dominator Team",
+    "version": "1.0",
+    "enabled": true,
+    "category": "Injection",
+    "severity": "Critical",
+    "cwe": "CWE-917",
+    "cwe_name": "Improper Neutralization of Special Elements used in an Expression Language Statement",
+    "owasp": "A03:2021",
+    "owasp_name": "Injection",
+    "cvss": "9.8",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+    "tags": ["injection", "ognl", "java", "struts", "rce", "expression-language"],
+    "references": [
+        "https://owasp.org/www-community/attacks/OGNL_Injection",
+        "https://cwe.mitre.org/data/definitions/917.html",
+        "https://cwiki.apache.org/confluence/display/WW/Security+Bulletins",
+        "https://nvd.nist.gov/vuln/detail/CVE-2017-5638"
+    ],
+    "remediation": "Update Apache Struts to the latest version. Disable dynamic method invocation. Use allowlisting for allowed methods. Implement proper input validation."
+}

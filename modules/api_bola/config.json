@@ -6,8 +6,11 @@
     "category": "API Testing",
     "severity": "critical",
     "cwe": "CWE-639",
+    "cwe_name": "Authorization Bypass Through User-Controlled Key",
     "owasp": "API1:2023",
+    "owasp_name": "Broken Object Level Authorization",
     "cvss": "9.1",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
     "enabled": true,
     "passive": false,
     "api_only": true,
@@ -16,5 +19,6 @@
         "https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/",
         "https://portswigger.net/web-security/access-control/idor",
         "https://cwe.mitre.org/data/definitions/639.html"
-    ]
+    ],
+    "remediation": "Implement proper authorization checks that validate the user has permission to access the requested object. Use indirect object references and validate ownership on every request."
 }

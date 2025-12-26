@@ -5,6 +5,7 @@ Discovers and tests common CGI scripts for vulnerabilities and information discl
 
 from core.base_module import BaseModule
 from core.logger import get_logger
+from detectors.real404_detector import Real404Detector
 from typing import List, Dict, Any
 from urllib.parse import urljoin, urlparse
 import re
@@ -19,6 +20,9 @@ class CGIScanner(BaseModule):
         super().__init__(module_path, payload_limit=payload_limit)
         self.module_name = "CGI Scanner"
         self.logger = logger
+
+        # FIXED: Initialize Real404Detector to prevent false positives
+        self.real404_detector = Real404Detector()
 
         # Vulnerable CGI patterns and their risks
         self.vulnerable_cgis = {
@@ -102,6 +106,10 @@ class CGIScanner(BaseModule):
                 continue
             tested_bases.add(base_url)
 
+            # FIXED: Generate 404 baseline to prevent false positives
+            self.logger.debug(f"Generating 404 baseline for {base_url}")
+            self.real404_detector.generate_baseline(base_url, http_client)
+
             # Test CGI directories
             cgi_dirs = ['/cgi-bin/', '/cgi/', '/cgi-local/', '/cgi-win/', '/fcgi-bin/',
                         '/cgi-sys/', '/cgis/', '/cgi-mod/', '/cgi-home/', '/htbin/']
@@ -114,8 +122,8 @@ class CGIScanner(BaseModule):
                 if not dir_response:
                     continue
 
-                # Directory exists (not 404)
-                if dir_response.status_code not in [404, 400]:
+                # FIXED: Use Real404Detector to check if directory really exists
+                if not self.real404_detector.is_404(dir_response, dir_url):
                     # Test each vulnerable CGI
                     for cgi_name, cgi_info in self.vulnerable_cgis.items():
                         if self.payload_limit and len(results) >= self.payload_limit:
@@ -136,8 +144,8 @@ class CGIScanner(BaseModule):
             if not response:
                 return None
 
-            # Skip 404s and common error pages
-            if response.status_code == 404:
+            # FIXED: Use Real404Detector to skip soft 404s and prevent false positives
+            if self.real404_detector.is_404(response, cgi_url):
                 return None
 
             # Check for actual CGI response

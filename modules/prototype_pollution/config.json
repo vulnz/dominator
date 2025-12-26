@@ -10,6 +10,7 @@
     "owasp": "A03:2021",
     "owasp_name": "Injection",
     "cvss": "7.5",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
     "enabled": true,
     "passive": false,
     "tags": ["prototype-pollution", "javascript", "client-side", "xss", "gadgets"],
@@ -17,5 +18,6 @@
     "test_query_params": true,
     "test_hash_params": true,
     "test_json_body": true,
-    "detect_vulnerable_libs": true
+    "detect_vulnerable_libs": true,
+    "remediation": "Use Object.freeze() on prototypes. Validate/sanitize object keys before merge operations. Update vulnerable JS libraries."
 }

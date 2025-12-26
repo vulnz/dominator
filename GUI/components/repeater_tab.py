@@ -516,10 +516,55 @@ class RepeaterTab(QWidget):
         self.status_message.setText("Request formatted")
 
     def load_from_history(self):
-        """Show dialog to select from history (stub for now)"""
+        """Show dialog to select from history"""
         if not self.history:
             QMessageBox.information(self, "Empty History", "No requests in history yet")
             return
 
-        # TODO: Show history selection dialog
-        QMessageBox.information(self, "History", f"History contains {len(self.history)} requests")
+        # Create history selection dialog
+        from PyQt5.QtWidgets import QDialog, QListWidget, QListWidgetItem, QDialogButtonBox
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Select Request from History")
+        dialog.setMinimumWidth(500)
+        dialog.setMinimumHeight(400)
+
+        layout = QVBoxLayout(dialog)
+
+        # History list
+        history_list = QListWidget()
+        for i, item in enumerate(self.history):
+            method = item.get('method', 'GET')
+            url = item.get('url', 'Unknown URL')
+            status = item.get('status_code', 'N/A')
+            timestamp = item.get('timestamp', '')
+            list_item = QListWidgetItem(f"[{i+1}] {method} {url} - Status: {status} ({timestamp})")
+            list_item.setData(Qt.UserRole, i)  # Store index
+            history_list.addItem(list_item)
+
+        layout.addWidget(QLabel("Select a request to load:"))
+        layout.addWidget(history_list)
+
+        # Buttons
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        if dialog.exec_() == QDialog.Accepted and history_list.currentItem():
+            idx = history_list.currentItem().data(Qt.UserRole)
+            history_item = self.history[idx]
+
+            # Load the request into the editor
+            self.url_input.setText(history_item.get('url', ''))
+            self.method_combo.setCurrentText(history_item.get('method', 'GET'))
+
+            # Reconstruct request text
+            request_text = f"{history_item.get('method', 'GET')} {history_item.get('url', '')} HTTP/1.1\n"
+            for header, value in history_item.get('headers', {}).items():
+                request_text += f"{header}: {value}\n"
+            if history_item.get('body'):
+                request_text += f"\n{history_item.get('body', '')}"
+
+            self.request_edit.setPlainText(request_text)
+            self.status_message.setText(f"Loaded request #{idx+1} from history")

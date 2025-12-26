@@ -1,0 +1,53 @@
+# Module Configuration (TOML format)
+
+name = "Subdomain Takeover"
+description = "Detects vulnerable subdomains that can be taken over due to dangling DNS records"
+version = "1.0"
+author = "Dominator Team"
+category = "recon"
+severity = "High"
+cwe = "CWE-284"
+owasp = "A05:2021"
+cvss = "8.0"
+enabled = true
+passive = false
+tags = ["recon", "subdomain", "takeover", "dns", "cloud", "security"]
+
+[detection]
+check_cname = true
+check_nxdomain = true
+check_response_patterns = true
+verify_takeover_possible = true
+
+[services]
+# AWS Services
+aws_s3 = { enabled = true, severity = "High", takeover_possible = true }
+aws_elastic_beanstalk = { enabled = true, severity = "High", takeover_possible = true }
+aws_cloudfront = { enabled = true, severity = "Medium", takeover_possible = false }
+
+# Azure Services
+azure_blob = { enabled = true, severity = "High", takeover_possible = true }
+azure_websites = { enabled = true, severity = "High", takeover_possible = true }
+azure_cloudapp = { enabled = true, severity = "High", takeover_possible = true }
+azure_trafficmanager = { enabled = true, severity = "High", takeover_possible = true }
+
+# Other Cloud Services
+github_pages = { enabled = true, severity = "High", takeover_possible = true }
+heroku = { enabled = true, severity = "High", takeover_possible = true }
+shopify = { enabled = true, severity = "High", takeover_possible = true }
+netlify = { enabled = true, severity = "Medium", takeover_possible = false }
+vercel = { enabled = true, severity = "Medium", takeover_possible = false }
+fastly = { enabled = true, severity = "High", takeover_possible = true }
+
+[performance]
+dns_timeout = 5
+http_timeout = 10
+max_threads = 10
+
+[references]
+urls = [
+    "https://github.com/EdOverflow/can-i-take-over-xyz",
+    "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/10-Test_for_Subdomain_Takeover",
+    "https://developer.mozilla.org/en-US/docs/Web/Security/Subdomain_takeovers",
+    "https://hackerone.com/reports/subdomain-takeover"
+]

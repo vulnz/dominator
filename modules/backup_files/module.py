@@ -15,6 +15,7 @@ Based on Nikto and OWASP Testing Guide.
 from typing import List, Dict, Any
 from core.base_module import BaseModule
 from core.logger import get_logger
+from detectors.real404_detector import Real404Detector
 from urllib.parse import urlparse, urljoin
 import os
 
@@ -78,6 +79,8 @@ class BackupFilesModule(BaseModule):
     def __init__(self, module_path: str, payload_limit: int = None):
         """Initialize Backup Files module"""
         super().__init__(module_path, payload_limit=payload_limit)
+        # FIXED: Initialize Real404Detector to prevent false positives
+        self.real404_detector = Real404Detector()
         logger.info("Backup Files module loaded")
 
     def scan(self, targets: List[Dict[str, Any]], http_client: Any) -> List[Dict[str, Any]]:
@@ -108,6 +111,10 @@ class BackupFilesModule(BaseModule):
             # Scan host-level sensitive files once
             if host not in scanned_hosts:
                 scanned_hosts.add(host)
+                # FIXED: Generate 404 baseline to prevent false positives
+                logger.debug(f"Generating 404 baseline for {base_url}")
+                self.real404_detector.generate_baseline(base_url, http_client)
+
                 sensitive_results = self._scan_sensitive_files(base_url, http_client)
                 results.extend(sensitive_results)
 
@@ -214,26 +221,13 @@ class BackupFilesModule(BaseModule):
         if not response:
             return False
 
-        # 200 OK with content
-        if response.status_code != 200:
-            return False
-
-        # Check content length
-        content_length = len(getattr(response, 'text', ''))
-        if content_length < 10:
-            return False
-
-        # Check for soft 404 (custom error pages)
-        response_text = getattr(response, 'text', '').lower()
-        soft_404_indicators = [
-            'page not found', '404 not found', 'file not found',
-            'page does not exist', 'cannot be found',
-            'requested url was not found', 'the page you requested',
-        ]
-        if any(indicator in response_text for indicator in soft_404_indicators):
+        # FIXED: Use Real404Detector instead of weak soft 404 detection
+        # This provides multi-language support, baseline fingerprinting, and better accuracy
+        if self.real404_detector.is_404(response, path):
             return False
 
         # Additional validation for specific file types
+        response_text = getattr(response, 'text', '').lower()
         if path.endswith('.git/config'):
             return '[core]' in response_text or '[remote' in response_text
         if path.endswith('.env'):

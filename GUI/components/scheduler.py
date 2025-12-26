@@ -282,10 +282,128 @@ class SchedulerThread(QThread):
         self.save_schedules(schedules)
 
     def send_notification(self, task, success, output_lines):
-        """Send email notification (placeholder - requires SMTP configuration)"""
-        # This would require SMTP configuration
-        # For now, just log that notification would be sent
-        self.status_update.emit(f"Email notification would be sent to {task.get('email_address')}")
+        """Send email notification for completed scan"""
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+
+        email_address = task.get('email_address')
+        task_name = task.get('name', 'Unnamed Task')
+        target = task.get('target', 'Unknown')
+
+        if not email_address:
+            return
+
+        # Load SMTP configuration from settings
+        config_file = Path.home() / ".dominator" / "settings.json"
+        smtp_config = {}
+
+        if config_file.exists():
+            try:
+                with open(config_file, 'r') as f:
+                    settings = json.load(f)
+                    smtp_config = settings.get('smtp', {})
+            except:
+                pass
+
+        # Check if SMTP is configured
+        smtp_server = smtp_config.get('server', '')
+        smtp_port = smtp_config.get('port', 587)
+        smtp_user = smtp_config.get('username', '')
+        smtp_pass = smtp_config.get('password', '')
+        sender_email = smtp_config.get('sender', smtp_user)
+
+        if not smtp_server:
+            # SMTP not configured - log and use fallback notification
+            self.status_update.emit(
+                f"Email notification skipped - SMTP not configured. "
+                f"Configure in Settings > Email to enable notifications."
+            )
+            return
+
+        try:
+            # Build email content
+            status_text = "completed successfully" if success else "FAILED"
+            status_emoji = "✅" if success else "❌"
+
+            # Create message
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = f"{status_emoji} Scan {status_text}: {task_name}"
+            msg['From'] = sender_email
+            msg['To'] = email_address
+
+            # Plain text version
+            text_body = f"""
+Dominator Scan Notification
+============================
+
+Task: {task_name}
+Target: {target}
+Status: {status_text.upper()}
+Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+--- Last 50 lines of output ---
+{''.join(output_lines[-50:]) if output_lines else 'No output captured'}
+
+---
+This is an automated notification from Dominator Scanner.
+"""
+
+            # HTML version
+            html_body = f"""
+<html>
+<head>
+<style>
+    body {{ font-family: Arial, sans-serif; margin: 20px; }}
+    .header {{ background: {'#4CAF50' if success else '#f44336'}; color: white; padding: 15px; border-radius: 5px; }}
+    .content {{ padding: 20px; background: #f5f5f5; border-radius: 5px; margin-top: 10px; }}
+    .output {{ background: #1e1e1e; color: #00ff00; padding: 10px; font-family: monospace; font-size: 11px; max-height: 300px; overflow: auto; border-radius: 3px; }}
+    .footer {{ color: #666; font-size: 11px; margin-top: 20px; }}
+</style>
+</head>
+<body>
+<div class="header">
+    <h2>{status_emoji} Scan {status_text}</h2>
+</div>
+<div class="content">
+    <p><strong>Task:</strong> {task_name}</p>
+    <p><strong>Target:</strong> {target}</p>
+    <p><strong>Time:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+
+    <h3>Output (last 50 lines)</h3>
+    <pre class="output">{''.join(output_lines[-50:]) if output_lines else 'No output captured'}</pre>
+</div>
+<div class="footer">
+    This is an automated notification from Dominator Scanner.
+</div>
+</body>
+</html>
+"""
+
+            msg.attach(MIMEText(text_body, 'plain'))
+            msg.attach(MIMEText(html_body, 'html'))
+
+            # Send email
+            use_tls = smtp_config.get('use_tls', True)
+            use_ssl = smtp_config.get('use_ssl', False)
+
+            if use_ssl:
+                server = smtplib.SMTP_SSL(smtp_server, smtp_port)
+            else:
+                server = smtplib.SMTP(smtp_server, smtp_port)
+                if use_tls:
+                    server.starttls()
+
+            if smtp_user and smtp_pass:
+                server.login(smtp_user, smtp_pass)
+
+            server.sendmail(sender_email, [email_address], msg.as_string())
+            server.quit()
+
+            self.status_update.emit(f"Email notification sent to {email_address}")
+
+        except Exception as e:
+            self.status_update.emit(f"Failed to send email notification: {str(e)}")
 
     def load_schedules(self):
         """Load schedules from file"""

@@ -6,8 +6,11 @@
     "category": "Injection",
     "severity": "high",
     "cwe": "CWE-611",
+    "cwe_name": "Improper Restriction of XML External Entity Reference",
     "owasp": "A05:2021",
+    "owasp_name": "Security Misconfiguration",
     "cvss": "7.5",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
     "enabled": true,
     "passive": false,
     "tags": ["xxe", "xml", "injection", "file-read", "ssrf", "oob"],
@@ -15,5 +18,6 @@
     "enable_oob": true,
     "oob_wait_time": 3,
     "test_file_upload_endpoints": true,
-    "test_api_endpoints": true
+    "test_api_endpoints": true,
+    "remediation": "Disable external entity processing in XML parsers. Use defusedxml or similar safe libraries. Validate and sanitize XML input."
 }

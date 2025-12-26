@@ -4,12 +4,17 @@
     "author": "Dominator Team",
     "version": "1.0",
     "category": "Discovery",
-    "severity": "varies",
+    "severity": "High",
     "cwe": "CWE-78",
+    "cwe_name": "Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')",
     "owasp": "A05:2021",
+    "owasp_name": "Security Misconfiguration",
+    "cvss": "9.8",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
     "tags": ["cgi", "rce", "nikto", "info-disclosure", "backdoor"],
     "references": [
         "https://owasp.org/www-community/attacks/Command_Injection",
         "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2012-1823"
-    ]
+    ],
+    "remediation": "Remove unnecessary CGI scripts. Update vulnerable scripts. Validate all CGI inputs. Disable CGI if not required."
 }

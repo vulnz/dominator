@@ -8,12 +8,16 @@
     "enabled": true,
     "passive": false,
     "cwe": "CWE-284",
+    "cwe_name": "Improper Access Control",
     "owasp": "A01:2021",
-    "cvss": 5.3,
+    "owasp_name": "Broken Access Control",
+    "cvss": "5.3",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
     "tags": ["403", "bypass", "forbidden", "access-control", "path-traversal"],
     "references": [
         "https://book.hacktricks.xyz/network-services-pentesting/pentesting-web/403-and-401-bypasses",
         "https://github.com/iamj0ker/bypass-403"
     ],
-    "scan_limit": 3
+    "scan_limit": 3,
+    "remediation": "Implement access control at the application level, not just web server. Normalize paths before access checks. Validate all access control headers server-side."
 }

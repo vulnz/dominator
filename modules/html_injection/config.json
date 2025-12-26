@@ -1,0 +1,22 @@
+{
+    "name": "HTML Injection Scanner",
+    "description": "Detects HTML injection vulnerabilities where user input is reflected in the page without proper encoding, allowing attackers to inject arbitrary HTML content.",
+    "author": "Dominator Team",
+    "version": "1.0",
+    "enabled": true,
+    "category": "Injection",
+    "severity": "Medium",
+    "cwe": "CWE-79",
+    "cwe_name": "Improper Neutralization of Input During Web Page Generation",
+    "owasp": "A03:2021",
+    "owasp_name": "Injection",
+    "cvss": "5.4",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:L/A:N",
+    "tags": ["injection", "html", "xss-related", "content-injection"],
+    "references": [
+        "https://owasp.org/www-community/attacks/Content_Injection",
+        "https://cwe.mitre.org/data/definitions/79.html",
+        "https://portswigger.net/web-security/cross-site-scripting"
+    ],
+    "remediation": "Encode all user-supplied data before rendering in HTML context. Use context-aware output encoding. Implement Content Security Policy headers."
+}

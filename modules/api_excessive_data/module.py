@@ -2,10 +2,13 @@
 API Excessive Data Exposure Scanner
 
 Detects APIs returning more data than necessary:
-- PII data in responses (emails, SSN, credit cards, etc.)
-- Internal/debug fields
-- Password hashes or tokens
+- PII data in responses (SSN, credit cards, etc.)
+- Exposed secrets (API keys, tokens, private keys)
+- Password hashes
 - Sensitive business data
+
+IMPORTANT: Uses strict detection to avoid false positives.
+Only flags CONFIRMED sensitive data with actual values.
 """
 
 from typing import List, Dict, Any
@@ -18,37 +21,76 @@ logger = get_logger(__name__)
 
 
 class APIExcessiveDataModule(BaseModule):
-    """API Excessive Data Exposure scanner"""
+    """API Excessive Data Exposure scanner with FP prevention"""
 
-    # Patterns for sensitive data
-    SENSITIVE_PATTERNS = {
-        'password_hash': r'"(password|passwd|pwd|hash|password_hash)":\s*"[^"]{20,}"',
-        'api_key': r'"(api_key|apiKey|api_secret|apiSecret|secret_key|secretKey)":\s*"[^"]+"',
-        'access_token': r'"(access_token|accessToken|auth_token|authToken|bearer)":\s*"[^"]+"',
-        'private_key': r'-----BEGIN (RSA |EC |DSA |)PRIVATE KEY-----',
-        'ssn': r'"(ssn|social_security|socialSecurity)":\s*"?\d{3}-?\d{2}-?\d{4}"?',
-        'credit_card': r'"(card_number|cardNumber|cc_number|ccNumber)":\s*"?\d{13,19}"?',
-        'cvv': r'"(cvv|cvc|security_code|securityCode)":\s*"?\d{3,4}"?',
-        'bank_account': r'"(account_number|accountNumber|bank_account)":\s*"?[A-Z0-9]{10,}"?',
-        'internal_id': r'"(_id|internal_id|internalId|__v)":\s*',
-        'debug_info': r'"(debug|_debug|trace|stack_trace|stackTrace)":\s*',
-        'database_id': r'"(db_id|dbId|database_id|mongo_id)":\s*',
-        'admin_field': r'"(is_admin|isAdmin|admin|superuser|is_superuser)":\s*(true|1)',
+    # CRITICAL severity - these patterns CONFIRM sensitive data exposure
+    # Must have actual VALUES, not just field names
+    CRITICAL_PATTERNS = {
+        'private_key': (
+            r'-----BEGIN (RSA |EC |DSA |OPENSSH |PGP |)PRIVATE KEY-----',
+            'Private cryptographic key exposed'
+        ),
+        'aws_key': (
+            r'AKIA[0-9A-Z]{16}',
+            'AWS Access Key ID exposed'
+        ),
+        'aws_secret': (
+            r'"(aws_secret|AWS_SECRET_ACCESS_KEY)":\s*"[A-Za-z0-9/+=]{40}"',
+            'AWS Secret Key exposed'
+        ),
+        'jwt_token': (
+            r'"(access_token|auth_token|bearer|jwt)":\s*"eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"',
+            'JWT token exposed in response'
+        ),
+        'password_plaintext': (
+            r'"(password|passwd|user_password)":\s*"(?![\*x]+)[^"]{6,}"',
+            'Password value exposed (not masked)'
+        ),
+        'password_hash': (
+            r'"(password_hash|passwd_hash|hashed_password)":\s*"(\$2[ayb]\$|\$argon2|\$pbkdf2|sha256:|sha512:)[^"]+"',
+            'Password hash exposed'
+        ),
+        'credit_card_full': (
+            r'"(card_number|cardNumber|cc_number|pan|primary_account_number)":\s*"?[0-9]{13,16}"?',
+            'Full credit card number exposed'
+        ),
+        'ssn_full': (
+            r'"(ssn|social_security_number|social_security)":\s*"[0-9]{3}-?[0-9]{2}-?[0-9]{4}"',
+            'Social Security Number exposed'
+        ),
+        'cvv_exposed': (
+            r'"(cvv|cvc|cvv2|cvc2|security_code)":\s*"?[0-9]{3,4}"?',
+            'CVV/CVC code exposed'
+        ),
     }
 
-    # Sensitive field names that shouldn't be exposed
-    SENSITIVE_FIELDS = [
-        'password', 'passwd', 'pwd', 'secret', 'token', 'api_key', 'apiKey',
-        'access_token', 'accessToken', 'refresh_token', 'refreshToken',
-        'private_key', 'privateKey', 'ssn', 'social_security', 'credit_card',
-        'card_number', 'cardNumber', 'cvv', 'cvc', 'pin', 'security_code',
-        'bank_account', 'accountNumber', 'routing_number', 'iban', 'swift',
-        'license_number', 'passport', 'tax_id', 'taxId', 'ein', 'itin',
-        'medical_record', 'health_info', 'diagnosis', 'prescription',
-        'salary', 'income', 'compensation', 'bonus', 'stock_options',
-        '_internal', '__private', 'debug', 'trace', 'stack_trace',
-        'database_password', 'db_password', 'connection_string', 'dsn',
-        'encryption_key', 'signing_key', 'jwt_secret', 'session_secret'
+    # HIGH severity - sensitive but needs value inspection
+    HIGH_SEVERITY_PATTERNS = {
+        'api_key_value': (
+            r'"(api_key|apiKey|x-api-key)":\s*"[a-zA-Z0-9_-]{20,}"',
+            'API key with significant length'
+        ),
+        'database_connection': (
+            r'"(connection_string|database_url|dsn|db_url)":\s*"[^"]+"',
+            'Database connection string exposed'
+        ),
+        'encryption_key': (
+            r'"(encryption_key|aes_key|secret_key)":\s*"[a-fA-F0-9]{32,}"',
+            'Encryption key exposed'
+        ),
+    }
+
+    # Fields to IGNORE - these cause false positives
+    # Common API fields that are NOT vulnerabilities
+    IGNORE_PATTERNS = [
+        r'"_id":\s*"[^"]+"',           # MongoDB _id is normal
+        r'"id":\s*[0-9]+',             # Numeric IDs are normal
+        r'"__v":\s*[0-9]+',            # MongoDB version field
+        r'"token":\s*"[^"]+"',         # Generic token (could be CSRF)
+        r'"is_admin":\s*(true|false)', # Role info is normal to return
+        r'"role":\s*"[^"]+"',          # Role info is normal
+        r'"email":\s*"[^"]+"',         # Email in profile is normal
+        r'"debug":\s*false',           # Debug off is fine
     ]
 
     def __init__(self, module_path: str, payload_limit: int = None):
@@ -56,7 +98,7 @@ class APIExcessiveDataModule(BaseModule):
         logger.info("API Excessive Data Exposure module initialized")
 
     def scan(self, targets: List[Dict[str, Any]], http_client: Any) -> List[Dict[str, Any]]:
-        """Scan for excessive data exposure"""
+        """Scan for excessive data exposure with strict FP prevention"""
         results = []
 
         logger.info(f"Starting Excessive Data Exposure scan on {len(targets)} endpoints")
@@ -79,17 +121,31 @@ class APIExcessiveDataModule(BaseModule):
                 if not response or response.status_code != 200:
                     continue
 
-                # Analyze response for sensitive data
+                # Skip very short responses
+                if len(response.text) < 50:
+                    continue
+
+                # Analyze response for CONFIRMED sensitive data
                 findings = self._analyze_response(response.text, url)
 
                 if findings:
-                    evidence = "Excessive Data Exposure detected!\n\n"
-                    evidence += "**Sensitive data found in response:**\n"
-                    for finding_type, details in findings.items():
-                        evidence += f"\n**{finding_type}:**\n"
-                        for detail in details[:3]:  # Limit output
-                            evidence += f"  - {detail}\n"
-                    evidence += f"\n**Recommendation:** Filter sensitive fields before sending response"
+                    # Determine overall severity based on findings
+                    has_critical = any(f['severity'] == 'critical' for f in findings)
+                    has_high = any(f['severity'] == 'high' for f in findings)
+
+                    severity = 'critical' if has_critical else ('high' if has_high else 'medium')
+                    confidence = 0.90 if has_critical else 0.80
+
+                    evidence = "**CONFIRMED Excessive Data Exposure**\n\n"
+                    evidence += "Sensitive data found in API response:\n\n"
+
+                    for finding in findings[:5]:  # Limit to 5 findings
+                        evidence += f"**{finding['type']}** ({finding['severity'].upper()})\n"
+                        evidence += f"  Description: {finding['description']}\n"
+                        evidence += f"  Match: `{finding['match'][:60]}...`\n\n"
+
+                    evidence += "**Recommendation:** Remove sensitive fields from API responses. "
+                    evidence += "Implement field-level filtering based on user permissions."
 
                     result = self.create_result(
                         vulnerable=True,
@@ -97,12 +153,14 @@ class APIExcessiveDataModule(BaseModule):
                         parameter="Response Body",
                         payload="N/A (passive detection)",
                         evidence=evidence,
-                        description=f"API returns sensitive data: {', '.join(findings.keys())}",
-                        confidence=0.75
+                        description=f"API exposes sensitive data: {', '.join(set(f['type'] for f in findings))}",
+                        confidence=confidence
                     )
-                    result['cwe'] = 'CWE-213'
+                    result['cwe'] = 'CWE-200'
+                    result['cwe_name'] = 'Exposure of Sensitive Information to an Unauthorized Actor'
                     result['owasp'] = 'API3:2023'
-                    result['severity'] = 'medium'
+                    result['owasp_name'] = 'Broken Object Property Level Authorization'
+                    result['severity'] = severity
                     results.append(result)
 
             except Exception as e:
@@ -111,58 +169,67 @@ class APIExcessiveDataModule(BaseModule):
         logger.info(f"Excessive Data scan complete: {len(results)} findings")
         return results
 
-    def _analyze_response(self, response_text: str, url: str) -> Dict[str, List[str]]:
-        """Analyze response for sensitive data exposure"""
-        findings = {}
+    def _analyze_response(self, response_text: str, url: str) -> List[Dict]:
+        """Analyze response for CONFIRMED sensitive data exposure"""
+        findings = []
 
-        # Check regex patterns
-        for pattern_name, pattern in self.SENSITIVE_PATTERNS.items():
+        # Check CRITICAL patterns first
+        for pattern_name, (pattern, description) in self.CRITICAL_PATTERNS.items():
             matches = re.findall(pattern, response_text, re.I)
             if matches:
-                if pattern_name not in findings:
-                    findings[pattern_name] = []
-                for match in matches[:3]:
+                for match in matches[:2]:  # Max 2 per type
                     if isinstance(match, tuple):
-                        match = match[0]
-                    findings[pattern_name].append(f"Found: {match[:50]}...")
+                        match = match[0] if match[0] else str(match)
 
-        # Check JSON structure for sensitive fields
-        try:
-            data = json.loads(response_text)
-            sensitive_found = self._find_sensitive_fields(data)
-            if sensitive_found:
-                findings['sensitive_fields'] = sensitive_found
-        except json.JSONDecodeError:
-            pass
+                    # Validate it's not in ignore list
+                    if not self._should_ignore(response_text, match):
+                        findings.append({
+                            'type': pattern_name,
+                            'severity': 'critical',
+                            'description': description,
+                            'match': str(match)[:100]
+                        })
+
+        # Check HIGH severity patterns
+        for pattern_name, (pattern, description) in self.HIGH_SEVERITY_PATTERNS.items():
+            matches = re.findall(pattern, response_text, re.I)
+            if matches:
+                for match in matches[:2]:
+                    if isinstance(match, tuple):
+                        match = match[0] if match[0] else str(match)
+
+                    if not self._should_ignore(response_text, match):
+                        findings.append({
+                            'type': pattern_name,
+                            'severity': 'high',
+                            'description': description,
+                            'match': str(match)[:100]
+                        })
 
         return findings
 
-    def _find_sensitive_fields(self, data: Any, path: str = "") -> List[str]:
-        """Recursively find sensitive field names in JSON"""
-        found = []
+    def _should_ignore(self, response_text: str, match: str) -> bool:
+        """Check if match should be ignored (false positive prevention)"""
+        match_lower = str(match).lower()
 
-        if isinstance(data, dict):
-            for key, value in data.items():
-                current_path = f"{path}.{key}" if path else key
+        # Ignore common false positive values
+        fp_values = [
+            'null', 'undefined', 'none', 'n/a', 'test', 'example',
+            'xxxxxxxx', '********', 'redacted', '[redacted]',
+            'placeholder', 'changeme', 'secret123', 'password123'
+        ]
+        if match_lower in fp_values:
+            return True
 
-                # Check if field name is sensitive
-                key_lower = key.lower()
-                for sensitive in self.SENSITIVE_FIELDS:
-                    if sensitive.lower() in key_lower:
-                        # Don't flag empty/null values
-                        if value not in [None, '', [], {}]:
-                            found.append(f"{current_path} = {str(value)[:30]}...")
-                        break
+        # Ignore if value is clearly masked
+        if 'xxxx' in match_lower or '****' in match_lower:
+            return True
 
-                # Recurse into nested objects
-                if isinstance(value, (dict, list)):
-                    found.extend(self._find_sensitive_fields(value, current_path))
+        # Ignore very short matches (likely field names only)
+        if len(match) < 10:
+            return True
 
-        elif isinstance(data, list):
-            for i, item in enumerate(data[:3]):  # Only check first 3 items
-                found.extend(self._find_sensitive_fields(item, f"{path}[{i}]"))
-
-        return found
+        return False
 
 
 def get_module(module_path: str, payload_limit: int = None):

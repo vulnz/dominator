@@ -67,13 +67,33 @@ API Testing examples:
     parser.add_argument('--dns',
                        help='Custom DNS server (format: 8.8.8.8 or 1.1.1.1)')
     
-    # Scanning parameters
+    # WAF and bypass options
     parser.add_argument('--waf', action='store_true',
                        help='Enable WAF detection and use WAF bypass payloads')
+    parser.add_argument('--waf-mode', action='store_true',
+                       help='Enable WAF bypass mode (uses cloudscraper or headless browser)')
+    parser.add_argument('--browser', action='store_true',
+                       help='Use headless browser for WAF bypass (requires playwright or cloudscraper)')
     parser.add_argument('--wafiffound', action='store_true',
                        help='Prompt to enable WAF bypass mode if a WAF is detected')
     parser.add_argument('--waf-detect', action='store_true',
                        help='Run only WAF detection and exit')
+
+    # Subdomain options
+    parser.add_argument('--enum-subdomains', action='store_true',
+                       help='Enumerate subdomains before scanning (uses passive + active techniques)')
+    parser.add_argument('--subdomain-takeover', action='store_true',
+                       help='Check for subdomain takeover vulnerabilities')
+    parser.add_argument('--scan-subdomains', action='store_true',
+                       help='Scan main domain AND discovered subdomains (implies --enum-subdomains)')
+    parser.add_argument('--subdomain-limit', type=int, default=10,
+                       help='Maximum number of subdomains to scan when using --scan-subdomains (default: 10)')
+    parser.add_argument('--subdomain-wordlist',
+                       help='Custom wordlist for subdomain brute-forcing')
+    parser.add_argument('--subdomain-passive-only', action='store_true',
+                       help='Use only passive subdomain enumeration (no DNS brute-force)')
+
+    # Scanning parameters
     parser.add_argument('-m', '--modules', 
                        help='Scanning modules (comma separated)')
     parser.add_argument('--all', action='store_true',
@@ -134,6 +154,18 @@ API Testing examples:
                        help='Passive reconnaissance only - no active attacks (crawl + passive detectors only)')
     parser.add_argument('--live', action='store_true',
                        help='Enable live reporting mode - generate real-time HTML/TXT report as vulnerabilities are found')
+
+    # Pre-scan Profiling options
+    parser.add_argument('--profile', action='store_true', default=True,
+                       help='Enable target profiling before scan (default: True)')
+    parser.add_argument('--no-profile', action='store_true',
+                       help='Disable pre-scan target profiling')
+    parser.add_argument('--screenshot', action='store_true',
+                       help='Capture screenshot of target (requires playwright or selenium)')
+    parser.add_argument('--profile-only', action='store_true',
+                       help='Run only target profiling without vulnerability scanning')
+    parser.add_argument('--profile-output',
+                       help='Save profile results to JSON file')
 
     # API Testing options
     parser.add_argument('--api-spec', '--api',
@@ -448,6 +480,40 @@ def process_args(args):
     if not hasattr(args, 'waf_detect'):
         args.waf_detect = False
 
+    # Subdomain defaults
+    if not hasattr(args, 'enum_subdomains'):
+        args.enum_subdomains = False
+    if not hasattr(args, 'subdomain_takeover'):
+        args.subdomain_takeover = False
+    if not hasattr(args, 'scan_subdomains'):
+        args.scan_subdomains = False
+    if not hasattr(args, 'subdomain_limit'):
+        args.subdomain_limit = 10
+    if not hasattr(args, 'subdomain_wordlist'):
+        args.subdomain_wordlist = None
+    if not hasattr(args, 'subdomain_passive_only'):
+        args.subdomain_passive_only = False
+
+    # If --scan-subdomains is set, it implies --enum-subdomains
+    if args.scan_subdomains:
+        args.enum_subdomains = True
+
+    # Profiling defaults
+    if not hasattr(args, 'profile'):
+        args.profile = True
+    if not hasattr(args, 'no_profile'):
+        args.no_profile = False
+    if not hasattr(args, 'screenshot'):
+        args.screenshot = False
+    if not hasattr(args, 'profile_only'):
+        args.profile_only = False
+    if not hasattr(args, 'profile_output'):
+        args.profile_output = None
+
+    # If --no-profile is set, disable profiling
+    if args.no_profile:
+        args.profile = False
+
     # API Testing defaults
     if not hasattr(args, 'api_spec'):
         args.api_spec = None
@@ -491,12 +557,15 @@ def process_args(args):
     if args.nocrawl:
         args.single_url = True
     
-    # If only WAF detection is requested, override modules
+    # FIXED: WAF detection is a passive detector, not a module
+    # If only WAF detection is requested, run minimal scan to trigger passive detection
     if args.waf_detect:
-        args.modules = 'wafdetect'
+        # Use security_headers module as lightweight test to trigger WAF detection
+        args.modules = 'security_headers'
         args.all = False
         args.nocrawl = True  # WAF detection doesn't need crawling
-        print("WAF detection mode enabled. Running only the WAF detection module.")
+        args.nopassive = False  # Ensure passive detection is enabled
+        print("WAF detection mode enabled. Running lightweight scan to detect WAF...")
 
     # Handle --all-enhanced flag
     if hasattr(args, 'all_enhanced') and args.all_enhanced:

@@ -16,9 +16,19 @@ python-docx>=0.8.11
 # Certificate Management
 cryptography>=41.0.0
 
+# WAF/Cloudflare Bypass (recommended)
+cloudscraper>=1.2.71
+
+# DNS resolution for subdomain enumeration (optional but recommended)
+dnspython>=2.4.0
+
 # Optional: Brotli compression support (recommended)
 # Uncomment if needed for br-compressed responses
 # brotli>=1.0.9
+
+# Optional: Headless browser for complex WAF challenges
+# Uncomment if cloudscraper doesn't work for certain sites
+# playwright>=1.40.0
 
 # Standard library dependencies (included with Python)
 # These are listed for documentation purposes only:

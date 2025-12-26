@@ -486,14 +486,14 @@ class ScanTabBuilder:
         group = QGroupBox("⚡ Quick Scan Presets")
         group.setStyleSheet("""
             QGroupBox {
-                background-color: #f5f5f5;
-                border: 2px solid #90CAF9;
+                background-color: #fafafa;
+                border: 2px solid #e0e0e0;
                 border-radius: 10px;
                 margin-top: 12px;
                 padding: 15px 10px 10px 10px;
                 font-size: 15px;
                 font-weight: bold;
-                color: #1976D2;
+                color: #424242;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
@@ -504,100 +504,89 @@ class ScanTabBuilder:
             }
         """)
 
-        layout = QGridLayout()
-        layout.setSpacing(12)
+        layout = QHBoxLayout()
+        layout.setSpacing(10)
 
         # Fast Scan
         fast = self._preset_card(
-            "🚀 FAST SCAN",
-            "Quick security check - 3 modules",
-            "Modules: XSS, SQLi, Command Injection\n"
-            "Threads: 20 | Timeout: 10s\n"
-            "Duration: ~15 minutes\n\n"
-            "Best for: Quick testing, CI/CD",
-            "#2196F3",
+            "🚀 Fast Scan",
+            "Quick security check",
+            "3 modules • 20 threads • ~15 min",
             lambda: self._apply_preset("fast")
         )
-        layout.addWidget(fast, 0, 0)
+        layout.addWidget(fast)
 
         # Full Scan
         full = self._preset_card(
-            "🔥 FULL SCAN",
-            "Complete security audit - ALL modules",
-            "Modules: ALL 25 modules\n"
-            "Threads: 30 | Timeout: 20s\n"
-            "Duration: ~60 minutes\n\n"
-            "Best for: Thorough testing",
-            "#4CAF50",
+            "🔥 Full Scan",
+            "Complete security audit",
+            "All modules • 30 threads • ~60 min",
             lambda: self._apply_preset("full")
         )
-        layout.addWidget(full, 0, 1)
+        layout.addWidget(full)
 
         # Stealth Scan
         stealth = self._preset_card(
-            "🥷 STEALTH SCAN",
-            "Low and slow - avoid detection",
-            "Modules: 5 key modules\n"
-            "Threads: 1 (single) | Timeout: 30s\n"
-            "Duration: ~2 hours\n\n"
-            "Best for: Avoiding IDS/WAF",
-            "#9C27B0",
+            "🥷 Stealth Scan",
+            "Low and slow",
+            "5 modules • 1 thread • ~2 hours",
             lambda: self._apply_preset("stealth")
         )
-        layout.addWidget(stealth, 0, 2)
+        layout.addWidget(stealth)
 
         # API Scan
         api = self._preset_card(
-            "🔌 API SCAN",
-            "API endpoint testing - 5 modules",
-            "Modules: SQLi, SSRF, XXE, SSTI, IDOR\n"
-            "Threads: 15 | Timeout: 15s\n"
-            "Duration: ~30 minutes\n\n"
-            "Best for: REST/GraphQL APIs",
-            "#FF9800",
+            "🔌 API Scan",
+            "API endpoint testing",
+            "5 modules • 15 threads • ~30 min",
             lambda: self._apply_preset("api")
         )
-        layout.addWidget(api, 0, 3)
+        layout.addWidget(api)
 
         group.setLayout(layout)
         return group
 
-    def _preset_card(self, title, subtitle, desc, color, on_click):
-        """Create preset card button"""
+    def _preset_card(self, title, subtitle, desc, on_click):
+        """Create preset card button with clean uniform design"""
         card = QPushButton()
-        card.setText(f"{title}\n{subtitle}\n\n{desc}")
-        card.setStyleSheet(f"""
-            QPushButton {{
-                background-color: white;
-                border: 3px solid {color};
+        card.setText(f"{title}\n{subtitle}\n{desc}")
+        card.setStyleSheet("""
+            QPushButton {
+                background-color: #ffffff;
+                border: 1px solid #bdbdbd;
                 border-radius: 8px;
-                padding: 12px;
-                text-align: left;
+                padding: 12px 10px;
+                text-align: center;
                 font-size: 11px;
                 color: #424242;
-            }}
-            QPushButton:hover {{
-                background-color: {color};
-                color: white;
-            }}
+                min-height: 70px;
+                max-width: 200px;
+            }
+            QPushButton:hover {
+                background-color: #e3f2fd;
+                border: 2px solid #1976D2;
+                color: #1565c0;
+            }
+            QPushButton:pressed {
+                background-color: #bbdefb;
+            }
         """)
-        card.setMinimumHeight(150)
         card.clicked.connect(on_click)
         return card
 
     def _create_modules_section(self):
-        """Module selection with collapsible categories in 3-column grid"""
+        """Module selection with collapsible categories in clean grid layout"""
         group = QGroupBox("📦 Vulnerability Modules")
         group.setStyleSheet("""
             QGroupBox {
-                background-color: #ffffff;
-                border: 2px solid #9575CD;
+                background-color: #fafafa;
+                border: 2px solid #e0e0e0;
                 border-radius: 10px;
                 margin-top: 12px;
                 padding: 15px 10px 10px 10px;
                 font-size: 15px;
                 font-weight: bold;
-                color: #6A1B9A;
+                color: #424242;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
@@ -609,14 +598,25 @@ class ScanTabBuilder:
         """)
 
         main_layout = QVBoxLayout()
-        main_layout.setSpacing(8)
+        main_layout.setSpacing(10)
 
-        # Select all
+        # Select all checkbox
         all_layout = QHBoxLayout()
         module_count = len(self.MODULE_INFO)
-        self.gui.all_modules_cb = QCheckBox(f"✓ SELECT ALL ({module_count} modules)")
+        self.gui.all_modules_cb = QCheckBox(f"Select All ({module_count} modules)")
         self.gui.all_modules_cb.setChecked(True)
-        self.gui.all_modules_cb.setStyleSheet("font-size: 12px; font-weight: bold; color: #6A1B9A;")
+        self.gui.all_modules_cb.setStyleSheet("""
+            QCheckBox {
+                font-size: 13px;
+                font-weight: bold;
+                color: #1976D2;
+                padding: 5px;
+            }
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+            }
+        """)
         self.gui.all_modules_cb.toggled.connect(self.gui.toggle_module_selection)
         all_layout.addWidget(self.gui.all_modules_cb)
         all_layout.addStretch()
@@ -624,21 +624,6 @@ class ScanTabBuilder:
 
         self.gui.module_checkboxes = {}
         self.gui.module_descriptions = self.MODULE_DESCRIPTIONS
-
-        # Category icons and colors
-        CATEGORY_STYLES = {
-            "Injection": {"icon": "💉", "color": "#d32f2f", "bg": "#ffebee"},
-            "File & Path": {"icon": "📁", "color": "#e65100", "bg": "#fff3e0"},
-            "Auth & Session": {"icon": "🔑", "color": "#7b1fa2", "bg": "#f3e5f5"},
-            "API Security": {"icon": "🔌", "color": "#1565c0", "bg": "#e3f2fd"},
-            "Recon": {"icon": "🔍", "color": "#2e7d32", "bg": "#e8f5e9"},
-            "Info Disclosure": {"icon": "📦", "color": "#f57c00", "bg": "#fff8e1"},
-            "Server & Network": {"icon": "🌐", "color": "#00838f", "bg": "#e0f7fa"},
-            "Security Config": {"icon": "🛡️", "color": "#5d4037", "bg": "#efebe9"},
-            "Advanced": {"icon": "⚡", "color": "#c62828", "bg": "#ffcdd2"},
-            "Cloud": {"icon": "☁️", "color": "#0277bd", "bg": "#e1f5fe"},
-            "Other": {"icon": "🔧", "color": "#616161", "bg": "#fafafa"},
-        }
 
         # Group modules by category
         categories = {}
@@ -655,7 +640,7 @@ class ScanTabBuilder:
 
         # Grid layout for categories - 3 columns per row
         cat_grid = QGridLayout()
-        cat_grid.setSpacing(10)
+        cat_grid.setSpacing(8)
         cat_grid.setContentsMargins(5, 5, 5, 5)
         cat_row, cat_col = 0, 0
         COLS = 3
@@ -665,60 +650,60 @@ class ScanTabBuilder:
                 continue
 
             modules_in_cat = categories[cat_name]
-            style = CATEGORY_STYLES.get(cat_name, CATEGORY_STYLES["Other"])
 
-            # Create collapsible box with readable styling
-            cat_box = self.CollapsibleBox(f"{style['icon']} {cat_name} ({len(modules_in_cat)})")
-            cat_box.toggle_button.setStyleSheet(f"""
-                QToolButton {{
-                    border: 2px solid {style['color']};
-                    background-color: {style['bg']};
-                    color: {style['color']};
+            # Create collapsible box with clean, uniform styling
+            cat_box = self.CollapsibleBox(f"{cat_name} ({len(modules_in_cat)})")
+            cat_box.toggle_button.setStyleSheet("""
+                QToolButton {
+                    border: 1px solid #bdbdbd;
+                    background-color: #ffffff;
+                    color: #424242;
                     font-weight: bold;
                     font-size: 12px;
-                    padding: 8px 10px;
+                    padding: 10px 12px;
                     text-align: left;
                     border-radius: 6px;
-                    min-height: 28px;
-                }}
-                QToolButton:hover {{
-                    background-color: {style['color']};
-                    color: white;
-                }}
+                    min-height: 32px;
+                }
+                QToolButton:hover {
+                    background-color: #e3f2fd;
+                    border-color: #1976D2;
+                    color: #1976D2;
+                }
             """)
 
             # Vertical list for modules in category
             cat_layout = QVBoxLayout()
-            cat_layout.setSpacing(4)
-            cat_layout.setContentsMargins(8, 8, 8, 8)
+            cat_layout.setSpacing(3)
+            cat_layout.setContentsMargins(10, 8, 10, 8)
 
             for mid, info in sorted(modules_in_cat, key=lambda x: x[1]['name']):
                 cb = QCheckBox(f"{info['icon']} {info['name']}")
                 cb.setChecked(True)
                 cb.setToolTip(f"{info['name']}\n{info['desc']}")
-                cb.setStyleSheet(f"""
-                    QCheckBox {{
-                        font-size: 12px;
-                        color: {'#333333' if info['active'] else '#666'};
-                        padding: 4px 2px;
-                        min-height: 20px;
-                    }}
-                    QCheckBox:hover {{
-                        background-color: {style['bg']};
-                        border-radius: 4px;
-                    }}
-                    QCheckBox::indicator {{
-                        width: 16px;
-                        height: 16px;
-                    }}
+                cb.setStyleSheet("""
+                    QCheckBox {
+                        font-size: 11px;
+                        color: #333333;
+                        padding: 3px 2px;
+                        min-height: 18px;
+                    }
+                    QCheckBox:hover {
+                        background-color: #e8f5e9;
+                        border-radius: 3px;
+                    }
+                    QCheckBox::indicator {
+                        width: 14px;
+                        height: 14px;
+                    }
                 """)
                 cb.toggled.connect(lambda checked, cb_ref=cb: self._on_individual_module_toggled())
                 self.gui.module_checkboxes[mid] = cb
                 cat_layout.addWidget(cb)
 
             cat_box.setContentLayout(cat_layout)
-            # More space per module: 45px each + 40px padding
-            cat_box.setContentHeight(max(100, len(modules_in_cat) * 45 + 40))
+            # Calculate height based on module count
+            cat_box.setContentHeight(max(80, len(modules_in_cat) * 28 + 20))
 
             # Add to grid
             cat_grid.addWidget(cat_box, cat_row, cat_col)
@@ -745,14 +730,14 @@ class ScanTabBuilder:
         group = QGroupBox("⚙️ Scan Settings")
         group.setStyleSheet("""
             QGroupBox {
-                background-color: #fff3e0;
-                border: 2px solid #FF9800;
+                background-color: #fafafa;
+                border: 2px solid #e0e0e0;
                 border-radius: 10px;
                 margin-top: 12px;
                 padding: 15px 10px 10px 10px;
                 font-size: 15px;
                 font-weight: bold;
-                color: #E65100;
+                color: #424242;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
@@ -768,72 +753,27 @@ class ScanTabBuilder:
 
         label_style = "font-size: 12px; color: #424242; font-weight: normal;"
 
-        # Better spinbox style with visible up/down buttons
+        # Clean spinbox style
         spinbox_style = """
             QSpinBox {
                 font-size: 13px;
                 padding: 8px 12px;
-                border: 2px solid #e0e0e0;
+                border: 1px solid #bdbdbd;
                 border-radius: 6px;
                 background-color: white;
                 min-width: 80px;
                 min-height: 32px;
             }
             QSpinBox:focus {
-                border: 2px solid #FF9800;
+                border: 2px solid #1976D2;
             }
-            QSpinBox::up-button {
-                subcontrol-origin: border;
-                subcontrol-position: top right;
-                width: 24px;
-                height: 16px;
-                border-left: 1px solid #e0e0e0;
-                border-bottom: 1px solid #e0e0e0;
-                border-top-right-radius: 4px;
+            QSpinBox::up-button, QSpinBox::down-button {
+                width: 20px;
                 background-color: #f5f5f5;
+                border: none;
             }
-            QSpinBox::up-button:hover {
-                background-color: #FF9800;
-            }
-            QSpinBox::up-button:pressed {
-                background-color: #E65100;
-            }
-            QSpinBox::up-arrow {
-                width: 10px;
-                height: 10px;
-                image: none;
-                border-left: 5px solid transparent;
-                border-right: 5px solid transparent;
-                border-bottom: 6px solid #666;
-            }
-            QSpinBox::up-arrow:hover {
-                border-bottom: 6px solid white;
-            }
-            QSpinBox::down-button {
-                subcontrol-origin: border;
-                subcontrol-position: bottom right;
-                width: 24px;
-                height: 16px;
-                border-left: 1px solid #e0e0e0;
-                border-bottom-right-radius: 4px;
-                background-color: #f5f5f5;
-            }
-            QSpinBox::down-button:hover {
-                background-color: #FF9800;
-            }
-            QSpinBox::down-button:pressed {
-                background-color: #E65100;
-            }
-            QSpinBox::down-arrow {
-                width: 10px;
-                height: 10px;
-                image: none;
-                border-left: 5px solid transparent;
-                border-right: 5px solid transparent;
-                border-top: 6px solid #666;
-            }
-            QSpinBox::down-arrow:hover {
-                border-top: 6px solid white;
+            QSpinBox::up-button:hover, QSpinBox::down-button:hover {
+                background-color: #e3f2fd;
             }
         """
 
@@ -841,14 +781,14 @@ class ScanTabBuilder:
             QComboBox {
                 font-size: 13px;
                 padding: 8px 12px;
-                border: 2px solid #e0e0e0;
+                border: 1px solid #bdbdbd;
                 border-radius: 6px;
                 background-color: white;
                 min-width: 100px;
                 min-height: 32px;
             }
             QComboBox:focus {
-                border: 2px solid #FF9800;
+                border: 2px solid #1976D2;
             }
             QComboBox::drop-down {
                 width: 24px;
@@ -858,7 +798,7 @@ class ScanTabBuilder:
                 border-bottom-right-radius: 4px;
             }
             QComboBox::drop-down:hover {
-                background-color: #FF9800;
+                background-color: #e3f2fd;
             }
         """
 

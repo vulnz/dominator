@@ -8,11 +8,15 @@
     "enabled": true,
     "passive": true,
     "cwe": "CWE-347",
+    "cwe_name": "Improper Verification of Cryptographic Signature",
     "owasp": "A02:2021",
-    "cvss": 7.5,
+    "owasp_name": "Cryptographic Failures",
+    "cvss": "7.5",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
     "tags": ["jwt", "token", "authentication", "signature", "algorithm-confusion"],
     "references": [
         "https://portswigger.net/web-security/jwt",
         "https://book.hacktricks.xyz/pentesting-web/hacking-jwt-json-web-tokens"
-    ]
+    ],
+    "remediation": "Use strong algorithms (RS256, ES256). Validate algorithm header matches expected. Use strong secrets. Set appropriate expiration times."
 }

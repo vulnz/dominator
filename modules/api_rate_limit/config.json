@@ -6,8 +6,11 @@
     "category": "API Testing",
     "severity": "medium",
     "cwe": "CWE-770",
+    "cwe_name": "Allocation of Resources Without Limits or Throttling",
     "owasp": "API4:2023",
+    "owasp_name": "Unrestricted Resource Consumption",
     "cvss": "5.3",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L",
     "enabled": true,
     "passive": false,
     "api_only": true,
@@ -15,5 +18,6 @@
     "references": [
         "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/",
         "https://cwe.mitre.org/data/definitions/770.html"
-    ]
+    ],
+    "remediation": "Implement rate limiting based on IP, user, or API key. Use token bucket or sliding window algorithms. Return 429 Too Many Requests when limits are exceeded."
 }

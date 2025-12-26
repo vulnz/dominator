@@ -434,15 +434,16 @@ class FindingDetailDialog(QDialog):
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
-        # Proof/Evidence
-        proof_group = QGroupBox("Proof of Concept / Evidence")
-        proof_layout = QVBoxLayout(proof_group)
-        proof_text = QTextEdit()
-        proof_text.setPlainText(self.finding.get('proof', 'No proof available'))
-        proof_text.setReadOnly(True)
-        proof_text.setFont(QFont("Consolas", 9))
-        proof_layout.addWidget(proof_text)
-        layout.addWidget(proof_group)
+        # Evidence (check both 'evidence' and 'proof' for compatibility)
+        evidence_group = QGroupBox("Evidence / Proof of Concept")
+        evidence_layout = QVBoxLayout(evidence_group)
+        evidence_text = QTextEdit()
+        evidence = self.finding.get('evidence', '') or self.finding.get('proof', '')
+        evidence_text.setPlainText(evidence if evidence else 'No evidence available')
+        evidence_text.setReadOnly(True)
+        evidence_text.setFont(QFont("Consolas", 9))
+        evidence_layout.addWidget(evidence_text)
+        layout.addWidget(evidence_group)
 
         # Payload
         payload_group = QGroupBox("Payload Used")

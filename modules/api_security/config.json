@@ -4,11 +4,14 @@
   "enabled": true,
   "severity": "High",
   "cwe": "CWE-639",
-  "cvss": 8.2,
+  "cwe_name": "Authorization Bypass Through User-Controlled Key",
+  "cvss": "8.2",
   "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N",
   "owasp": "API1:2023",
+  "owasp_name": "Broken Object Level Authorization",
   "payload_limit": 20,
   "early_exit": false,
   "test_methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE"],
-  "bola_test_ids": [1, 2, 3, 999, 9999, -1, 0, "admin", "test"]
+  "bola_test_ids": [1, 2, 3, 999, 9999, -1, 0, "admin", "test"],
+  "remediation": "Implement object-level authorization checks. Validate user permissions for each resource access. Use indirect object references."
 }

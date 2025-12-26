@@ -350,11 +350,20 @@ class APIBOLAModule(BaseModule):
         """
         Check if BOLA is likely based on response comparison
 
+        IMPORTANT: Strong evidence required to avoid false positives!
+        - Must have clear ID change in response
+        - Must have meaningful data difference (not just timestamps/tokens)
+        - Must not be an error response
+
         Returns:
             (is_vulnerable: bool, evidence: str)
         """
         # Both should return 200 OK for BOLA
         if test.status_code != 200:
+            return False, ""
+
+        # Also check baseline was successful
+        if baseline.status_code != 200:
             return False, ""
 
         # Response should be different (different object data)
@@ -365,42 +374,73 @@ class APIBOLAModule(BaseModule):
         if baseline_text == test_text:
             return False, ""
 
-        # Check for different object data
-        try:
-            # FIX: HTTPResponse doesn't have .json() method, use json.loads() instead
-            baseline_json = json.loads(baseline_text) if baseline_text and baseline_text.strip().startswith(('{', '[')) else {}
-            test_json = json.loads(test_text) if test_text and test_text.strip().startswith(('{', '[')) else {}
+        # FP Prevention: Skip if response looks like an error
+        error_indicators = [
+            'not found', 'does not exist', 'invalid id', 'unauthorized',
+            'forbidden', 'access denied', 'no permission', 'error',
+            '"status":"error"', '"success":false', '"success": false'
+        ]
+        test_lower = test_text.lower()
+        if any(err in test_lower for err in error_indicators):
+            return False, ""
 
-            # Look for ID fields that changed
-            if isinstance(baseline_json, dict) and isinstance(test_json, dict):
-                # Check if returned ID matches the requested ID
-                for key in ['id', 'user_id', 'userId', '_id', 'ID']:
-                    if key in test_json:
-                        returned_id = str(test_json[key])
-                        if returned_id == test_id or returned_id != original_id:
-                            evidence = f"BOLA Confirmed!\n\n"
-                            evidence += f"**Original ID:** {original_id}\n"
-                            evidence += f"**Test ID:** {test_id}\n"
-                            evidence += f"**Returned ID in response:** {returned_id}\n\n"
-                            evidence += f"**Different data returned:**\n"
+        # FP Prevention: Skip very short responses (likely errors)
+        if len(test_text) < 50:
+            return False, ""
+
+        # Check for different object data in JSON response
+        try:
+            baseline_json = json.loads(baseline_text) if baseline_text and baseline_text.strip().startswith(('{', '[')) else None
+            test_json = json.loads(test_text) if test_text and test_text.strip().startswith(('{', '[')) else None
+
+            if baseline_json is None or test_json is None:
+                return False, ""
+
+            # Must be dict objects with ID fields
+            if not isinstance(baseline_json, dict) or not isinstance(test_json, dict):
+                # Could be array - check first item
+                if isinstance(test_json, list) and len(test_json) > 0:
+                    test_json = test_json[0]
+                    baseline_json = baseline_json[0] if isinstance(baseline_json, list) and len(baseline_json) > 0 else {}
+                else:
+                    return False, ""
+
+            # STRONG EVIDENCE: Check if returned ID matches the REQUESTED test ID
+            id_fields = ['id', 'user_id', 'userId', '_id', 'ID', 'uuid', 'uid']
+            for key in id_fields:
+                if key in test_json and key in baseline_json:
+                    returned_id = str(test_json[key])
+                    original_returned_id = str(baseline_json[key])
+
+                    # CONFIRMED BOLA: Requested ID X, got back object with ID X
+                    if returned_id == test_id and original_returned_id == original_id:
+                        # Additional check: Must have other different fields (not just ID)
+                        diff_fields = []
+                        for field in test_json:
+                            if field not in baseline_json:
+                                diff_fields.append(field)
+                            elif test_json[field] != baseline_json[field]:
+                                # Skip dynamic fields that change per-request
+                                if field.lower() not in ['timestamp', 'created_at', 'updated_at',
+                                                          'last_login', 'token', 'session', 'csrf']:
+                                    diff_fields.append(field)
+
+                        if len(diff_fields) >= 2:  # At least 2 different fields
+                            evidence = f"**BOLA CONFIRMED** - Accessed different user's object!\n\n"
+                            evidence += f"**Original Request ID:** {original_id}\n"
+                            evidence += f"**Test Request ID:** {test_id}\n"
+                            evidence += f"**Response returned ID:** {returned_id}\n\n"
+                            evidence += f"**Different fields detected:** {', '.join(diff_fields[:5])}\n"
                             evidence += f"Original response: {len(baseline_text)} bytes\n"
                             evidence += f"Test response: {len(test_text)} bytes\n\n"
                             evidence += f"**Impact:** Unauthorized access to other users' data"
                             return True, evidence
 
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, KeyError, TypeError, IndexError):
             pass
 
-        # Different response length might indicate different data
-        len_diff = abs(len(baseline_text) - len(test_text))
-        if len_diff > 50:  # Significant difference
-            evidence = f"Possible BOLA - Different response data\n\n"
-            evidence += f"**Original ID:** {original_id} ({len(baseline_text)} bytes)\n"
-            evidence += f"**Test ID:** {test_id} ({len(test_text)} bytes)\n"
-            evidence += f"**Difference:** {len_diff} bytes\n\n"
-            evidence += f"Manual verification recommended."
-            return True, evidence
-
+        # FP Prevention: Don't report based on length difference alone
+        # This caused too many false positives
         return False, ""
 
 

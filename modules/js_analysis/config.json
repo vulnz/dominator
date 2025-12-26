@@ -6,9 +6,13 @@
     "category": "Information Disclosure",
     "severity": "high",
     "cwe": "CWE-200",
+    "cwe_name": "Exposure of Sensitive Information to an Unauthorized Actor",
     "owasp": "A01:2021",
+    "owasp_name": "Broken Access Control",
     "cvss": "7.5",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
     "enabled": true,
     "passive": true,
-    "tags": ["javascript", "secrets", "api-keys", "source-maps", "debug", "react", "vue", "angular"]
+    "tags": ["javascript", "secrets", "api-keys", "source-maps", "debug", "react", "vue", "angular"],
+    "remediation": "Never embed secrets in client-side code. Disable source maps in production. Use environment variables for API keys."
 }

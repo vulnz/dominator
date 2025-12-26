@@ -4,12 +4,17 @@
     "author": "Dominator Team",
     "version": "1.0",
     "category": "Discovery",
-    "severity": "varies",
+    "severity": "Medium",
     "cwe": "CWE-16",
+    "cwe_name": "Configuration",
     "owasp": "A05:2021",
+    "owasp_name": "Security Misconfiguration",
+    "cvss": "5.3",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
     "tags": ["iis", "web.config", "asp.net", "windows", "info-disclosure"],
     "references": [
         "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/",
         "https://docs.microsoft.com/en-us/iis/configuration/system.webserver/"
-    ]
+    ],
+    "remediation": "Block access to web.config and other configuration files. Configure proper MIME type restrictions. Remove unnecessary IIS features."
 }

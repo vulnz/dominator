@@ -27,10 +27,28 @@ class ResultsHandler:
         self.gui = gui
         self.current_report_file = None  # Track current scan's report file
 
+    def add_vulnerability_with_data(self, severity, description, module, target, finding_data):
+        """
+        Add vulnerability with full finding data (request, response, evidence, remediation)
+
+        This is called when the scanner emits JSON finding data via GUI_FINDING_JSON.
+
+        Args:
+            severity: Severity level (CRITICAL, HIGH, MEDIUM, LOW)
+            description: Vulnerability description
+            module: Module that found the vulnerability
+            target: Target URL
+            finding_data: Full finding dictionary with all fields
+        """
+        # Call the regular add_vulnerability with the full finding_data
+        self.add_vulnerability(severity, description, module, target, finding_data)
+
     def add_vulnerability(self, severity, description, module="", target="", finding_data=None):
         """Add vulnerability to the results list and table"""
-        # Update counters
-        if severity in self.gui.vuln_counts:
+        # Update counters (thread-safe)
+        if hasattr(self.gui, 'increment_vuln_count'):
+            self.gui.increment_vuln_count(severity)
+        elif severity in self.gui.vuln_counts:
             self.gui.vuln_counts[severity] += 1
 
         # Update display
@@ -38,7 +56,7 @@ class ResultsHandler:
 
         # Update progress tab builder with vulnerability count
         if hasattr(self.gui, 'progress_tab_builder'):
-            total_vulns = sum(self.gui.vuln_counts.values())
+            total_vulns = self.gui.get_total_vulns() if hasattr(self.gui, 'get_total_vulns') else sum(self.gui.vuln_counts.values())
             self.gui.progress_tab_builder.update_dashboard_stats(vulns=total_vulns)
 
             # Log the finding
@@ -105,7 +123,8 @@ class ResultsHandler:
             self.gui.results_tab_builder.add_url_to_tree(parsed_target, params, vuln_info)
 
         # Flash results tab to show new finding
-        self.gui.tabs.tabBar().setTabTextColor(2, QColor('#ff0000'))  # Results tab (index 2)
+        from GUI.dominator_gui import DominatorGUI
+        self.gui.tabs.tabBar().setTabTextColor(DominatorGUI.TAB_RESULTS, QColor('#ff0000'))
 
     def update_vuln_display(self):
         """Update vulnerability count displays"""
@@ -255,9 +274,9 @@ class ResultsHandler:
             self.gui.tech_table.setItem(row, 3, QTableWidgetItem(source))  # Found On
 
         elif info_type == "title":
-            # Check if already exists
+            # Check if already exists - FIXED: Check correct columns (URL is now column 1, Title is column 2)
             for row in range(self.gui.scope_table.rowCount()):
-                if (self.gui.scope_table.item(row, 0) and self.gui.scope_table.item(row, 0).text() == data2 and
+                if (self.gui.scope_table.item(row, 1) and self.gui.scope_table.item(row, 1).text() == data2 and
                     self.gui.scope_table.item(row, 2) and self.gui.scope_table.item(row, 2).text() == data1):
                     return
 
@@ -265,10 +284,13 @@ class ResultsHandler:
             self.gui.scope_table.insertRow(row)
 
             # data1 = title, data2 = url, data3 = unused
-            self.gui.scope_table.setItem(row, 0, QTableWidgetItem(data2))  # URL
-            self.gui.scope_table.setItem(row, 1, QTableWidgetItem("In Scope"))  # Status
+            # FIXED: Correct column mapping - Status, URL, Title, Tech, Findings, Actions
+            self.gui.scope_table.setItem(row, 0, QTableWidgetItem("In Scope"))  # Status
+            self.gui.scope_table.setItem(row, 1, QTableWidgetItem(data2))  # URL
             self.gui.scope_table.setItem(row, 2, QTableWidgetItem(data1))  # Title
             self.gui.scope_table.setItem(row, 3, QTableWidgetItem(""))  # Technologies (will be updated)
+            self.gui.scope_table.setItem(row, 4, QTableWidgetItem("0"))  # Findings count
+            self.gui.scope_table.setItem(row, 5, QTableWidgetItem(""))  # Actions (buttons will be added)
 
             # Add to Site Tree
             if data2 and hasattr(self.gui, 'results_tab_builder'):

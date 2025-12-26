@@ -1,0 +1,31 @@
+{
+    "name": "XML Injection",
+    "description": "Detects XML injection vulnerabilities where user input is incorporated into XML documents without proper validation, potentially allowing manipulation of XML structure and data",
+    "author": "Dominator Team",
+    "version": "1.0.0",
+    "category": "injection",
+    "severity": "High",
+    "cwe": "CWE-91",
+    "cwe_name": "XML Injection (aka Blind XPath Injection)",
+    "owasp": "A03:2021",
+    "owasp_name": "Injection",
+    "cvss": "7.5",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+    "remediation": "Use parameterized XML APIs. Validate and sanitize all user input before incorporating into XML. Use XML Schema validation. Disable DTD processing if not needed. Use safe XML parsers configured to prevent injection.",
+    "references": [
+        "https://owasp.org/www-community/vulnerabilities/XML_Injection",
+        "https://cwe.mitre.org/data/definitions/91.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/XML_Security_Cheat_Sheet.html"
+    ],
+    "enabled": true,
+    "risk_level": "high",
+    "tags": ["injection", "xml", "soap", "api"],
+    "parameters": {
+        "test_get": true,
+        "test_post": true,
+        "test_xml_body": true,
+        "test_soap": true,
+        "max_payloads": 20,
+        "timeout": 10
+    }
+}

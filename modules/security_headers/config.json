@@ -6,9 +6,13 @@
     "category": "Information Disclosure",
     "severity": "medium",
     "cwe": "CWE-16",
+    "cwe_name": "Configuration",
     "owasp": "A05:2021",
+    "owasp_name": "Security Misconfiguration",
     "cvss": "5.0",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N",
     "enabled": true,
     "passive": true,
-    "tags": ["headers", "csp", "hsts", "clickjacking", "xss", "drheader"]
+    "tags": ["headers", "csp", "hsts", "clickjacking", "xss", "drheader"],
+    "remediation": "Implement recommended security headers: Strict-Transport-Security, Content-Security-Policy, X-Frame-Options, X-Content-Type-Options, Referrer-Policy."
 }

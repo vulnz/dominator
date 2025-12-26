@@ -27,7 +27,7 @@ class ScanWizard(QDialog):
         super().__init__(parent)
         self.config = {}
         self.current_step = 0
-        self.total_steps = 8
+        self.total_steps = 9  # Fixed: Was 8 but there are 9 steps (0-8)
         self.init_ui()
 
     def init_ui(self):
@@ -85,11 +85,11 @@ class ScanWizard(QDialog):
         self.stack.addWidget(self._create_step_target())       # Step 1
         self.stack.addWidget(self._create_step_tech_detect())  # Step 2 - Technology Detection
         self.stack.addWidget(self._create_step_scan_type())    # Step 3
-        self.stack.addWidget(self._create_step_modules())      # Step 3
-        self.stack.addWidget(self._create_step_headers())      # Step 4
-        self.stack.addWidget(self._create_step_payloads())     # Step 5
-        self.stack.addWidget(self._create_step_settings())     # Step 6
-        self.stack.addWidget(self._create_step_confirm())      # Step 7
+        self.stack.addWidget(self._create_step_modules())      # Step 4 - Fixed: Was labeled "Step 3"
+        self.stack.addWidget(self._create_step_headers())      # Step 5
+        self.stack.addWidget(self._create_step_payloads())     # Step 6
+        self.stack.addWidget(self._create_step_settings())     # Step 7
+        self.stack.addWidget(self._create_step_confirm())      # Step 8
 
         layout.addWidget(self.stack)
 
@@ -1150,7 +1150,7 @@ class ScanWizard(QDialog):
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
-        # Threading
+        # Threading & Performance
         thread_group = QGroupBox("Performance")
         thread_layout = QGridLayout()
 
@@ -1158,22 +1158,109 @@ class ScanWizard(QDialog):
         self.threads_spin = QSpinBox()
         self.threads_spin.setRange(1, 50)
         self.threads_spin.setValue(10)
+        self.threads_spin.setToolTip("Number of concurrent threads for scanning")
         thread_layout.addWidget(self.threads_spin, 0, 1)
 
-        thread_layout.addWidget(QLabel("Timeout (seconds):"), 0, 2)
+        thread_layout.addWidget(QLabel("Request Timeout (s):"), 0, 2)
         self.timeout_spin = QSpinBox()
         self.timeout_spin.setRange(5, 300)
         self.timeout_spin.setValue(15)
+        self.timeout_spin.setToolTip("Timeout for each HTTP request in seconds")
         thread_layout.addWidget(self.timeout_spin, 0, 3)
-
-        thread_layout.addWidget(QLabel("Max Scan Time (min):"), 1, 0)
-        self.max_time_spin = QSpinBox()
-        self.max_time_spin.setRange(1, 300)
-        self.max_time_spin.setValue(45)
-        thread_layout.addWidget(self.max_time_spin, 1, 1)
 
         thread_group.setLayout(thread_layout)
         layout.addWidget(thread_group)
+
+        # Time Limit Section
+        time_group = QGroupBox("⏱️ Scan Time Limit")
+        time_layout = QVBoxLayout()
+
+        # Enable time limit checkbox
+        self.enable_time_limit_cb = QCheckBox("Enable scan time limit")
+        self.enable_time_limit_cb.setChecked(True)
+        self.enable_time_limit_cb.setToolTip("Stop scan after specified time to prevent long-running scans")
+        self.enable_time_limit_cb.stateChanged.connect(self._toggle_time_limit)
+        time_layout.addWidget(self.enable_time_limit_cb)
+
+        # Time limit controls
+        self.time_limit_widget = QWidget()
+        time_limit_layout = QHBoxLayout(self.time_limit_widget)
+        time_limit_layout.setContentsMargins(20, 5, 0, 5)
+
+        time_limit_layout.addWidget(QLabel("Maximum scan time:"))
+        self.max_time_spin = QSpinBox()
+        self.max_time_spin.setRange(1, 1440)  # 1 min to 24 hours
+        self.max_time_spin.setValue(45)
+        self.max_time_spin.setSuffix(" minutes")
+        self.max_time_spin.setToolTip("Scan will stop after this duration")
+        time_limit_layout.addWidget(self.max_time_spin)
+
+        # Quick time presets
+        time_limit_layout.addWidget(QLabel("  Presets:"))
+        preset_15 = QPushButton("15m")
+        preset_15.setFixedWidth(40)
+        preset_15.clicked.connect(lambda: self.max_time_spin.setValue(15))
+        time_limit_layout.addWidget(preset_15)
+
+        preset_30 = QPushButton("30m")
+        preset_30.setFixedWidth(40)
+        preset_30.clicked.connect(lambda: self.max_time_spin.setValue(30))
+        time_limit_layout.addWidget(preset_30)
+
+        preset_60 = QPushButton("1h")
+        preset_60.setFixedWidth(40)
+        preset_60.clicked.connect(lambda: self.max_time_spin.setValue(60))
+        time_limit_layout.addWidget(preset_60)
+
+        preset_120 = QPushButton("2h")
+        preset_120.setFixedWidth(40)
+        preset_120.clicked.connect(lambda: self.max_time_spin.setValue(120))
+        time_limit_layout.addWidget(preset_120)
+
+        time_limit_layout.addStretch()
+        time_layout.addWidget(self.time_limit_widget)
+
+        time_group.setLayout(time_layout)
+        layout.addWidget(time_group)
+
+        # Subdomain Scanning Section
+        subdomain_group = QGroupBox("🌐 Subdomain Scanning")
+        subdomain_layout = QVBoxLayout()
+
+        # Enable subdomain enumeration
+        self.enum_subdomains_cb = QCheckBox("Enumerate subdomains before scanning")
+        self.enum_subdomains_cb.setToolTip("Discover subdomains using passive techniques (crt.sh, DNS, etc.)")
+        self.enum_subdomains_cb.stateChanged.connect(self._toggle_subdomain_options)
+        subdomain_layout.addWidget(self.enum_subdomains_cb)
+
+        # Subdomain options (hidden by default)
+        self.subdomain_options_widget = QWidget()
+        subdomain_options_layout = QGridLayout(self.subdomain_options_widget)
+        subdomain_options_layout.setContentsMargins(20, 5, 0, 5)
+
+        # Scan subdomains checkbox
+        self.scan_subdomains_cb = QCheckBox("Also scan discovered subdomains")
+        self.scan_subdomains_cb.setToolTip("Run vulnerability scans on discovered subdomains")
+        subdomain_options_layout.addWidget(self.scan_subdomains_cb, 0, 0, 1, 2)
+
+        # Subdomain limit
+        subdomain_options_layout.addWidget(QLabel("Max subdomains to scan:"), 1, 0)
+        self.subdomain_limit_spin = QSpinBox()
+        self.subdomain_limit_spin.setRange(1, 100)
+        self.subdomain_limit_spin.setValue(10)
+        self.subdomain_limit_spin.setToolTip("Limit the number of subdomains to scan (to control scan time)")
+        subdomain_options_layout.addWidget(self.subdomain_limit_spin, 1, 1)
+
+        # Subdomain takeover check
+        self.subdomain_takeover_cb = QCheckBox("Check for subdomain takeover vulnerabilities")
+        self.subdomain_takeover_cb.setToolTip("Test if discovered subdomains are vulnerable to takeover")
+        subdomain_options_layout.addWidget(self.subdomain_takeover_cb, 2, 0, 1, 2)
+
+        self.subdomain_options_widget.setVisible(False)
+        subdomain_layout.addWidget(self.subdomain_options_widget)
+
+        subdomain_group.setLayout(subdomain_layout)
+        layout.addWidget(subdomain_group)
 
         # Output format
         output_group = QGroupBox("Output")
@@ -1207,6 +1294,14 @@ class ScanWizard(QDialog):
         layout.addStretch()
 
         return widget
+
+    def _toggle_time_limit(self, state):
+        """Toggle time limit options visibility"""
+        self.time_limit_widget.setEnabled(state == Qt.Checked)
+
+    def _toggle_subdomain_options(self, state):
+        """Toggle subdomain options visibility"""
+        self.subdomain_options_widget.setVisible(state == Qt.Checked)
 
     def _create_step_confirm(self):
         """Step 5: Confirmation"""
@@ -1394,6 +1489,17 @@ class ScanWizard(QDialog):
                 )
                 return False
 
+        # FIXED: Validate module selection on modules step (step 4)
+        if self.current_step == 4:  # Modules step
+            selected_count = sum(1 for cb in self.module_checkboxes.values() if cb.isChecked())
+            if selected_count == 0:
+                QMessageBox.warning(
+                    self, "No Modules Selected",
+                    "Please select at least one security module to scan with.\n\n"
+                    "Scanning without modules will produce no results."
+                )
+                return False
+
         return True
 
     def update_summary(self):
@@ -1433,8 +1539,32 @@ class ScanWizard(QDialog):
         has_auth = self.auth_type_combo.currentText() != "None"
         has_payloads = bool(self.payloads_input.toPlainText().strip())
 
+        # Time limit
+        time_limit_enabled = self.enable_time_limit_cb.isChecked()
+        time_limit_str = f"{self.max_time_spin.value()} minutes" if time_limit_enabled else "No limit"
+
+        # Subdomain settings
+        enum_subdomains = self.enum_subdomains_cb.isChecked()
+        scan_subdomains = self.scan_subdomains_cb.isChecked() if enum_subdomains else False
+        subdomain_limit = self.subdomain_limit_spin.value() if enum_subdomains else 0
+        subdomain_takeover = self.subdomain_takeover_cb.isChecked() if enum_subdomains else False
+
         # Mode icons
         mode_icons = {"web": "🌐", "api": "🔌", "graphql": "📊"}
+
+        # Build subdomain section
+        subdomain_section = ""
+        if enum_subdomains:
+            subdomain_section = f"""
+Subdomain Scanning:
+   - Enumerate subdomains: Yes
+   - Scan subdomains: {'Yes (max ' + str(subdomain_limit) + ')' if scan_subdomains else 'No'}
+   - Takeover check: {'Yes' if subdomain_takeover else 'No'}
+"""
+        else:
+            subdomain_section = """
+Subdomain Scanning: Disabled
+"""
 
         summary = f"""SCAN CONFIGURATION SUMMARY
 {'='*40}
@@ -1445,8 +1575,9 @@ Target: {target}
 
 Scan Type: {scan_type.upper()}
 
-Modules ({len(selected_modules)}/25):
-   {', '.join(selected_modules) if selected_modules else 'None selected'}
+Modules ({len(selected_modules)}/{len(self.module_checkboxes)}):
+   {', '.join(selected_modules[:10]) if selected_modules else 'None selected'}
+   {'... and ' + str(len(selected_modules) - 10) + ' more' if len(selected_modules) > 10 else ''}
 
 Authentication:
    - Custom Headers: {'Yes' if has_headers else 'No'}
@@ -1458,9 +1589,9 @@ Advanced:
 
 Performance:
    - Threads: {self.threads_spin.value()}
-   - Timeout: {self.timeout_spin.value()}s
-   - Max Time: {self.max_time_spin.value()} min
-
+   - Request Timeout: {self.timeout_spin.value()}s
+   - Time Limit: {time_limit_str}
+{subdomain_section}
 Output Format: {self.format_combo.currentText()}
 
 {'='*40}
@@ -1473,6 +1604,25 @@ Ready to start scan!
         # Collect all configuration
         target = self.target_input.text().strip()
         multi_targets = self.multi_target_input.toPlainText().strip()
+
+        # Auto-fix URLs missing scheme (http:// or https://)
+        if target and not target.startswith(('http://', 'https://')):
+            original_target = target
+            target = f'https://{target}'
+            print(f"[*] Wizard: Auto-fixed URL: '{original_target}' -> '{target}'")
+
+        # Fix multi-targets too
+        if multi_targets:
+            fixed_multi = []
+            for t in multi_targets.split('\n'):
+                t = t.strip()
+                if t and not t.startswith(('http://', 'https://')):
+                    original = t
+                    t = f'https://{t}'
+                    print(f"[*] Wizard: Auto-fixed URL: '{original}' -> '{t}'")
+                if t:
+                    fixed_multi.append(t)
+            multi_targets = '\n'.join(fixed_multi)
 
         # Get scan mode (web/api/graphql)
         scan_mode = "web"
@@ -1509,6 +1659,16 @@ Ready to start scan!
             module_key = self.payload_module_combo.currentText().split(' - ')[0]
             custom_payloads[module_key] = payloads_text.split('\n')
 
+        # Time limit settings
+        time_limit_enabled = self.enable_time_limit_cb.isChecked()
+        max_time = self.max_time_spin.value() if time_limit_enabled else 0  # 0 = no limit
+
+        # Subdomain settings
+        enum_subdomains = self.enum_subdomains_cb.isChecked()
+        scan_subdomains = self.scan_subdomains_cb.isChecked() if enum_subdomains else False
+        subdomain_limit = self.subdomain_limit_spin.value() if enum_subdomains else 10
+        subdomain_takeover = self.subdomain_takeover_cb.isChecked() if enum_subdomains else False
+
         self.config = {
             'target': target if target else multi_targets.split('\n')[0],
             'targets': multi_targets.split('\n') if multi_targets else [target],
@@ -1517,11 +1677,18 @@ Ready to start scan!
             'modules': selected_modules,
             'threads': self.threads_spin.value(),
             'timeout': self.timeout_spin.value(),
-            'max_time': self.max_time_spin.value(),
             'format': self.format_combo.currentText().lower(),
             'verbose': self.verbose_cb.isChecked(),
             'follow_redirects': self.follow_redirects_cb.isChecked(),
-            # New options
+            # Time limit options
+            'time_limit_enabled': time_limit_enabled,
+            'max_time': max_time,  # in minutes, 0 = no limit
+            # Subdomain options
+            'enum_subdomains': enum_subdomains,
+            'scan_subdomains': scan_subdomains,
+            'subdomain_limit': subdomain_limit,
+            'subdomain_takeover': subdomain_takeover,
+            # Auth options
             'custom_headers': headers,
             'cookies': self.cookies_input.toPlainText().strip(),
             'auth_type': self.auth_type_combo.currentText(),
@@ -1568,7 +1735,13 @@ Ready to start scan!
                 'threads': self.config['threads'],
                 'timeout': self.config['timeout'],
                 'max_time': self.config['max_time'],
-                'format': self.config['format']
+                'time_limit_enabled': self.config.get('time_limit_enabled', True),
+                'format': self.config['format'],
+                # Subdomain options
+                'enum_subdomains': self.config.get('enum_subdomains', False),
+                'scan_subdomains': self.config.get('scan_subdomains', False),
+                'subdomain_limit': self.config.get('subdomain_limit', 10),
+                'subdomain_takeover': self.config.get('subdomain_takeover', False),
             },
             'schedule_type': 'once',
             'next_run': schedule_dt.isoformat(),

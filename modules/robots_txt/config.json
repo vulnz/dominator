@@ -6,10 +6,15 @@
     "category": "Discovery",
     "severity": "Info",
     "cwe": "CWE-200",
+    "cwe_name": "Exposure of Sensitive Information to an Unauthorized Actor",
     "owasp": "A01:2021",
+    "owasp_name": "Broken Access Control",
+    "cvss": "0.0",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N",
     "tags": ["robots", "recon", "info-disclosure", "hidden-paths"],
     "references": [
         "https://developers.google.com/search/docs/crawling-indexing/robots/robots_txt",
         "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/03-Review_Webserver_Metafiles_for_Information_Leakage"
-    ]
+    ],
+    "remediation": "Avoid listing sensitive paths in robots.txt. Use authentication for sensitive areas instead of hiding them from crawlers."
 }

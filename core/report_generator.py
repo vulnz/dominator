@@ -227,12 +227,30 @@ class ReportGenerator:
                             else:
                                 f.write(f"│   curl -X POST '{url}'\n")
 
-                        # Remediation
-                        if result.get('remediation'):
-                            f.write("│\n│ ─── Remediation ───\n")
-                            rem_lines = self._wrap_text(result.get('remediation'), 75)
-                            for line in rem_lines:
-                                f.write(f"│ {line}\n")
+                        # Remediation/Solution
+                        f.write("│\n│ ─── Solution / Remediation ───\n")
+                        remediation = result.get('remediation', 'Review and fix according to security best practices.')
+                        rem_lines = self._wrap_text(remediation, 75)
+                        for line in rem_lines:
+                            f.write(f"│ {line}\n")
+
+                        # HTTP Request
+                        if result.get('request'):
+                            f.write("│\n│ ─── HTTP Request ───\n")
+                            request_text = result.get('request', '')[:1000]
+                            for line in request_text.split('\n')[:15]:
+                                f.write(f"│ {line[:75]}\n")
+                            if len(request_text) > 1000:
+                                f.write("│ ... (truncated)\n")
+
+                        # HTTP Response
+                        if result.get('response'):
+                            f.write("│\n│ ─── HTTP Response (relevant part) ───\n")
+                            response_text = result.get('response', '')[:1500]
+                            for line in response_text.split('\n')[:20]:
+                                f.write(f"│ {line[:75]}\n")
+                            if len(response_text) > 1500:
+                                f.write("│ ... (truncated)\n")
 
                         f.write(f"└{'─'*79}┘\n")
 
@@ -439,8 +457,9 @@ class ReportGenerator:
         select {{ padding: 8px 12px; background: #2a2a4a; border: 1px solid #444; color: #fff; border-radius: 4px; }}
 
         /* Expandable Details */
-        .vuln-details {{ display: none; background: #1a1a2e; padding: 15px 20px; border-left: 3px solid #e94560; margin: 10px 0; }}
-        .vuln-details.show {{ display: block; }}
+        .vuln-details {{ max-height: 0; overflow: hidden; background: #1a1a2e; padding: 0 20px; border-left: 3px solid #e94560; margin: 10px 0; transition: max-height 0.3s ease, padding 0.3s ease; }}
+        .vuln-details.show {{ max-height: none; overflow: visible; padding: 15px 20px; }}
+        @media print {{ .vuln-details {{ max-height: none !important; overflow: visible !important; padding: 15px 20px !important; }} }}
         .detail-grid {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }}
         .detail-item label {{ display: block; color: #888; font-size: 11px; text-transform: uppercase; margin-bottom: 3px; }}
         .detail-item span {{ color: #fff; }}
@@ -588,10 +607,21 @@ class ReportGenerator:
                                         <div style="margin-top:10px;"><label style="color:#888;font-size:11px;">EVIDENCE / PROOF</label>
                                             <div class="evidence-box">{html.escape(str(vuln.get('evidence', vuln.get('description', 'No evidence')))[:1500])}</div>
                                         </div>
+                                        <div style="margin-top:10px;"><label style="color:#888;font-size:11px;">SOLUTION / REMEDIATION</label>
+                                            <div style="background:#1a3a1a;padding:10px;border-radius:4px;margin-top:5px;color:#90EE90;border-left:3px solid #27ae60;">{html.escape(str(vuln.get('remediation', 'Review and fix according to security best practices.')))}</div>
+                                        </div>
+                                        <details style="margin-top:10px;" onclick="event.stopPropagation()">
+                                            <summary style="cursor:pointer;color:#e94560;font-weight:bold;padding:5px;background:#2a2a4a;border-radius:3px;">📤 HTTP Request</summary>
+                                            <div class="evidence-box" style="margin-top:5px;">{html.escape(str(vuln.get('request', 'No request captured'))[:2000])}</div>
+                                        </details>
+                                        <details style="margin-top:10px;" onclick="event.stopPropagation()">
+                                            <summary style="cursor:pointer;color:#e94560;font-weight:bold;padding:5px;background:#2a2a4a;border-radius:3px;">📥 HTTP Response</summary>
+                                            <div class="evidence-box" style="margin-top:5px;max-height:300px;overflow-y:auto;">{html.escape(str(vuln.get('response', 'No response captured'))[:3000])}</div>
+                                        </details>
                                         <div style="margin-top:10px;display:flex;gap:10px;">
-                                            <button onclick="copyToClipboard('{html.escape(vuln.get('url', ''))}')" class="btn btn-secondary" style="font-size:11px;">📋 Copy URL</button>
-                                            <button onclick="copyToClipboard(`{html.escape(str(vuln.get('payload', '')).replace('`',''))}`)" class="btn btn-secondary" style="font-size:11px;">📋 Copy Payload</button>
-                                            <button onclick="copyFinding('{id(vuln)}')" class="btn btn-primary" style="font-size:11px;">📋 Copy Full Finding</button>
+                                            <button onclick="event.stopPropagation(); copyToClipboard('{html.escape(vuln.get('url', ''))}')" class="btn btn-secondary" style="font-size:11px;">📋 Copy URL</button>
+                                            <button onclick="event.stopPropagation(); copyToClipboard(`{html.escape(str(vuln.get('payload', '')).replace('`',''))}`)" class="btn btn-secondary" style="font-size:11px;">📋 Copy Payload</button>
+                                            <button onclick="event.stopPropagation(); copyFinding('{id(vuln)}')" class="btn btn-primary" style="font-size:11px;">📋 Copy Full Finding</button>
                                         </div>
                                         <script>window.findingData_{id(vuln)} = {safe_json_for_html({k:str(v)[:500] if isinstance(v,str) else v for k,v in vuln.items() if k not in ['response']})};</script>
                                     </td>
@@ -652,10 +682,21 @@ class ReportGenerator:
                                 <div style="margin-top:10px;"><label style="color:#888;font-size:11px;">EVIDENCE / PROOF</label>
                                     <div class="evidence-box">{html.escape(str(vuln.get('evidence', vuln.get('description', 'No evidence')))[:1500])}</div>
                                 </div>
+                                <div style="margin-top:10px;"><label style="color:#888;font-size:11px;">SOLUTION / REMEDIATION</label>
+                                    <div style="background:#1a3a1a;padding:10px;border-radius:4px;margin-top:5px;color:#90EE90;border-left:3px solid #27ae60;">{html.escape(str(vuln.get('remediation', 'Review and fix according to security best practices.')))}</div>
+                                </div>
+                                <details style="margin-top:10px;" onclick="event.stopPropagation()">
+                                    <summary style="cursor:pointer;color:#e94560;font-weight:bold;padding:5px;background:#2a2a4a;border-radius:3px;">📤 HTTP Request</summary>
+                                    <div class="evidence-box" style="margin-top:5px;">{html.escape(str(vuln.get('request', 'No request captured'))[:2000])}</div>
+                                </details>
+                                <details style="margin-top:10px;" onclick="event.stopPropagation()">
+                                    <summary style="cursor:pointer;color:#e94560;font-weight:bold;padding:5px;background:#2a2a4a;border-radius:3px;">📥 HTTP Response</summary>
+                                    <div class="evidence-box" style="margin-top:5px;max-height:300px;overflow-y:auto;">{html.escape(str(vuln.get('response', 'No response captured'))[:3000])}</div>
+                                </details>
                                 <div style="margin-top:10px;display:flex;gap:10px;">
-                                    <button onclick="copyToClipboard('{html.escape(vuln.get('url', ''))}')" class="btn btn-secondary" style="font-size:11px;">📋 Copy URL</button>
-                                    <button onclick="copyToClipboard(`{html.escape(str(vuln.get('payload', '')).replace('`',''))}`)" class="btn btn-secondary" style="font-size:11px;">📋 Copy Payload</button>
-                                    <button onclick="copyFinding('all-{id(vuln)}')" class="btn btn-primary" style="font-size:11px;">📋 Copy Full Finding</button>
+                                    <button onclick="event.stopPropagation(); copyToClipboard('{html.escape(vuln.get('url', ''))}')" class="btn btn-secondary" style="font-size:11px;">📋 Copy URL</button>
+                                    <button onclick="event.stopPropagation(); copyToClipboard(`{html.escape(str(vuln.get('payload', '')).replace('`',''))}`)" class="btn btn-secondary" style="font-size:11px;">📋 Copy Payload</button>
+                                    <button onclick="event.stopPropagation(); copyFinding('all-{id(vuln)}')" class="btn btn-primary" style="font-size:11px;">📋 Copy Full Finding</button>
                                 </div>
                                 <script>window.findingData_all_{id(vuln)} = {safe_json_for_html({k:str(v)[:500] if isinstance(v,str) else v for k,v in vuln.items() if k not in ['response']})};</script>
                             </td>
@@ -1029,7 +1070,7 @@ class ReportGenerator:
                     </div>
                 </details>
 
-                <details style="margin-top:10px;">
+                <details style="margin-top:10px;" onclick="event.stopPropagation()">
                     <summary style="cursor:pointer; color:#667eea; font-weight:bold; padding:8px; background:#fff; border:1px solid #667eea; border-radius:4px; display:inline-block;">
                         📤 Show HTTP Request
                     </summary>
@@ -1038,7 +1079,7 @@ class ReportGenerator:
                     </div>
                 </details>
 
-                <details style="margin-top:10px;">
+                <details style="margin-top:10px;" onclick="event.stopPropagation()">
                     <summary style="cursor:pointer; color:#667eea; font-weight:bold; padding:8px; background:#fff; border:1px solid #667eea; border-radius:4px; display:inline-block;">
                         📥 Show HTTP Response Preview
                     </summary>
@@ -1160,14 +1201,92 @@ class ReportGenerator:
     def _preprocess_findings(self, findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Preprocess findings:
-        1. Group similar findings (phones, emails, etc.) into ONE finding with all locations
-        2. Group security headers per URL into single finding
-        3. Enhance vulnerability names
-        4. Fix CVSS scores and confidence
-        5. Fix "Unknown" module names
+        1. Filter out false positives and invalid data
+        2. Group similar findings (phones, emails, etc.) into ONE finding with all locations
+        3. Group security headers per URL into single finding
+        4. Enhance vulnerability names
+        5. Fix CVSS scores and confidence
+        6. Fix "Unknown" module names
         """
+        import re
+
         processed = []
         security_headers_by_url = {}
+
+        def is_valid_url(url: str) -> bool:
+            """Check if URL is valid (not JS code snippet)"""
+            if not url or not isinstance(url, str):
+                return False
+            # Check for common JS patterns that indicate it's not a URL
+            js_patterns = [
+                r'\{.*\}',           # Contains curly braces (JS code)
+                r'\(.*\)',           # Contains function calls
+                r'function\s*\(',    # Function declaration
+                r'\.removeChild',    # DOM manipulation
+                r'\.parentNode',     # DOM manipulation
+                r'\.getElementsBy',  # DOM manipulation
+                r'=>',               # Arrow function
+                r'\breturn\b',       # return keyword
+                r'\bvar\b',          # var keyword
+                r'\blet\b',          # let keyword
+                r'\bconst\b',        # const keyword
+                r';$',               # Ends with semicolon
+            ]
+            for pattern in js_patterns:
+                if re.search(pattern, url):
+                    return False
+            # Must start with http:// or https://
+            if not url.startswith(('http://', 'https://')):
+                return False
+            return True
+
+        def is_false_positive(finding: Dict[str, Any]) -> bool:
+            """Filter out known false positives"""
+            vuln_type = finding.get('type', '').lower()
+            url = finding.get('url', '')
+            evidence = finding.get('evidence', '')
+            description = finding.get('description', '')
+
+            # Filter Cloudflare challenge scripts - always false positive
+            if 'cdn-cgi/challenge-platform' in url:
+                return True
+
+            # Filter CSS files for secret detection
+            if url.endswith('.css') and vuln_type in ['base58_key', 'aws_access_key', 'telegram_bot_token']:
+                return True
+
+            # Filter "Potential Base58 encoded key" with low evidence
+            if vuln_type == 'base58_key' and 'forEachF' in str(evidence):
+                return True  # This is JavaScript forEach, not a key
+
+            # Filter generic "hardcoded_password" without actual password evidence
+            if vuln_type == 'hardcoded_password':
+                # Check if evidence contains actual password-like data
+                if 'password' not in evidence.lower() or 'Hardcoded password found' == evidence:
+                    return True
+
+            # Filter "Telegram bot token" in challenge scripts
+            if 'telegram' in vuln_type.lower() and 'challenge' in url.lower():
+                return True
+
+            # Filter base58_key false positives (JavaScript variable names)
+            if vuln_type == 'base58_key':
+                # Check for common false positive patterns
+                value = finding.get('value', '')
+                if any(fp in value.lower() for fp in ['foreach', 'function', 'return', 'coordinate', 'feature']):
+                    return True
+
+            # Filter findings with "No evidence captured" or empty evidence
+            if not evidence or evidence in ['No evidence captured', 'No evidence', 'N/A', '']:
+                # Only filter if it's a passive/info finding, not injection vulns or security findings
+                # Keep: injection vulns, security header issues, WAF findings, info disclosure
+                keep_types = ['xss', 'sqli', 'cmdi', 'ssti', 'lfi', 'rfi', 'xxe', 'ssrf',
+                              'missing_security_header', 'information_disclosure', 'insecure_cookie',
+                              'accessible_cookie', 'waf_detected', 'technology_detected']
+                if vuln_type not in keep_types:
+                    return True
+
+            return False
 
         # Groups for aggregating similar passive findings
         aggregated = {
@@ -1186,6 +1305,10 @@ class ReportGenerator:
 
         # Complete module name mapping (lowercase -> proper name)
         module_fixes = {
+            # Generic/Unknown scanners - fix to proper names
+            'scanner': 'Passive Analysis',
+            'unknown': 'Passive Analysis',
+            '': 'Passive Analysis',
             # Passive scanners
             'phone_disclosure': 'Sensitive Data Scanner',
             'email_disclosure': 'Sensitive Data Scanner',
@@ -1284,13 +1407,30 @@ class ReportGenerator:
         }
 
         for finding in findings:
+            # Skip findings with invalid URLs (but allow site-level findings with N/A or empty URL)
+            url = finding.get('url', '')
+            vuln_type_check = finding.get('type', '').lower()
+            module_check = finding.get('module', '').lower()
+
+            # Site-level findings don't need a valid URL
+            site_level_types = ['waf_detected', 'wafdetect', 'technology_detected']
+            is_site_level = vuln_type_check in site_level_types or module_check in site_level_types
+
+            if not is_valid_url(url) and not is_site_level:
+                continue
+
+            # Skip known false positives
+            if is_false_positive(finding):
+                continue
+
             vuln_type = finding.get('type', finding.get('module', '')).lower().replace(' ', '_')
 
             # Aggregate similar passive findings
             if vuln_type in aggregated:
-                url = finding.get('url', 'unknown')
-                if url not in aggregated[vuln_type]['urls']:
-                    aggregated[vuln_type]['urls'].append(url)
+                finding_url = finding.get('url', 'unknown')
+                # Only add valid URLs to aggregation
+                if is_valid_url(finding_url) and finding_url not in aggregated[vuln_type]['urls']:
+                    aggregated[vuln_type]['urls'].append(finding_url)
                 evidence = finding.get('evidence', finding.get('description', ''))
                 if evidence and evidence not in aggregated[vuln_type]['data']:
                     aggregated[vuln_type]['data'].append(evidence[:200])

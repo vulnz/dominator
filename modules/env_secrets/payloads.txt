@@ -1,4 +1,4 @@
-# Environment files
+# ===== Environment Files =====
 .env
 .env.local
 .env.development
@@ -9,10 +9,24 @@
 .env.old
 .env.save
 .env.bak
+.env.dev
+.env.prod
+.env.example
+.env.sample
+.env.dist
+.env.defaults
+.env.development.local
+.env.test.local
+.env.production.local
 env
 environment
+env.js
+env.json
+env.yaml
+env.yml
+.envrc
 
-# Configuration files
+# ===== Configuration Files =====
 config.json
 config.yml
 config.yaml
@@ -20,47 +34,354 @@ config.xml
 config.ini
 config.php
 config.inc
+config.inc.php
+config.py
+config.rb
+config.js
+config.ts
 configuration.json
+configuration.xml
 settings.json
 settings.yml
+settings.yaml
+settings.py
+settings.ini
 appsettings.json
 appsettings.production.json
 appsettings.development.json
+appsettings.staging.json
+application.yml
+application.yaml
+application.properties
+application-prod.yml
+application-dev.yml
+app.config
+web.config
+parameters.yml
+parameters.yaml
+parameters.ini
 
-# AWS files
+# ===== AWS Files =====
 .aws/credentials
 .aws/config
 aws.json
 aws-credentials.json
+aws_credentials
+aws-config.json
+credentials
+.s3cfg
 
-# Docker secrets
+# ===== Google Cloud =====
+service-account.json
+service_account.json
+gcp-credentials.json
+google-credentials.json
+google-cloud-key.json
+client_secrets.json
+client_secret.json
+credentials.json
+application_default_credentials.json
+gcloud/credentials
+.gcp/credentials.json
+
+# ===== Azure =====
+azure.json
+azure-credentials.json
+.azure/credentials
+azureauth.json
+azure.env
+serviceprincipal.json
+
+# ===== Docker/Container =====
 docker-compose.yml
+docker-compose.yaml
 docker-compose.override.yml
+docker-compose.prod.yml
+docker-compose.dev.yml
 .dockerenv
+.docker/config.json
+docker-secrets
+Dockerfile
+.dockercfg
 
-# Database configs
+# ===== Kubernetes =====
+.kube/config
+kubeconfig
+kubeconfig.yaml
+kubernetes.yml
+k8s-secrets.yml
+k8s-secrets.yaml
+secrets.yaml
+secrets.yml
+configmap.yaml
+deployment.yaml
+helm-values.yaml
+values.yaml
+values-production.yaml
+
+# ===== Database Configs =====
 database.yml
+database.yaml
 database.json
+database.ini
 db.json
+db.yaml
 db.config
+db.ini
+dbconfig.json
+mysql.ini
+mysql.cnf
+.my.cnf
+.pgpass
+pg_service.conf
+pgbouncer.ini
+mongod.conf
+redis.conf
+sequelize.json
+ormconfig.json
+knexfile.js
 
-# SSH/Private keys
+# ===== SSH/Private Keys =====
 .ssh/id_rsa
 .ssh/id_dsa
+.ssh/id_ecdsa
+.ssh/id_ed25519
 .ssh/authorized_keys
+.ssh/known_hosts
+.ssh/config
 id_rsa
 id_dsa
+id_ecdsa
+id_ed25519
+id_rsa.pub
 private.key
 server.key
+ssl.key
+ssl.pem
+server.pem
+private.pem
+key.pem
+cert.pem
+certificate.pem
+server.crt
+ssl.crt
+ca.pem
+ca-bundle.crt
 
-# Other sensitive files
+# ===== Package Manager Secrets =====
+.npmrc
+.npmrc.local
+.pypirc
+.gem/credentials
+.nuget/NuGet.Config
+pip.conf
+.yarnrc
+.yarnrc.yml
+bower.json
+composer.json
+Gemfile
+
+# ===== CI/CD =====
+.travis.yml
+travis.yml
+.gitlab-ci.yml
+gitlab-ci.yml
+.github/workflows/
+.circleci/config.yml
+circle.yml
+bitbucket-pipelines.yml
+Jenkinsfile
+jenkins.xml
+azure-pipelines.yml
+buildspec.yml
+appveyor.yml
+.drone.yml
+wercker.yml
+codeship-services.yml
+.buildkite/pipeline.yml
+
+# ===== Git Secrets =====
+.git-credentials
+.git/config
+.gitconfig
+.gitcookies
+git-credentials
+
+# ===== Terraform/IaC =====
+terraform.tfvars
+terraform.tfvars.json
+*.auto.tfvars
+terraform.tfstate
+terraform.tfstate.backup
+variables.tf
+secrets.tf
+.terraform/
+backend.tf
+
+# ===== Ansible =====
+group_vars/all.yml
+host_vars/
+ansible.cfg
+vault.yml
+vault.yaml
+vars.yml
+vars.yaml
+inventory.ini
+
+# ===== PHP =====
+wp-config.php
+wp-config.php.bak
+wp-config.php.old
+local.xml
+local.xml.bak
+parameters.php
+config.local.php
+db.php
+database.php
+mysqli_connect.php
+conn.php
+connection.php
+
+# ===== Laravel/Symfony =====
+.env.blade.php
+storage/logs/laravel.log
+bootstrap/cache/
+artisan
+parameters.yml
+
+# ===== Django/Python =====
+local_settings.py
+settings_local.py
+secret_settings.py
+django_settings.py
+manage.py
+wsgi.py
+asgi.py
+
+# ===== Rails/Ruby =====
+database.yml
+secrets.yml
+master.key
+credentials.yml.enc
+config/master.key
+config/credentials.yml.enc
+config/secrets.yml
+
+# ===== Node.js =====
+package.json
+package-lock.json
+yarn.lock
+.nvmrc
+.node-version
+nodemon.json
+pm2.json
+ecosystem.config.js
+
+# ===== Java/JVM =====
+application.properties
+application.yml
+persistence.xml
+hibernate.cfg.xml
+log4j.properties
+log4j2.xml
+gradle.properties
+pom.xml
+build.gradle
+settings.xml
+context.xml
+server.xml
+
+# ===== Other Sensitive Files =====
 secrets.json
 secrets.yml
+secrets.yaml
+secrets.txt
+secrets.xml
 credentials.json
+credentials.yml
+credentials.yaml
+credentials.txt
 api_keys.json
+api_keys.txt
+api-keys.json
 token.json
+tokens.json
 tokens.txt
+auth.json
+authentication.json
 passwords.txt
+passwords.json
+passwd
 .htpasswd
-.npmrc
-.pypirc
+.htaccess
+shadow
+htpasswd
+
+# ===== Backup Files =====
+*.bak
+*.backup
+*.old
+*.orig
+*.save
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ===== Log Files (may contain secrets) =====
+debug.log
+error.log
+access.log
+app.log
+application.log
+server.log
+laravel.log
+rails.log
+django.log
+npm-debug.log
+yarn-error.log
+
+# ===== IDE/Editor =====
+.idea/
+.vscode/settings.json
+.vscode/launch.json
+.project
+.classpath
+*.sublime-workspace
+*.sublime-project
+
+# ===== Firebase =====
+firebase.json
+firebaserc
+.firebaserc
+google-services.json
+GoogleService-Info.plist
+
+# ===== Mobile =====
+google-services.json
+GoogleService-Info.plist
+Info.plist
+gradle.properties
+local.properties
+
+# ===== Miscellaneous =====
+Thumbs.db
+desktop.ini
+.bash_history
+.zsh_history
+.histfile
+.mysql_history
+.psql_history
+.rediscli_history
+.viminfo
+.lesshst
+.wget-hsts
+
+# ===== Security Testing =====
+sftp-config.json
+ftpconfig
+.ftpconfig
+.ftppass
+recentservers.xml
+filezilla.xml
+winscp.ini

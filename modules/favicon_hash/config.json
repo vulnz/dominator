@@ -8,11 +8,15 @@
     "enabled": true,
     "passive": true,
     "cwe": "CWE-200",
+    "cwe_name": "Exposure of Sensitive Information to an Unauthorized Actor",
     "owasp": "A05:2021",
-    "cvss": 0,
+    "owasp_name": "Security Misconfiguration",
+    "cvss": "0.0",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N",
     "tags": ["favicon", "fingerprint", "reconnaissance", "technology", "mmh3", "shodan"],
     "references": [
         "https://github.com/Shodan/favicon-hashtool",
         "https://blog.shodan.io/deep-dive-http-favicon/"
-    ]
+    ],
+    "remediation": "Use custom favicons instead of defaults. Remove technology identification artifacts in production."
 }

@@ -178,6 +178,8 @@ class RFIModule(BaseModule):
         # Test each OOB payload
         for payload_dict in oob_payloads:
             payload = payload_dict['payload']
+            # FIXED: Extract OOB URL from payload_dict to prevent undefined variable crash
+            oob_url = payload_dict.get('callback_url', 'OOB server')
             test_params = params.copy()
             test_params[param_name] = payload
 

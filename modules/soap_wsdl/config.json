@@ -8,11 +8,15 @@
     "enabled": true,
     "passive": true,
     "cwe": "CWE-200",
+    "cwe_name": "Exposure of Sensitive Information to an Unauthorized Actor",
     "owasp": "A05:2021",
-    "cvss": 5.3,
+    "owasp_name": "Security Misconfiguration",
+    "cvss": "5.3",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
     "tags": ["wsdl", "soap", "dtd", "xml", "webservice", "api", "discovery"],
     "references": [
         "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/10-Business_Logic_Testing/01-Test_Business_Logic_Data_Validation",
         "https://book.hacktricks.xyz/pentesting-web/xxe-xee-xml-external-entity"
-    ]
+    ],
+    "remediation": "Restrict access to WSDL files. Disable WSDL publishing in production. Implement authentication for SOAP services."
 }

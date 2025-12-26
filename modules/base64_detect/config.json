@@ -6,9 +6,14 @@
     "category": "Information Disclosure",
     "severity": "Info",
     "cwe": "CWE-200",
+    "cwe_name": "Exposure of Sensitive Information to an Unauthorized Actor",
     "owasp": "A01:2021",
+    "owasp_name": "Broken Access Control",
+    "cvss": "3.1",
+    "cvss_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N",
     "tags": ["base64", "encoding", "info-disclosure", "obfuscation"],
     "references": [
         "https://owasp.org/www-community/vulnerabilities/Information_exposure_through_an_error_message"
-    ]
+    ],
+    "remediation": "Avoid encoding sensitive data in Base64 without encryption. Use proper encryption for secrets. Review exposed data for sensitive content."
 }
