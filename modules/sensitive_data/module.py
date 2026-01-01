@@ -384,11 +384,13 @@ class SensitiveDataScanner(BaseModule):
                         'config': config
                     }
 
-            # Create results grouped by severity
-            critical_findings = {k: v for k, v in findings_by_type.items() if v['config']['severity'] == 'Critical'}
-            high_findings = {k: v for k, v in findings_by_type.items() if v['config']['severity'] == 'High'}
-            medium_findings = {k: v for k, v in findings_by_type.items() if v['config']['severity'] == 'Medium'}
-            low_findings = {k: v for k, v in findings_by_type.items() if v['config']['severity'] == 'Low'}
+            # Create results grouped by severity using dict comprehension
+            findings_by_severity = {
+                sev: {k: v for k, v in findings_by_type.items() if v['config']['severity'] == sev}
+                for sev in ('Critical', 'High', 'Medium', 'Low')
+            }
+            critical_findings, high_findings = findings_by_severity['Critical'], findings_by_severity['High']
+            medium_findings, low_findings = findings_by_severity['Medium'], findings_by_severity['Low']
 
             # Report critical findings individually
             for data_type, data in critical_findings.items():
@@ -423,20 +425,42 @@ class SensitiveDataScanner(BaseModule):
                     }
                 ))
 
-            # Group low findings (emails, phones, IPs)
+            # Group low findings (emails, phones, IPs) with actual proof
             if low_findings:
-                summary = []
+                evidence_parts = [
+                    "**Sensitive Data Exposure Detected**\n",
+                    f"**URL:** {url}",
+                    "\n**Data Found:**"
+                ]
+
                 all_data = {}
                 for data_type, data in low_findings.items():
-                    summary.append(f"{data_type}: {len(data['matches'])} found")
-                    all_data[data_type] = data['matches'][:10]
+                    matches = data['matches'][:10]
+                    all_data[data_type] = matches
+
+                    evidence_parts.append(f"\n**{data_type}** ({len(data['matches'])} found):")
+                    for match in matches[:5]:
+                        # Mask sensitive data partially
+                        if data_type == 'emails' and '@' in match:
+                            parts = match.split('@')
+                            masked = parts[0][:2] + '***@' + parts[1]
+                        elif data_type == 'credit_cards':
+                            masked = match[:4] + '-****-****-' + match[-4:]
+                        elif data_type == 'phones':
+                            masked = match[:3] + '-***-' + match[-4:] if len(match) > 7 else match
+                        else:
+                            masked = match[:20] + '...' if len(match) > 20 else match
+                        evidence_parts.append(f"  - `{masked}`")
+
+                    if len(matches) > 5:
+                        evidence_parts.append(f"  ... and {len(matches) - 5} more")
 
                 results.append(self.create_result(
                     vulnerable=True,
                     url=url,
                     parameter='Response Body',
                     payload='PII detection',
-                    evidence=f"Sensitive data found: {', '.join(summary)}",
+                    evidence='\n'.join(evidence_parts),
                     severity='Info',
                     method='GET',
                     additional_info={

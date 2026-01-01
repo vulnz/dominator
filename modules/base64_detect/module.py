@@ -132,14 +132,20 @@ class Base64Detector(BaseModule):
                     else:
                         generic_findings.append(finding)
 
-            # Report sensitive findings with higher severity
+            # Report sensitive findings with higher severity - WITH ACTUAL PROOF
             if sensitive_findings:
+                # Build detailed evidence with actual decoded content
+                evidence_parts = [f"Found {len(sensitive_findings)} Base64 strings containing sensitive data:\n"]
+                for i, finding in enumerate(sensitive_findings[:5], 1):
+                    evidence_parts.append(f"\n[{i}] Encoded: {finding['encoded']}")
+                    evidence_parts.append(f"    Decoded: {finding['decoded_preview']}")
+
                 results.append(self.create_result(
                     vulnerable=True,
                     url=url,
                     parameter='Response Body',
-                    payload='Base64 with sensitive data',
-                    evidence=f"Found {len(sensitive_findings)} Base64 strings containing sensitive data",
+                    payload=sensitive_findings[0]['encoded'][:50] if sensitive_findings else 'Base64',
+                    evidence='\n'.join(evidence_parts),
                     severity='Medium',
                     method='GET',
                     additional_info={
@@ -153,26 +159,9 @@ class Base64Detector(BaseModule):
                     }
                 ))
 
-            # Report generic base64 as info
-            if generic_findings and len(generic_findings) >= 3:
-                results.append(self.create_result(
-                    vulnerable=True,
-                    url=url,
-                    parameter='Response Body',
-                    payload='Base64 detection',
-                    evidence=f"Found {len(generic_findings)} Base64 encoded strings (non-image)",
-                    severity='Info',
-                    method='GET',
-                    additional_info={
-                        'injection_type': 'Base64 Encoding Detected',
-                        'count': len(generic_findings),
-                        'findings': generic_findings[:10],
-                        'description': 'Base64 encoded data found - may warrant manual review',
-                        'note': 'Excludes data: URLs for images, fonts, and other media',
-                        'cwe': 'CWE-200',
-                        'owasp': 'A01:2021'
-                    }
-                ))
+            # Only report generic base64 if there's actual meaningful content
+            # Skip generic findings - they don't provide actionable security value
+            # Only sensitive base64 with decoded proof is reported
 
             # Also check for base64 in URL parameters
             parsed = urlparse(url)
@@ -186,28 +175,49 @@ class Base64Detector(BaseModule):
         return results
 
     def _is_valid_base64(self, s: str) -> bool:
-        """Check if string is valid base64"""
+        """Check if string is valid base64 - STRICT validation to reduce false positives"""
         # Must be multiple of 4 (with padding)
         if len(s) % 4 != 0:
             # Try adding padding
             s += '=' * (4 - len(s) % 4)
 
         # Must have reasonable entropy (not all same char)
-        if len(set(s.replace('=', ''))) < 10:
+        unique_chars = len(set(s.replace('=', '')))
+        if unique_chars < 15:  # Increased from 10 - stricter
+            return False
+
+        # Skip if looks like a hash (all hex chars)
+        hex_chars = set('0123456789abcdefABCDEF')
+        if all(c in hex_chars for c in s.replace('=', '')):
+            return False
+
+        # Skip common patterns that look like base64 but aren't
+        if s.startswith('AAAA') or s.endswith('AAAA'):
             return False
 
         # Try to decode
         try:
             decoded = base64.b64decode(s)
+            # Must decode to meaningful length
+            if len(decoded) < 10:
+                return False
+
             # Check if decoded content is reasonable
             # If it's mostly printable or valid UTF-8, it's likely real base64
             try:
                 text = decoded.decode('utf-8')
+                # Must have high printable ratio AND look like real text
                 printable_ratio = sum(1 for c in text if c.isprintable() or c in '\n\r\t') / len(text)
-                return printable_ratio > 0.7
+                if printable_ratio < 0.8:  # Increased from 0.7 - stricter
+                    return False
+                # Must have some word-like content (spaces or common chars)
+                if len(text) > 20 and ' ' not in text and '=' not in text and ':' not in text:
+                    return False
+                return True
             except:
-                # Not UTF-8, but might still be valid binary
-                return len(decoded) > 10
+                # Not UTF-8 - only accept if it looks like meaningful binary
+                # Skip random-looking binary data
+                return False
         except:
             return False
 

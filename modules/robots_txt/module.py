@@ -163,21 +163,44 @@ class RobotsTxtScanner(BaseModule):
                     if sitemap:
                         sitemaps.append(sitemap)
 
-            # Create base finding for robots.txt existence
+            # Create base finding for robots.txt existence with ACTUAL CONTENT
             if disallowed_paths or sitemaps:
+                # Build detailed evidence showing actual paths
+                evidence_parts = [
+                    "**robots.txt Found**\n",
+                    f"**URL:** {robots_url}",
+                    f"**Disallowed Paths:** {len(disallowed_paths)}",
+                    f"**Sitemaps:** {len(sitemaps)}",
+                    "\n**Disallowed Paths (sample):**"
+                ]
+
+                # Show actual paths as proof
+                for path in disallowed_paths[:15]:
+                    evidence_parts.append(f"  - {path}")
+
+                if len(disallowed_paths) > 15:
+                    evidence_parts.append(f"  ... and {len(disallowed_paths) - 15} more")
+
+                if sitemaps:
+                    evidence_parts.append("\n**Sitemaps:**")
+                    for sitemap in sitemaps[:5]:
+                        evidence_parts.append(f"  - {sitemap}")
+
                 results.append(self.create_result(
                     vulnerable=True,
                     url=robots_url,
                     parameter='robots.txt',
                     payload='/robots.txt',
-                    evidence=f"Found robots.txt with {len(disallowed_paths)} disallowed paths",
+                    evidence='\n'.join(evidence_parts),
                     severity='Info',
                     method='GET',
+                    response=response.text[:3000] if response else '',
                     additional_info={
                         'injection_type': 'Information Disclosure',
                         'disallowed_count': len(disallowed_paths),
+                        'disallowed_paths': disallowed_paths[:20],
                         'sitemap_count': len(sitemaps),
-                        'sitemaps': sitemaps[:5],  # First 5 sitemaps
+                        'sitemaps': sitemaps[:5],
                         'cwe': 'CWE-200',
                         'owasp': 'A01:2021'
                     }
@@ -195,25 +218,33 @@ class RobotsTxtScanner(BaseModule):
                         })
                         break
 
-            # Group sensitive findings by severity
-            critical_paths = [f for f in sensitive_findings if f['severity'] == 'Critical']
-            high_paths = [f for f in sensitive_findings if f['severity'] == 'High']
-            medium_paths = [f for f in sensitive_findings if f['severity'] == 'Medium']
+            # Group sensitive findings by severity using dict comprehension
+            by_severity = {sev: [f for f in sensitive_findings if f['severity'] == sev]
+                          for sev in ('Critical', 'High', 'Medium')}
+            critical_paths, high_paths, medium_paths = by_severity['Critical'], by_severity['High'], by_severity['Medium']
 
-            # Report critical/high findings
+            # Report critical/high findings with detailed evidence
             if critical_paths:
-                paths_list = [f"{f['path']} ({f['type']})" for f in critical_paths[:10]]
+                evidence_parts = [
+                    "**Critical Sensitive Paths in robots.txt**\n",
+                    f"**Found {len(critical_paths)} critical paths:**\n"
+                ]
+                for f in critical_paths[:10]:
+                    evidence_parts.append(f"  - `{f['path']}` → {f['type']}")
+
                 results.append(self.create_result(
                     vulnerable=True,
                     url=robots_url,
                     parameter='robots.txt',
                     payload='Sensitive paths',
-                    evidence=f"Critical paths in robots.txt: {', '.join(paths_list)}",
+                    evidence='\n'.join(evidence_parts),
                     severity='High',
                     method='GET',
+                    response=response.text[:3000] if response else '',
                     additional_info={
                         'injection_type': 'Sensitive Path Disclosure',
                         'paths': [f['path'] for f in critical_paths],
+                        'path_types': [f['type'] for f in critical_paths],
                         'description': 'Robots.txt reveals potentially sensitive paths',
                         'cwe': 'CWE-200',
                         'owasp': 'A01:2021',
@@ -222,18 +253,26 @@ class RobotsTxtScanner(BaseModule):
                 ))
 
             if high_paths:
-                paths_list = [f"{f['path']} ({f['type']})" for f in high_paths[:10]]
+                evidence_parts = [
+                    "**High-Risk Paths in robots.txt**\n",
+                    f"**Found {len(high_paths)} high-risk paths:**\n"
+                ]
+                for f in high_paths[:10]:
+                    evidence_parts.append(f"  - `{f['path']}` → {f['type']}")
+
                 results.append(self.create_result(
                     vulnerable=True,
                     url=robots_url,
                     parameter='robots.txt',
                     payload='Sensitive paths',
-                    evidence=f"High-risk paths in robots.txt: {', '.join(paths_list)}",
+                    evidence='\n'.join(evidence_parts),
                     severity='Medium',
                     method='GET',
+                    response=response.text[:3000] if response else '',
                     additional_info={
                         'injection_type': 'Sensitive Path Disclosure',
                         'paths': [f['path'] for f in high_paths],
+                        'path_types': [f['type'] for f in high_paths],
                         'description': 'Robots.txt reveals potentially sensitive paths',
                         'cwe': 'CWE-200',
                         'owasp': 'A01:2021'

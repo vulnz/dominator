@@ -81,20 +81,43 @@ class NoSQLModule(BaseModule):
                 else:
                     response = http_client.get(url, params=test_params)
 
-                if self._check_nosql_indicators(response, baseline_len):
+                indicator, behavior_change = self._check_nosql_indicators(response, baseline_len)
+                if indicator or behavior_change:
+                    # Build detailed evidence with actual proof
+                    evidence_parts = [
+                        "**NoSQL Injection Confirmed**\n",
+                        f"**Parameter:** {param_name}",
+                        f"**Injected Payload:** `{payload}`",
+                        f"**Method:** {method}",
+                        f"\n**Detection Method:**"
+                    ]
+
+                    if indicator:
+                        evidence_parts.append(f"- NoSQL error/keyword found: `{indicator}`")
+                    if behavior_change:
+                        evidence_parts.append(f"- Response length changed: {baseline_len} → {len(response.text)} bytes")
+
+                    # Add response context
+                    response_preview = response.text[:500] if response.text else "No response"
+                    evidence_parts.append(f"\n**Response Preview:**\n```\n{response_preview}\n```")
+
                     results.append(self.create_result(
                         vulnerable=True,
                         url=url,
                         parameter=param_name,
                         payload=payload,
-                        evidence=f"NoSQL operator injection detected with: {payload}",
+                        evidence='\n'.join(evidence_parts),
                         severity='High',
                         method=method,
+                        response=response.text[:3000] if response.text else '',
                         additional_info={
                             'injection_type': 'NoSQL Injection',
                             'cwe': 'CWE-943',
                             'owasp': 'A03:2021',
-                            'cvss': 9.8
+                            'cvss': 9.8,
+                            'indicator_found': indicator,
+                            'baseline_length': baseline_len,
+                            'response_length': len(response.text) if response.text else 0
                         }
                     ))
                     break
@@ -117,20 +140,40 @@ class NoSQLModule(BaseModule):
             try:
                 response = http_client.post(url, json=test_data)
 
-                if self._check_nosql_indicators(response, baseline_len):
+                indicator, behavior_change = self._check_nosql_indicators(response, baseline_len)
+                if indicator or behavior_change:
+                    # Build detailed evidence
+                    evidence_parts = [
+                        "**NoSQL JSON Injection Confirmed**\n",
+                        f"**Parameter:** {param_name}",
+                        f"**Injected JSON Payload:** `{json.dumps(payload)}`",
+                        f"**Method:** POST (JSON Body)",
+                        f"\n**Detection Method:**"
+                    ]
+
+                    if indicator:
+                        evidence_parts.append(f"- NoSQL indicator found: `{indicator}`")
+                    if behavior_change:
+                        evidence_parts.append(f"- Response length changed: {baseline_len} → {len(response.text)} bytes")
+
+                    response_preview = response.text[:500] if response.text else "No response"
+                    evidence_parts.append(f"\n**Response Preview:**\n```\n{response_preview}\n```")
+
                     results.append(self.create_result(
                         vulnerable=True,
                         url=url,
                         parameter=param_name,
                         payload=json.dumps(payload),
-                        evidence=f"JSON NoSQL injection: {json.dumps(payload)}",
+                        evidence='\n'.join(evidence_parts),
                         severity='Critical',
                         method='POST',
+                        response=response.text[:3000] if response.text else '',
                         additional_info={
                             'injection_type': 'NoSQL JSON Injection',
                             'cwe': 'CWE-943',
                             'owasp': 'A03:2021',
-                            'cvss': 9.8
+                            'cvss': 9.8,
+                            'indicator_found': indicator
                         }
                     ))
                     break
@@ -139,29 +182,53 @@ class NoSQLModule(BaseModule):
 
         return results
 
+    # Class-level constants for indicator checking
+    # More specific error patterns to reduce false positives
+    _NOSQL_ERRORS = {
+        'mongoerror', 'bsonerror', 'casterror', 'validationerror',
+        'objectid', 'mongoclient', 'bson.errors', 'pymongo.errors',
+        'cannot convert', 'cast to objectid failed', 'invalid objectid',
+        'e11000 duplicate key', 'writeconflict', 'notmaster'
+    }
+    # Only trigger on SIGNIFICANT behavior changes (authentication bypass)
+    _BYPASS_INDICATORS = {'logged in as', 'welcome back', 'dashboard', 'admin panel'}
+
     def _check_nosql_indicators(self, response, baseline_len):
-        """Check for NoSQL injection indicators"""
+        """Check for NoSQL injection indicators - STRICT validation to avoid false positives"""
         if not response:
-            return False
+            return None, False
 
         text = response.text.lower()
 
-        # Error indicators
-        errors = ['mongodb', 'nosql', 'syntax error', 'objectid', 'bson',
-                  'mongoclient', 'couchdb', 'document', 'collection']
-        if any(err in text for err in errors):
-            return True
+        # Check for specific NoSQL error messages
+        indicator_found = None
+        for err in self._NOSQL_ERRORS:
+            if err in text:
+                indicator_found = err
+                break
 
-        # Behavior change indicators
-        if response.status_code == 200:
-            # Significant response change
-            if len(response.text) > baseline_len * 1.5:
-                return True
-            # Auth bypass indicators
-            if any(s in text for s in ['welcome', 'dashboard', 'logged in', 'success']):
-                return True
+        # Behavior change detection - MUCH stricter
+        # Must be at least 2x longer AND contain new significant content
+        behavior_change = False
+        if response.status_code == 200 and len(response.text) > baseline_len * 2:
+            # Only flag as behavior change if we see auth bypass indicators
+            for ind in self._BYPASS_INDICATORS:
+                if ind in text:
+                    indicator_found = indicator_found or f"auth_bypass:{ind}"
+                    behavior_change = True
+                    break
 
-        return False
+        # Require BOTH indicator AND significant change for non-error detection
+        # Error messages alone are sufficient proof
+        if indicator_found and 'error' in indicator_found.lower():
+            return indicator_found, True
+
+        # For non-error indicators, require actual behavior change
+        if indicator_found and behavior_change:
+            return indicator_found, behavior_change
+
+        # Just response length change is NOT enough - too many false positives
+        return indicator_found, False
 
 
 def get_module(module_path: str, payload_limit: int = None):

@@ -11,18 +11,23 @@ from core.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _escape_html_sequences(s):
+    """Common HTML escape sequences for script safety"""
+    return s.replace('</', '<\\/').replace('<!--', '<\\!--').replace('-->', '--\\>')
+
 def safe_json_for_html(data):
-    """
-    Safely embed JSON in HTML <script> tags
-    Escapes </script> and other dangerous sequences that could break out of script context
-    """
-    json_str = json.dumps(data, default=str, ensure_ascii=False)
-    # Replace </script> with <\/script> to prevent breaking out of script tag
-    json_str = json_str.replace('</', '<\\/')
-    # Also escape HTML comment sequences that could break out
-    json_str = json_str.replace('<!--', '<\\!--')
-    json_str = json_str.replace('-->', '--\\>')
-    return json_str
+    """Safely embed JSON in HTML <script> tags"""
+    return _escape_html_sequences(json.dumps(data, default=str, ensure_ascii=False))
+
+def safe_js_string(s):
+    """Safely escape a string for use in JavaScript string literals"""
+    if s is None:
+        return ''
+    s = str(s)
+    for old, new in [('\\', '\\\\'), ("'", "\\'"), ('"', '\\"'), ('`', '\\`'),
+                     ('\n', '\\n'), ('\r', '\\r'), ('<', '&lt;'), ('>', '&gt;')]:
+        s = s.replace(old, new)
+    return s
 
 
 class ReportGenerator:
@@ -264,22 +269,8 @@ class ReportGenerator:
 
     def _wrap_text(self, text: str, width: int) -> List[str]:
         """Wrap text to fit within specified width"""
-        words = text.replace('\n', ' ').split()
-        lines = []
-        current_line = ""
-
-        for word in words:
-            if len(current_line) + len(word) + 1 <= width:
-                current_line += (" " if current_line else "") + word
-            else:
-                if current_line:
-                    lines.append(current_line)
-                current_line = word
-
-        if current_line:
-            lines.append(current_line)
-
-        return lines if lines else [""]
+        import textwrap
+        return textwrap.wrap(text.replace('\n', ' '), width=width) or [""]
 
     def _generate_xml(self, results: List[Dict[str, Any]], output_file: str,
                      scan_info: Dict[str, Any] = None) -> bool:
@@ -611,6 +602,13 @@ class ReportGenerator:
                                             <div style="background:#1a3a1a;padding:10px;border-radius:4px;margin-top:5px;color:#90EE90;border-left:3px solid #27ae60;">{html.escape(str(vuln.get('remediation', 'Review and fix according to security best practices.')))}</div>
                                         </div>
                                         <details style="margin-top:10px;" onclick="event.stopPropagation()">
+                                            <summary style="cursor:pointer;color:#e94560;font-weight:bold;padding:5px;background:#2a2a4a;border-radius:3px;">🔧 Reproduce with cURL</summary>
+                                            <div style="margin-top:5px;">
+                                                <div class="evidence-box" id="curl-{id(vuln)}">{html.escape(self._generate_curl_command(vuln.get('url', ''), vuln.get('method', 'GET'), vuln.get('parameter', ''), vuln.get('payload', '')))}</div>
+                                                <button onclick="event.stopPropagation(); copyCurl('curl-{id(vuln)}')" class="btn btn-secondary" style="font-size:11px;margin-top:5px;">📋 Copy cURL</button>
+                                            </div>
+                                        </details>
+                                        <details style="margin-top:10px;" onclick="event.stopPropagation()">
                                             <summary style="cursor:pointer;color:#e94560;font-weight:bold;padding:5px;background:#2a2a4a;border-radius:3px;">📤 HTTP Request</summary>
                                             <div class="evidence-box" style="margin-top:5px;">{html.escape(str(vuln.get('request', 'No request captured'))[:2000])}</div>
                                         </details>
@@ -619,8 +617,8 @@ class ReportGenerator:
                                             <div class="evidence-box" style="margin-top:5px;max-height:300px;overflow-y:auto;">{html.escape(str(vuln.get('response', 'No response captured'))[:3000])}</div>
                                         </details>
                                         <div style="margin-top:10px;display:flex;gap:10px;">
-                                            <button onclick="event.stopPropagation(); copyToClipboard('{html.escape(vuln.get('url', ''))}')" class="btn btn-secondary" style="font-size:11px;">📋 Copy URL</button>
-                                            <button onclick="event.stopPropagation(); copyToClipboard(`{html.escape(str(vuln.get('payload', '')).replace('`',''))}`)" class="btn btn-secondary" style="font-size:11px;">📋 Copy Payload</button>
+                                            <button onclick="event.stopPropagation(); copyToClipboard('{safe_js_string(vuln.get('url', ''))}')" class="btn btn-secondary" style="font-size:11px;">📋 Copy URL</button>
+                                            <button onclick="event.stopPropagation(); copyToClipboard('{safe_js_string(vuln.get('payload', ''))}')" class="btn btn-secondary" style="font-size:11px;">📋 Copy Payload</button>
                                             <button onclick="event.stopPropagation(); copyFinding('{id(vuln)}')" class="btn btn-primary" style="font-size:11px;">📋 Copy Full Finding</button>
                                         </div>
                                         <script>window.findingData_{id(vuln)} = {safe_json_for_html({k:str(v)[:500] if isinstance(v,str) else v for k,v in vuln.items() if k not in ['response']})};</script>
@@ -686,6 +684,13 @@ class ReportGenerator:
                                     <div style="background:#1a3a1a;padding:10px;border-radius:4px;margin-top:5px;color:#90EE90;border-left:3px solid #27ae60;">{html.escape(str(vuln.get('remediation', 'Review and fix according to security best practices.')))}</div>
                                 </div>
                                 <details style="margin-top:10px;" onclick="event.stopPropagation()">
+                                    <summary style="cursor:pointer;color:#e94560;font-weight:bold;padding:5px;background:#2a2a4a;border-radius:3px;">🔧 Reproduce with cURL</summary>
+                                    <div style="margin-top:5px;">
+                                        <div class="evidence-box" id="curl-all-{id(vuln)}">{html.escape(self._generate_curl_command(vuln.get('url', ''), vuln.get('method', 'GET'), vuln.get('parameter', ''), vuln.get('payload', '')))}</div>
+                                        <button onclick="event.stopPropagation(); copyCurl('curl-all-{id(vuln)}')" class="btn btn-secondary" style="font-size:11px;margin-top:5px;">📋 Copy cURL</button>
+                                    </div>
+                                </details>
+                                <details style="margin-top:10px;" onclick="event.stopPropagation()">
                                     <summary style="cursor:pointer;color:#e94560;font-weight:bold;padding:5px;background:#2a2a4a;border-radius:3px;">📤 HTTP Request</summary>
                                     <div class="evidence-box" style="margin-top:5px;">{html.escape(str(vuln.get('request', 'No request captured'))[:2000])}</div>
                                 </details>
@@ -694,8 +699,8 @@ class ReportGenerator:
                                     <div class="evidence-box" style="margin-top:5px;max-height:300px;overflow-y:auto;">{html.escape(str(vuln.get('response', 'No response captured'))[:3000])}</div>
                                 </details>
                                 <div style="margin-top:10px;display:flex;gap:10px;">
-                                    <button onclick="event.stopPropagation(); copyToClipboard('{html.escape(vuln.get('url', ''))}')" class="btn btn-secondary" style="font-size:11px;">📋 Copy URL</button>
-                                    <button onclick="event.stopPropagation(); copyToClipboard(`{html.escape(str(vuln.get('payload', '')).replace('`',''))}`)" class="btn btn-secondary" style="font-size:11px;">📋 Copy Payload</button>
+                                    <button onclick="event.stopPropagation(); copyToClipboard('{safe_js_string(vuln.get('url', ''))}')" class="btn btn-secondary" style="font-size:11px;">📋 Copy URL</button>
+                                    <button onclick="event.stopPropagation(); copyToClipboard('{safe_js_string(vuln.get('payload', ''))}')" class="btn btn-secondary" style="font-size:11px;">📋 Copy Payload</button>
                                     <button onclick="event.stopPropagation(); copyFinding('all-{id(vuln)}')" class="btn btn-primary" style="font-size:11px;">📋 Copy Full Finding</button>
                                 </div>
                                 <script>window.findingData_all_{id(vuln)} = {safe_json_for_html({k:str(v)[:500] if isinstance(v,str) else v for k,v in vuln.items() if k not in ['response']})};</script>
@@ -874,6 +879,14 @@ class ReportGenerator:
             if (data) {{
                 const text = JSON.stringify(data, null, 2);
                 copyToClipboard(text);
+            }}
+        }}
+
+        // Copy cURL command from element
+        function copyCurl(elementId) {{
+            const el = document.getElementById(elementId);
+            if (el) {{
+                copyToClipboard(el.textContent);
             }}
         }}
 

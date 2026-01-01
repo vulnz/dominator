@@ -60,7 +60,13 @@ class InfoCard(QFrame):
         label_widget = QLabel(f"{label}:")
         label_widget.setStyleSheet("color: #666666; font-size: 11px;")
 
-        value_widget = QLabel(str(value) if value else "N/A")
+        # Handle empty/None/N/A values
+        display_value = str(value).strip() if value else ""
+        if not display_value or display_value in ("", "None", "N/A", "-", "()", "0ms"):
+            display_value = "Not detected"
+            value_color = "#9ca3af"  # Gray for not detected
+
+        value_widget = QLabel(display_value)
         value_widget.setStyleSheet(f"color: {value_color}; font-weight: bold; font-size: 11px;")
         value_widget.setWordWrap(True)
 
@@ -165,8 +171,15 @@ class ScreenshotWidget(QFrame):
             self.image_label.setPixmap(scaled)
             self.image_label.setStyleSheet("background-color: #2a2a2a; border-radius: 4px;")
         else:
-            self.image_label.setText("Screenshot not available")
-            self.image_label.setStyleSheet("color: #666666; font-size: 12px; background-color: #2a2a2a;")
+            # Show helpful message about screenshot capture
+            message = "Screenshot capture requires\nPlaywright or Selenium.\n\nInstall with:\npip install playwright\nplaywright install chromium"
+            self.image_label.setText(message)
+            self.image_label.setStyleSheet("""
+                color: #9ca3af;
+                font-size: 11px;
+                background-color: #2a2a2a;
+                padding: 20px;
+            """)
 
         self.url_label.setText(url)
 
@@ -239,19 +252,29 @@ class TargetProfilePanel(QWidget):
             return
 
         # Clear existing cards
-        self._clear_card(self.basic_info_card)
-        self._clear_card(self.tech_card)
-        self._clear_card(self.security_card)
-        self._clear_card(self.ssl_card)
-        self._clear_card(self.infrastructure_card)
+        for card in [self.basic_info_card, self.tech_card, self.security_card,
+                     self.ssl_card, self.infrastructure_card]:
+            self._clear_card(card)
 
         # Basic Information
         self.basic_info_card.add_item("URL", profile.get('url', ''))
         self.basic_info_card.add_item("Domain", profile.get('domain', ''))
         self.basic_info_card.add_item("IP Address", profile.get('ip_address', ''))
         self.basic_info_card.add_item("Title", profile.get('title', ''))
-        self.basic_info_card.add_item("Status Code", str(profile.get('status_code', '')))
-        self.basic_info_card.add_item("Response Time", f"{profile.get('response_time_ms', 0):.0f}ms")
+
+        # Status code - format nicely
+        status_code = profile.get('status_code', 0)
+        if status_code and status_code > 0:
+            self.basic_info_card.add_item("Status Code", str(status_code), "#4CAF50" if status_code < 400 else "#f44336")
+        else:
+            self.basic_info_card.add_item("Status Code", "")
+
+        # Response time
+        response_time = profile.get('response_time_ms')
+        if response_time and response_time > 0:
+            self.basic_info_card.add_item("Response Time", f"{response_time:.0f}ms")
+        else:
+            self.basic_info_card.add_item("Response Time", "")
 
         # Technology Stack
         self.tech_card.add_item("Web Server", profile.get('web_server', ''), "#2196F3")
@@ -269,7 +292,9 @@ class TargetProfilePanel(QWidget):
         self.security_card.add_item("WAF Detected", waf if waf else "None", waf_color)
 
         if waf:
-            self.security_card.add_item("WAF Confidence", f"{profile.get('waf_confidence', 0)*100:.0f}%", "#FF9800")
+            waf_conf = profile.get('waf_confidence')
+            conf_str = f"{waf_conf*100:.0f}%" if waf_conf is not None else "N/A"
+            self.security_card.add_item("WAF Confidence", conf_str, "#FF9800")
 
         missing_headers = profile.get('missing_security_headers', [])
         if missing_headers:
@@ -291,7 +316,15 @@ class TargetProfilePanel(QWidget):
             self.ssl_card.add_item("Grade", grade, grade_colors.get(grade, '#666666'))
 
         # Infrastructure
-        self.infrastructure_card.add_item("Country", f"{profile.get('country', '')} ({profile.get('country_code', '')})")
+        country = profile.get('country', '')
+        country_code = profile.get('country_code', '')
+        if country and country_code:
+            self.infrastructure_card.add_item("Country", f"{country} ({country_code})")
+        elif country:
+            self.infrastructure_card.add_item("Country", country)
+        else:
+            self.infrastructure_card.add_item("Country", "")
+
         self.infrastructure_card.add_item("Hosting", profile.get('hosting_provider', ''))
         self.infrastructure_card.add_item("CDN", profile.get('cdn', ''))
         self.infrastructure_card.add_item("ASN", profile.get('asn', ''))
@@ -318,11 +351,9 @@ class TargetProfilePanel(QWidget):
 
     def clear(self):
         """Clear all profile data"""
-        self._clear_card(self.basic_info_card)
-        self._clear_card(self.tech_card)
-        self._clear_card(self.security_card)
-        self._clear_card(self.ssl_card)
-        self._clear_card(self.infrastructure_card)
+        for card in [self.basic_info_card, self.tech_card, self.security_card,
+                     self.ssl_card, self.infrastructure_card]:
+            self._clear_card(card)
         self.screenshot_widget.clear()
 
 

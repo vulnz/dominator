@@ -26,142 +26,76 @@ class CodeInjectionModule(BaseModule):
         """Initialize Code Injection module"""
         super().__init__(module_path, payload_limit=payload_limit)
 
-        # Generate unique markers for detection (prevents false positives)
-        self.marker = ''.join(random.choices(string.ascii_lowercase, k=8))
-        self.marker_num = random.randint(100000, 999999)
-        self.expected_result = str(self.marker_num * 2)
+        # Generate unique markers using MATH ONLY
+        # The expected result should NEVER appear in the payload itself
+        self.num1 = random.randint(10000, 99999)
+        self.num2 = random.randint(10000, 99999)
+        self.expected_math = str(self.num1 * self.num2)
 
-        # PHP code injection payloads
+        # PHP code injection payloads - MATH ONLY
         self.php_payloads = [
             {
-                'payload': f'{self.marker_num}*2',
-                'detect': self.expected_result,
+                'payload': f'{self.num1}*{self.num2}',
+                'detect': self.expected_math,
                 'description': 'PHP arithmetic evaluation'
             },
             {
-                'payload': f'print("{self.marker}")',
-                'detect': self.marker,
-                'description': 'PHP print() execution'
-            },
-            {
-                'payload': f'echo "{self.marker}"',
-                'detect': self.marker,
-                'description': 'PHP echo execution'
-            },
-            {
                 'payload': 'phpinfo()',
-                'detect': r'PHP Version|php\.ini|Configuration',
+                'detect': r'<title>phpinfo\(\)</title>|PHP Version \d+\.\d+',
                 'description': 'PHP phpinfo() execution',
                 'regex': True
             },
-            {
-                'payload': f'"{"a"*5}"."{self.marker}"',
-                'detect': f'aaaaa{self.marker}',
-                'description': 'PHP string concatenation'
-            },
-            {
-                'payload': f'1 and print("{self.marker}")',
-                'detect': self.marker,
-                'description': 'PHP assert() injection'
-            },
         ]
 
-        # Python code injection payloads
+        # Python code injection payloads - MATH ONLY
         self.python_payloads = [
             {
-                'payload': f'{self.marker_num}*2',
-                'detect': self.expected_result,
+                'payload': f'{self.num1}*{self.num2}',
+                'detect': self.expected_math,
                 'description': 'Python arithmetic evaluation'
             },
             {
-                'payload': f'"a"*5+"{self.marker}"',
-                'detect': f'aaaaa{self.marker}',
-                'description': 'Python string multiplication'
-            },
-            {
-                'payload': f'str({self.marker_num}*2)',
-                'detect': self.expected_result,
+                'payload': f'str({self.num1}*{self.num2})',
+                'detect': self.expected_math,
                 'description': 'Python str() evaluation'
             },
             {
                 'payload': '__import__("os").name',
-                'detect': r'(nt|posix)',
+                'detect': r'^(nt|posix)$',
                 'description': 'Python os module access',
                 'regex': True
             },
-            {
-                'payload': f'print({self.marker_num}*2)',
-                'detect': self.expected_result,
-                'description': 'Python print() execution'
-            },
         ]
 
-        # Ruby code injection payloads
+        # Ruby code injection payloads - MATH ONLY
         self.ruby_payloads = [
             {
-                'payload': f'{self.marker_num}*2',
-                'detect': self.expected_result,
+                'payload': f'{self.num1}*{self.num2}',
+                'detect': self.expected_math,
                 'description': 'Ruby arithmetic evaluation'
-            },
-            {
-                'payload': f'"a"*5+"{self.marker}"',
-                'detect': f'aaaaa{self.marker}',
-                'description': 'Ruby string multiplication'
-            },
-            {
-                'payload': 'RUBY_VERSION',
-                'detect': r'[0-9]+\.[0-9]+\.[0-9]+',
-                'description': 'Ruby version disclosure',
-                'regex': True
-            },
-            {
-                'payload': f'puts "{self.marker}"',
-                'detect': self.marker,
-                'description': 'Ruby puts execution'
             },
         ]
 
-        # Node.js/JavaScript code injection payloads
+        # Node.js/JavaScript code injection payloads - MATH ONLY
         self.nodejs_payloads = [
             {
-                'payload': f'{self.marker_num}*2',
-                'detect': self.expected_result,
+                'payload': f'{self.num1}*{self.num2}',
+                'detect': self.expected_math,
                 'description': 'JavaScript arithmetic evaluation'
             },
             {
-                'payload': f'"a".repeat(5)+"{self.marker}"',
-                'detect': f'aaaaa{self.marker}',
-                'description': 'JavaScript string repeat'
-            },
-            {
-                'payload': 'process.platform',
-                'detect': r'(win32|linux|darwin)',
-                'description': 'Node.js process access',
-                'regex': True
-            },
-            {
-                'payload': f'[1,2,3].join("{self.marker}")',
-                'detect': f'1{self.marker}2{self.marker}3',
-                'description': 'JavaScript array join'
-            },
-            {
-                'payload': 'constructor.constructor("return 1+1")()',
-                'detect': '2',
-                'description': 'JavaScript constructor chaining'
+                'payload': f'eval({self.num1}*{self.num2})',
+                'detect': self.expected_math,
+                'description': 'JavaScript eval() execution'
             },
         ]
 
-        # Generic payloads
+        # Generic payloads - MATH ONLY
         self.generic_payloads = [
             {
-                'payload': f'{self.marker_num}*2',
-                'detect': self.expected_result,
+                'payload': f'{self.num1}*{self.num2}',
+                'detect': self.expected_math,
                 'description': 'Generic arithmetic evaluation'
-            },
-            {
-                'payload': f'{self.marker_num}+{self.marker_num}',
-                'detect': self.expected_result,
-                'description': 'Generic addition evaluation'
             },
         ]
 
@@ -179,7 +113,7 @@ class CodeInjectionModule(BaseModule):
             },
         ]
 
-        logger.info(f"Code Injection module loaded")
+        logger.info(f"Code Injection module loaded: {self.num1}*{self.num2}={self.expected_math}")
 
     def scan(self, targets: List[Dict[str, Any]], http_client: Any) -> List[Dict[str, Any]]:
         """
@@ -255,7 +189,7 @@ class CodeInjectionModule(BaseModule):
                                 continue
                             matched_value = match.group(0)
 
-                            # FALSE POSITIVE CHECK
+                            # FALSE POSITIVE CHECK - not in baseline
                             if re.search(detect_pattern, baseline_text, re.IGNORECASE):
                                 continue
                         else:
@@ -263,9 +197,14 @@ class CodeInjectionModule(BaseModule):
                                 continue
                             matched_value = detect_pattern
 
-                            # FALSE POSITIVE CHECK
+                            # FALSE POSITIVE CHECK - not in baseline
                             if detect_pattern in baseline_text:
                                 continue
+
+                        # FALSE POSITIVE CHECK - payload reflection
+                        if self._is_payload_reflected(payload, response_text):
+                            logger.debug(f"Code injection: payload reflected - skipping")
+                            continue
 
                         # CONFIRMED VULNERABILITY
                         evidence = self._build_evidence(
@@ -343,20 +282,16 @@ class CodeInjectionModule(BaseModule):
 
     def _get_payloads_for_tech(self, tech: str) -> List[Dict]:
         """Get appropriate payloads for detected technology"""
-        if tech == 'php':
-            return self.php_payloads + self.generic_payloads
-        elif tech == 'python':
-            return self.python_payloads + self.generic_payloads
-        elif tech == 'ruby':
-            return self.ruby_payloads + self.generic_payloads
-        elif tech == 'nodejs':
-            return self.nodejs_payloads + self.generic_payloads
-        else:
-            # Unknown - try common payloads from each
-            return (self.generic_payloads +
-                    self.php_payloads[:3] +
-                    self.python_payloads[:3] +
-                    self.nodejs_payloads[:3])
+        tech_payloads = {
+            'php': self.php_payloads,
+            'python': self.python_payloads,
+            'ruby': self.ruby_payloads,
+            'nodejs': self.nodejs_payloads,
+        }
+        if tech in tech_payloads:
+            return tech_payloads[tech] + self.generic_payloads
+        # Unknown - try common payloads from each
+        return self.generic_payloads + self.php_payloads[:3] + self.python_payloads[:3] + self.nodejs_payloads[:3]
 
     def _test_time_based(self, url: str, param_name: str, params: Dict,
                           method: str, http_client: Any) -> Dict:
@@ -438,6 +373,32 @@ indicating code evaluation is occurring.
                 continue
 
         return None
+
+    def _is_payload_reflected(self, payload: str, response_text: str) -> bool:
+        """Check if payload is reflected in response (false positive indicator)"""
+        import html
+        import urllib.parse
+
+        # Check raw payload
+        if payload in response_text:
+            return True
+
+        # Check URL-encoded
+        if urllib.parse.quote(payload) in response_text:
+            return True
+
+        # Check HTML-encoded
+        if html.escape(payload) in response_text:
+            return True
+
+        # Check math expression part
+        math_match = re.search(r'(\d{4,})\s*\*\s*(\d{4,})', payload)
+        if math_match:
+            math_expr = f"{math_match.group(1)}*{math_match.group(2)}"
+            if math_expr in response_text:
+                return True
+
+        return False
 
     def _build_evidence(self, url: str, param: str, payload: str, desc: str,
                          match: str, response: str, tech: str, method: str) -> str:

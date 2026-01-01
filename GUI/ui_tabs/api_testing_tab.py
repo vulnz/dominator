@@ -433,7 +433,12 @@ class APITestingTabBuilder:
         self.gui.api_endpoints_table.setHorizontalHeaderLabels([
             "Select", "Method", "Endpoint", "Parameters", "Description"
         ])
+        self.gui.api_endpoints_table.setSortingEnabled(True)
+        self.gui.api_endpoints_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Interactive)
+        self.gui.api_endpoints_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Interactive)
         self.gui.api_endpoints_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.gui.api_endpoints_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Interactive)
+        self.gui.api_endpoints_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Interactive)
         self.gui.api_endpoints_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.gui.api_endpoints_table.setAlternatingRowColors(True)
         # Prevent text overflow - use ellipsis for long text

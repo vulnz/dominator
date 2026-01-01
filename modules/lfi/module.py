@@ -89,6 +89,7 @@ class LFIModule(BaseModule):
                     )
 
                     if detected:
+                        response_text = getattr(response, 'text', '')[:5000]
                         result = self.create_result(
                             vulnerable=True,
                             url=url,
@@ -97,7 +98,9 @@ class LFIModule(BaseModule):
                             evidence=evidence,
                             description="Local File Inclusion vulnerability detected. "
                                        "Server allows reading of arbitrary files.",
-                            confidence=confidence
+                            confidence=confidence,
+                            method=method,
+                            response=response_text
                         )
 
                         # Add CWE/OWASP info from config

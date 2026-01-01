@@ -149,6 +149,9 @@ class SQLiModule(BaseModule):
                     )
 
                     if detected:
+                        # Capture response text for report
+                        response_text = getattr(response, 'text', '')[:5000]
+
                         result = self.create_result(
                             vulnerable=True,
                             url=url,
@@ -156,7 +159,9 @@ class SQLiModule(BaseModule):
                             payload=payload,
                             evidence=evidence,
                             description="SQL Injection vulnerability detected. Database error messages exposed.",
-                            confidence=confidence
+                            confidence=confidence,
+                            method=method,
+                            response=response_text
                         )
 
                         # Add metadata
@@ -557,7 +562,9 @@ class SQLiModule(BaseModule):
                                 evidence=evidence,
                                 description="Blind SQL Injection (time-based) vulnerability detected. "
                                           "Database executes injected time-delay functions.",
-                                confidence=confidence
+                                confidence=confidence,
+                                method=method,
+                                response=f"[Time-based detection - no response body captured]\nResponse time: {elapsed:.2f}s\nBaseline: {baseline_avg:.2f}s"
                             )
 
                             result['cwe'] = 'CWE-89'
@@ -715,7 +722,9 @@ class SQLiModule(BaseModule):
                                 evidence=evidence,
                                 description="Boolean-based Blind SQL Injection vulnerability detected. "
                                           "Database evaluates boolean logic in injected queries.",
-                                confidence=confidence
+                                confidence=confidence,
+                                method=method,
+                                response=f"[Boolean-based detection]\nTRUE response ({true_length} bytes):\n{true_text[:1500]}\n\n---\n\nFALSE response ({false_length} bytes):\n{false_text[:1500]}"
                             )
 
                             result['cwe'] = 'CWE-89'

@@ -403,83 +403,46 @@ class ScanTabBuilder:
         group.setLayout(layout)
         return group
 
+    def _update_toggle_btn_style(self, btn, is_on, on_color, on_hover):
+        """Update toggle button style based on state"""
+        bg_color = on_color if is_on else "#607D8B"
+        hover_color = on_hover if is_on else "#455A64"
+        btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {bg_color}; color: white;
+                font-size: 12px; font-weight: bold;
+                padding: 10px 15px; border-radius: 6px;
+            }}
+            QPushButton:hover {{background-color: {hover_color};}}
+        """)
+
     def _toggle_debug(self):
         """Toggle debug mode on/off"""
         is_on = self.gui.debug_btn.isChecked()
         self.gui.debug_mode = is_on
         self.gui.debug_btn.setText(f"🐛 Debug: {'ON' if is_on else 'OFF'}")
-        self._update_debug_btn_style(is_on)
-
-        # Also update menu checkbox if exists
+        self._update_toggle_btn_style(self.gui.debug_btn, is_on, "#9C27B0", "#7B1FA2")
         if hasattr(self.gui, 'debug_mode_action'):
             self.gui.debug_mode_action.setChecked(is_on)
-
         status = "enabled - verbose output" if is_on else "disabled - clean output"
         self.gui.statusBar().showMessage(f"Debug mode {status}", 3000)
 
     def _update_debug_btn_style(self, is_on):
         """Update debug button style based on state"""
-        if is_on:
-            self.gui.debug_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #9C27B0;
-                    color: white;
-                    font-size: 12px;
-                    font-weight: bold;
-                    padding: 10px 15px;
-                    border-radius: 6px;
-                }
-                QPushButton:hover {background-color: #7B1FA2;}
-            """)
-        else:
-            self.gui.debug_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #607D8B;
-                    color: white;
-                    font-size: 12px;
-                    font-weight: bold;
-                    padding: 10px 15px;
-                    border-radius: 6px;
-                }
-                QPushButton:hover {background-color: #455A64;}
-            """)
+        self._update_toggle_btn_style(self.gui.debug_btn, is_on, "#9C27B0", "#7B1FA2")
 
     def _toggle_raw_scan(self):
         """Toggle raw output mode on/off"""
         is_on = self.gui.raw_scan_btn.isChecked()
         self.gui.raw_output_mode = is_on
         self.gui.raw_scan_btn.setText(f"📋 Raw Output: {'ON' if is_on else 'OFF'}")
-        self._update_raw_btn_style(is_on)
-
+        self._update_toggle_btn_style(self.gui.raw_scan_btn, is_on, "#FF5722", "#E64A19")
         status = "enabled - all output shown" if is_on else "disabled - filtered output"
         self.gui.statusBar().showMessage(f"Raw output mode {status}", 3000)
 
     def _update_raw_btn_style(self, is_on):
         """Update raw output button style based on state"""
-        if is_on:
-            self.gui.raw_scan_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #FF5722;
-                    color: white;
-                    font-size: 12px;
-                    font-weight: bold;
-                    padding: 10px 15px;
-                    border-radius: 6px;
-                }
-                QPushButton:hover {background-color: #E64A19;}
-            """)
-        else:
-            self.gui.raw_scan_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #607D8B;
-                    color: white;
-                    font-size: 12px;
-                    font-weight: bold;
-                    padding: 10px 15px;
-                    border-radius: 6px;
-                }
-                QPushButton:hover {background-color: #455A64;}
-            """)
+        self._update_toggle_btn_style(self.gui.raw_scan_btn, is_on, "#FF5722", "#E64A19")
 
     def _create_presets_section(self):
         """Quick scan presets with clear descriptions"""
@@ -642,6 +605,9 @@ class ScanTabBuilder:
         cat_grid = QGridLayout()
         cat_grid.setSpacing(8)
         cat_grid.setContentsMargins(5, 5, 5, 5)
+        # Set column stretch to distribute space evenly
+        for col in range(3):
+            cat_grid.setColumnStretch(col, 1)
         cat_row, cat_col = 0, 0
         COLS = 3
 
@@ -664,6 +630,7 @@ class ScanTabBuilder:
                     text-align: left;
                     border-radius: 6px;
                     min-height: 32px;
+                    min-width: 170px;
                 }
                 QToolButton:hover {
                     background-color: #e3f2fd;
@@ -671,6 +638,8 @@ class ScanTabBuilder:
                     color: #1976D2;
                 }
             """)
+            # Set tooltip so full name is visible on hover
+            cat_box.toggle_button.setToolTip(f"{cat_name} - {len(modules_in_cat)} modules")
 
             # Vertical list for modules in category
             cat_layout = QVBoxLayout()

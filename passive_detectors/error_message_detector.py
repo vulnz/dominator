@@ -213,21 +213,20 @@ class ErrorMessageDetector:
             },
 
             # ===== GENERIC SERVER ERRORS =====
+            # NOTE: Removed overly generic patterns that cause false positives
+            # Only detect actual verbose error pages, not normal server headers
             'server_error': {
                 'patterns': [
-                    # Apache/Nginx errors
-                    re.compile(r'<address>Apache/[\d.]+ .+ Server at [^\s]+ Port \d+</address>'),
-                    re.compile(r'nginx/[\d.]+'),
-                    # IIS errors
-                    re.compile(r'<title>IIS.*Error</title>', re.IGNORECASE),
-                    re.compile(r'Microsoft-IIS/[\d.]+'),
-                    # Generic 500 error with details
-                    re.compile(r'500 Internal Server Error'),
-                    re.compile(r'<h1>Server Error</h1>'),
+                    # Apache error page (actual error, not just header)
+                    re.compile(r'<address>Apache/[\d.]+ \([^)]+\) Server at [^\s]+ Port \d+</address>'),
+                    # IIS detailed error page
+                    re.compile(r'<title>IIS\s+\d+\.\d+\s+Detailed Error</title>', re.IGNORECASE),
+                    # Actual 500 error PAGE (not just status code)
+                    re.compile(r'<html[^>]*>.*<title>500 Internal Server Error</title>', re.IGNORECASE | re.DOTALL),
                 ],
                 'severity': 'Medium',
                 'type': 'Server Error',
-                'description': 'Server error message with technology disclosure'
+                'description': 'Server error page with technology disclosure'
             },
 
             # ===== CONFIGURATION EXPOSURE =====
@@ -390,7 +389,6 @@ class ErrorMessageDetector:
         return recommendations.get(category,
             'Configure proper error handling. Disable verbose errors in production. '
             'Log detailed errors server-side only and show generic messages to users.')
-
 
     @classmethod
     def detect(cls, response_text: str, url: str, headers: Dict[str, str] = None) -> Tuple[bool, List[Dict[str, Any]]]:

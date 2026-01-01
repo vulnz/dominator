@@ -27,6 +27,18 @@ class ResultsHandler:
         self.gui = gui
         self.current_report_file = None  # Track current scan's report file
 
+    def _log_error(self, method_name, error):
+        """Log error to debug file"""
+        from datetime import datetime
+        log_file = Path(__file__).parent.parent / "gui_debug.log"
+        try:
+            with open(log_file, 'a', encoding='utf-8') as f:
+                f.write(f"[{datetime.now().strftime('%H:%M:%S')}] ERROR in ResultsHandler.{method_name}: {error}\n")
+                import traceback
+                f.write(traceback.format_exc() + "\n")
+        except:
+            pass
+
     def add_vulnerability_with_data(self, severity, description, module, target, finding_data):
         """
         Add vulnerability with full finding data (request, response, evidence, remediation)
@@ -40,104 +52,116 @@ class ResultsHandler:
             target: Target URL
             finding_data: Full finding dictionary with all fields
         """
-        # Call the regular add_vulnerability with the full finding_data
-        self.add_vulnerability(severity, description, module, target, finding_data)
+        try:
+            # Call the regular add_vulnerability with the full finding_data
+            self.add_vulnerability(severity, description, module, target, finding_data)
+        except Exception as e:
+            self._log_error("add_vulnerability_with_data", e)
 
     def add_vulnerability(self, severity, description, module="", target="", finding_data=None):
         """Add vulnerability to the results list and table"""
-        # Update counters (thread-safe)
-        if hasattr(self.gui, 'increment_vuln_count'):
-            self.gui.increment_vuln_count(severity)
-        elif severity in self.gui.vuln_counts:
-            self.gui.vuln_counts[severity] += 1
+        try:
+            # Update counters (thread-safe)
+            if hasattr(self.gui, 'increment_vuln_count'):
+                self.gui.increment_vuln_count(severity)
+            elif severity in self.gui.vuln_counts:
+                self.gui.vuln_counts[severity] += 1
 
-        # Update display
-        self.update_vuln_display()
+            # Update display
+            self.update_vuln_display()
 
-        # Update progress tab builder with vulnerability count
-        if hasattr(self.gui, 'progress_tab_builder'):
-            total_vulns = self.gui.get_total_vulns() if hasattr(self.gui, 'get_total_vulns') else sum(self.gui.vuln_counts.values())
-            self.gui.progress_tab_builder.update_dashboard_stats(vulns=total_vulns)
+            # Update progress tab builder with vulnerability count
+            if hasattr(self.gui, 'progress_tab_builder'):
+                total_vulns = self.gui.get_total_vulns() if hasattr(self.gui, 'get_total_vulns') else sum(self.gui.vuln_counts.values())
+                self.gui.progress_tab_builder.update_dashboard_stats(vulns=total_vulns)
 
-            # Log the finding
-            log_level = "error" if severity in ['CRITICAL', 'HIGH'] else "warning"
-            short_desc = description[:80] + "..." if len(description) > 80 else description
-            self.gui.progress_tab_builder.add_activity_log(f"[{severity}] {short_desc}", log_level)
+                # Log the finding
+                log_level = "error" if severity in ['CRITICAL', 'HIGH'] else "warning"
+                short_desc = description[:80] + "..." if len(description) > 80 else description
+                self.gui.progress_tab_builder.add_activity_log(f"[{severity}] {short_desc}", log_level)
 
-        # Parse description for module and target if not provided
-        # Format might be: "[MODULE] Description - Target URL"
-        parsed_module = module
-        parsed_target = target
-        parsed_description = description
+            # Parse description for module and target if not provided
+            # Format might be: "[MODULE] Description - Target URL"
+            parsed_module = module
+            parsed_target = target
+            parsed_description = description
 
-        if not module and '[' in description and ']' in description:
-            # Try to extract module from description
-            start = description.find('[')
-            end = description.find(']')
-            if start >= 0 and end > start:
-                parsed_module = description[start+1:end]
-                parsed_description = description[end+1:].strip()
-                if parsed_description.startswith('-'):
-                    parsed_description = parsed_description[1:].strip()
+            if not module and '[' in description and ']' in description:
+                # Try to extract module from description
+                start = description.find('[')
+                end = description.find(']')
+                if start >= 0 and end > start:
+                    parsed_module = description[start+1:end]
+                    parsed_description = description[end+1:].strip()
+                    if parsed_description.startswith('-'):
+                        parsed_description = parsed_description[1:].strip()
 
-        if not target and ' - http' in description:
-            # Try to extract target URL
-            parts = description.rsplit(' - http', 1)
-            if len(parts) == 2:
-                parsed_description = parts[0]
-                parsed_target = 'http' + parts[1]
-        elif not target and ' http' in description:
-            # Alternative format
-            parts = description.rsplit(' http', 1)
-            if len(parts) == 2:
-                parsed_target = 'http' + parts[1].split()[0] if parts[1] else ''
+            if not target and ' - http' in description:
+                # Try to extract target URL
+                parts = description.rsplit(' - http', 1)
+                if len(parts) == 2:
+                    parsed_description = parts[0]
+                    parsed_target = 'http' + parts[1]
+            elif not target and ' http' in description:
+                # Alternative format
+                parts = description.rsplit(' http', 1)
+                if len(parts) == 2:
+                    parsed_target = 'http' + parts[1].split()[0] if parts[1] else ''
 
-        # Add to new results table
-        add_finding_to_table(
-            self.gui,
-            severity,
-            parsed_description,
-            parsed_module,
-            parsed_target,
-            finding_data
-        )
+            # Add to new results table
+            add_finding_to_table(
+                self.gui,
+                severity,
+                parsed_description,
+                parsed_module,
+                parsed_target,
+                finding_data
+            )
 
-        # Also add to legacy list for backward compatibility
-        color = '#ff0000' if severity == 'CRITICAL' else '#ff8800' if severity == 'HIGH' else '#ffff00'
-        item = QListWidgetItem(f"[{severity}] {description}")
-        item.setForeground(QColor(color))
-        if hasattr(self.gui, 'vulns_list'):
-            self.gui.vulns_list.addItem(item)
+            # Also add to legacy list for backward compatibility
+            color = '#ff0000' if severity == 'CRITICAL' else '#ff8800' if severity == 'HIGH' else '#ffff00'
+            item = QListWidgetItem(f"[{severity}] {description}")
+            item.setForeground(QColor(color))
+            if hasattr(self.gui, 'vulns_list'):
+                self.gui.vulns_list.addItem(item)
 
-        # Add to Site Tree with vulnerability info
-        if parsed_target and hasattr(self.gui, 'results_tab_builder'):
-            vuln_info = {
-                'severity': severity,
-                'module': parsed_module,
-                'description': parsed_description[:50]
-            }
-            # Extract params from finding_data if available
-            params = None
-            if finding_data and 'parameter' in finding_data:
-                params = [finding_data['parameter']]
-            self.gui.results_tab_builder.add_url_to_tree(parsed_target, params, vuln_info)
+            # Add to Site Tree with vulnerability info
+            if parsed_target and hasattr(self.gui, 'results_tab_builder'):
+                vuln_info = {
+                    'severity': severity,
+                    'module': parsed_module,
+                    'description': parsed_description[:50]
+                }
+                # Extract params from finding_data if available
+                params = None
+                if finding_data and 'parameter' in finding_data:
+                    params = [finding_data['parameter']]
+                self.gui.results_tab_builder.add_url_to_tree(parsed_target, params, vuln_info)
 
-        # Flash results tab to show new finding
-        from GUI.dominator_gui import DominatorGUI
-        self.gui.tabs.tabBar().setTabTextColor(DominatorGUI.TAB_RESULTS, QColor('#ff0000'))
+            # Flash results tab to show new finding
+            from GUI.dominator_gui import DominatorGUI
+            self.gui.tabs.tabBar().setTabTextColor(DominatorGUI.TAB_RESULTS, QColor('#ff0000'))
+        except Exception as e:
+            self._log_error("add_vulnerability", e)
 
     def update_vuln_display(self):
         """Update vulnerability count displays"""
-        total = sum(self.gui.vuln_counts.values())
-        self.gui.total_vulns_label.setText(f"Total Vulnerabilities: {total}")
-        self.gui.critical_label.setText(f"Critical: {self.gui.vuln_counts['CRITICAL']}")
-        self.gui.high_label.setText(f"High: {self.gui.vuln_counts['HIGH']}")
-        self.gui.medium_label.setText(f"Medium: {self.gui.vuln_counts['MEDIUM']}")
+        try:
+            total = sum(self.gui.vuln_counts.values())
+            self.gui.total_vulns_label.setText(f"Total Vulnerabilities: {total}")
+            self.gui.critical_label.setText(f"Critical: {self.gui.vuln_counts['CRITICAL']}")
+            self.gui.high_label.setText(f"High: {self.gui.vuln_counts['HIGH']}")
+            self.gui.medium_label.setText(f"Medium: {self.gui.vuln_counts['MEDIUM']}")
+        except Exception as e:
+            self._log_error("update_vuln_display", e)
 
     def update_stats(self, total_vulns, modules_done, modules_total):
         """Update scan statistics"""
-        # Update status bar
-        self.gui.statusBar().showMessage(f"Scan running... | {modules_done}/{modules_total} modules | {total_vulns} vulnerabilities")
+        try:
+            # Update status bar
+            self.gui.statusBar().showMessage(f"Scan running... | {modules_done}/{modules_total} modules | {total_vulns} vulnerabilities")
+        except Exception as e:
+            self._log_error("update_stats", e)
 
     def set_current_report(self, report_filename):
         """Set the current scan's report file path
@@ -145,9 +169,12 @@ class ResultsHandler:
         Args:
             report_filename: The filename of the generated report
         """
-        parent_dir = Path(__file__).parent.parent
-        self.current_report_file = parent_dir / report_filename
-        self.gui.output_console.append(f"[+] Report generated: {report_filename}")
+        try:
+            parent_dir = Path(__file__).parent.parent
+            self.current_report_file = parent_dir / report_filename
+            self.gui.output_console.append(f"[+] Report generated: {report_filename}")
+        except Exception as e:
+            self._log_error("set_current_report", e)
 
     def open_report(self):
         """Open the generated HTML report"""
@@ -184,75 +211,64 @@ class ResultsHandler:
 
     def add_resource(self, resource_type, value, extra, source):
         """Add discovered resource to appropriate table"""
-        if resource_type == "email":
-            # Check if already exists
-            for row in range(self.gui.emails_table.rowCount()):
-                if self.gui.emails_table.item(row, 0) and self.gui.emails_table.item(row, 0).text() == value:
-                    return  # Already added
+        try:
+            self._add_resource_impl(resource_type, value, extra, source)
+        except Exception as e:
+            self._log_error("add_resource", e)
 
-            row = self.gui.emails_table.rowCount()
-            self.gui.emails_table.insertRow(row)
-            self.gui.emails_table.setItem(row, 0, QTableWidgetItem(value))
-            self.gui.emails_table.setItem(row, 1, QTableWidgetItem(extra))  # Type (Personal/Business)
-            self.gui.emails_table.setItem(row, 2, QTableWidgetItem(source))
-            self.gui.emails_group.show()  # Show group when data is added
+    def _table_has_value(self, table, check_col, value):
+        """Check if table already contains a value in specified column"""
+        return any(
+            table.item(row, check_col) and table.item(row, check_col).text() == value
+            for row in range(table.rowCount())
+        )
+
+    def _add_table_row(self, table, items, group=None):
+        """Add a row to table with items and optionally show group"""
+        row = table.rowCount()
+        table.insertRow(row)
+        for col, item in enumerate(items):
+            table.setItem(row, col, item if isinstance(item, QTableWidgetItem) else QTableWidgetItem(item))
+        if group:
+            group.show()
+
+    def _add_resource_impl(self, resource_type, value, extra, source):
+        """Implementation of add_resource"""
+        if resource_type == "email":
+            if self._table_has_value(self.gui.emails_table, 0, value):
+                return
+            self._add_table_row(self.gui.emails_table, [value, extra, source], self.gui.emails_group)
 
         elif resource_type == "phone":
-            # Check if already exists
-            for row in range(self.gui.phones_table.rowCount()):
-                if self.gui.phones_table.item(row, 0) and self.gui.phones_table.item(row, 0).text() == value:
-                    return
-
-            row = self.gui.phones_table.rowCount()
-            self.gui.phones_table.insertRow(row)
-            self.gui.phones_table.setItem(row, 0, QTableWidgetItem(value))
-            self.gui.phones_table.setItem(row, 1, QTableWidgetItem(extra))  # Format
-            self.gui.phones_table.setItem(row, 2, QTableWidgetItem(source))
-            self.gui.phones_group.show()  # Show group when data is added
+            if self._table_has_value(self.gui.phones_table, 0, value):
+                return
+            self._add_table_row(self.gui.phones_table, [value, extra, source], self.gui.phones_group)
 
         elif resource_type == "social":
-            # Check if already exists
-            for row in range(self.gui.social_media_table.rowCount()):
-                if self.gui.social_media_table.item(row, 1) and self.gui.social_media_table.item(row, 1).text() == value:
-                    return
-
-            row = self.gui.social_media_table.rowCount()
-            self.gui.social_media_table.insertRow(row)
-            self.gui.social_media_table.setItem(row, 0, QTableWidgetItem(extra))  # Platform
-            self.gui.social_media_table.setItem(row, 1, QTableWidgetItem(value))  # URL
-            self.gui.social_media_table.setItem(row, 2, QTableWidgetItem(source))
-            self.gui.social_group.show()  # Show group when data is added
+            if self._table_has_value(self.gui.social_media_table, 1, value):
+                return
+            self._add_table_row(self.gui.social_media_table, [extra, value, source], self.gui.social_group)
 
         elif resource_type == "leaked_key":
-            # Check if already exists
-            for row in range(self.gui.leaked_keys_table.rowCount()):
-                if self.gui.leaked_keys_table.item(row, 1) and self.gui.leaked_keys_table.item(row, 1).text() == value:
-                    return
-
-            row = self.gui.leaked_keys_table.rowCount()
-            self.gui.leaked_keys_table.insertRow(row)
-
-            # Parse extra: "KeyType|Severity"
+            if self._table_has_value(self.gui.leaked_keys_table, 1, value):
+                return
             parts = extra.split('|')
-            key_type = parts[0] if len(parts) > 0 else "Unknown"
-            severity = parts[1] if len(parts) > 1 else "HIGH"
-
-            self.gui.leaked_keys_table.setItem(row, 0, QTableWidgetItem(key_type))
-            self.gui.leaked_keys_table.setItem(row, 1, QTableWidgetItem(value))
-
-            # Color-code severity
+            key_type, severity = parts[0] if parts else "Unknown", parts[1] if len(parts) > 1 else "HIGH"
             severity_item = QTableWidgetItem(severity)
-            if severity == "CRITICAL":
-                severity_item.setForeground(QColor('#ff0000'))
-            elif severity == "HIGH":
-                severity_item.setForeground(QColor('#ff8800'))
-            self.gui.leaked_keys_table.setItem(row, 2, severity_item)
-
-            self.gui.leaked_keys_table.setItem(row, 3, QTableWidgetItem(source))
-            self.gui.keys_group.show()  # Show group when data is added
+            severity_colors = {"CRITICAL": '#ff0000', "HIGH": '#ff8800'}
+            if severity in severity_colors:
+                severity_item.setForeground(QColor(severity_colors[severity]))
+            self._add_table_row(self.gui.leaked_keys_table, [key_type, value, severity_item, source], self.gui.keys_group)
 
     def add_scope_info(self, info_type, data1, data2, data3):
         """Add scope information (technologies, titles, IPs) to appropriate tables"""
+        try:
+            self._add_scope_info_impl(info_type, data1, data2, data3)
+        except Exception as e:
+            self._log_error("add_scope_info", e)
+
+    def _add_scope_info_impl(self, info_type, data1, data2, data3):
+        """Implementation of add_scope_info"""
         if info_type == "technology":
             # Check if already exists
             for row in range(self.gui.tech_table.rowCount()):
@@ -306,12 +322,14 @@ class ResultsHandler:
             self.gui.geo_table.insertRow(row)
 
             # data1 = IP, data2 = domain, data3 = source
-            # For now, we don't have actual geo lookup, so we'll mark as "Pending"
             self.gui.geo_table.setItem(row, 0, QTableWidgetItem(data1))  # IP
-            self.gui.geo_table.setItem(row, 1, QTableWidgetItem("Lookup Pending"))  # Country (placeholder)
-            self.gui.geo_table.setItem(row, 2, QTableWidgetItem("-"))  # City (placeholder)
-            self.gui.geo_table.setItem(row, 3, QTableWidgetItem("-"))  # ISP (placeholder)
+            self.gui.geo_table.setItem(row, 1, QTableWidgetItem("Looking up..."))  # Country
+            self.gui.geo_table.setItem(row, 2, QTableWidgetItem("-"))  # City
+            self.gui.geo_table.setItem(row, 3, QTableWidgetItem("-"))  # ISP
             self.gui.geo_table.setItem(row, 4, QTableWidgetItem(data2))  # Domain
+
+            # Start async geo lookup
+            self._lookup_geo_ip(data1, row)
 
     def clear_results(self):
         """Clear all scan results"""
@@ -361,3 +379,56 @@ class ResultsHandler:
                 self.gui.pie_chart.set_data({})
 
             self.gui.output_console.append("[*] Results cleared")
+
+    def _lookup_geo_ip(self, ip_address, table_row):
+        """
+        Perform async geo-IP lookup using free ip-api.com service
+        Uses threading instead of QThread to avoid garbage collection issues.
+
+        Args:
+            ip_address: IP address to lookup
+            table_row: Row index in geo_table to update
+        """
+        import threading
+        from PyQt5.QtCore import QTimer
+
+        def do_lookup():
+            try:
+                import urllib.request
+                import json
+
+                # Use ip-api.com (free, no API key required, 45 req/min limit)
+                url = f"http://ip-api.com/json/{ip_address}?fields=status,country,city,isp,org,as"
+                req = urllib.request.Request(url, headers={'User-Agent': 'DominatorScanner/1.0'})
+
+                with urllib.request.urlopen(req, timeout=5) as response:
+                    data = json.loads(response.read().decode('utf-8'))
+
+                if data.get('status') == 'success':
+                    result = {
+                        'country': data.get('country', 'Unknown'),
+                        'city': data.get('city', '-'),
+                        'isp': data.get('isp', data.get('org', '-')),
+                    }
+                else:
+                    result = {'country': 'Lookup Failed', 'city': '-', 'isp': '-'}
+
+            except Exception as e:
+                result = {'country': f'Error: {str(e)[:20]}', 'city': '-', 'isp': '-'}
+
+            # Update UI from main thread using QTimer
+            QTimer.singleShot(0, lambda: self._update_geo_table(table_row, result))
+
+        # Run in background thread
+        thread = threading.Thread(target=do_lookup, daemon=True)
+        thread.start()
+
+    def _update_geo_table(self, row, data):
+        """Update geo table with lookup results (called from main thread)"""
+        try:
+            if hasattr(self.gui, 'geo_table') and row < self.gui.geo_table.rowCount():
+                self.gui.geo_table.setItem(row, 1, QTableWidgetItem(data.get('country', '-')))
+                self.gui.geo_table.setItem(row, 2, QTableWidgetItem(data.get('city', '-')))
+                self.gui.geo_table.setItem(row, 3, QTableWidgetItem(data.get('isp', '-')))
+        except Exception as e:
+            self._log_error('_update_geo_table', e)

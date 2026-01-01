@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
     QLabel, QLineEdit, QTextEdit, QPushButton,
     QTableWidget, QTableWidgetItem, QSplitter, QHeaderView,
-    QCheckBox, QMessageBox, QFileDialog, QComboBox
+    QCheckBox, QMessageBox, QFileDialog, QComboBox, QApplication
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor, QDesktopServices
@@ -178,8 +178,13 @@ class PluginsTabBuilder:
         self.gui.plugin_table = QTableWidget()
         self.gui.plugin_table.setColumnCount(4)
         self.gui.plugin_table.setHorizontalHeaderLabels(['Name', 'Version', 'Category', 'Status'])
+        self.gui.plugin_table.setSortingEnabled(True)
+        self.gui.plugin_table.setAlternatingRowColors(True)
         self.gui.plugin_table.horizontalHeader().setStretchLastSection(True)
         self.gui.plugin_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.gui.plugin_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Interactive)
+        self.gui.plugin_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Interactive)
+        self.gui.plugin_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Interactive)
         self.gui.plugin_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.gui.plugin_table.setSelectionMode(QTableWidget.SingleSelection)
         self.gui.plugin_table.verticalHeader().setVisible(False)
@@ -748,13 +753,25 @@ class PluginsTabBuilder:
 
         # Run in background thread
         try:
+            # Hide console window on Windows
+            import sys
+            creation_flags = 0
+            startupinfo = None
+            if sys.platform == 'win32':
+                creation_flags = 0x08000000  # CREATE_NO_WINDOW
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = 0
+
             # Start subprocess
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                bufsize=1
+                bufsize=1,
+                creationflags=creation_flags,
+                startupinfo=startupinfo
             )
 
             # Read output in real-time
@@ -828,12 +845,24 @@ class PluginsTabBuilder:
             self.gui.output_console.append(f"\n[Plugin] Running Nuclei: {' '.join(cmd)}\n")
 
         try:
+            # Hide console window on Windows
+            import sys
+            creation_flags = 0
+            startupinfo = None
+            if sys.platform == 'win32':
+                creation_flags = 0x08000000  # CREATE_NO_WINDOW
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = 0
+
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                bufsize=1
+                bufsize=1,
+                creationflags=creation_flags,
+                startupinfo=startupinfo
             )
 
             def read_output():
@@ -892,13 +921,24 @@ class PluginsTabBuilder:
             self.gui.output_console.append(f"\n[Plugin] Running script: {' '.join(cmd)}\n")
 
         try:
+            # Hide console window on Windows
+            creation_flags = 0
+            startupinfo = None
+            if sys.platform == 'win32':
+                creation_flags = 0x08000000  # CREATE_NO_WINDOW
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = 0
+
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
-                cwd=working_dir
+                cwd=working_dir,
+                creationflags=creation_flags,
+                startupinfo=startupinfo
             )
 
             def read_output():

@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox,
     QLabel, QTextEdit, QFrame, QToolButton, QSizePolicy,
     QDialog, QDialogButtonBox, QTabWidget, QPushButton, QMenu,
-    QAction, QFileDialog, QMessageBox
+    QAction, QFileDialog, QMessageBox, QGraphicsDropShadowEffect
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor, QFont, QPainter, QBrush, QPen
@@ -217,37 +217,62 @@ class TimelineWidget(QWidget):
 
 
 class StatsCard(QFrame):
-    """A styled card widget for displaying statistics"""
+    """A styled card widget for displaying statistics - Modern dashboard style"""
 
     def __init__(self, title, value="0", color="#333333", parent=None):
         super().__init__(parent)
-        self.setFrameShape(QFrame.StyledPanel)
+        self.color = color
+        self._title = title  # Store original title
+        self.setFrameShape(QFrame.NoFrame)
+
+        # Set flexible size constraints - wide enough for labels
+        self.setMinimumSize(100, 75)
+        self.setMaximumSize(180, 120)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+
+        # Modern card style with colored top border accent
         self.setStyleSheet(f"""
-            QFrame {{
+            StatsCard {{
                 background-color: #ffffff;
-                border: 2px solid {color};
-                border-radius: 8px;
-                padding: 10px;
+                border: 1px solid #e5e7eb;
+                border-top: 3px solid {color};
+                border-radius: 6px;
             }}
         """)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(5)
+        layout.setContentsMargins(8, 10, 8, 8)
+        layout.setSpacing(4)
 
-        self.title_label = QLabel(title)
-        self.title_label.setStyleSheet(f"color: #666666; font-size: 11px; font-weight: bold;")
-        self.title_label.setAlignment(Qt.AlignCenter)
-
-        self.value_label = QLabel(value)
-        self.value_label.setStyleSheet(f"color: {color}; font-size: 24px; font-weight: bold;")
+        # Large number on top - FIXED: Ensure visible with explicit objectName
+        self.value_label = QLabel(str(value))
+        self.value_label.setObjectName("statsCardValue")
+        # Use QFont for more reliable font rendering
+        value_font = QFont("Segoe UI", 24, QFont.Bold)
+        self.value_label.setFont(value_font)
+        self.value_label.setStyleSheet(f"color: {color}; background: transparent;")
         self.value_label.setAlignment(Qt.AlignCenter)
+        self.value_label.setMinimumWidth(80)
+        self.value_label.setMinimumHeight(30)
 
-        layout.addWidget(self.title_label)
+        # Title below (uppercase, smaller)
+        self.title_label = QLabel(title.upper())
+        self.title_label.setObjectName("statsCardTitle")
+        title_font = QFont("Segoe UI", 9, QFont.Bold)
+        self.title_label.setFont(title_font)
+        self.title_label.setStyleSheet("color: #6b7280; background: transparent;")
+        self.title_label.setAlignment(Qt.AlignCenter)
+        self.title_label.setMinimumWidth(80)
+        self.title_label.setWordWrap(False)
+
         layout.addWidget(self.value_label)
+        layout.addWidget(self.title_label)
 
     def set_value(self, value):
+        """Update the displayed value"""
         self.value_label.setText(str(value))
+        # Update color - always apply to ensure visibility
+        self.value_label.setStyleSheet(f"color: {self.color}; background: transparent;")
 
 
 class FindingDetailDialog(QDialog):
@@ -255,10 +280,25 @@ class FindingDetailDialog(QDialog):
 
     def __init__(self, finding_data, parent=None):
         super().__init__(parent)
-        self.finding = finding_data
+        self.finding = finding_data if isinstance(finding_data, dict) else {}
         self.setWindowTitle("Finding Details")
         self.setMinimumSize(700, 600)
-        self.setup_ui()
+        try:
+            self.setup_ui()
+        except Exception as e:
+            # Log error and show a minimal fallback UI
+            from pathlib import Path
+            log_file = Path(__file__).parent.parent.parent / "gui_debug.log"
+            try:
+                with open(log_file, 'a', encoding='utf-8') as f:
+                    f.write(f"[{datetime.now().strftime('%H:%M:%S')}] ERROR in FindingDetailDialog.setup_ui: {e}\n")
+                    import traceback
+                    f.write(traceback.format_exc() + "\n")
+            except:
+                pass
+            # Fallback UI
+            layout = QVBoxLayout(self)
+            layout.addWidget(QLabel(f"Error displaying finding details: {str(e)}"))
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -383,10 +423,14 @@ class FindingDetailDialog(QDialog):
         info_layout.addWidget(QLabel("Time:"), 2, 0)
         info_layout.addWidget(QLabel(self.finding.get('time', 'N/A')), 2, 1)
 
-        # CVSS Score
-        cvss = self.finding.get('cvss', 0)
+        # CVSS Score - handle string or numeric values safely
+        cvss_raw = self.finding.get('cvss', 0)
+        try:
+            cvss = float(cvss_raw) if cvss_raw and cvss_raw != '-' and cvss_raw != 'N/A' else 0
+        except (ValueError, TypeError):
+            cvss = 0
         info_layout.addWidget(QLabel("CVSS Score:"), 3, 0)
-        cvss_label = QLabel(f"{cvss}/10")
+        cvss_label = QLabel(f"{cvss}/10" if cvss > 0 else "N/A")
         if cvss >= 9:
             cvss_label.setStyleSheet("color: #f44336; font-weight: bold;")
         elif cvss >= 7:
@@ -472,17 +516,127 @@ class FindingDetailDialog(QDialog):
         req_layout.addWidget(req_text)
         layout.addWidget(req_group)
 
-        # Response
-        resp_group = QGroupBox("HTTP Response")
+        # Response with HIGHLIGHTING of evidence/payload
+        resp_group = QGroupBox("HTTP Response (Evidence Highlighted)")
         resp_layout = QVBoxLayout(resp_group)
         resp_text = QTextEdit()
-        resp_text.setPlainText(self.finding.get('response', 'No response data available'))
         resp_text.setReadOnly(True)
         resp_text.setFont(QFont("Consolas", 9))
+
+        # Get response and evidence to highlight
+        response = self.finding.get('response', 'No response data available')
+        evidence = self.finding.get('evidence', '')
+        payload = self.finding.get('payload', '')
+
+        # Build highlighted HTML response
+        highlighted_response = self._highlight_evidence_in_response(response, evidence, payload)
+        resp_text.setHtml(highlighted_response)
+
         resp_layout.addWidget(resp_text)
         layout.addWidget(resp_group)
 
         return widget
+
+    def _highlight_evidence_in_response(self, response, evidence, payload):
+        """Highlight evidence and payload in the response with HTML formatting"""
+        import html
+
+        if not response or response == 'No response data available':
+            return '<pre style="font-family: Consolas; font-size: 9pt;">No response data available</pre>'
+
+        # Escape HTML characters in response
+        escaped_response = html.escape(response)
+
+        # Create list of things to highlight
+        highlights = []
+
+        # Add evidence snippets to highlight (extract key parts from evidence)
+        if evidence:
+            # Extract quoted strings from evidence that might appear in response
+            import re
+            # Look for patterns like: 'text', "text", `text`
+            quoted = re.findall(r"['\"`]([^'\"`]{5,100})['\"`]", evidence)
+            for q in quoted:
+                if len(q) > 5:  # Only highlight meaningful strings
+                    highlights.append(q)
+
+            # Also try to find the detector/indicator text
+            # Common patterns: "detected:", "found:", "indicator:"
+            indicator_patterns = [
+                r'(?:detected|found|indicator|error|warning)[:\s]+([^\n]{10,80})',
+                r'(?:unserialize|eval|exec|system)\([^)]+\)',
+            ]
+            for pattern in indicator_patterns:
+                matches = re.findall(pattern, evidence, re.IGNORECASE)
+                for m in matches:
+                    if len(m) > 5:
+                        highlights.append(m.strip())
+
+        # Add payload to highlights
+        if payload and len(payload) > 3:
+            highlights.append(payload)
+
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_highlights = []
+        for h in highlights:
+            if h not in seen:
+                seen.add(h)
+                unique_highlights.append(h)
+
+        # Apply highlighting with different colors
+        result = escaped_response
+
+        # Highlight payload in YELLOW
+        if payload and len(payload) > 3:
+            escaped_payload = html.escape(payload)
+            if escaped_payload in result:
+                result = result.replace(
+                    escaped_payload,
+                    f'<span style="background-color: #FFEB3B; color: #000; font-weight: bold; padding: 2px 4px; border-radius: 3px;">⚡ {escaped_payload}</span>'
+                )
+
+        # Highlight evidence snippets in RED/ORANGE
+        highlight_colors = ['#FF5722', '#E91E63', '#9C27B0', '#673AB7']
+        for i, highlight in enumerate(unique_highlights):
+            if highlight == payload:  # Skip if already highlighted as payload
+                continue
+            escaped_highlight = html.escape(highlight)
+            if escaped_highlight in result:
+                color = highlight_colors[i % len(highlight_colors)]
+                result = result.replace(
+                    escaped_highlight,
+                    f'<span style="background-color: {color}; color: white; font-weight: bold; padding: 2px 4px; border-radius: 3px;">🔍 {escaped_highlight}</span>',
+                    1  # Only replace first occurrence to avoid over-highlighting
+                )
+
+        # Wrap in pre tag for proper formatting
+        html_output = f'''
+        <style>
+            .response-content {{
+                font-family: Consolas, Monaco, monospace;
+                font-size: 9pt;
+                line-height: 1.5;
+                white-space: pre-wrap;
+                word-wrap: break-word;
+            }}
+            .legend {{
+                background-color: #f5f5f5;
+                padding: 8px;
+                margin-bottom: 10px;
+                border-radius: 4px;
+                font-size: 10pt;
+            }}
+        </style>
+        <div class="legend">
+            <b>Legend:</b>
+            <span style="background-color: #FFEB3B; padding: 2px 6px; border-radius: 3px;">⚡ Payload</span>
+            <span style="background-color: #FF5722; color: white; padding: 2px 6px; border-radius: 3px; margin-left: 10px;">🔍 Evidence/Indicator</span>
+        </div>
+        <div class="response-content">{result}</div>
+        '''
+
+        return html_output
 
     def _create_remediation_tab(self):
         widget = QWidget()

@@ -2,7 +2,7 @@
 Reusable GUI widgets for Dominator Scanner
 """
 
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QToolButton
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QToolButton, QSizePolicy
 from PyQt5.QtCore import Qt
 
 
@@ -33,6 +33,11 @@ class CollapsibleBox(QWidget):
         self.toggle_button.setCheckable(True)
         self.toggle_button.setChecked(False)
         self.toggle_button.clicked.connect(self.on_toggle)
+
+        # CRITICAL: Prevent text truncation - set size policy and minimum width
+        self.toggle_button.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        self.toggle_button.setMinimumWidth(180)  # Ensure text fits
+        self.toggle_button.setToolTip(title)  # Show full title on hover
 
         self.content_area = QWidget()
         self.content_area.setMaximumHeight(0)

@@ -322,16 +322,18 @@ class BrowserTab(QWidget):
         self.history_table.setHorizontalHeaderLabels([
             "#", "Time", "Method", "URL", "Status", "Length", "Notes"
         ])
+        self.history_table.setSortingEnabled(True)
+        self.history_table.setAlternatingRowColors(True)
 
         # Set column widths
         header = self.history_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)  # ID
-        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)  # Time
-        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)  # Method
-        header.setSectionResizeMode(3, QHeaderView.Stretch)           # URL
-        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # Status
-        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)  # Length
-        header.setSectionResizeMode(6, QHeaderView.ResizeToContents)  # Notes
+        header.setSectionResizeMode(0, QHeaderView.Interactive)  # ID
+        header.setSectionResizeMode(1, QHeaderView.Interactive)  # Time
+        header.setSectionResizeMode(2, QHeaderView.Interactive)  # Method
+        header.setSectionResizeMode(3, QHeaderView.Stretch)      # URL
+        header.setSectionResizeMode(4, QHeaderView.Interactive)  # Status
+        header.setSectionResizeMode(5, QHeaderView.Interactive)  # Length
+        header.setSectionResizeMode(6, QHeaderView.Interactive)  # Notes
 
         self.history_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.history_table.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -442,14 +444,16 @@ class BrowserTab(QWidget):
         self.findings_table.setHorizontalHeaderLabels([
             "Severity", "Type", "URL", "Evidence", "Description"
         ])
+        self.findings_table.setSortingEnabled(True)
+        self.findings_table.setAlternatingRowColors(True)
         self.findings_table.setMaximumHeight(150)
 
         # Set column widths
         header = self.findings_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(0, QHeaderView.Interactive)
+        header.setSectionResizeMode(1, QHeaderView.Interactive)
         header.setSectionResizeMode(2, QHeaderView.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.Interactive)
         header.setSectionResizeMode(4, QHeaderView.Stretch)
 
         layout.addWidget(self.findings_table)
@@ -506,14 +510,15 @@ class BrowserTab(QWidget):
         self.websocket_table.setHorizontalHeaderLabels([
             "#", "Time", "URL", "Direction", "Type", "Data"
         ])
+        self.websocket_table.setSortingEnabled(True)
 
         header = self.websocket_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)  # ID
-        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)  # Time
-        header.setSectionResizeMode(2, QHeaderView.Stretch)           # URL
-        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # Direction
-        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # Type
-        header.setSectionResizeMode(5, QHeaderView.Stretch)           # Data
+        header.setSectionResizeMode(0, QHeaderView.Interactive)  # ID
+        header.setSectionResizeMode(1, QHeaderView.Interactive)  # Time
+        header.setSectionResizeMode(2, QHeaderView.Stretch)      # URL
+        header.setSectionResizeMode(3, QHeaderView.Interactive)  # Direction
+        header.setSectionResizeMode(4, QHeaderView.Interactive)  # Type
+        header.setSectionResizeMode(5, QHeaderView.Stretch)      # Data
 
         self.websocket_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.websocket_table.setEditTriggers(QTableWidget.NoEditTriggers)

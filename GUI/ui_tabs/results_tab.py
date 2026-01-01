@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (
     QTableWidgetItem, QHeaderView, QComboBox, QLineEdit, QTextEdit,
     QMenu, QAction, QFileDialog, QMessageBox, QScrollArea, QSizePolicy,
     QAbstractItemView, QDialog, QDialogButtonBox, QTabWidget, QToolButton,
-    QTreeWidget, QTreeWidgetItem
+    QTreeWidget, QTreeWidgetItem, QProgressBar
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QPropertyAnimation, QEasingCurve
 from PyQt5.QtGui import QColor, QFont, QPainter, QBrush, QPen
@@ -120,8 +120,8 @@ class ResultsTabBuilder:
 
         self.results_subtabs.addTab(results_content, "Findings")
 
-        # === Scan Output subtab ===
-        scan_output_content = self._create_scan_output_tab()
+        # === Scan Output subtab (combined with Debug) ===
+        scan_output_content = self._create_combined_output_tab()
         self.results_subtabs.addTab(scan_output_content, "Scan Output")
 
         # === Progress subtab ===
@@ -131,10 +131,6 @@ class ResultsTabBuilder:
         self.gui.progress_tab_builder = progress_builder  # Store reference for updates
 
         self.results_subtabs.addTab(progress_content, "Progress")
-
-        # === Debug subtab ===
-        debug_content = self._create_debug_tab()
-        self.results_subtabs.addTab(debug_content, "Debug")
 
         # === Site Tree subtab ===
         site_tree_content = self._create_site_tree_tab()
@@ -186,11 +182,13 @@ class ResultsTabBuilder:
         self.gui.resources_table = QTableWidget()
         self.gui.resources_table.setColumnCount(4)
         self.gui.resources_table.setHorizontalHeaderLabels(["Type", "URL/Path", "Parameters", "Status"])
+        self.gui.resources_table.setSortingEnabled(True)
+        self.gui.resources_table.setAlternatingRowColors(True)
         self.gui.resources_table.horizontalHeader().setStretchLastSection(True)
-        self.gui.resources_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.gui.resources_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Interactive)
         self.gui.resources_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.gui.resources_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        self.gui.resources_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.gui.resources_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Interactive)
+        self.gui.resources_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Interactive)
         self.gui.resources_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.gui.resources_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.gui.resources_table.setStyleSheet(self._get_resources_table_stylesheet())
@@ -206,6 +204,8 @@ class ResultsTabBuilder:
         self.gui.social_media_table = QTableWidget()
         self.gui.social_media_table.setColumnCount(3)
         self.gui.social_media_table.setHorizontalHeaderLabels(["Platform", "URL", "Found On"])
+        self.gui.social_media_table.setSortingEnabled(True)
+        self.gui.social_media_table.setAlternatingRowColors(True)
         self.gui.social_media_table.horizontalHeader().setStretchLastSection(True)
         self.gui.social_media_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.gui.social_media_table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -222,6 +222,8 @@ class ResultsTabBuilder:
         self.gui.emails_table = QTableWidget()
         self.gui.emails_table.setColumnCount(3)
         self.gui.emails_table.setHorizontalHeaderLabels(["Email", "Type", "Found On"])
+        self.gui.emails_table.setSortingEnabled(True)
+        self.gui.emails_table.setAlternatingRowColors(True)
         self.gui.emails_table.horizontalHeader().setStretchLastSection(True)
         self.gui.emails_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.gui.emails_table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -238,6 +240,8 @@ class ResultsTabBuilder:
         self.gui.phones_table = QTableWidget()
         self.gui.phones_table.setColumnCount(3)
         self.gui.phones_table.setHorizontalHeaderLabels(["Phone Number", "Format", "Found On"])
+        self.gui.phones_table.setSortingEnabled(True)
+        self.gui.phones_table.setAlternatingRowColors(True)
         self.gui.phones_table.horizontalHeader().setStretchLastSection(True)
         self.gui.phones_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.gui.phones_table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -254,6 +258,8 @@ class ResultsTabBuilder:
         self.gui.leaked_keys_table = QTableWidget()
         self.gui.leaked_keys_table.setColumnCount(4)
         self.gui.leaked_keys_table.setHorizontalHeaderLabels(["Key Type", "Key Preview", "Severity", "Found On"])
+        self.gui.leaked_keys_table.setSortingEnabled(True)
+        self.gui.leaked_keys_table.setAlternatingRowColors(True)
         self.gui.leaked_keys_table.horizontalHeader().setStretchLastSection(True)
         self.gui.leaked_keys_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.gui.leaked_keys_table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -451,29 +457,29 @@ class ResultsTabBuilder:
         layout = QHBoxLayout(dashboard)
         layout.setSpacing(15)
 
-        # Stats cards
-        cards_layout = QVBoxLayout()
+        # Stats cards - all in one row for better layout
+        cards_layout = QHBoxLayout()
+        cards_layout.setSpacing(10)
 
-        # Total findings card
+        # Total findings card (first)
         self.gui.total_card = StatsCard("Total Findings", "0", "#6366f1")
         cards_layout.addWidget(self.gui.total_card)
 
-        # Severity cards in a row
-        severity_row = QHBoxLayout()
-
+        # Severity cards
         self.gui.critical_card = StatsCard("Critical", "0", SEVERITY_COLORS['CRITICAL'])
-        severity_row.addWidget(self.gui.critical_card)
+        cards_layout.addWidget(self.gui.critical_card)
 
         self.gui.high_card = StatsCard("High", "0", SEVERITY_COLORS['HIGH'])
-        severity_row.addWidget(self.gui.high_card)
+        cards_layout.addWidget(self.gui.high_card)
 
         self.gui.medium_card = StatsCard("Medium", "0", SEVERITY_COLORS['MEDIUM'])
-        severity_row.addWidget(self.gui.medium_card)
+        cards_layout.addWidget(self.gui.medium_card)
 
         self.gui.low_card = StatsCard("Low", "0", SEVERITY_COLORS['LOW'])
-        severity_row.addWidget(self.gui.low_card)
+        cards_layout.addWidget(self.gui.low_card)
 
-        cards_layout.addLayout(severity_row)
+        # Add stretch at end to prevent cards from stretching
+        cards_layout.addStretch()
         layout.addLayout(cards_layout)
 
         # Charts section
@@ -633,6 +639,52 @@ class ResultsTabBuilder:
         self.gui.target_filter.currentTextChanged.connect(self._apply_filters)
         layout.addWidget(self.gui.target_filter)
 
+        # Status Code filter
+        status_label = QLabel("Status:")
+        status_label.setStyleSheet("color: #1f2937; font-weight: bold;")
+        layout.addWidget(status_label)
+
+        self.gui.status_filter = QComboBox()
+        self.gui.status_filter.addItems(["All", "2xx", "3xx", "4xx", "5xx", "200", "301", "302", "400", "401", "403", "404", "500"])
+        self.gui.status_filter.setStyleSheet("""
+            QComboBox {
+                background-color: #f3f4f6;
+                color: #1f2937;
+                border: 1px solid #d1d5db;
+                border-radius: 4px;
+                padding: 5px;
+                min-width: 70px;
+            }
+            QComboBox:hover { border-color: #6366f1; }
+            QComboBox::drop-down { border: none; }
+            QComboBox QAbstractItemView { background-color: #f3f4f6; color: #1f2937; selection-background-color: #6366f1; }
+        """)
+        self.gui.status_filter.currentTextChanged.connect(self._apply_filters)
+        layout.addWidget(self.gui.status_filter)
+
+        # Extension filter
+        ext_label = QLabel("Extension:")
+        ext_label.setStyleSheet("color: #1f2937; font-weight: bold;")
+        layout.addWidget(ext_label)
+
+        self.gui.extension_filter = QComboBox()
+        self.gui.extension_filter.addItems(["All", ".php", ".asp", ".aspx", ".jsp", ".html", ".js", ".json", ".xml", "No ext"])
+        self.gui.extension_filter.setStyleSheet("""
+            QComboBox {
+                background-color: #f3f4f6;
+                color: #1f2937;
+                border: 1px solid #d1d5db;
+                border-radius: 4px;
+                padding: 5px;
+                min-width: 80px;
+            }
+            QComboBox:hover { border-color: #6366f1; }
+            QComboBox::drop-down { border: none; }
+            QComboBox QAbstractItemView { background-color: #f3f4f6; color: #1f2937; selection-background-color: #6366f1; }
+        """)
+        self.gui.extension_filter.currentTextChanged.connect(self._apply_filters)
+        layout.addWidget(self.gui.extension_filter)
+
         # Search box
         search_label = QLabel("Search:")
         search_label.setStyleSheet("color: #1f2937; font-weight: bold;")
@@ -647,7 +699,7 @@ class ResultsTabBuilder:
                 border: 1px solid #d1d5db;
                 border-radius: 4px;
                 padding: 5px;
-                min-width: 150px;
+                min-width: 120px;
             }
             QLineEdit:focus { border-color: #6366f1; }
         """)
@@ -702,108 +754,166 @@ class ResultsTabBuilder:
         return filters_frame
 
     def _create_results_table(self):
-        """Create the results table widget with comprehensive columns"""
+        """Create a modern, clean results table with essential columns only"""
         container = QWidget()
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
 
-        # Table header with count
-        header_layout = QHBoxLayout()
-        label = QLabel("🔍 Findings")
-        label.setStyleSheet("font-size: 16px; font-weight: bold; color: #1976D2; padding: 5px;")
-        header_layout.addWidget(label)
+        # Header with title, count and quick actions
+        header_frame = QFrame()
+        header_frame.setStyleSheet("""
+            QFrame {
+                background-color: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                padding: 8px;
+            }
+        """)
+        header_layout = QHBoxLayout(header_frame)
+        header_layout.setContentsMargins(12, 8, 12, 8)
 
-        self.gui.findings_count_label = QLabel("(0)")
-        self.gui.findings_count_label.setStyleSheet("font-size: 14px; color: #666; padding: 5px;")
+        # Title with icon
+        title_label = QLabel("Vulnerability Findings")
+        title_label.setFont(QFont("Segoe UI", 14, QFont.Bold))
+        title_label.setStyleSheet("color: #1e293b; background: transparent; border: none;")
+        header_layout.addWidget(title_label)
+
+        # Count badge
+        self.gui.findings_count_label = QLabel("0")
+        self.gui.findings_count_label.setFont(QFont("Segoe UI", 11, QFont.Bold))
+        self.gui.findings_count_label.setStyleSheet("""
+            background-color: #3b82f6;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            border: none;
+        """)
         header_layout.addWidget(self.gui.findings_count_label)
-        header_layout.addStretch()
-        layout.addLayout(header_layout)
 
-        # Results table with MORE columns
+        header_layout.addStretch()
+
+        # Severity filter chips
+        filter_label = QLabel("Filter:")
+        filter_label.setStyleSheet("color: #64748b; background: transparent; border: none;")
+        header_layout.addWidget(filter_label)
+
+        self.gui.severity_filter = QComboBox()
+        self.gui.severity_filter.addItems(["All", "Critical", "High", "Medium", "Low", "Info"])
+        self.gui.severity_filter.setStyleSheet("""
+            QComboBox {
+                background-color: white;
+                border: 1px solid #cbd5e1;
+                border-radius: 4px;
+                padding: 4px 24px 4px 8px;
+                min-width: 80px;
+                font-size: 11px;
+            }
+            QComboBox:hover { border-color: #3b82f6; }
+            QComboBox::drop-down { border: none; width: 20px; }
+        """)
+        self.gui.severity_filter.currentTextChanged.connect(self._filter_findings_by_severity)
+        header_layout.addWidget(self.gui.severity_filter)
+
+        layout.addWidget(header_frame)
+
+        # Modern results table - simplified columns
         self.gui.results_table = QTableWidget()
-        self.gui.results_table.setColumnCount(9)
+        self.gui.results_table.setColumnCount(6)
         self.gui.results_table.setHorizontalHeaderLabels([
-            "#", "⚠️ Severity", "📦 Module", "🎯 Vulnerability",
-            "🔗 URL", "📝 Parameter", "💉 Payload", "📊 CVSS", "⏰ Time"
+            "Severity", "Vulnerability Type", "Target URL", "Parameter", "Evidence", "CVSS"
         ])
 
-        # Modern dark-themed table style
+        # Modern clean table style
         self.gui.results_table.setStyleSheet("""
             QTableWidget {
-                background-color: #f9fafb;
-                alternate-background-color: #252536;
-                border: 2px solid #d1d5db;
+                background-color: #ffffff;
+                alternate-background-color: #f8fafc;
+                border: 1px solid #e2e8f0;
                 border-radius: 8px;
-                gridline-color: #d1d5db;
-                color: #1f2937;
-                font-size: 11px;
+                gridline-color: #f1f5f9;
+                color: #1e293b;
+                font-size: 12px;
+                selection-background-color: #dbeafe;
+                selection-color: #1e40af;
             }
             QTableWidget::item {
                 padding: 10px 8px;
-                border-bottom: 1px solid #d1d5db;
+                border-bottom: 1px solid #f1f5f9;
             }
             QTableWidget::item:selected {
-                background-color: #4a4a7a;
-                color: #ffffff;
+                background-color: #dbeafe;
+                color: #1e40af;
             }
             QTableWidget::item:hover {
-                background-color: #e5e7eb;
+                background-color: #f1f5f9;
             }
             QHeaderView::section {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #d1d5db, stop:1 #e5e7eb);
-                color: #ffffff;
+                background-color: #f8fafc;
+                color: #475569;
                 padding: 12px 8px;
                 border: none;
-                border-bottom: 3px solid #6366f1;
-                font-weight: bold;
+                border-bottom: 2px solid #3b82f6;
+                border-right: 1px solid #e2e8f0;
+                font-weight: 600;
                 font-size: 11px;
+                text-transform: uppercase;
+            }
+            QHeaderView::section:last {
+                border-right: none;
+            }
+            QHeaderView::section:hover {
+                background-color: #f1f5f9;
+                color: #1e293b;
             }
             QScrollBar:vertical {
-                background: #f9fafb;
-                width: 12px;
-                border-radius: 6px;
+                background: #f8fafc;
+                width: 8px;
+                border-radius: 4px;
             }
             QScrollBar::handle:vertical {
-                background: #4a4a7a;
-                border-radius: 6px;
+                background: #cbd5e1;
+                border-radius: 4px;
                 min-height: 30px;
             }
             QScrollBar::handle:vertical:hover {
-                background: #6366f1;
+                background: #94a3b8;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
             }
         """)
 
-        # Configure table columns
+        # Configure column widths
         header = self.gui.results_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.Fixed)      # #
-        header.setSectionResizeMode(1, QHeaderView.Fixed)      # Severity
-        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)  # Module
-        header.setSectionResizeMode(3, QHeaderView.Stretch)    # Vulnerability
-        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # URL
-        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)  # Parameter
-        header.setSectionResizeMode(6, QHeaderView.ResizeToContents)  # Payload
-        header.setSectionResizeMode(7, QHeaderView.Fixed)      # CVSS
-        header.setSectionResizeMode(8, QHeaderView.Fixed)      # Time
+        header.setSectionResizeMode(0, QHeaderView.Fixed)       # Severity
+        header.setSectionResizeMode(1, QHeaderView.Interactive) # Vulnerability Type
+        header.setSectionResizeMode(2, QHeaderView.Stretch)     # URL (stretch)
+        header.setSectionResizeMode(3, QHeaderView.Fixed)       # Parameter
+        header.setSectionResizeMode(4, QHeaderView.Interactive) # Evidence
+        header.setSectionResizeMode(5, QHeaderView.Fixed)       # CVSS
 
-        self.gui.results_table.setColumnWidth(0, 40)   # #
-        self.gui.results_table.setColumnWidth(1, 90)   # Severity
-        self.gui.results_table.setColumnWidth(7, 70)   # CVSS
-        self.gui.results_table.setColumnWidth(8, 80)   # Time
+        self.gui.results_table.setColumnWidth(0, 90)   # Severity
+        self.gui.results_table.setColumnWidth(1, 180)  # Vulnerability Type
+        self.gui.results_table.setColumnWidth(3, 100)  # Parameter
+        self.gui.results_table.setColumnWidth(4, 200)  # Evidence
+        self.gui.results_table.setColumnWidth(5, 60)   # CVSS
+
         self.gui.results_table.setAlternatingRowColors(True)
-        self.gui.results_table.setRowHeight(0, 40)  # Default row height
-
+        self.gui.results_table.verticalHeader().setVisible(False)  # Hide row numbers
         self.gui.results_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.gui.results_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.gui.results_table.setSortingEnabled(True)
         self.gui.results_table.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.gui.results_table.setWordWrap(False)  # Prevent text wrapping, use ellipsis
-        self.gui.results_table.setTextElideMode(Qt.ElideRight)  # Show ... for long text
+        self.gui.results_table.setWordWrap(False)
+        self.gui.results_table.setTextElideMode(Qt.ElideMiddle)
+        self.gui.results_table.setShowGrid(False)  # Cleaner look
 
         # Connect signals
         self.gui.results_table.doubleClicked.connect(self._on_row_double_clicked)
         self.gui.results_table.customContextMenuRequested.connect(self._show_context_menu)
         self.gui.results_table.itemSelectionChanged.connect(self._on_selection_changed)
+        self.gui.results_table.clicked.connect(self._on_row_clicked)
 
         layout.addWidget(self.gui.results_table)
 
@@ -812,6 +922,20 @@ class ResultsTabBuilder:
         self.gui.vulns_list.hide()
 
         return container
+
+    def _filter_findings_by_severity(self, severity_text):
+        """Filter findings table by severity"""
+        if not hasattr(self.gui, 'results_table'):
+            return
+
+        for row in range(self.gui.results_table.rowCount()):
+            if severity_text == "All":
+                self.gui.results_table.setRowHidden(row, False)
+            else:
+                severity_item = self.gui.results_table.item(row, 0)
+                if severity_item:
+                    row_severity = severity_item.text().upper()
+                    self.gui.results_table.setRowHidden(row, severity_text.upper() not in row_severity)
 
     def _create_detail_panel(self):
         """Create the detail panel for showing selected finding details with ALL data"""
@@ -1212,133 +1336,234 @@ class ResultsTabBuilder:
 
         return export_frame
 
-    def _create_scan_output_tab(self):
-        """Create the scan output tab with search and colored table view"""
+    def _create_combined_output_tab(self):
+        """Create the combined scan output tab with progress display and all output messages"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
+        layout.setSpacing(8)
 
-        # Header with title and export button
+        # === Progress Section at Top ===
+        progress_frame = QFrame()
+        progress_frame.setStyleSheet("""
+            QFrame {
+                background-color: #f8fafc;
+                border: 2px solid #e2e8f0;
+                border-radius: 8px;
+                padding: 10px;
+            }
+        """)
+        progress_layout = QVBoxLayout(progress_frame)
+        progress_layout.setSpacing(8)
+
+        # Progress bar with percentage
+        progress_row = QHBoxLayout()
+
+        self.gui.output_progress_bar = QProgressBar()
+        self.gui.output_progress_bar.setMinimum(0)
+        self.gui.output_progress_bar.setMaximum(100)
+        self.gui.output_progress_bar.setValue(0)
+        self.gui.output_progress_bar.setMinimumHeight(24)
+        self.gui.output_progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 2px solid #cbd5e1;
+                border-radius: 6px;
+                text-align: center;
+                background-color: #f1f5f9;
+                color: #1e293b;
+                font-weight: bold;
+                font-size: 11px;
+            }
+            QProgressBar::chunk {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #22c55e, stop:0.5 #16a34a, stop:1 #15803d);
+                border-radius: 4px;
+            }
+        """)
+        progress_row.addWidget(self.gui.output_progress_bar, 1)
+
+        progress_layout.addLayout(progress_row)
+
+        # Status info row
+        status_row = QHBoxLayout()
+
+        # Current module label
+        self.gui.output_current_module = QLabel("Ready to scan...")
+        self.gui.output_current_module.setFont(QFont("Segoe UI", 10, QFont.Bold))
+        self.gui.output_current_module.setStyleSheet("color: #3b82f6; background: transparent; border: none;")
+        status_row.addWidget(self.gui.output_current_module)
+
+        status_row.addStretch()
+
+        # Time elapsed
+        self.gui.output_time_elapsed = QLabel("Elapsed: --:--")
+        self.gui.output_time_elapsed.setFont(QFont("Segoe UI", 9))
+        self.gui.output_time_elapsed.setStyleSheet("""
+            color: #64748b;
+            background-color: #f1f5f9;
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: none;
+        """)
+        status_row.addWidget(self.gui.output_time_elapsed)
+
+        # Time remaining
+        self.gui.output_time_remaining = QLabel("Remaining: --:--")
+        self.gui.output_time_remaining.setFont(QFont("Segoe UI", 9))
+        self.gui.output_time_remaining.setStyleSheet("""
+            color: #64748b;
+            background-color: #f1f5f9;
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: none;
+        """)
+        status_row.addWidget(self.gui.output_time_remaining)
+
+        progress_layout.addLayout(status_row)
+        layout.addWidget(progress_frame)
+
+        # === Header with title, filters and export ===
         header_layout = QHBoxLayout()
 
-        title_label = QLabel("📄 Raw Scan Output")
-        title_label.setFont(QFont("Segoe UI", 14, QFont.Bold))
-        title_label.setStyleSheet("color: #1976D2;")
+        title_label = QLabel("Scan Output")
+        title_label.setFont(QFont("Segoe UI", 12, QFont.Bold))
+        title_label.setStyleSheet("color: #1e293b;")
         header_layout.addWidget(title_label)
 
         header_layout.addStretch()
 
-        # Export raw data button
-        export_raw_btn = QPushButton("📤 Export Raw Data")
-        export_raw_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4CAF50;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 10px 20px;
-                font-size: 12px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #45a049;
-            }
-        """)
-        export_raw_btn.clicked.connect(self._export_raw_scan_output)
-        header_layout.addWidget(export_raw_btn)
+        # Filter dropdown
+        filter_label = QLabel("Filter:")
+        filter_label.setFont(QFont("Segoe UI", 9))
+        header_layout.addWidget(filter_label)
 
-        layout.addLayout(header_layout)
-
-        # Search bar
-        search_layout = QHBoxLayout()
-
-        search_label = QLabel("🔍 Search:")
-        search_label.setFont(QFont("Segoe UI", 10, QFont.Bold))
-        search_layout.addWidget(search_label)
-
-        self.gui.scan_output_search = QLineEdit()
-        self.gui.scan_output_search.setPlaceholderText("Search scan output (keywords, URLs, modules)...")
-        self.gui.scan_output_search.setFont(QFont("Segoe UI", 10))
-        self.gui.scan_output_search.setMinimumHeight(32)
-        self.gui.scan_output_search.setStyleSheet("""
-            QLineEdit {
+        self.gui.output_filter_combo = QComboBox()
+        self.gui.output_filter_combo.addItems(["All", "Errors", "Warnings", "Info", "Modules", "Findings"])
+        self.gui.output_filter_combo.setMinimumWidth(100)
+        self.gui.output_filter_combo.setStyleSheet("""
+            QComboBox {
                 background-color: white;
-                border: 2px solid #1f2937;
-                border-radius: 6px;
-                padding: 6px 12px;
-                font-size: 11px;
+                border: 1px solid #cbd5e1;
+                border-radius: 4px;
+                padding: 4px 8px;
+                font-size: 10px;
             }
-            QLineEdit:focus {
-                border: 2px solid #2196F3;
+            QComboBox:hover {
+                border-color: #3b82f6;
             }
-            QLineEdit::placeholder {
-                color: #999999;
-                font-style: italic;
+            QComboBox::drop-down {
+                border: none;
+                padding-right: 8px;
             }
         """)
-        self.gui.scan_output_search.textChanged.connect(self._filter_scan_output)
-        search_layout.addWidget(self.gui.scan_output_search, 1)
+        self.gui.output_filter_combo.currentTextChanged.connect(self._filter_combined_output)
+        header_layout.addWidget(self.gui.output_filter_combo)
 
-        # Clear search button
-        clear_search_btn = QPushButton("✖ Clear")
-        clear_search_btn.setStyleSheet("""
+        # Clear button
+        clear_btn = QPushButton("Clear")
+        clear_btn.setStyleSheet("""
             QPushButton {
-                background-color: #9E9E9E;
+                background-color: #ef4444;
                 color: white;
                 border: none;
                 border-radius: 4px;
                 padding: 6px 12px;
                 font-size: 10px;
+                font-weight: bold;
             }
             QPushButton:hover {
-                background-color: #757575;
+                background-color: #dc2626;
             }
         """)
-        clear_search_btn.clicked.connect(lambda: self.gui.scan_output_search.clear())
-        search_layout.addWidget(clear_search_btn)
+        clear_btn.clicked.connect(self._clear_combined_output)
+        header_layout.addWidget(clear_btn)
+
+        # Export button
+        export_btn = QPushButton("Export")
+        export_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #22c55e;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #16a34a;
+            }
+        """)
+        export_btn.clicked.connect(self._export_raw_scan_output)
+        header_layout.addWidget(export_btn)
+
+        layout.addLayout(header_layout)
+
+        # === Search bar ===
+        search_layout = QHBoxLayout()
+
+        self.gui.scan_output_search = QLineEdit()
+        self.gui.scan_output_search.setPlaceholderText("Search output (URLs, modules, messages)...")
+        self.gui.scan_output_search.setMinimumHeight(32)
+        self.gui.scan_output_search.setStyleSheet("""
+            QLineEdit {
+                background-color: white;
+                border: 2px solid #e2e8f0;
+                border-radius: 6px;
+                padding: 6px 12px;
+                font-size: 11px;
+            }
+            QLineEdit:focus {
+                border: 2px solid #3b82f6;
+            }
+            QLineEdit::placeholder {
+                color: #94a3b8;
+            }
+        """)
+        self.gui.scan_output_search.textChanged.connect(self._filter_combined_output)
+        search_layout.addWidget(self.gui.scan_output_search)
 
         layout.addLayout(search_layout)
 
-        # Info bar showing statistics
-        info_bar = QFrame()
-        info_bar.setStyleSheet("""
+        # === Stats bar ===
+        stats_frame = QFrame()
+        stats_frame.setStyleSheet("""
             QFrame {
-                background-color: #f0f7ff;
-                border-left: 4px solid #2196F3;
+                background-color: #f1f5f9;
                 border-radius: 4px;
-                padding: 8px;
+                padding: 4px;
             }
         """)
-        info_layout = QHBoxLayout(info_bar)
+        stats_layout = QHBoxLayout(stats_frame)
+        stats_layout.setContentsMargins(8, 4, 8, 4)
 
-        self.gui.scan_output_stats = QLabel("Total Lines: 0 | Errors: 0 | Warnings: 0 | Info: 0")
+        self.gui.scan_output_stats = QLabel("Lines: 0 | Errors: 0 | Warnings: 0 | Modules: 0 | Findings: 0")
         self.gui.scan_output_stats.setFont(QFont("Segoe UI", 9))
-        self.gui.scan_output_stats.setStyleSheet("color: #1976D2; background: transparent; border: none;")
-        info_layout.addWidget(self.gui.scan_output_stats)
-        info_layout.addStretch()
+        self.gui.scan_output_stats.setStyleSheet("color: #475569; background: transparent; border: none;")
+        stats_layout.addWidget(self.gui.scan_output_stats)
+        stats_layout.addStretch()
 
-        layout.addWidget(info_bar)
+        layout.addWidget(stats_frame)
 
-        # Table widget for scan output
+        # === Output Table ===
         self.gui.scan_output_table = QTableWidget()
         self.gui.scan_output_table.setColumnCount(4)
         self.gui.scan_output_table.setHorizontalHeaderLabels([
-            "# Line",
-            "Level",
-            "Module",
-            "Message"
+            "#", "Level", "Source", "Message"
         ])
+        self.gui.scan_output_table.setSortingEnabled(True)
+        self.gui.scan_output_table.setMinimumHeight(300)
+        self.gui.scan_output_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         # Column sizing
         header = self.gui.scan_output_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.Fixed)
-        header.resizeSection(0, 70)  # Line number
-        header.setSectionResizeMode(1, QHeaderView.Fixed)
-        header.resizeSection(1, 90)  # Level
-        header.setSectionResizeMode(2, QHeaderView.Fixed)
-        header.resizeSection(2, 150)  # Module
-        header.setSectionResizeMode(3, QHeaderView.Stretch)  # Message
+        header.setSectionResizeMode(0, QHeaderView.Interactive)
+        header.resizeSection(0, 50)
+        header.setSectionResizeMode(1, QHeaderView.Interactive)
+        header.resizeSection(1, 80)
+        header.setSectionResizeMode(2, QHeaderView.Interactive)
+        header.resizeSection(2, 120)
+        header.setSectionResizeMode(3, QHeaderView.Stretch)
 
         self.gui.scan_output_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.gui.scan_output_table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -1347,19 +1572,18 @@ class ResultsTabBuilder:
         self.gui.scan_output_table.setStyleSheet("""
             QTableWidget {
                 background-color: #ffffff;
-                color: #1f2937;
-                gridline-color: #d1d5db;
-                border: 2px solid #d1d5db;
+                color: #1e293b;
+                gridline-color: #e2e8f0;
+                border: 1px solid #e2e8f0;
                 border-radius: 6px;
             }
             QHeaderView::section {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #e5e7eb, stop:1 #f3f4f6);
-                color: #6366f1;
+                background: #f8fafc;
+                color: #475569;
                 padding: 8px;
                 border: none;
-                border-bottom: 2px solid #6366f1;
-                border-right: 1px solid #d1d5db;
+                border-bottom: 2px solid #3b82f6;
+                border-right: 1px solid #e2e8f0;
                 font-weight: bold;
                 font-size: 10px;
             }
@@ -1367,24 +1591,77 @@ class ResultsTabBuilder:
                 border-right: none;
             }
             QTableWidget::item {
-                padding: 6px;
-                border-bottom: 1px solid #e5e7eb;
+                padding: 4px;
+                border-bottom: 1px solid #f1f5f9;
             }
             QTableWidget::item:selected {
-                background-color: #d1d5db;
-                color: #ffffff;
+                background-color: #dbeafe;
+                color: #1e40af;
             }
             QTableWidget::item:hover {
-                background-color: #f3f4f6;
+                background-color: #f8fafc;
             }
         """)
 
         layout.addWidget(self.gui.scan_output_table)
 
-        # Store all scan output lines for filtering
+        # Store all output lines for filtering
         self.gui.scan_output_lines = []
+        # Also store debug messages for compatibility
+        self.gui.debug_messages = []
+        self.gui.debug_table = self.gui.scan_output_table  # Alias for compatibility
 
         return widget
+
+    def _filter_combined_output(self):
+        """Filter the combined output table based on search and filter dropdown"""
+        if not hasattr(self.gui, 'scan_output_table'):
+            return
+
+        search_text = self.gui.scan_output_search.text().lower() if hasattr(self.gui, 'scan_output_search') else ""
+        filter_type = self.gui.output_filter_combo.currentText() if hasattr(self.gui, 'output_filter_combo') else "All"
+
+        for row in range(self.gui.scan_output_table.rowCount()):
+            show_row = True
+
+            # Get level from column 1
+            level_item = self.gui.scan_output_table.item(row, 1)
+            level = level_item.text().upper() if level_item else ""
+
+            # Apply filter type
+            if filter_type != "All":
+                if filter_type == "Errors" and "ERROR" not in level:
+                    show_row = False
+                elif filter_type == "Warnings" and "WARN" not in level:
+                    show_row = False
+                elif filter_type == "Info" and level not in ["INFO", "DEBUG"]:
+                    show_row = False
+                elif filter_type == "Modules" and "MODULE" not in level:
+                    show_row = False
+                elif filter_type == "Findings" and "FINDING" not in level and "VULN" not in level:
+                    show_row = False
+
+            # Apply search filter
+            if show_row and search_text:
+                match_found = False
+                for col in range(self.gui.scan_output_table.columnCount()):
+                    item = self.gui.scan_output_table.item(row, col)
+                    if item and search_text in item.text().lower():
+                        match_found = True
+                        break
+                show_row = match_found
+
+            self.gui.scan_output_table.setRowHidden(row, not show_row)
+
+    def _clear_combined_output(self):
+        """Clear all output from the combined output table"""
+        if hasattr(self.gui, 'scan_output_table'):
+            self.gui.scan_output_table.setRowCount(0)
+        if hasattr(self.gui, 'scan_output_lines'):
+            self.gui.scan_output_lines = []
+        if hasattr(self.gui, 'debug_messages'):
+            self.gui.debug_messages = []
+        self._update_combined_output_stats()
 
     def _create_debug_tab(self):
         """Create the debug messages tab for INFO/DEBUG output"""
@@ -1461,13 +1738,16 @@ class ResultsTabBuilder:
         self.gui.debug_table.setHorizontalHeaderLabels([
             "# Line", "Type", "Source", "Message"
         ])
+        self.gui.debug_table.setSortingEnabled(True)
+        self.gui.debug_table.setMinimumHeight(300)
+        self.gui.debug_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         header = self.gui.debug_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.Fixed)
+        header.setSectionResizeMode(0, QHeaderView.Interactive)
         header.resizeSection(0, 60)
-        header.setSectionResizeMode(1, QHeaderView.Fixed)
+        header.setSectionResizeMode(1, QHeaderView.Interactive)
         header.resizeSection(1, 80)
-        header.setSectionResizeMode(2, QHeaderView.Fixed)
+        header.setSectionResizeMode(2, QHeaderView.Interactive)
         header.resizeSection(2, 150)
         header.setSectionResizeMode(3, QHeaderView.Stretch)
 
@@ -1740,6 +2020,8 @@ class ResultsTabBuilder:
         self.gui.site_tree.setColumnWidth(1, 100)
         self.gui.site_tree.setColumnWidth(2, 150)
         self.gui.site_tree.setColumnWidth(3, 120)
+        self.gui.site_tree.setMinimumHeight(300)
+        self.gui.site_tree.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.gui.site_tree.setAlternatingRowColors(True)
         self.gui.site_tree.setAnimated(True)
         self.gui.site_tree.setExpandsOnDoubleClick(True)
@@ -2254,6 +2536,8 @@ class ResultsTabBuilder:
         severity_filter = self.gui.severity_filter.currentText().upper()
         module_filter = self.gui.module_filter.currentText()
         target_filter = self.gui.target_filter.currentText()
+        status_filter = self.gui.status_filter.currentText() if hasattr(self.gui, 'status_filter') else "All"
+        extension_filter = self.gui.extension_filter.currentText() if hasattr(self.gui, 'extension_filter') else "All"
         search_text = self.gui.results_search.text().lower()
 
         for row in range(self.gui.results_table.rowCount()):
@@ -2277,6 +2561,42 @@ class ResultsTabBuilder:
                 if target_item and target_filter not in target_item.text():
                     show_row = False
 
+            # Check status code filter (column 7)
+            if show_row and status_filter != "All":
+                status_item = self.gui.results_table.item(row, 7)
+                if status_item:
+                    status_text = status_item.text()
+                    if status_filter.endswith("xx"):
+                        # Check status range (e.g., 2xx, 4xx)
+                        prefix = status_filter[0]
+                        if not status_text.startswith(prefix):
+                            show_row = False
+                    else:
+                        # Exact status code match
+                        if status_text != status_filter:
+                            show_row = False
+                else:
+                    # No status code - hide if specific filter selected
+                    show_row = False
+
+            # Check extension filter (from URL column 4)
+            if show_row and extension_filter != "All":
+                url_item = self.gui.results_table.item(row, 4)
+                if url_item:
+                    url_text = url_item.text().lower()
+                    # Extract path from URL (remove query string)
+                    path = url_text.split('?')[0]
+                    if extension_filter == "No ext":
+                        # Check for no extension
+                        if '.' in path.split('/')[-1]:
+                            show_row = False
+                    else:
+                        # Check for specific extension
+                        if not path.endswith(extension_filter.lower()):
+                            show_row = False
+                else:
+                    show_row = False
+
             # Check search text
             if show_row and search_text:
                 row_text = ""
@@ -2294,6 +2614,10 @@ class ResultsTabBuilder:
         self.gui.severity_filter.setCurrentIndex(0)
         self.gui.module_filter.setCurrentIndex(0)
         self.gui.target_filter.setCurrentIndex(0)
+        if hasattr(self.gui, 'status_filter'):
+            self.gui.status_filter.setCurrentIndex(0)
+        if hasattr(self.gui, 'extension_filter'):
+            self.gui.extension_filter.setCurrentIndex(0)
         self.gui.results_search.clear()
 
         # Show all rows
@@ -2332,92 +2656,146 @@ class ResultsTabBuilder:
 
     def _on_row_double_clicked(self, index):
         """Handle double-click on a row to show full details"""
-        self._show_full_details()
+        try:
+            self._show_full_details()
+        except Exception as e:
+            # Log error to debug file
+            from pathlib import Path
+            from datetime import datetime
+            log_file = Path(__file__).parent.parent.parent / "gui_debug.log"
+            try:
+                with open(log_file, 'a', encoding='utf-8') as f:
+                    f.write(f"[{datetime.now().strftime('%H:%M:%S')}] ERROR in _on_row_double_clicked: {e}\n")
+                    import traceback
+                    f.write(traceback.format_exc() + "\n")
+            except:
+                pass
+
+    def _on_row_clicked(self, index):
+        """Handle single-click on a row - updates detail panel and enables 'View Details' button"""
+        # The selection change handler already updates the detail panel
+        # This just ensures the "View Details" button is enabled
+        if hasattr(self.gui, 'view_details_btn'):
+            self.gui.view_details_btn.setEnabled(True)
 
     def _on_selection_changed(self):
         """Handle selection change to update detail panel with ALL data"""
-        selected = self.gui.results_table.selectedItems()
-        if not selected:
-            return
+        try:
+            # Early exit if table doesn't exist or is not properly initialized
+            if not hasattr(self.gui, 'results_table') or self.gui.results_table is None:
+                return
 
-        row = selected[0].row()
+            selected = self.gui.results_table.selectedItems()
+            if not selected:
+                return
 
-        # Get finding data from row (new column order: #, Severity, Module, Title, URL, Parameter, Payload, CVSS, Time)
-        severity = self.gui.results_table.item(row, 1).text() if self.gui.results_table.item(row, 1) else "INFO"
-        module = self.gui.results_table.item(row, 2).text() if self.gui.results_table.item(row, 2) else "-"
-        title = self.gui.results_table.item(row, 3).text() if self.gui.results_table.item(row, 3) else "-"
-        target = self.gui.results_table.item(row, 4).text() if self.gui.results_table.item(row, 4) else "-"
-        parameter = self.gui.results_table.item(row, 5).text() if self.gui.results_table.item(row, 5) else "-"
-        payload = self.gui.results_table.item(row, 6).text() if self.gui.results_table.item(row, 6) else "-"
-        cvss_display = self.gui.results_table.item(row, 7).text() if self.gui.results_table.item(row, 7) else "-"
-        time = self.gui.results_table.item(row, 8).text() if self.gui.results_table.item(row, 8) else "-"
+            row = selected[0].row()
 
-        # Update severity badge
-        self.gui.detail_severity.setText(f"⚠️  {severity}  ⚠️")
-        color = SEVERITY_COLORS.get(severity.upper(), '#888888')
-        self.gui.detail_severity.setStyleSheet(f"""
-            background-color: {color};
-            color: white;
-            padding: 15px;
-            border-radius: 8px;
-            font-weight: bold;
-            font-size: 16px;
-        """)
+            # Validate row is within bounds
+            if row < 0 or row >= self.gui.results_table.rowCount():
+                return
 
-        # Update basic info
-        self.gui.detail_title.setText(title)
-        self.gui.detail_module.setText(module)
-        self.gui.detail_target.setText(target)
-        if hasattr(self.gui, 'detail_parameter'):
-            self.gui.detail_parameter.setText(parameter)
-        self.gui.detail_time.setText(time)
+            # Get finding data from row (column order: #, Severity, Module, Title, URL, Parameter, Payload, Status, CVSS, Time)
+            severity = self.gui.results_table.item(row, 1).text() if self.gui.results_table.item(row, 1) else "INFO"
+            module = self.gui.results_table.item(row, 2).text() if self.gui.results_table.item(row, 2) else "-"
+            title = self.gui.results_table.item(row, 3).text() if self.gui.results_table.item(row, 3) else "-"
+            target = self.gui.results_table.item(row, 4).text() if self.gui.results_table.item(row, 4) else "-"
+            parameter = self.gui.results_table.item(row, 5).text() if self.gui.results_table.item(row, 5) else "-"
+            payload = self.gui.results_table.item(row, 6).text() if self.gui.results_table.item(row, 6) else "-"
+            status_code = self.gui.results_table.item(row, 7).text() if self.gui.results_table.item(row, 7) else "-"
+            cvss_display = self.gui.results_table.item(row, 8).text() if self.gui.results_table.item(row, 8) else "-"
+            time = self.gui.results_table.item(row, 9).text() if self.gui.results_table.item(row, 9) else "-"
 
-        # Get stored finding data for extended info
-        finding_data = self.gui.results_table.item(row, 0).data(Qt.UserRole) if self.gui.results_table.item(row, 0) else {}
-        data = finding_data or {}
+            # Update severity badge - check if widget exists
+            if not hasattr(self.gui, 'detail_severity') or self.gui.detail_severity is None:
+                return
 
-        # Classification
-        cvss = data.get('cvss', cvss_display)
-        cwe = data.get('cwe', 'N/A')
-        cwe_name = data.get('cwe_name', '')
-        owasp = data.get('owasp', 'N/A')
-        owasp_name = data.get('owasp_name', '')
+            self.gui.detail_severity.setText(f"⚠️  {severity}  ⚠️")
+            color = SEVERITY_COLORS.get(severity.upper(), '#888888')
+            self.gui.detail_severity.setStyleSheet(f"""
+                background-color: {color};
+                color: white;
+                padding: 15px;
+                border-radius: 8px;
+                font-weight: bold;
+                font-size: 16px;
+            """)
 
-        self.gui.detail_cvss.setText(f"{cvss}/10" if cvss and cvss != '-' else "-")
-        self.gui.detail_cwe.setText(f"{cwe}" + (f" - {cwe_name}" if cwe_name else ""))
-        self.gui.detail_owasp.setText(f"{owasp}" + (f" - {owasp_name}" if owasp_name else ""))
+            # Update basic info
+            if hasattr(self.gui, 'detail_title'):
+                self.gui.detail_title.setText(title)
+            if hasattr(self.gui, 'detail_module'):
+                self.gui.detail_module.setText(module)
+            if hasattr(self.gui, 'detail_target'):
+                self.gui.detail_target.setText(target)
+            if hasattr(self.gui, 'detail_parameter'):
+                self.gui.detail_parameter.setText(parameter)
+            if hasattr(self.gui, 'detail_time'):
+                self.gui.detail_time.setText(time)
 
-        # Payload - get from stored data (may be longer than displayed)
-        full_payload = data.get('payload', payload)
-        if hasattr(self.gui, 'detail_payload'):
-            self.gui.detail_payload.setPlainText(full_payload if full_payload else "No payload")
+            # Get stored finding data for extended info
+            finding_data = self.gui.results_table.item(row, 0).data(Qt.UserRole) if self.gui.results_table.item(row, 0) else {}
+            data = finding_data or {}
 
-        # Evidence
-        evidence = data.get('evidence', '')
-        if hasattr(self.gui, 'detail_evidence'):
-            self.gui.detail_evidence.setPlainText(evidence if evidence else "No evidence captured")
+            # Classification
+            cvss = data.get('cvss', cvss_display)
+            cwe = data.get('cwe', 'N/A')
+            cwe_name = data.get('cwe_name', '')
+            owasp = data.get('owasp', 'N/A')
+            owasp_name = data.get('owasp_name', '')
 
-        # Description
-        description = data.get('description', title)
-        self.gui.detail_description.setPlainText(description if description else "No description available")
+            if hasattr(self.gui, 'detail_cvss'):
+                self.gui.detail_cvss.setText(f"{cvss}/10" if cvss and cvss != '-' else "-")
+            if hasattr(self.gui, 'detail_cwe'):
+                self.gui.detail_cwe.setText(f"{cwe}" + (f" - {cwe_name}" if cwe_name else ""))
+            if hasattr(self.gui, 'detail_owasp'):
+                self.gui.detail_owasp.setText(f"{owasp}" + (f" - {owasp_name}" if owasp_name else ""))
 
-        # Remediation
-        remediation = data.get('remediation', '')
-        if hasattr(self.gui, 'detail_remediation'):
-            self.gui.detail_remediation.setPlainText(remediation if remediation else "No remediation advice available")
+            # Payload - get from stored data (may be longer than displayed)
+            full_payload = data.get('payload', payload)
+            if hasattr(self.gui, 'detail_payload'):
+                self.gui.detail_payload.setPlainText(full_payload if full_payload else "No payload")
 
-        # HTTP Request
-        request = data.get('request', '')
-        if hasattr(self.gui, 'detail_request'):
-            self.gui.detail_request.setPlainText(request if request else "No request data available")
+            # Evidence
+            evidence = data.get('evidence', '')
+            if hasattr(self.gui, 'detail_evidence'):
+                self.gui.detail_evidence.setPlainText(evidence if evidence else "No evidence captured")
 
-        # HTTP Response
-        response = data.get('response', '')
-        if hasattr(self.gui, 'detail_response'):
-            # Truncate response for display if too long
-            if len(response) > 2000:
-                response = response[:2000] + "\n\n... [Response truncated, view full details for complete response]"
-            self.gui.detail_response.setPlainText(response if response else "No response data available")
+            # Description
+            description = data.get('description', title)
+            if hasattr(self.gui, 'detail_description'):
+                self.gui.detail_description.setPlainText(description if description else "No description available")
+
+            # Remediation
+            remediation = data.get('remediation', '')
+            if hasattr(self.gui, 'detail_remediation'):
+                self.gui.detail_remediation.setPlainText(remediation if remediation else "No remediation advice available")
+
+            # HTTP Request
+            request = data.get('request', '')
+            if hasattr(self.gui, 'detail_request'):
+                self.gui.detail_request.setPlainText(request if request else "No request data available")
+
+            # HTTP Response
+            response = data.get('response', '')
+            if hasattr(self.gui, 'detail_response'):
+                # Truncate response for display if too long
+                if len(response) > 2000:
+                    response = response[:2000] + "\n\n... [Response truncated, view full details for complete response]"
+                self.gui.detail_response.setPlainText(response if response else "No response data available")
+
+        except Exception as e:
+            # Log error to debug file
+            from pathlib import Path
+            from datetime import datetime
+            log_file = Path(__file__).parent.parent.parent / "gui_debug.log"
+            try:
+                with open(log_file, 'a', encoding='utf-8') as f:
+                    f.write(f"[{datetime.now().strftime('%H:%M:%S')}] ERROR in _on_selection_changed: {e}\n")
+                    import traceback
+                    f.write(traceback.format_exc() + "\n")
+            except:
+                pass
 
     def _show_context_menu(self, position):
         """Show context menu for results table"""
@@ -2485,28 +2863,54 @@ class ResultsTabBuilder:
 
     def _show_full_details(self):
         """Show full details dialog for selected finding"""
-        selected = self.gui.results_table.selectedItems()
-        if not selected:
-            QMessageBox.information(self.gui, "No Selection", "Please select a finding to view details")
-            return
+        try:
+            # Early exit if table doesn't exist or is not properly initialized
+            if not hasattr(self.gui, 'results_table') or self.gui.results_table is None:
+                return
 
-        row = selected[0].row()
+            selected = self.gui.results_table.selectedItems()
+            if not selected:
+                QMessageBox.information(self.gui, "No Selection", "Please select a finding to view details")
+                return
 
-        # Get finding data
-        finding_data = self.gui.results_table.item(row, 0).data(Qt.UserRole) if self.gui.results_table.item(row, 0) else {}
+            row = selected[0].row()
 
-        # If no stored data, create from table
-        if not finding_data:
-            finding_data = {
-                'severity': self.gui.results_table.item(row, 1).text() if self.gui.results_table.item(row, 1) else "INFO",
-                'module': self.gui.results_table.item(row, 2).text() if self.gui.results_table.item(row, 2) else "-",
-                'title': self.gui.results_table.item(row, 3).text() if self.gui.results_table.item(row, 3) else "-",
-                'target': self.gui.results_table.item(row, 4).text() if self.gui.results_table.item(row, 4) else "-",
-                'time': self.gui.results_table.item(row, 5).text() if self.gui.results_table.item(row, 5) else "-",
-            }
+            # Validate row is within bounds
+            if row < 0 or row >= self.gui.results_table.rowCount():
+                return
 
-        dialog = FindingDetailDialog(finding_data, self.gui)
-        dialog.exec_()
+            # Get finding data
+            finding_data = self.gui.results_table.item(row, 0).data(Qt.UserRole) if self.gui.results_table.item(row, 0) else {}
+
+            # If no stored data, create from table (column order: #, Severity, Module, Title, URL, Parameter, Payload, Status, CVSS, Time)
+            if not finding_data:
+                finding_data = {
+                    'severity': self.gui.results_table.item(row, 1).text() if self.gui.results_table.item(row, 1) else "INFO",
+                    'module': self.gui.results_table.item(row, 2).text() if self.gui.results_table.item(row, 2) else "-",
+                    'title': self.gui.results_table.item(row, 3).text() if self.gui.results_table.item(row, 3) else "-",
+                    'target': self.gui.results_table.item(row, 4).text() if self.gui.results_table.item(row, 4) else "-",
+                    'parameter': self.gui.results_table.item(row, 5).text() if self.gui.results_table.item(row, 5) else "-",
+                    'payload': self.gui.results_table.item(row, 6).text() if self.gui.results_table.item(row, 6) else "-",
+                    'status_code': self.gui.results_table.item(row, 7).text() if self.gui.results_table.item(row, 7) else "-",
+                    'cvss': self.gui.results_table.item(row, 8).text() if self.gui.results_table.item(row, 8) else "-",
+                    'time': self.gui.results_table.item(row, 9).text() if self.gui.results_table.item(row, 9) else "-",
+                }
+
+            dialog = FindingDetailDialog(finding_data, self.gui)
+            dialog.exec_()
+        except Exception as e:
+            # Log error to debug file
+            from pathlib import Path
+            from datetime import datetime
+            log_file = Path(__file__).parent.parent.parent / "gui_debug.log"
+            try:
+                with open(log_file, 'a', encoding='utf-8') as f:
+                    f.write(f"[{datetime.now().strftime('%H:%M:%S')}] ERROR in _show_full_details: {e}\n")
+                    import traceback
+                    f.write(traceback.format_exc() + "\n")
+            except:
+                pass
+            QMessageBox.critical(self.gui, "Error", f"Error showing details: {str(e)}")
 
     def _delete_selected(self):
         """Delete selected findings"""
@@ -3255,31 +3659,58 @@ class ResultsTabBuilder:
         self.gui.medium_label.setText(f"Medium: {counts['MEDIUM']}")
 
     def add_scan_output_line(self, line_text):
-        """Add a line to the scan output table with color coding"""
+        """Add a line to the combined scan output table with color coding and level detection"""
         if not hasattr(self.gui, 'scan_output_table'):
             return
 
-        # Parse the line to extract level, module, and message
+        # Parse the line to extract level, source/module, and message
         level = "INFO"
-        module = ""
+        source = ""
         message = line_text.strip()
 
-        # Detect log level from line
-        if "[ERROR]" in message or "[CRITICAL]" in message or "ERROR" in message[:20]:
+        # Skip empty lines
+        if not message:
+            return
+
+        # Detect log level from line content
+        msg_upper = message.upper()
+        if "[ERROR]" in msg_upper or "[CRITICAL]" in msg_upper or "ERROR:" in msg_upper[:30] or "FAILED" in msg_upper[:30]:
             level = "ERROR"
-        elif "[WARNING]" in message or "[WARN]" in message or "WARNING" in message[:20]:
+        elif "[WARNING]" in msg_upper or "[WARN]" in msg_upper or "WARNING:" in msg_upper[:30]:
             level = "WARNING"
-        elif "[INFO]" in message or "INFO:" in message[:20]:
+        elif "VULNERABILITY" in msg_upper or "VULN" in msg_upper[:20] or "[HIGH]" in msg_upper or "[CRITICAL]" in msg_upper or "[MEDIUM]" in msg_upper:
+            level = "FINDING"
+        elif "Running module:" in message:
+            level = "MODULE"
+        elif "Module" in message and "completed" in message:
+            level = "MODULE"
+        elif "[INFO]" in msg_upper or "INFO:" in msg_upper[:20]:
             level = "INFO"
-        elif "[DEBUG]" in message or "DEBUG:" in message[:20]:
+        elif "[DEBUG]" in msg_upper or "DEBUG:" in msg_upper[:20]:
             level = "DEBUG"
-        elif "[SUCCESS]" in message or "SUCCESS:" in message[:20]:
+        elif "[SUCCESS]" in msg_upper or "SUCCESS:" in msg_upper[:20]:
             level = "SUCCESS"
 
-        # Try to extract module name
-        if "Module:" in message:
+        # Try to extract source/module name
+        if "Running module:" in message:
             try:
-                module = message.split("Module:")[1].split("|")[0].strip()
+                source = message.split("Running module:")[-1].strip()
+            except:
+                pass
+        elif "Module '" in message:
+            try:
+                import re
+                match = re.search(r"Module\s*'([^']+)'", message)
+                if match:
+                    source = match.group(1)
+            except:
+                pass
+        elif "modules." in message.lower():
+            try:
+                import re
+                match = re.search(r'modules\.(\w+)', message, re.IGNORECASE)
+                if match:
+                    source = match.group(1)
             except:
                 pass
 
@@ -3287,11 +3718,16 @@ class ResultsTabBuilder:
         line_data = {
             'line_number': len(self.gui.scan_output_lines) + 1,
             'level': level,
-            'module': module,
+            'source': source,
             'message': message,
             'raw_text': line_text
         }
         self.gui.scan_output_lines.append(line_data)
+
+        # Limit table rows to prevent memory issues (keep last 5000 lines)
+        max_rows = 5000
+        if self.gui.scan_output_table.rowCount() >= max_rows:
+            self.gui.scan_output_table.removeRow(0)
 
         # Add to table
         row = self.gui.scan_output_table.rowCount()
@@ -3300,82 +3736,75 @@ class ResultsTabBuilder:
         # Line number
         line_num_item = QTableWidgetItem(str(line_data['line_number']))
         line_num_item.setFont(QFont("Consolas", 9))
-        line_num_item.setForeground(QColor('#666666'))
+        line_num_item.setForeground(QColor('#94a3b8'))
         self.gui.scan_output_table.setItem(row, 0, line_num_item)
 
         # Level with color coding
         level_item = QTableWidgetItem(level)
         level_item.setFont(QFont("Consolas", 9, QFont.Bold))
-        if level == "ERROR" or level == "CRITICAL":
-            level_item.setBackground(QColor('#f44336'))
+        if level == "ERROR":
+            level_item.setBackground(QColor('#ef4444'))
             level_item.setForeground(QColor('white'))
         elif level == "WARNING":
-            level_item.setBackground(QColor('#FF9800'))
+            level_item.setBackground(QColor('#f59e0b'))
+            level_item.setForeground(QColor('white'))
+        elif level == "FINDING":
+            level_item.setBackground(QColor('#8b5cf6'))
+            level_item.setForeground(QColor('white'))
+        elif level == "MODULE":
+            level_item.setBackground(QColor('#3b82f6'))
             level_item.setForeground(QColor('white'))
         elif level == "SUCCESS":
-            level_item.setBackground(QColor('#4CAF50'))
+            level_item.setBackground(QColor('#22c55e'))
             level_item.setForeground(QColor('white'))
         elif level == "DEBUG":
-            level_item.setForeground(QColor('#9E9E9E'))
+            level_item.setForeground(QColor('#94a3b8'))
         else:  # INFO
-            level_item.setForeground(QColor('#2196F3'))
+            level_item.setForeground(QColor('#0ea5e9'))
         self.gui.scan_output_table.setItem(row, 1, level_item)
 
-        # Module
-        module_item = QTableWidgetItem(module)
-        module_item.setFont(QFont("Consolas", 9))
-        module_item.setForeground(QColor('#1976D2'))
-        self.gui.scan_output_table.setItem(row, 2, module_item)
+        # Source/Module
+        source_item = QTableWidgetItem(source)
+        source_item.setFont(QFont("Consolas", 9))
+        source_item.setForeground(QColor('#6366f1'))
+        self.gui.scan_output_table.setItem(row, 2, source_item)
 
         # Message
         message_item = QTableWidgetItem(message)
         message_item.setFont(QFont("Consolas", 9))
+        # Color message based on level
+        if level == "ERROR":
+            message_item.setForeground(QColor('#dc2626'))
+        elif level == "WARNING":
+            message_item.setForeground(QColor('#d97706'))
+        elif level == "FINDING":
+            message_item.setForeground(QColor('#7c3aed'))
         self.gui.scan_output_table.setItem(row, 3, message_item)
 
         # Auto-scroll to bottom
         self.gui.scan_output_table.scrollToBottom()
 
         # Update statistics
-        self._update_scan_output_stats()
+        self._update_combined_output_stats()
 
-        # Also add to Debug tab if it's an INFO/DEBUG message or contains debug patterns
-        debug_patterns = ['found', 'testing', 'checking', 'scanning', 'crawl', 'parameters', 'form']
-        is_debug_msg = level in ['INFO', 'DEBUG'] or any(p in message.lower() for p in debug_patterns)
-
-        if is_debug_msg and hasattr(self.gui, 'debug_table'):
-            # Determine debug type
-            msg_lower = message.lower()
-            if 'form' in msg_lower:
-                debug_type = "FORM"
-            elif 'url' in msg_lower or 'page' in msg_lower or 'endpoint' in msg_lower:
-                debug_type = "URL"
-            elif level == 'DEBUG':
-                debug_type = "DEBUG"
-            else:
-                debug_type = "INFO"
-
-            # Extract source from message
-            source = module if module else ""
-            if ' - ' in message:
-                parts = message.split(' - ')
-                if len(parts) >= 2:
-                    source = parts[1].strip() if not source else source
-
-            self.add_debug_message(message, debug_type, source)
-
-    def _update_scan_output_stats(self):
-        """Update the scan output statistics bar"""
+    def _update_combined_output_stats(self):
+        """Update the combined output statistics bar"""
         if not hasattr(self.gui, 'scan_output_lines') or not hasattr(self.gui, 'scan_output_stats'):
             return
 
         total = len(self.gui.scan_output_lines)
-        errors = sum(1 for line in self.gui.scan_output_lines if line['level'] in ['ERROR', 'CRITICAL'])
+        errors = sum(1 for line in self.gui.scan_output_lines if line['level'] == 'ERROR')
         warnings = sum(1 for line in self.gui.scan_output_lines if line['level'] == 'WARNING')
-        info = sum(1 for line in self.gui.scan_output_lines if line['level'] == 'INFO')
+        modules = sum(1 for line in self.gui.scan_output_lines if line['level'] == 'MODULE')
+        findings = sum(1 for line in self.gui.scan_output_lines if line['level'] == 'FINDING')
 
         self.gui.scan_output_stats.setText(
-            f"Total Lines: {total} | Errors: {errors} | Warnings: {warnings} | Info: {info}"
+            f"Lines: {total} | Errors: {errors} | Warnings: {warnings} | Modules: {modules} | Findings: {findings}"
         )
+
+    def _update_scan_output_stats(self):
+        """Alias for backwards compatibility"""
+        self._update_combined_output_stats()
 
     def _filter_scan_output(self):
         """Filter scan output table based on search text"""
@@ -3444,7 +3873,15 @@ class ResultsTabBuilder:
 # Helper function to add a finding to the results table (to be called from results_handler)
 def add_finding_to_table(gui, severity, description, module="", target="", finding_data=None):
     """
-    Add a finding to the results table with ALL data
+    Add a finding to the results table with clean, essential data
+
+    New Column Structure (6 columns):
+    0: Severity - Color-coded severity badge
+    1: Vulnerability Type - Module/type of vulnerability
+    2: Target URL - The affected URL
+    3: Parameter - Vulnerable parameter
+    4: Evidence - Short evidence snippet
+    5: CVSS - Score if available
 
     Args:
         gui: The main GUI instance
@@ -3459,100 +3896,93 @@ def add_finding_to_table(gui, severity, description, module="", target="", findi
 
     row = gui.results_table.rowCount()
     gui.results_table.insertRow(row)
-    gui.results_table.setRowHeight(row, 36)
+    gui.results_table.setRowHeight(row, 40)
 
     # Extract data from finding_data
     data = finding_data or {}
     parameter = data.get('parameter', '')
     payload = data.get('payload', '')
     cvss = data.get('cvss', '')
-    evidence = data.get('evidence', '')
+    evidence = data.get('evidence', '') or data.get('description', '') or description
 
-    # Truncate long values for display
-    if len(payload) > 50:
-        payload_display = payload[:47] + "..."
+    # Create vulnerability type display - combine module and type info
+    vuln_type = description or data.get('type', '') or module
+    if module and module.lower() not in vuln_type.lower():
+        vuln_type = f"{module}: {vuln_type}" if vuln_type else module
+
+    # Truncate evidence for display
+    if len(evidence) > 80:
+        evidence_display = evidence[:77] + "..."
     else:
-        payload_display = payload
+        evidence_display = evidence
 
-    if len(target) > 60:
-        target_display = target[:57] + "..."
-    else:
-        target_display = target
-
-    # Column 0: Row number
-    num_item = QTableWidgetItem(str(row + 1))
-    num_item.setTextAlignment(Qt.AlignCenter)
-    num_item.setData(Qt.UserRole, finding_data)  # Store full data
-    gui.results_table.setItem(row, 0, num_item)
-
-    # Column 1: Severity with colored background
+    # Column 0: Severity with colored background (store full data here)
     severity_upper = severity.upper()
     severity_item = QTableWidgetItem(severity_upper)
     severity_item.setTextAlignment(Qt.AlignCenter)
-    color = SEVERITY_COLORS.get(severity_upper, '#888888')
+    severity_item.setData(Qt.UserRole, finding_data)  # Store full data for detail panel
+    color = SEVERITY_COLORS.get(severity_upper, '#64748b')
     severity_item.setForeground(QColor('#ffffff'))
     severity_item.setBackground(QColor(color))
-    severity_item.setFont(QFont("Arial", 10, QFont.Bold))
-    gui.results_table.setItem(row, 1, severity_item)
+    severity_item.setFont(QFont("Segoe UI", 10, QFont.Bold))
+    gui.results_table.setItem(row, 0, severity_item)
 
-    # Column 2: Module
-    module_item = QTableWidgetItem(module)
-    module_item.setForeground(QColor('#a78bfa'))  # Purple for modules
-    gui.results_table.setItem(row, 2, module_item)
+    # Column 1: Vulnerability Type - purple for visibility
+    vuln_item = QTableWidgetItem(vuln_type)
+    vuln_item.setFont(QFont("Segoe UI", 10))
+    vuln_item.setForeground(QColor('#7c3aed'))
+    vuln_item.setToolTip(description or vuln_type)
+    gui.results_table.setItem(row, 1, vuln_item)
 
-    # Column 3: Vulnerability Title
-    title_item = QTableWidgetItem(description)
-    title_item.setFont(QFont("Arial", 10))
-    title_item.setForeground(QColor('#f0f0f0'))
-    gui.results_table.setItem(row, 3, title_item)
+    # Column 2: Target URL - blue link style
+    target_item = QTableWidgetItem(target)
+    target_item.setToolTip(target)
+    target_item.setForeground(QColor('#2563eb'))
+    target_item.setFont(QFont("Segoe UI", 10))
+    gui.results_table.setItem(row, 2, target_item)
 
-    # Column 4: URL/Target
-    target_item = QTableWidgetItem(target_display)
-    target_item.setToolTip(target)  # Full URL on hover
-    target_item.setForeground(QColor('#60a5fa'))  # Blue for URLs
-    gui.results_table.setItem(row, 4, target_item)
-
-    # Column 5: Parameter
-    param_item = QTableWidgetItem(parameter)
-    param_item.setForeground(QColor('#fbbf24'))  # Yellow for params
+    # Column 3: Parameter - amber/orange, monospace
+    param_display = parameter if parameter else "-"
+    param_item = QTableWidgetItem(param_display)
+    param_item.setForeground(QColor('#d97706'))
     param_item.setFont(QFont("Consolas", 10))
-    gui.results_table.setItem(row, 5, param_item)
+    if payload:
+        param_item.setToolTip(f"Payload: {payload}")
+    gui.results_table.setItem(row, 3, param_item)
 
-    # Column 6: Payload
-    payload_item = QTableWidgetItem(payload_display)
-    payload_item.setToolTip(payload)  # Full payload on hover
-    payload_item.setForeground(QColor('#f87171'))  # Red for payloads
-    payload_item.setFont(QFont("Consolas", 9))
-    gui.results_table.setItem(row, 6, payload_item)
+    # Column 4: Evidence - truncated with full in tooltip
+    evidence_item = QTableWidgetItem(evidence_display)
+    evidence_item.setForeground(QColor('#475569'))
+    evidence_item.setFont(QFont("Segoe UI", 9))
+    evidence_item.setToolTip(evidence)  # Full evidence on hover
+    gui.results_table.setItem(row, 4, evidence_item)
 
-    # Column 7: CVSS Score
-    cvss_item = QTableWidgetItem(str(cvss) if cvss else "-")
+    # Column 5: CVSS Score with color coding
+    cvss_display = str(cvss) if cvss else "-"
+    cvss_item = QTableWidgetItem(cvss_display)
     cvss_item.setTextAlignment(Qt.AlignCenter)
-    cvss_item.setFont(QFont("Arial", 10, QFont.Bold))
+    cvss_item.setFont(QFont("Segoe UI", 10, QFont.Bold))
     # Color CVSS based on score
     try:
         cvss_val = float(cvss) if cvss else 0
         if cvss_val >= 9.0:
-            cvss_item.setForeground(QColor('#ef4444'))  # Critical red
+            cvss_item.setForeground(QColor('#dc2626'))  # Red for Critical
         elif cvss_val >= 7.0:
-            cvss_item.setForeground(QColor('#f97316'))  # High orange
+            cvss_item.setForeground(QColor('#ea580c'))  # Orange for High
         elif cvss_val >= 4.0:
-            cvss_item.setForeground(QColor('#eab308'))  # Medium yellow
+            cvss_item.setForeground(QColor('#ca8a04'))  # Yellow for Medium
+        elif cvss_val > 0:
+            cvss_item.setForeground(QColor('#16a34a'))  # Green for Low
         else:
-            cvss_item.setForeground(QColor('#22c55e'))  # Low green
+            cvss_item.setForeground(QColor('#64748b'))  # Gray for none
     except:
-        cvss_item.setForeground(QColor('#888888'))
-    gui.results_table.setItem(row, 7, cvss_item)
+        cvss_item.setForeground(QColor('#64748b'))
+    gui.results_table.setItem(row, 5, cvss_item)
 
-    # Column 8: Time
-    time_item = QTableWidgetItem(datetime.now().strftime("%H:%M:%S"))
-    time_item.setTextAlignment(Qt.AlignCenter)
-    time_item.setForeground(QColor('#6b7280'))
-    gui.results_table.setItem(row, 8, time_item)
-
-    # Update findings count
+    # Update findings count badge
     if hasattr(gui, 'findings_count_label'):
-        gui.findings_count_label.setText(f"({gui.results_table.rowCount()})")
+        count = gui.results_table.rowCount()
+        gui.findings_count_label.setText(str(count))
 
     # Update filters
     if hasattr(gui, 'module_filter') and module:
@@ -3577,7 +4007,7 @@ def add_finding_to_table(gui, severity, description, module="", target="", findi
     if hasattr(gui, 'total_card'):
         counts = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0, 'INFO': 0}
         for r in range(gui.results_table.rowCount()):
-            sev_item = gui.results_table.item(r, 1)
+            sev_item = gui.results_table.item(r, 0)  # Column 0 is now Severity
             if sev_item:
                 sev = sev_item.text().upper()
                 if sev in counts:

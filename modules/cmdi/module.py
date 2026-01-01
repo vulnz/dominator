@@ -99,6 +99,7 @@ class CMDiModule(BaseModule):
                     )
 
                     if detected:
+                        response_text = getattr(response, 'text', '')[:5000]
                         result = self.create_result(
                             vulnerable=True,
                             url=url,
@@ -107,7 +108,9 @@ class CMDiModule(BaseModule):
                             evidence=evidence,
                             description="OS Command Injection vulnerability detected. "
                                        "Server executes arbitrary system commands.",
-                            confidence=confidence
+                            confidence=confidence,
+                            method=method,
+                            response=response_text
                         )
 
                         # Add metadata from config

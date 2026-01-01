@@ -4,6 +4,8 @@
 # Core HTTP and networking
 requests>=2.31.0
 urllib3>=2.0.0
+beautifulsoup4>=4.11.0
+lxml>=4.9.0
 
 # GUI Framework (PyQt5)
 PyQt5>=5.15.0
@@ -12,6 +14,7 @@ PyQtWebEngine>=5.15.0
 # Report Generation
 reportlab>=3.6.0
 python-docx>=0.8.11
+Jinja2>=3.0.0
 
 # Certificate Management
 cryptography>=41.0.0
@@ -19,35 +22,12 @@ cryptography>=41.0.0
 # WAF/Cloudflare Bypass (recommended)
 cloudscraper>=1.2.71
 
+# Utilities
+colorama>=0.4.0
+pillow>=9.0.0
+
+# Web server for API testing
+Flask>=2.0.0
+
 # DNS resolution for subdomain enumeration (optional but recommended)
 dnspython>=2.4.0
-
-# Optional: Brotli compression support (recommended)
-# Uncomment if needed for br-compressed responses
-# brotli>=1.0.9
-
-# Optional: Headless browser for complex WAF challenges
-# Uncomment if cloudscraper doesn't work for certain sites
-# playwright>=1.40.0
-
-# Standard library dependencies (included with Python)
-# These are listed for documentation purposes only:
-# - json
-# - re
-# - typing
-# - dataclasses
-# - pathlib
-# - datetime
-# - argparse
-# - threading
-# - subprocess
-# - logging
-# - abc
-# - enum
-# - difflib
-# - gzip
-# - zlib
-# - urllib.request
-# - urllib.parse
-# - html
-# - xml

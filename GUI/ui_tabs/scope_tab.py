@@ -307,6 +307,7 @@ class ScopeTabBuilder:
                 background-color: #3d8b40;
             }
         """)
+        add_btn.clicked.connect(self._add_target)
         buttons_row.addWidget(add_btn, 2)
 
         # Import button
@@ -329,6 +330,7 @@ class ScopeTabBuilder:
                 background-color: #1565C0;
             }
         """)
+        import_btn.clicked.connect(self._import_targets)
         buttons_row.addWidget(import_btn, 1)
 
         # Export button
@@ -351,6 +353,7 @@ class ScopeTabBuilder:
                 background-color: #EF6C00;
             }
         """)
+        export_btn.clicked.connect(self._export_targets)
         buttons_row.addWidget(export_btn, 1)
 
         # Clear all button
@@ -373,6 +376,7 @@ class ScopeTabBuilder:
                 background-color: #c62828;
             }
         """)
+        clear_btn.clicked.connect(self._clear_targets)
         buttons_row.addWidget(clear_btn, 1)
 
         actions_layout.addLayout(buttons_row)
@@ -1033,3 +1037,113 @@ class ScopeTabBuilder:
                 background-color: #f5f5f5;
             }
         """
+
+    def _add_target(self):
+        """Add a new target URL/domain to the scope"""
+        from PyQt5.QtWidgets import QInputDialog
+
+        text, ok = QInputDialog.getText(
+            self.gui, "Add Target",
+            "Enter target URL or domain:",
+            QLineEdit.Normal, ""
+        )
+        if ok and text.strip():
+            # Add to scope table
+            row = self.gui.scope_table.rowCount()
+            self.gui.scope_table.insertRow(row)
+            self.gui.scope_table.setItem(row, 0, QTableWidgetItem("✅"))
+            self.gui.scope_table.setItem(row, 1, QTableWidgetItem(text.strip()))
+            self.gui.scope_table.setItem(row, 2, QTableWidgetItem("Manual"))
+            self.gui.scope_table.setItem(row, 3, QTableWidgetItem("0"))
+            self.gui.scope_table.setItem(row, 4, QTableWidgetItem("0"))
+
+            # Update stats
+            self._update_scope_stats()
+
+            # Also add to scan tab target input if empty
+            if hasattr(self.gui, 'target_input') and not self.gui.target_input.toPlainText().strip():
+                self.gui.target_input.setPlainText(text.strip())
+
+    def _import_targets(self):
+        """Import targets from a file"""
+        from PyQt5.QtWidgets import QFileDialog, QMessageBox
+
+        filename, _ = QFileDialog.getOpenFileName(
+            self.gui, "Import Targets",
+            "", "Text Files (*.txt);;CSV Files (*.csv);;All Files (*.*)"
+        )
+        if filename:
+            try:
+                with open(filename, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+
+                count = 0
+                for line in lines:
+                    target = line.strip()
+                    if target and not target.startswith('#'):
+                        row = self.gui.scope_table.rowCount()
+                        self.gui.scope_table.insertRow(row)
+                        self.gui.scope_table.setItem(row, 0, QTableWidgetItem("✅"))
+                        self.gui.scope_table.setItem(row, 1, QTableWidgetItem(target))
+                        self.gui.scope_table.setItem(row, 2, QTableWidgetItem("Imported"))
+                        self.gui.scope_table.setItem(row, 3, QTableWidgetItem("0"))
+                        self.gui.scope_table.setItem(row, 4, QTableWidgetItem("0"))
+                        count += 1
+
+                self._update_scope_stats()
+                QMessageBox.information(self.gui, "Import Complete", f"Imported {count} targets from file.")
+            except Exception as e:
+                QMessageBox.critical(self.gui, "Import Error", f"Failed to import: {e}")
+
+    def _export_targets(self):
+        """Export targets to a file"""
+        from PyQt5.QtWidgets import QFileDialog, QMessageBox
+
+        if self.gui.scope_table.rowCount() == 0:
+            QMessageBox.warning(self.gui, "No Targets", "No targets to export.")
+            return
+
+        filename, _ = QFileDialog.getSaveFileName(
+            self.gui, "Export Targets",
+            "targets.txt", "Text Files (*.txt);;CSV Files (*.csv)"
+        )
+        if filename:
+            try:
+                with open(filename, 'w', encoding='utf-8') as f:
+                    for row in range(self.gui.scope_table.rowCount()):
+                        item = self.gui.scope_table.item(row, 1)
+                        if item:
+                            f.write(item.text() + '\n')
+                QMessageBox.information(self.gui, "Export Complete",
+                    f"Exported {self.gui.scope_table.rowCount()} targets to:\n{filename}")
+            except Exception as e:
+                QMessageBox.critical(self.gui, "Export Error", f"Failed to export: {e}")
+
+    def _clear_targets(self):
+        """Clear all targets from scope"""
+        from PyQt5.QtWidgets import QMessageBox
+
+        if self.gui.scope_table.rowCount() == 0:
+            return
+
+        reply = QMessageBox.question(
+            self.gui, "Clear All Targets",
+            "Are you sure you want to clear all targets from scope?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            self.gui.scope_table.setRowCount(0)
+            self._update_scope_stats()
+
+    def _update_scope_stats(self):
+        """Update scope statistics"""
+        total = self.gui.scope_table.rowCount()
+        in_scope = 0
+        for row in range(total):
+            item = self.gui.scope_table.item(row, 0)
+            if item and "✅" in item.text():
+                in_scope += 1
+
+        # Update stats boxes if they exist
+        if hasattr(self, 'targets_stat'):
+            self.targets_stat.setText(str(total))

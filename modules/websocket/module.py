@@ -64,14 +64,11 @@ class WebSocketModule(BaseModule):
 
             # Find WebSocket URLs
             ws_urls = re.findall(r'["\']?(wss?://[^"\'>\\s]+)["\']?', text)
-            libraries = []
 
-            if 'socket.io' in text.lower():
-                libraries.append('Socket.IO')
-            if 'sockjs' in text.lower():
-                libraries.append('SockJS')
-            if 'signalr' in text.lower():
-                libraries.append('SignalR')
+            # Detect WebSocket libraries using dict
+            text_lower = text.lower()
+            lib_patterns = {'socket.io': 'Socket.IO', 'sockjs': 'SockJS', 'signalr': 'SignalR'}
+            libraries = [name for pattern, name in lib_patterns.items() if pattern in text_lower]
 
             for ws_url in set(ws_urls):
                 analysis = self._analyze_websocket(ws_url, url)
@@ -96,14 +93,29 @@ class WebSocketModule(BaseModule):
                     }
                 ))
 
-            # Report libraries even if no URLs found
+            # Report libraries even if no URLs found - with context
             if libraries and not ws_urls:
+                evidence_parts = [
+                    "**WebSocket Libraries Detected**\n",
+                    f"**Page URL:** {url}",
+                    f"\n**Libraries Found:**"
+                ]
+
+                for lib in libraries:
+                    evidence_parts.append(f"  - `{lib}`")
+
+                evidence_parts.append("\n**Security Note:**")
+                evidence_parts.append("  WebSocket usage detected - review for:")
+                evidence_parts.append("  - Origin validation (CSRF)")
+                evidence_parts.append("  - Authentication requirements")
+                evidence_parts.append("  - Message input validation")
+
                 results.append(self.create_result(
                     vulnerable=True,
                     url=url,
                     parameter='library',
                     payload=', '.join(libraries),
-                    evidence=f"WebSocket libraries detected: {', '.join(libraries)}",
+                    evidence='\n'.join(evidence_parts),
                     severity='Info',
                     method='Passive',
                     additional_info={

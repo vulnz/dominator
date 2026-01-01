@@ -22,11 +22,48 @@ class JWTModule(BaseModule):
         """Initialize JWT module"""
         super().__init__(module_path, payload_limit=payload_limit)
 
+        # Comprehensive list of common weak JWT secrets from real-world leaks and defaults
         self.common_secrets = [
-            'secret', 'password', '123456', 'admin', 'key', 'private',
-            'jwt_secret', 'supersecret', 'changeme', 'qwerty', 'letmein',
-            'secret123', 'password123', 'jwt', 'token', 'auth', 'test',
-            'your-256-bit-secret', 'your-secret-key', 'mysecret', ''
+            # Empty and trivial
+            '', ' ', 'secret', 'password', 'pass', 'pwd',
+            # Common defaults
+            '123456', '12345678', '123456789', '1234567890',
+            'admin', 'administrator', 'root', 'user', 'guest',
+            'key', 'private', 'privatekey', 'private_key', 'private-key',
+            # JWT-specific defaults (from tutorials, libraries)
+            'jwt_secret', 'jwt-secret', 'jwt_secret_key', 'jwtsecret',
+            'your-256-bit-secret', 'your-secret-key', 'your_secret_key',
+            'my-secret-key', 'my_secret_key', 'mysecret', 'mysecretkey',
+            'super-secret', 'supersecret', 'super_secret', 'topsecret',
+            'secret123', 'secret1234', 'secretkey', 'secret_key', 'secret-key',
+            'password123', 'password1234', 'passw0rd', 'P@ssw0rd',
+            # Common insecure passwords
+            'changeme', 'changeit', 'qwerty', 'qwerty123', 'letmein',
+            'welcome', 'welcome1', 'login', 'access', 'master',
+            'monkey', 'dragon', 'baseball', 'football', 'shadow',
+            'sunshine', 'princess', 'trustno1', 'abc123', 'iloveyou',
+            # Development/test values
+            'jwt', 'token', 'auth', 'test', 'testing', 'development',
+            'dev', 'debug', 'demo', 'sample', 'example', 'default',
+            'temp', 'temporary', 'dummy', 'placeholder',
+            # Framework/library defaults
+            'AllYourBase', 'HS256-secret', 'hmac-secret', 'signing-key',
+            'keyboard cat', 'keyboard-cat', 'shhhhh', 'ssh', 'shhhhhhhared-secret',
+            # Keyboard patterns
+            'asdfgh', 'asdfghjkl', 'zxcvbn', 'qazwsx', '1qaz2wsx',
+            # Company/product names often used
+            'company', 'api', 'apikey', 'api_key', 'api-key', 'app',
+            'application', 'server', 'service', 'backend', 'frontend',
+            # UUID-like but weak
+            '00000000-0000-0000-0000-000000000000', 'aaaaaaaa',
+            # Base64-encoded weak secrets
+            'c2VjcmV0', 'cGFzc3dvcmQ=', 'YWRtaW4=',  # secret, password, admin
+            # Node.js/Express common
+            'express-session-secret', 'session-secret', 'cookie-secret',
+            # Spring Boot defaults
+            'spring-boot-secret', 'spring-security-jwt-secret',
+            # Laravel defaults
+            'base64:somebase64string', 'SomeRandomString',
         ]
 
         logger.info("JWT Analysis module loaded")
@@ -143,22 +180,44 @@ class JWTModule(BaseModule):
                     ))
 
             # 3. Check for sensitive data in payload
-            sensitive_keys = ['password', 'secret', 'key', 'credit', 'ssn', 'token']
-            sensitive_found = [k for k in payload_json.keys() if any(s in k.lower() for s in sensitive_keys)]
+            sensitive_keys = {'password', 'secret', 'key', 'credit', 'ssn', 'token'}
+            sensitive_found = [k for k in payload_json if any(s in k.lower() for s in sensitive_keys)]
 
             if sensitive_found:
+                # Build detailed evidence showing actual JWT content
+                evidence_parts = [
+                    "**JWT Contains Sensitive Data**\n",
+                    f"**Source:** {source}",
+                    f"**Sensitive Fields Found:** {', '.join(sensitive_found)}",
+                    f"\n**JWT Header:**\n```json\n{json.dumps(header_json, indent=2)}\n```",
+                    f"\n**JWT Payload (showing sensitive fields):**"
+                ]
+
+                # Show actual values (masked for security)
+                for key in sensitive_found:
+                    value = payload_json.get(key, '')
+                    if isinstance(value, str) and len(value) > 4:
+                        masked = value[:2] + '*' * (len(value) - 4) + value[-2:]
+                    else:
+                        masked = '****'
+                    evidence_parts.append(f"  - `{key}`: {masked}")
+
+                evidence_parts.append(f"\n**Full JWT (truncated):**\n`{token[:100]}...`")
+
                 results.append(self.create_result(
                     vulnerable=True,
                     url=url,
                     parameter='JWT',
                     payload=token[:50] + '...',
-                    evidence=f"JWT contains sensitive data: {', '.join(sensitive_found)}",
+                    evidence='\n'.join(evidence_parts),
                     severity='Medium',
                     method='GET',
                     additional_info={
                         'injection_type': 'JWT Sensitive Data',
                         'sensitive_fields': sensitive_found,
                         'source': source,
+                        'header': header_json,
+                        'payload_keys': list(payload_json.keys()),
                         'cwe': 'CWE-200',
                         'owasp': 'A02:2021',
                         'cvss': 5.3
@@ -226,7 +285,7 @@ class JWTModule(BaseModule):
             'HS512': hashlib.sha512
         }.get(algorithm.upper(), hashlib.sha256)
 
-        for secret in self.common_secrets[:20]:  # Limit tests
+        for secret in self.common_secrets[:80]:  # Test up to 80 common secrets
             try:
                 computed = hmac.new(
                     secret.encode('utf-8'),

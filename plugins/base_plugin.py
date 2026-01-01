@@ -184,14 +184,23 @@ class BasePlugin(ABC):
             Tuple of (stdout, stderr, return_code)
         """
         try:
-            result = subprocess.run(
-                args,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                encoding='utf-8',
-                errors='ignore'
-            )
+            # Hide console window on Windows
+            import sys
+            kwargs = {
+                'capture_output': True,
+                'text': True,
+                'timeout': timeout,
+                'encoding': 'utf-8',
+                'errors': 'ignore'
+            }
+            if sys.platform == 'win32':
+                kwargs['creationflags'] = 0x08000000  # CREATE_NO_WINDOW
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = 0
+                kwargs['startupinfo'] = startupinfo
+
+            result = subprocess.run(args, **kwargs)
             return result.stdout, result.stderr, result.returncode
         except subprocess.TimeoutExpired:
             self.errors.append(f"Command timed out after {timeout}s")

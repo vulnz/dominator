@@ -24,30 +24,44 @@ class PHPObjectInjectionModule(BaseModule):
         """Initialize PHP Object Injection module"""
         super().__init__(module_path, payload_limit=payload_limit)
 
-        # PHP unserialize error patterns
+        # PHP unserialize error patterns - STRICT patterns to avoid false positives
+        # These MUST be actual PHP error messages, not generic text
         self.error_patterns = [
-            'unserialize(',
-            'Notice: unserialize',
-            'Warning: unserialize',
-            'Error: unserialize',
-            'unexpected end of serialized data',
-            'offset not contained in string',
-            'Error at offset',
-            'Failed to unserialize',
-            '__wakeup',
-            '__destruct called',
-            '__toString called',
-            'object(stdClass)',
-            'serialization error',
+            # Actual PHP unserialize() error messages
+            'unserialize(): Error at offset',
+            'unserialize(): Unexpected end of serialized data',
+            'unserialize(): Error at offset 0 of',
+            'Notice: unserialize():',
+            'Warning: unserialize():',
+            'Fatal error: unserialize():',
+            # Specific serialization errors
+            'invalid serialization data',
+            'unknown/corrupted data',
+            'Function name must be a string',  # When object methods called incorrectly
         ]
 
-        # Indicators that deserialization occurred
-        self.deserialization_indicators = [
-            'object(',
-            'stdClass',
-            '__PHP_Incomplete_Class',
-            'Array to string conversion',
-            'Object of class',
+        # HIGH confidence indicators - actual PHP debug output format
+        self.high_confidence_indicators = [
+            '__PHP_Incomplete_Class_Name',  # Very specific PHP indicator
+            'object(stdClass)#',  # PHP var_dump output with object ID
+            'object(__PHP_Incomplete_Class)#',
+            'Cannot use object of type',  # PHP type error
+        ]
+
+        # MEDIUM confidence - need additional validation
+        self.medium_confidence_indicators = [
+            '__PHP_Incomplete_Class',  # Without the _Name suffix
+            'allowed classes',  # PHP 7+ unserialize options
+            'The requested class could not be found',
+        ]
+
+        # Magic method execution indicators - MUST be PHP context
+        self.magic_method_indicators = [
+            r'__wakeup\(\)\s*(?:called|failed|error)',
+            r'__destruct\(\)\s*(?:called|failed|error)',
+            r'__toString\(\)\s*must\s+return',
+            r'Call\s+to\s+undefined\s+method.*::__\w+\(',
+            r'Call\s+to\s+a\s+member\s+function.*on\s+(?:null|bool|int|string)',
         ]
 
         logger.info(f"PHP Object Injection module loaded: {len(self.payloads)} payloads, "
@@ -142,93 +156,109 @@ class PHPObjectInjectionModule(BaseModule):
                                     baseline_text: str, baseline_length: int) -> tuple:
         """
         Detect PHP Object Injection vulnerability
-        IMPROVED: Better error detection and lower false negative rate
+        STRICT detection to minimize false positives
 
         Returns:
             (detected: bool, confidence: float, evidence: str)
         """
         response_text = getattr(response, 'text', '')
-        response_length = len(response_text)
+        response_lower = response_text.lower()
+        baseline_lower = baseline_text.lower()
 
-        # METHOD 1: Error-based detection (MOST RELIABLE)
-        # Check for unserialize errors
+        # CRITICAL: Check if payload is just reflected back (common false positive)
+        payload_reflected = payload in response_text or payload[:20] in response_text
+
+        # Also check URL-encoded version
+        import urllib.parse
+        payload_encoded = urllib.parse.quote(payload)
+        payload_reflected = payload_reflected or payload_encoded in response_text
+
+        # METHOD 1: STRICT Error-based detection (MOST RELIABLE)
+        # Only match actual PHP unserialize() error messages
         error_found = None
-        all_errors_found = []
 
         for error_pattern in self.error_patterns:
-            if error_pattern in response_text and error_pattern not in baseline_text:
-                all_errors_found.append(error_pattern)
-                if not error_found:
-                    error_found = error_pattern
+            pattern_lower = error_pattern.lower()
+            # Must be NEW in response (not in baseline)
+            if pattern_lower in response_lower and pattern_lower not in baseline_lower:
+                # Additional validation: check it's not just reflected payload
+                if payload_reflected and error_pattern in payload:
+                    continue
+                error_found = error_pattern
+                break
 
         if error_found:
-            # IMPROVED: Higher base confidence for unserialize errors
-            confidence = 0.85
-
-            # Higher confidence if multiple error indicators
-            if len(all_errors_found) >= 2:
-                confidence = 0.95
-
-            # Boost confidence for very specific errors
-            if 'unserialize' in error_found.lower() or '__wakeup' in error_found or '__destruct' in error_found:
-                confidence = min(0.95, confidence + 0.1)
+            # High confidence for actual PHP error messages
+            confidence = 0.90
 
             evidence = f"PHP unserialize() error detected: '{error_found}'. "
-            if len(all_errors_found) > 1:
-                evidence += f"Multiple indicators found: {', '.join(all_errors_found[:3])}. "
-            evidence += "Application attempts to deserialize user input. "
-            evidence += BaseDetector.get_evidence(error_found, response_text, context_size=200)
+            evidence += "Application calls unserialize() on user-controlled input. "
+            evidence += BaseDetector.get_evidence(error_found, response_text, context_size=150)
 
             return True, confidence, evidence
 
-        # METHOD 2: Deserialization indicator detection (IMPROVED)
-        # Check if response contains signs of deserialization
-        indicators_found = []
-        for indicator in self.deserialization_indicators:
+        # METHOD 2: HIGH confidence indicators (specific PHP debug output)
+        for indicator in self.high_confidence_indicators:
             if indicator in response_text and indicator not in baseline_text:
-                indicators_found.append(indicator)
+                # Verify it's not just the payload being reflected
+                if payload_reflected and indicator in payload:
+                    continue
 
-        # IMPROVED: Allow single strong indicator instead of requiring 2
-        if len(indicators_found) >= 1:
-            confidence = 0.70 if len(indicators_found) == 1 else 0.80
-
-            # Check if serialization format is reflected
-            if 'O:' in payload and ('object(' in response_text or 'stdClass' in response_text):
-                confidence = min(0.90, confidence + 0.15)
-
-            # Boost if multiple indicators
-            if len(indicators_found) >= 2:
-                confidence = min(0.90, confidence + 0.15)
-
-            evidence = f"Deserialization indicators detected: {', '.join(indicators_found)}. "
-            evidence += "Application may be deserializing user input without validation. "
-            evidence += BaseDetector.get_evidence(indicators_found[0], response_text, context_size=200)
-
-            return True, confidence, evidence
-
-        # METHOD 3: Magic method execution detection
-        # Check if magic methods like __wakeup, __destruct are triggered
-        magic_method_patterns = [
-            r'__wakeup.*called',
-            r'__destruct.*called',
-            r'__toString.*called',
-            r'__construct.*called',
-            r'method __\w+ does not exist',
-            r'call to undefined method',
-        ]
-
-        for pattern in magic_method_patterns:
-            if re.search(pattern, response_text, re.IGNORECASE):
                 confidence = 0.85
+                evidence = f"PHP deserialization output detected: '{indicator}'. "
+                evidence += "Response contains PHP object debug output indicating deserialization occurred. "
+                evidence += BaseDetector.get_evidence(indicator, response_text, context_size=150)
 
-                # Higher confidence for multiple magic method indicators
-                magic_count = sum(1 for p in magic_method_patterns if re.search(p, response_text, re.IGNORECASE))
-                if magic_count >= 2:
-                    confidence = 0.90
+                return True, confidence, evidence
 
-                evidence = f"PHP magic method execution detected. "
-                evidence += "Indicates successful object deserialization. "
-                evidence += BaseDetector.get_evidence(pattern, response_text, context_size=200)
+        # METHOD 3: Magic method execution detection (regex-based)
+        for pattern in self.magic_method_indicators:
+            match = re.search(pattern, response_text, re.IGNORECASE)
+            if match:
+                matched_text = match.group(0)
+                # Verify not in baseline
+                if not re.search(pattern, baseline_text, re.IGNORECASE):
+                    confidence = 0.85
+                    evidence = f"PHP magic method execution detected: '{matched_text}'. "
+                    evidence += "Indicates object was deserialized and magic method was triggered. "
+                    evidence += BaseDetector.get_evidence(matched_text, response_text, context_size=150)
+
+                    return True, confidence, evidence
+
+        # METHOD 4: MEDIUM confidence indicators (require additional validation)
+        # Only report if we have MULTIPLE indicators AND response changed significantly
+        medium_found = []
+        for indicator in self.medium_confidence_indicators:
+            if indicator in response_text and indicator not in baseline_text:
+                if not (payload_reflected and indicator in payload):
+                    medium_found.append(indicator)
+
+        if len(medium_found) >= 2:
+            # Additional check: response should be significantly different
+            length_diff = abs(len(response_text) - baseline_length)
+            length_ratio = length_diff / max(baseline_length, 1)
+
+            if length_ratio > 0.1:  # At least 10% size change
+                confidence = 0.75
+                evidence = f"Multiple deserialization indicators detected: {', '.join(medium_found)}. "
+                evidence += f"Response size changed by {length_ratio*100:.1f}%. "
+                evidence += "Possible PHP Object Injection - manual verification recommended. "
+                evidence += BaseDetector.get_evidence(medium_found[0], response_text, context_size=150)
+
+                return True, confidence, evidence
+
+        # METHOD 5: Behavioral detection - serialization format disappeared
+        # If we sent O:8:"stdClass" and response has object(stdClass)# without O:8:
+        # This indicates actual deserialization occurred
+        if 'O:' in payload and 'O:' not in response_text:
+            # Check for PHP object output format
+            object_output_match = re.search(r'object\((\w+)\)#\d+', response_text)
+            if object_output_match and object_output_match.group(0) not in baseline_text:
+                confidence = 0.80
+                matched = object_output_match.group(0)
+                evidence = f"Serialized payload was deserialized: '{matched}' found in response. "
+                evidence += "Payload format 'O:' was converted to PHP object output. "
+                evidence += BaseDetector.get_evidence(matched, response_text, context_size=150)
 
                 return True, confidence, evidence
 

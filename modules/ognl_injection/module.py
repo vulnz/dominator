@@ -58,18 +58,21 @@ class OGNLInjectionModule(BaseModule):
                 'severity': 'High',
                 'regex': True
             },
-            # Context access
+            # Context access - FIXED: Require OGNL-specific output patterns
             {
                 'payload': '${#context}',
-                'detect': r'(OgnlContext|ValueStack|ActionContext)',
+                'detect': r'(OgnlContext|ValueStack|ActionContext|xwork\.)',
                 'description': 'OGNL context object access',
                 'severity': 'High',
                 'regex': True
             },
+            # REMOVED: %{#session} with generic "session" detection - causes false positives
+            # The word "session" appears in many contexts (SQL errors, normal page content)
+            # Instead, use context access that returns OGNL-specific output
             {
-                'payload': '%{#session}',
-                'detect': r'(session|Session|HttpSession)',
-                'description': 'OGNL session access',
+                'payload': '%{#session.class.name}',
+                'detect': r'(org\.apache\.|javax\.servlet|HttpSession)',
+                'description': 'OGNL session class access',
                 'severity': 'High',
                 'regex': True
             },
@@ -185,6 +188,13 @@ class OGNLInjectionModule(BaseModule):
                             # FALSE POSITIVE CHECK: Pattern shouldn't exist in baseline
                             if detect_pattern in baseline_text:
                                 continue
+
+                        # CRITICAL FALSE POSITIVE CHECK: Payload reflection
+                        # If the payload is reflected in an error message (SQL error, etc.),
+                        # it's NOT real OGNL execution - the detection match is from the reflected payload text
+                        if self._is_payload_reflected(payload, matched_value, response_text):
+                            logger.debug(f"Skipping false positive: payload reflected in response")
+                            continue
 
                         # CONFIRMED VULNERABILITY
                         evidence = self._build_evidence(
@@ -339,6 +349,68 @@ class OGNLInjectionModule(BaseModule):
                 continue
 
         return results
+
+    def _is_payload_reflected(self, payload: str, matched_value: str, response_text: str) -> bool:
+        """
+        Check if the detection match is from a reflected payload (false positive).
+
+        Example false positive:
+        - Payload: %{#session}
+        - Response: "You have an error ... '%{#session}' at line 1"
+        - The word "session" is found, but it's FROM the reflected payload, not OGNL execution
+
+        Real OGNL execution would show: org.apache.struts2.dispatcher.SessionMap
+        """
+        # Check if payload appears in the response (reflection)
+        if payload in response_text or payload[:30] in response_text:
+            # Payload is reflected - now check if the matched value is NEAR the reflected payload
+            # Find where the payload is reflected
+            payload_short = payload[:30]
+            payload_pos = response_text.find(payload_short)
+            if payload_pos == -1:
+                payload_pos = response_text.find(payload)
+
+            if payload_pos >= 0:
+                # Get context around the reflected payload
+                context_start = max(0, payload_pos - 50)
+                context_end = min(len(response_text), payload_pos + len(payload) + 50)
+                reflection_context = response_text[context_start:context_end]
+
+                # If the matched value is in the reflection context, it's a false positive
+                if matched_value.lower() in reflection_context.lower():
+                    # Additional check: look for OGNL execution evidence elsewhere
+                    # Real OGNL would show class names, object dumps, etc.
+                    ognl_execution_evidence = [
+                        'org.apache.', 'javax.servlet.', 'java.lang.',
+                        'OgnlContext', 'ValueStack', 'ActionContext',
+                        '@java.lang.', 'getRuntime()', '.class.name'
+                    ]
+
+                    # If we find REAL execution evidence outside the reflection, it's valid
+                    response_without_reflection = (
+                        response_text[:context_start] + response_text[context_end:]
+                    )
+                    for evidence in ognl_execution_evidence:
+                        if evidence in response_without_reflection:
+                            return False  # Real OGNL execution found
+
+                    # No real execution evidence - it's just reflection
+                    return True
+
+        # Check for common error message patterns that indicate reflection
+        error_patterns = [
+            r"error.*'[^']*" + re.escape(matched_value) + r"[^']*'",
+            r"exception.*" + re.escape(matched_value),
+            r"syntax.*" + re.escape(matched_value),
+            r"invalid.*" + re.escape(matched_value),
+            r"'" + re.escape(payload[:20]) + r".*'",
+        ]
+
+        for pattern in error_patterns:
+            if re.search(pattern, response_text, re.IGNORECASE):
+                return True
+
+        return False
 
     def _build_evidence(self, url: str, param: str, payload: str, desc: str, match: str, response: str) -> str:
         """Build detailed evidence string"""

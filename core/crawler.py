@@ -99,8 +99,24 @@ class WebCrawler:
         self.js_urls: List[str] = []
         self.sitemap_urls: List[str] = []
         self.robots_urls: List[str] = []
+        self.rss_feed_urls: List[str] = []  # RSS/Atom/Feed URLs
         self.discovered_directories: Set[str] = set()
         self.detected_wafs: Set[str] = set()
+
+        # Crawl statistics for user visibility
+        self.crawl_stats = {
+            'robots_urls': 0,
+            'sitemap_urls': 0,
+            'nested_sitemap_urls': 0,  # Sitemaps inside sitemaps
+            'rss_feed_urls': 0,
+            'crawled_pages': 0,
+            'forms_found': 0,
+            'urls_with_params': 0,
+            'ajax_endpoints': 0,
+            'js_files_analyzed': 0,
+            'directory_listings': 0,
+            'dirbrute_urls': 0,  # From directory bruteforce
+        }
 
         # Passive detection results
         self.passive_findings: List[Dict[str, Any]] = []
@@ -218,20 +234,26 @@ class WebCrawler:
     def crawl_for_pages(self, base_url: str, max_pages: int = 50) -> List[str]:
         """Crawl website to find pages with parameters"""
         found_urls = []
+        found_urls_set = set()  # O(1) lookup for deduplication
         normalized_urls = []  # FIX: Initialize here to prevent unbound variable error
 
         try:
             print(f"    [CRAWLER] Starting crawl of {base_url} (max_pages: {max_pages})")
 
-            # First, get data from sitemap and robots.txt
-            print(f"    [CRAWLER] Extracting URLs from sitemap and robots.txt...")
+            # First, get data from sitemap, robots.txt, and feeds
+            print(f"    [CRAWLER] Extracting URLs from sitemap, robots.txt, and RSS feeds...")
             self._extract_sitemap_urls(base_url)
             self._extract_robots_urls(base_url)
 
             # FIXED: Use http_client for proxy support instead of direct requests
             timeout = self.config.timeout if self.config.timeout else 15
             response = self._make_request(base_url, timeout=timeout, headers=self.config.headers)
-            
+
+            # Handle failed request
+            if not response:
+                print(f"    [CRAWLER] Failed to connect to {base_url}")
+                return found_urls
+
             no_ping = getattr(self.config, 'no_ping', False)
             if response.status_code == 200 or no_ping:
                 if response.status_code != 200 and no_ping:
@@ -242,6 +264,7 @@ class WebCrawler:
                 # Check for directory listing on main page first
                 if self._detect_directory_listing(response.text):
                     print(f"    [CRAWLER] Directory listing detected on main page: {base_url}")
+                    self.crawl_stats['directory_listings'] += 1
 
                     # IMPORTANT: Add directory listing as a finding
                     dir_listing_finding = {
@@ -277,18 +300,24 @@ class WebCrawler:
 
                 # Extract JavaScript and AJAX endpoints
                 self._extract_js_endpoints(response.text, base_url)
-                
+
                 # Analyze discovered JavaScript files for more endpoints and secrets
                 self._analyze_javascript_files(base_url)
-                
+
+                # Extract RSS/Atom feed URLs (pass HTML so we can find feed links)
+                self._extract_rss_feed_urls(base_url, response.text)
+
                 # Extract URLs from response
                 urls = self._extract_all_urls(response.text, base_url)
                 print(f"    [CRAWLER] Found {len(urls)} URLs to analyze")
-                
+
                 # Add sitemap and robots URLs
                 urls.extend(self.sitemap_urls)
                 urls.extend(self.robots_urls)
-                
+
+                # Add RSS/Feed URLs
+                urls.extend(self.rss_feed_urls)
+
                 # Add AJAX endpoints to URLs
                 urls.extend(self.ajax_endpoints)
                 
@@ -308,9 +337,10 @@ class WebCrawler:
 
                         parsed = self.url_parser.parse(url)
 
-                        # Check if URL has parameters
-                        if parsed['query_params'] and url not in found_urls:
+                        # Check if URL has parameters (O(1) lookup with set)
+                        if parsed['query_params'] and url not in found_urls_set:
                             found_urls.append(url)
+                            found_urls_set.add(url)
                             print(f"    [CRAWLER] Found page with parameters: {url} ({list(parsed['query_params'].keys())})")
 
                     except Exception as e:
@@ -352,35 +382,61 @@ class WebCrawler:
             found_urls = self._deep_crawl(base_url, max_pages, initial_urls=normalized_urls)
         
         # ENHANCEMENT: Also include pages with forms as scan targets
-        form_urls = [form.get('url', base_url) for form in self.found_forms if form.get('url')]
-        for form_url in form_urls:
-            if form_url not in found_urls:
+        for form in self.found_forms:
+            form_url = form.get('url', base_url)
+            if form_url and form_url not in found_urls_set:
                 found_urls.append(form_url)
+                found_urls_set.add(form_url)
 
         # ENHANCEMENT: Include API endpoints as scan targets (WordPress wp-json, xmlrpc, etc.)
-        api_patterns = ['wp-json', 'xmlrpc.php', '/api/', '/rest/', '/graphql']
+        api_patterns = {'wp-json', 'xmlrpc.php', '/api/', '/rest/', '/graphql'}
         try:
             for url in normalized_urls:
-                if any(pattern in url.lower() for pattern in api_patterns):
-                    if url not in found_urls:
-                        found_urls.append(url)
-                        print(f"    [CRAWLER] Added API endpoint as target: {url}")
+                if any(p in url.lower() for p in api_patterns) and url not in found_urls_set:
+                    found_urls.append(url)
+                    found_urls_set.add(url)
+                    print(f"    [CRAWLER] Added API endpoint as target: {url}")
         except NameError:
             pass  # normalized_urls not defined in this code path
 
         # Include AJAX endpoints as targets
         for ajax_url in self.ajax_endpoints:
-            if ajax_url not in found_urls:
+            if ajax_url not in found_urls_set:
                 found_urls.append(ajax_url)
+                found_urls_set.add(ajax_url)
 
-        print(f"    [CRAWLER] Found {len(found_urls)} pages with parameters")
-        print(f"    [CRAWLER] Found {len(self.found_forms)} forms")
-        print(f"    [CRAWLER] Found {len(self.ajax_endpoints)} AJAX endpoints")
+        # Update final crawl statistics
+        self.crawl_stats['forms_found'] = len(self.found_forms)
+        self.crawl_stats['urls_with_params'] = len(found_urls)
+        self.crawl_stats['ajax_endpoints'] = len(self.ajax_endpoints)
+
+        # Print crawl summary with statistics
+        self._print_crawl_summary()
 
         # Print passive detection summary
         self.print_passive_summary()
 
         return found_urls
+
+    def _print_crawl_summary(self):
+        """Print comprehensive crawl statistics summary"""
+        print(f"\n    {'='*50}")
+        print(f"    [CRAWLER] ===== CRAWL STATISTICS SUMMARY =====")
+        print(f"    {'='*50}")
+        print(f"    [CRAWLER] URLs from robots.txt:     {self.crawl_stats['robots_urls']}")
+        print(f"    [CRAWLER] URLs from sitemaps:       {self.crawl_stats['sitemap_urls']}")
+        if self.crawl_stats['nested_sitemap_urls'] > 0:
+            print(f"    [CRAWLER]   (nested sitemaps:       {self.crawl_stats['nested_sitemap_urls']})")
+        print(f"    [CRAWLER] URLs from RSS/Atom feeds: {self.crawl_stats['rss_feed_urls']}")
+        print(f"    [CRAWLER] Forms discovered:         {self.crawl_stats['forms_found']}")
+        print(f"    [CRAWLER] URLs with parameters:     {self.crawl_stats['urls_with_params']}")
+        print(f"    [CRAWLER] AJAX endpoints:           {self.crawl_stats['ajax_endpoints']}")
+        print(f"    [CRAWLER] JS files analyzed:        {self.crawl_stats['js_files_analyzed']}")
+        if self.crawl_stats['directory_listings'] > 0:
+            print(f"    [CRAWLER] Directory listings:       {self.crawl_stats['directory_listings']}")
+        if self.crawl_stats['dirbrute_urls'] > 0:
+            print(f"    [CRAWLER] Dirbrute discoveries:     {self.crawl_stats['dirbrute_urls']}")
+        print(f"    {'='*50}")
     
     def _extract_js_endpoints(self, html_content: str, base_url: str):
         """Extract JavaScript and AJAX endpoints from HTML"""
@@ -696,6 +752,7 @@ class WebCrawler:
                     # Check for directory listing on this page
                     if self._detect_directory_listing(response.text):
                         print(f"    [CRAWLER] Directory listing detected during deep crawl: {url}")
+                        self.crawl_stats['directory_listings'] += 1
 
                         # Add directory listing finding
                         dir_listing_finding = {
@@ -787,6 +844,7 @@ class WebCrawler:
                     # Check for directory listing
                     if self._detect_directory_listing(response.text):
                         print(f"    [CRAWLER] Directory listing detected during deep crawl: {current_url}")
+                        self.crawl_stats['directory_listings'] += 1
                         # Extract directory listing URLs
                         dir_urls = self._extract_directory_listing_urls(response.text, current_url)
                         found_urls.extend(dir_urls)
@@ -850,7 +908,7 @@ class WebCrawler:
         return self.found_forms
     
     def _extract_sitemap_urls(self, base_url: str):
-        """Extract URLs from sitemap.xml"""
+        """Extract URLs from sitemap.xml with nested sitemap support"""
         try:
             from urllib.parse import urljoin
             sitemap_paths = PayloadLoader.load_wordlist('sitemaps')
@@ -862,36 +920,53 @@ class WebCrawler:
                     '/sitemaps.xml',
                     '/sitemap/sitemap.xml'
                 ]
-            
+
             sitemap_urls = [urljoin(base_url, path) for path in sitemap_paths]
-            
-            for sitemap_url in sitemap_urls:
+            processed_sitemaps = set()
+
+            def process_sitemap(sitemap_url, is_nested=False):
+                """Process a sitemap and extract URLs, handling nested sitemaps"""
+                if sitemap_url in processed_sitemaps:
+                    return
+                processed_sitemaps.add(sitemap_url)
+
                 try:
-                    # FIXED: Use http_client for proxy support
                     response = self._make_request(sitemap_url, timeout=self.config.timeout, headers=self.config.headers)
-                    
-                    if response.status_code == 200:
-                        print(f"    [CRAWLER] Found sitemap: {sitemap_url}")
-                        
-                        # Extract URLs from XML
+
+                    if response and response.status_code == 200:
+                        if is_nested:
+                            self.crawl_stats['nested_sitemap_urls'] += 1
+                            print(f"    [CRAWLER] Processing nested sitemap: {sitemap_url}")
+                        else:
+                            print(f"    [CRAWLER] Found sitemap: {sitemap_url}")
+
                         import re
-                        url_patterns = [
-                            r'<loc>(.*?)</loc>',
-                            r'<url>(.*?)</url>'
-                        ]
-                        
-                        for pattern in url_patterns:
-                            matches = re.findall(pattern, response.text, re.IGNORECASE)
-                            for match in matches:
-                                if match.startswith('http') and self._is_same_domain(match, base_url):
+                        content = response.text
+
+                        # Check for sitemap index (contains other sitemaps)
+                        nested_sitemaps = re.findall(r'<sitemap>.*?<loc>(.*?)</loc>.*?</sitemap>', content, re.IGNORECASE | re.DOTALL)
+                        for nested_url in nested_sitemaps:
+                            if nested_url.startswith('http') and self._is_same_domain(nested_url, base_url):
+                                process_sitemap(nested_url, is_nested=True)
+
+                        # Extract regular URLs
+                        url_matches = re.findall(r'<loc>(.*?)</loc>', content, re.IGNORECASE)
+                        for match in url_matches:
+                            if match.startswith('http') and self._is_same_domain(match, base_url):
+                                if match not in self.sitemap_urls and not match.endswith('.xml'):
                                     self.sitemap_urls.append(match)
-                        
-                        print(f"    [CRAWLER] Extracted {len(self.sitemap_urls)} URLs from sitemap")
-                        break
-                        
-                except Exception as e:
-                    continue
-                    
+
+                except Exception:
+                    pass
+
+            for sitemap_url in sitemap_urls:
+                process_sitemap(sitemap_url)
+                if self.sitemap_urls:
+                    break  # Found a valid sitemap
+
+            self.crawl_stats['sitemap_urls'] = len(self.sitemap_urls)
+            print(f"    [CRAWLER] Extracted {len(self.sitemap_urls)} URLs from sitemaps (nested: {self.crawl_stats['nested_sitemap_urls']})")
+
         except Exception as e:
             print(f"    [CRAWLER] Error extracting sitemap URLs: {e}")
     
@@ -903,14 +978,14 @@ class WebCrawler:
 
             # FIXED: Use http_client for proxy support
             response = self._make_request(robots_url, timeout=self.config.timeout, headers=self.config.headers)
-            
-            if response.status_code == 200:
+
+            if response and response.status_code == 200:
                 print(f"    [CRAWLER] Found robots.txt: {robots_url}")
-                
+
                 # Extract paths from robots.txt
                 import re
                 lines = response.text.split('\n')
-                
+
                 for line in lines:
                     line = line.strip()
                     if line.startswith('Disallow:') or line.startswith('Allow:'):
@@ -924,24 +999,98 @@ class WebCrawler:
                         if sitemap_url and self._is_same_domain(sitemap_url, base_url):
                             # Process additional sitemap
                             try:
-                                sitemap_response = requests.get(
-                                    sitemap_url,
-                                    timeout=self.config.timeout,
-                                    headers=self.config.headers,
-                                    verify=False
-                                )
-                                if sitemap_response.status_code == 200:
+                                sitemap_response = self._make_request(sitemap_url, timeout=self.config.timeout, headers=self.config.headers)
+                                if sitemap_response and sitemap_response.status_code == 200:
                                     url_matches = re.findall(r'<loc>(.*?)</loc>', sitemap_response.text, re.IGNORECASE)
                                     for url_match in url_matches:
                                         if self._is_same_domain(url_match, base_url):
                                             self.sitemap_urls.append(url_match)
+                                    self.crawl_stats['nested_sitemap_urls'] += 1
                             except:
                                 pass
-                
+
+                self.crawl_stats['robots_urls'] = len(self.robots_urls)
                 print(f"    [CRAWLER] Extracted {len(self.robots_urls)} URLs from robots.txt")
-                
+
         except Exception as e:
             print(f"    [CRAWLER] Error extracting robots URLs: {e}")
+
+    def _extract_rss_feed_urls(self, base_url: str, html_content: str = None):
+        """Extract URLs from RSS, Atom, and other feed formats"""
+        try:
+            from urllib.parse import urljoin
+            import re
+
+            # Common feed paths to check
+            feed_paths = [
+                '/feed/', '/feed', '/rss/', '/rss', '/rss.xml', '/feed.xml',
+                '/atom.xml', '/atom/', '/feeds/', '/blog/feed/', '/news/feed/',
+                '/wp-feed.php', '/index.xml', '/feed/rss/', '/feed/atom/',
+            ]
+
+            # First, extract feed links from HTML if provided
+            if html_content:
+                # Look for <link type="application/rss+xml" or "application/atom+xml">
+                feed_links = re.findall(
+                    r'<link[^>]+(?:type=["\']application/(?:rss|atom)\+xml["\'])[^>]*href=["\']([^"\']+)["\']',
+                    html_content, re.IGNORECASE
+                )
+                feed_links += re.findall(
+                    r'<link[^>]+href=["\']([^"\']+)["\'][^>]*(?:type=["\']application/(?:rss|atom)\+xml["\'])',
+                    html_content, re.IGNORECASE
+                )
+
+                for feed_link in feed_links:
+                    feed_url = urljoin(base_url, feed_link)
+                    if feed_url not in feed_paths:
+                        feed_paths.insert(0, feed_link)  # Prioritize found links
+
+            feed_urls_to_check = [urljoin(base_url, path) for path in feed_paths]
+
+            for feed_url in feed_urls_to_check:
+                try:
+                    response = self._make_request(feed_url, timeout=self.config.timeout, headers=self.config.headers)
+
+                    if response and response.status_code == 200:
+                        content = response.text
+
+                        # Check if it's actually a feed (RSS or Atom)
+                        if '<rss' in content.lower() or '<feed' in content.lower() or '<channel>' in content.lower():
+                            print(f"    [CRAWLER] Found feed: {feed_url}")
+
+                            # Extract URLs from feed
+                            # RSS: <link>URL</link> inside <item>
+                            # Atom: <link href="URL"/>
+                            urls_found = []
+
+                            # RSS format
+                            rss_links = re.findall(r'<item>.*?<link>([^<]+)</link>.*?</item>', content, re.IGNORECASE | re.DOTALL)
+                            urls_found.extend(rss_links)
+
+                            # Atom format
+                            atom_links = re.findall(r'<entry>.*?<link[^>]+href=["\']([^"\']+)["\'].*?</entry>', content, re.IGNORECASE | re.DOTALL)
+                            urls_found.extend(atom_links)
+
+                            # Also get alternate links
+                            alt_links = re.findall(r'<link[^>]+rel=["\']alternate["\'][^>]+href=["\']([^"\']+)["\']', content, re.IGNORECASE)
+                            urls_found.extend(alt_links)
+
+                            for url in urls_found:
+                                if url.startswith('http') and self._is_same_domain(url, base_url):
+                                    if url not in self.rss_feed_urls:
+                                        self.rss_feed_urls.append(url)
+
+                            print(f"    [CRAWLER] Extracted {len(urls_found)} URLs from feed")
+
+                except Exception:
+                    continue
+
+            self.crawl_stats['rss_feed_urls'] = len(self.rss_feed_urls)
+            if self.rss_feed_urls:
+                print(f"    [CRAWLER] Total RSS/Feed URLs extracted: {len(self.rss_feed_urls)}")
+
+        except Exception as e:
+            print(f"    [CRAWLER] Error extracting feed URLs: {e}")
     
     def get_ajax_endpoints(self) -> List[str]:
         """Get AJAX endpoints found during crawling"""
@@ -1046,9 +1195,10 @@ class WebCrawler:
         """Downloads and analyzes discovered JavaScript files for endpoints and secrets."""
         if not self.js_urls:
             return
-            
-        print(f"    [CRAWLER] Analyzing content of {len(set(self.js_urls))} JavaScript files...")
+
         unique_js_urls = sorted(list(set(self.js_urls)))
+        self.crawl_stats['js_files_analyzed'] = len(unique_js_urls)
+        print(f"    [CRAWLER] Analyzing content of {len(unique_js_urls)} JavaScript files...")
 
         for js_url in unique_js_urls:
             if js_url in self.visited_urls:

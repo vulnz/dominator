@@ -21,14 +21,18 @@ if sys.platform.startswith('win'):
         sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'replace')
         sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'replace')
         # Set console code page to UTF-8 if possible
-        # Use subprocess with CREATE_NO_WINDOW to avoid flashing console window
+        # Use subprocess with CREATE_NO_WINDOW and NO shell=True to avoid window flash
         import subprocess
+        # Use cmd.exe directly instead of shell=True to prevent window
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = 0  # SW_HIDE
         subprocess.run(
-            'chcp 65001',
-            shell=True,
+            ['cmd.exe', '/c', 'chcp', '65001'],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)
+            creationflags=0x08000000,  # CREATE_NO_WINDOW
+            startupinfo=startupinfo
         )
     except Exception:
         pass

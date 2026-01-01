@@ -103,21 +103,18 @@ class ScanThread(QThread):
             startupinfo = None
 
             if sys.platform == 'win32':
-                # CREATE_NO_WINDOW = 0x08000000
-                creation_flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)
+                # AGGRESSIVE window hiding for Windows - prevent ANY console window
+                # CREATE_NO_WINDOW is the key flag that prevents console windows
+                CREATE_NO_WINDOW = 0x08000000
+                creation_flags = CREATE_NO_WINDOW
 
-                # Also use startupinfo to hide window
+                # Configure STARTUPINFO for additional window hiding
                 startupinfo = subprocess.STARTUPINFO()
                 startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                startupinfo.wShowWindow = 0  # SW_HIDE
+                startupinfo.wShowWindow = 0  # SW_HIDE = 0
 
-                # Replace python.exe with pythonw.exe if available (no console)
-                command = list(self.command)
-                if command and 'python.exe' in command[0].lower():
-                    pythonw = command[0].replace('python.exe', 'pythonw.exe')
-                    if Path(pythonw).exists():
-                        command[0] = pythonw
-                self.command = command
+                # NOTE: Do NOT use pythonw.exe - it breaks stdout capture
+                # CREATE_NO_WINDOW flag is sufficient and works with regular python.exe
 
             # Force Python to run unbuffered (-u flag) to ensure real-time output capture
             env = os.environ.copy()
@@ -469,93 +466,39 @@ class ScanThread(QThread):
                 domain = domain_match.group(1) if domain_match else ""
                 self.scope_signal.emit("ip", ip, domain, line[:80])
 
+    # Technology category mappings (class-level constant)
+    _TECH_CATEGORIES = {
+        'PHP': 'Language', 'ASP.NET': 'Framework',
+        'Apache': 'Web Server', 'Nginx': 'Web Server', 'IIS': 'Web Server',
+        'WordPress': 'CMS', 'jQuery': 'JavaScript Library',
+        'React': 'Frontend Framework', 'Vue.js': 'Frontend Framework', 'Angular': 'Frontend Framework',
+        'Bootstrap': 'CSS Framework', 'MySQL': 'Database', 'PostgreSQL': 'Database',
+    }
+
     def _get_tech_category(self, tech_name):
         """Categorize technology"""
-        categories = {
-            'PHP': 'Language',
-            'ASP.NET': 'Framework',
-            'Apache': 'Web Server',
-            'Nginx': 'Web Server',
-            'IIS': 'Web Server',
-            'WordPress': 'CMS',
-            'jQuery': 'JavaScript Library',
-            'React': 'Frontend Framework',
-            'Vue.js': 'Frontend Framework',
-            'Angular': 'Frontend Framework',
-            'Bootstrap': 'CSS Framework',
-            'MySQL': 'Database',
-            'PostgreSQL': 'Database',
-        }
-        return categories.get(tech_name, 'Other')
+        return self._TECH_CATEGORIES.get(tech_name, 'Other')
+
+    # Pre-compiled debug patterns for _is_debug_message (class-level for performance)
+    _DEBUG_PATTERNS = [re.compile(p) for p in [
+        r'info\s*-\s*modules\.', r'\[info\].*modules\.',
+        r'found \d+ post forms', r'found \d+ post targets',
+        r'found \d+ potential upload forms', r'found \d+ potential login forms',
+        r'found \d+ external js files', r'found \d+ stateful', r'found \d+ get forms',
+        r'found form:\s*(get|post)', r'parameters:\s*\[', r'parsed parameters:',
+        r'found page with parameters', r'found page:',
+        r'found 0 ajax endpoints', r'found 0 javascript files', r'found 0 urls',
+        r'found \d+ javascript files', r'found \d+ urls to analyze',
+        r'found \d+ pages with parameters', r'found \d+ forms', r'found \d+ ajax endpoints',
+        r'found \d+ security header issues', r'found \d+ cookie security issues',
+        r'found \d+ version disclosures', r'found \d+ api-related findings',
+        r'found \d+ sensitive data leaks', r'^\s*$', r'module:\s*\w+\s*summary',
+    ]]
 
     def _is_debug_message(self, line):
-        """Check if line is a debug message that shouldn't be counted as finding
-
-        Filters out:
-        - Crawler stats: "Found X URLs", "Found X forms", "Found X AJAX endpoints"
-        - Parsed parameters debug: "Parsed parameters: []"
-        - Page discovery: "Found page with parameters"
-        - Passive scanner stats: "Found X security header issues", "Found X cookie issues"
-        - Form discovery: "Found form: POST/GET"
-        - JavaScript files: "Found X JavaScript files"
-        - Module INFO messages: "INFO - modules.xxx - Found X forms/targets/etc."
-
-        Returns:
-            bool: True if this is debug info, False if it's a real finding
-        """
+        """Check if line is a debug message that shouldn't be counted as finding"""
         line_lower = line.lower()
-
-        # DEBUG patterns that should NOT be counted as findings
-        debug_patterns = [
-            # Module INFO messages - CRITICAL: Filter out all module informational logs
-            r'info\s*-\s*modules\.',  # Matches "INFO - modules.xxx - ..."
-            r'\[info\].*modules\.',  # Matches "[INFO] modules.xxx ..."
-            r'found \d+ post forms',  # "Found 29 POST forms"
-            r'found \d+ post targets',  # "Found 29 POST targets for stored XSS testing"
-            r'found \d+ potential upload forms',  # "Found 30 potential upload forms"
-            r'found \d+ potential login forms',  # "Found 23 potential login forms"
-            r'found \d+ external js files',  # "Found 0 external JS files"
-            r'found \d+ stateful',  # "Found X stateful GET forms"
-            r'found \d+ get forms',  # "Found X GET forms"
-
-            # Crawler debug messages - forms and parameters
-            r'found form:\s*(get|post)',  # Matches "Found form: GET/POST..."
-            r'parameters:\s*\[',  # Matches "Parameters: [...]"
-            r'parsed parameters:',  # Matches "Parsed parameters: ..."
-            r'found page with parameters',
-            r'found page:',
-
-            # Crawler stats (zero results)
-            r'found 0 ajax endpoints',
-            r'found 0 javascript files',
-            r'found 0 urls',
-
-            # Crawler summary messages (statistics)
-            r'found \d+ javascript files',
-            r'found \d+ urls to analyze',
-            r'found \d+ pages with parameters',
-            r'found \d+ forms',
-            r'found \d+ ajax endpoints',
-
-            # Passive scanner summary (should be aggregated, not per-page)
-            r'found \d+ security header issues',
-            r'found \d+ cookie security issues',
-            r'found \d+ version disclosures',
-            r'found \d+ api-related findings',
-            r'found \d+ sensitive data leaks',
-
-            # Empty messages or module summaries
-            r'^\s*$',  # Empty lines
-            r'module:\s*\w+\s*summary',  # "Module: PASSIVE SUMMARY"
-        ]
-
-        # Check if line matches any debug pattern
-        import re
-        for pattern in debug_patterns:
-            if re.search(pattern, line_lower):
-                return True
-
-        return False
+        return any(pattern.search(line_lower) for pattern in self._DEBUG_PATTERNS)
 
     def stop(self):
         """Stop the running scan"""

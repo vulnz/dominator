@@ -68,7 +68,8 @@ class DominatorGUI(QMainWindow):
     TAB_MODULES = 4
     TAB_PLUGINS = 5
     TAB_API_TESTING = 6
-    TAB_INTERCEPTOR = 7
+    TAB_BRUTEFORCE = 7
+    TAB_INTERCEPTOR = 8
 
     def __init__(self):
         super().__init__()
@@ -416,6 +417,7 @@ class DominatorGUI(QMainWindow):
         """Initialize the user interface"""
         self.setWindowTitle("Dominator Web Vulnerability Scanner")
         self.setGeometry(100, 100, 1400, 900)
+        self.setMinimumSize(1000, 700)  # Allow resizing but with minimum size
 
         # Create menu bar
         self.create_menu_bar()
@@ -498,6 +500,13 @@ class DominatorGUI(QMainWindow):
         # API Testing Tab
         api_tab = self.create_api_testing_tab()
         self.tabs.addTab(api_tab, "API Testing")
+
+        # HTTP Form Bruteforce Tab
+        from GUI.ui_tabs.bruteforce_tab import BruteforceTabBuilder
+        bruteforce_builder = BruteforceTabBuilder(self, CollapsibleBox)
+        bruteforce_tab = bruteforce_builder.build()
+        self.bruteforce_tab_builder = bruteforce_builder
+        self.tabs.addTab(bruteforce_tab, "Form Bruteforce")
 
         # Browser Integration Tab
         self.browser_tab = BrowserTab(main_gui=self)
@@ -784,12 +793,69 @@ class DominatorGUI(QMainWindow):
         options_action.triggered.connect(self.show_options_dialog)
         tools_menu.addAction(options_action)
 
+        # Scan menu - Quick access to scan types
+        scan_menu = menubar.addMenu("Scan")
+
+        # Subdomain enumeration
+        subdomain_enum_action = QAction("🌐 Enumerate Subdomains", self)
+        subdomain_enum_action.setShortcut("Ctrl+Shift+S")
+        subdomain_enum_action.setStatusTip("Enumerate subdomains for the target domain")
+        subdomain_enum_action.triggered.connect(self.run_subdomain_enumeration)
+        scan_menu.addAction(subdomain_enum_action)
+
+        subdomain_scan_action = QAction("🔍 Scan Subdomains", self)
+        subdomain_scan_action.setStatusTip("Enumerate and then scan discovered subdomains")
+        subdomain_scan_action.triggered.connect(self.run_subdomain_scan)
+        scan_menu.addAction(subdomain_scan_action)
+
+        scan_menu.addSeparator()
+
+        # Subdomain takeover check
+        subdomain_takeover_action = QAction("⚠️ Check Subdomain Takeover", self)
+        subdomain_takeover_action.setStatusTip("Check for subdomain takeover vulnerabilities")
+        subdomain_takeover_action.triggered.connect(self.run_subdomain_takeover_check)
+        scan_menu.addAction(subdomain_takeover_action)
+
+        scan_menu.addSeparator()
+
+        # Quick scan modes
+        quick_scan_action = QAction("⚡ Quick Scan (Fast Mode)", self)
+        quick_scan_action.setStatusTip("Run a fast scan with minimal payloads")
+        quick_scan_action.triggered.connect(self.run_quick_scan)
+        scan_menu.addAction(quick_scan_action)
+
+        profile_only_action = QAction("📋 Profile Only (No Attacks)", self)
+        profile_only_action.setStatusTip("Only profile the target without sending attack payloads")
+        profile_only_action.triggered.connect(self.run_profile_only_scan)
+        scan_menu.addAction(profile_only_action)
+
         # Help menu
         help_menu = menubar.addMenu("Help")
 
         docs_action = QAction("Documentation", self)
         docs_action.triggered.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/vulnz/dominator")))
         help_menu.addAction(docs_action)
+
+        help_menu.addSeparator()
+
+        # Debug submenu
+        debug_menu = help_menu.addMenu("Debug")
+
+        view_log_action = QAction("View Debug Log", self)
+        view_log_action.triggered.connect(self.view_debug_log)
+        debug_menu.addAction(view_log_action)
+
+        clear_log_action = QAction("Clear Debug Log", self)
+        clear_log_action.triggered.connect(self.clear_debug_log)
+        debug_menu.addAction(clear_log_action)
+
+        debug_menu.addSeparator()
+
+        self.debug_mode_action = QAction("Enable Debug Mode", self)
+        self.debug_mode_action.setCheckable(True)
+        self.debug_mode_action.setChecked(self.debug_mode)
+        self.debug_mode_action.triggered.connect(self.toggle_debug_mode)
+        debug_menu.addAction(self.debug_mode_action)
 
         help_menu.addSeparator()
 
@@ -1080,13 +1146,53 @@ class DominatorGUI(QMainWindow):
         command.append("--auto-report")
         command.append("-v")
 
-        # ROTATION 9 flags
+        # Scan Mode flags
         if self.recon_only_cb.isChecked():
             command.append("--recon-only")
         if self.rotate_agent_cb.isChecked():
             command.append("--rotate-agent")
         if self.single_page_cb.isChecked():
             command.append("--single-page")
+        if hasattr(self, 'fast_mode_cb') and self.fast_mode_cb.isChecked():
+            command.append("--fast")
+        if hasattr(self, 'profile_only_cb') and self.profile_only_cb.isChecked():
+            command.append("--profile-only")
+
+        # WAF Detection & Bypass
+        if hasattr(self, 'waf_detect_cb') and self.waf_detect_cb.isChecked():
+            command.append("--waf")
+        if hasattr(self, 'waf_bypass_cb') and self.waf_bypass_cb.isChecked():
+            command.append("--waf-mode")
+        if hasattr(self, 'browser_mode_cb') and self.browser_mode_cb.isChecked():
+            command.append("--browser")
+        if hasattr(self, 'waf_detect_only_cb') and self.waf_detect_only_cb.isChecked():
+            command.append("--waf-detect")
+
+        # Subdomain Enumeration
+        if hasattr(self, 'enum_subdomains_cb') and self.enum_subdomains_cb.isChecked():
+            command.append("--enum-subdomains")
+        if hasattr(self, 'scan_subdomains_cb') and self.scan_subdomains_cb.isChecked():
+            command.append("--scan-subdomains")
+        if hasattr(self, 'subdomain_takeover_cb') and self.subdomain_takeover_cb.isChecked():
+            command.append("--subdomain-takeover")
+        if hasattr(self, 'passive_subdomain_cb') and self.passive_subdomain_cb.isChecked():
+            command.append("--subdomain-passive-only")
+        if hasattr(self, 'subdomain_limit_spin'):
+            command.extend(["--subdomain-limit", str(self.subdomain_limit_spin.value())])
+        if hasattr(self, 'subdomain_wordlist_input') and self.subdomain_wordlist_input.text().strip():
+            command.extend(["--subdomain-wordlist", self.subdomain_wordlist_input.text().strip()])
+
+        # Exclusions
+        if hasattr(self, 'exclude_paths_input') and self.exclude_paths_input.text().strip():
+            command.extend(["--exclude", self.exclude_paths_input.text().strip()])
+        if hasattr(self, 'exclude_ips_input') and self.exclude_ips_input.text().strip():
+            command.extend(["--exclude-ips", self.exclude_ips_input.text().strip()])
+        if hasattr(self, 'exclude_subdomains_input') and self.exclude_subdomains_input.text().strip():
+            command.extend(["--exclude-subdomains", self.exclude_subdomains_input.text().strip()])
+
+        # Payload limit
+        if hasattr(self, 'payload_limit_spin'):
+            command.extend(["--payload-limit", str(self.payload_limit_spin.value())])
 
         # Authentication - add as custom headers
         auth_type = self.auth_type_combo.currentText()
@@ -1247,7 +1353,24 @@ class DominatorGUI(QMainWindow):
 
     def start_scan(self):
         """Start the vulnerability scan"""
+        # Debug logging helper
+        def debug_log(msg):
+            """Log debug messages to file and console"""
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+            log_msg = f"[DEBUG {timestamp}] {msg}"
+            print(log_msg)
+            try:
+                log_file = Path(__file__).parent.parent / "gui_debug.log"
+                with open(log_file, 'a', encoding='utf-8') as f:
+                    f.write(f"{log_msg}\n")
+            except:
+                pass
+
+        debug_log("start_scan() called")
+
         try:
+            debug_log("Building command...")
             command = self.build_command()
             if not command:
                 self.output_console.append("[!] ERROR: Please specify a target URL or file")
@@ -1255,7 +1378,9 @@ class DominatorGUI(QMainWindow):
                 from PyQt5.QtWidgets import QMessageBox
                 QMessageBox.warning(self, "No Target", "Please specify a target URL or file before starting the scan.")
                 return
+            debug_log(f"Command built: {' '.join(command[:5])}...")
         except Exception as e:
+            debug_log(f"ERROR building command: {e}")
             self.output_console.append(f"[!] ERROR building command: {str(e)}")
             self.statusBar().showMessage(f"Error: {str(e)}", 5000)
             from PyQt5.QtWidgets import QMessageBox
@@ -1266,6 +1391,7 @@ class DominatorGUI(QMainWindow):
 
         # Handle custom payloads entered directly in text area
         try:
+            debug_log("Processing custom payloads...")
             payloads_text = self.custom_payloads_text.toPlainText().strip()
             temp_payload_file = None
 
@@ -1287,6 +1413,7 @@ class DominatorGUI(QMainWindow):
                     return
 
             # Update UI - batch updates to reduce lag
+            debug_log("Updating UI buttons...")
             self.start_btn.setEnabled(False)
             self.stop_btn.setEnabled(True)
             self.pause_btn.setEnabled(True)
@@ -1298,27 +1425,100 @@ class DominatorGUI(QMainWindow):
             QApplication.processEvents()
 
             # Clear output console
+            debug_log("Clearing output console...")
             self.output_console.clear()
             self.output_console.append(f"[*] Starting scan...")
 
             # Reset vulnerability counters and list
-            self.vuln_counts = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0}
+            debug_log("Resetting vuln counters...")
+            self.vuln_counts = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0, 'INFO': 0}
             self.results_handler.update_vuln_display()
+            debug_log("Clearing vulns_list...")
             self.vulns_list.clear()
             # Reset results tab color
+            debug_log("Resetting tab color...")
             self.tabs.tabBar().setTabTextColor(self.TAB_RESULTS, QColor('white'))
 
             # Process events before clearing tables
             QApplication.processEvents()
 
             # Clear tables with updates suspended for performance
+            debug_log("Clearing resource tables...")
             for table in [self.social_media_table, self.emails_table, self.phones_table,
                          self.leaked_keys_table, self.scope_table, self.tech_table, self.geo_table]:
                 table.setUpdatesEnabled(False)
                 table.setRowCount(0)
                 table.setUpdatesEnabled(True)
 
+            # Clear main results table
+            debug_log("Clearing results table...")
+            if hasattr(self, 'results_table'):
+                self.results_table.setUpdatesEnabled(False)
+                self.results_table.setRowCount(0)
+                self.results_table.setUpdatesEnabled(True)
+
+            # Clear resources table
+            if hasattr(self, 'resources_table'):
+                self.resources_table.setUpdatesEnabled(False)
+                self.resources_table.setRowCount(0)
+                self.resources_table.setUpdatesEnabled(True)
+
+            # Reset stats cards
+            debug_log("Resetting stats cards...")
+            if hasattr(self, 'total_card'):
+                self.total_card.set_value(0)
+            if hasattr(self, 'critical_card'):
+                self.critical_card.set_value(0)
+            if hasattr(self, 'high_card'):
+                self.high_card.set_value(0)
+            if hasattr(self, 'medium_card'):
+                self.medium_card.set_value(0)
+            if hasattr(self, 'low_card'):
+                self.low_card.set_value(0)
+            if hasattr(self, 'pie_chart'):
+                self.pie_chart.set_data({'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0, 'INFO': 0})
+
+            # Clear timeline data
+            if hasattr(self, '_timeline_data'):
+                self._timeline_data = []
+            if hasattr(self, 'timeline_chart'):
+                self.timeline_chart.set_data([])
+
+            # Reset findings count label
+            if hasattr(self, 'findings_count_label'):
+                self.findings_count_label.setText("(0)")
+
+            # Clear filters (reset to "All")
+            debug_log("Resetting filters...")
+            if hasattr(self, 'module_filter'):
+                self.module_filter.clear()
+                self.module_filter.addItem("All")
+            if hasattr(self, 'target_filter'):
+                self.target_filter.clear()
+                self.target_filter.addItem("All")
+            if hasattr(self, 'status_filter'):
+                self.status_filter.setCurrentIndex(0)
+            if hasattr(self, 'extension_filter'):
+                self.extension_filter.setCurrentIndex(0)
+            if hasattr(self, 'severity_filter'):
+                self.severity_filter.setCurrentIndex(0)
+
+            # Clear target profile
+            debug_log("Clearing target profile...")
+            if hasattr(self, 'target_profile_panel'):
+                self.target_profile_panel.clear()
+            if hasattr(self, 'current_target_profile'):
+                self.current_target_profile = None
+
+            # Clear site tree
+            debug_log("Clearing site tree...")
+            if hasattr(self, 'site_tree'):
+                self.site_tree.clear()
+            if hasattr(self, 'site_tree_nodes'):
+                self.site_tree_nodes = {}
+
             # Initialize Progress & Plan tab
+            debug_log("Initializing progress tab...")
             import datetime
             self.scan_start_time = datetime.datetime.now()
             self.scan_start_label.setText(self.scan_start_time.strftime("%Y-%m-%d %H:%M:%S"))
@@ -1328,6 +1528,7 @@ class DominatorGUI(QMainWindow):
             QApplication.processEvents()
 
             # Populate scan plan based on selected modules
+            debug_log("Populating scan plan...")
             self.populate_scan_plan(command)
 
             # Show command in output (after initialization)
@@ -1340,7 +1541,9 @@ class DominatorGUI(QMainWindow):
             max_time_minutes = self.max_time_spin.value() if hasattr(self, 'max_time_spin') else 0
 
             # Start scan thread with max_time for time tracking
+            debug_log("Creating ScanThread...")
             self.scan_thread = ScanThread(command, max_time=max_time_minutes)
+            debug_log("Connecting signals...")
             self.scan_thread.output_signal.connect(self.append_output)
             self.scan_thread.finished_signal.connect(self.scan_finished)
             self.scan_thread.progress_signal.connect(self.update_progress)
@@ -1352,12 +1555,17 @@ class DominatorGUI(QMainWindow):
             self.scan_thread.report_signal.connect(self.results_handler.set_current_report)
             self.scan_thread.time_signal.connect(self.update_time_display)
             self.scan_thread.profile_signal.connect(self.update_target_profile)
+            debug_log("Starting scan thread...")
             self.scan_thread.start()
+            debug_log("Scan thread started successfully!")
 
             # Switch to Results tab to show progress and findings
             self.tabs.setCurrentIndex(self.TAB_RESULTS)
 
         except Exception as e:
+            debug_log(f"EXCEPTION in start_scan: {type(e).__name__}: {e}")
+            import traceback
+            debug_log(f"Traceback:\n{traceback.format_exc()}")
             self.output_console.append(f"[!] ERROR starting scan: {str(e)}")
             self.statusBar().showMessage(f"Error: {str(e)}", 5000)
             from PyQt5.QtWidgets import QMessageBox
@@ -1432,168 +1640,265 @@ class DominatorGUI(QMainWindow):
 
     def append_output(self, text):
         """Append text to output console with throttling to reduce UI lag"""
-        import re
-        import time
+        try:
+            import re
+            import time
 
-        # Check if output logging is enabled
-        if hasattr(self, 'output_enabled_cb') and not self.output_enabled_cb.isChecked():
-            return  # Skip logging if disabled
+            # Check if output logging is enabled
+            if hasattr(self, 'output_enabled_cb') and not self.output_enabled_cb.isChecked():
+                return  # Skip logging if disabled
 
-        # Strip ANSI color codes for clean display
-        text_clean = re.sub(r'\x1b\[[0-9;]*m', '', text)
-        # Also strip any remaining [XXm patterns (colorama on Windows)
-        text_clean = re.sub(r'\[([0-9]{1,2}(;[0-9]{1,2})?)?m', '', text_clean)
+            # Strip ANSI color codes for clean display
+            text_clean = re.sub(r'\x1b\[[0-9;]*m', '', text)
+            # Also strip any remaining [XXm patterns (colorama on Windows)
+            text_clean = re.sub(r'\[([0-9]{1,2}(;[0-9]{1,2})?)?m', '', text_clean)
 
-        # RAW OUTPUT MODE - bypass all filtering when enabled
-        if not self.raw_output_mode:
-            # Filter out noisy debug/error messages from OOB detection
-            skip_patterns = [
-                'Error checking Pipedream:',
-                'Error checking Requestbin:',
-                'Max retries exceeded',
-                'Read timed out',
-                'SSL: UNEXPECTED_EOF_WHILE_READING',
-                'SSLError',
-                'SSLEOFError'
-            ]
-
-            # Skip line if it contains any of the noisy patterns
-            if any(pattern in text_clean for pattern in skip_patterns):
-                return
-
-            # Debug mode filtering - skip ONLY truly verbose/noisy messages when debug is off
-            # Important messages (vulnerabilities, module status, results) always show
-            if not self.debug_mode:
-                # Only filter out actual debug/trace messages, not important scan output
-                verbose_patterns = [
-                    '[DEBUG]', '[VERBOSE]', '[TRACE]',
-                    'Parsed parameters:', 'Parameters:',
-                    'Testing parameter:', 'Checking URL:',
-                    'Request headers:', 'Response headers:',
-                    'DEBUG -', 'TRACE -',
+            # RAW OUTPUT MODE - bypass all filtering when enabled
+            if not self.raw_output_mode:
+                # Filter out noisy debug/error messages from OOB detection
+                skip_patterns = [
+                    'Error checking Pipedream:',
+                    'Error checking Requestbin:',
+                    'Max retries exceeded',
+                    'Read timed out',
+                    'SSL: UNEXPECTED_EOF_WHILE_READING',
+                    'SSLError',
+                    'SSLEOFError'
                 ]
-                # Check if it's a verbose message but NOT an important one
-                is_verbose = any(pattern in text_clean for pattern in verbose_patterns)
-                # Important patterns that should ALWAYS show
-                important_patterns = [
-                    'Running module:', 'Module', 'completed:',
-                    'VULNERABILITY', 'vulnerability', 'FOUND', 'Found:',
-                    '[CRITICAL]', '[HIGH]', '[MEDIUM]', '[LOW]',
-                    'XSS', 'SQLi', 'SQL Injection', 'CSRF', 'SSRF', 'LFI', 'RFI',
-                    'Target:', 'Scan', 'Error:', 'Warning:',
-                    'Total vulnerabilities', 'findings',
-                ]
-                is_important = any(pattern in text_clean for pattern in important_patterns)
-                if is_verbose and not is_important:
+
+                # Skip line if it contains any of the noisy patterns
+                if any(pattern in text_clean for pattern in skip_patterns):
                     return
 
-        # Add to buffer for throttled display
-        self._output_buffer.append(text_clean)
+                # Debug mode filtering - skip ONLY truly verbose/noisy messages when debug is off
+                # Important messages (vulnerabilities, module status, results) always show
+                if not self.debug_mode:
+                    # Only filter out actual debug/trace messages, not important scan output
+                    verbose_patterns = [
+                        '[DEBUG]', '[VERBOSE]', '[TRACE]',
+                        'Parsed parameters:', 'Parameters:',
+                        'Testing parameter:', 'Checking URL:',
+                        'Request headers:', 'Response headers:',
+                        'DEBUG -', 'TRACE -',
+                    ]
+                    # Check if it's a verbose message but NOT an important one
+                    is_verbose = any(pattern in text_clean for pattern in verbose_patterns)
+                    # Important patterns that should ALWAYS show
+                    important_patterns = [
+                        'Running module:', 'Module', 'completed:',
+                        'VULNERABILITY', 'vulnerability', 'FOUND', 'Found:',
+                        '[CRITICAL]', '[HIGH]', '[MEDIUM]', '[LOW]',
+                        'XSS', 'SQLi', 'SQL Injection', 'CSRF', 'SSRF', 'LFI', 'RFI',
+                        'Target:', 'Scan', 'Error:', 'Warning:', 'ERROR',
+                        'Total vulnerabilities', 'findings',
+                        'Failed', 'failed', 'Connection', 'Timeout', 'timeout',
+                        'unreachable', 'refused', 'not found', 'invalid',
+                        'Exception', 'exception', 'Cannot', 'cannot',
+                        'Page discovery', 'Crawling', 'requests',
+                    ]
+                    is_important = any(pattern in text_clean for pattern in important_patterns)
+                    if is_verbose and not is_important:
+                        return
 
-        # Check if we should flush now
-        current_time = time.time() * 1000  # ms
-        time_since_last = current_time - self._last_output_time
+            # Add to buffer for throttled display
+            self._output_buffer.append(text_clean)
 
-        if time_since_last >= self._output_throttle_ms:
-            # Flush immediately
-            self._flush_output_buffer()
-        else:
-            # Schedule a delayed flush if not already scheduled
-            if self._output_flush_timer is None:
-                remaining = self._output_throttle_ms - time_since_last
-                self._output_flush_timer = QTimer.singleShot(int(remaining), self._flush_output_buffer)
+            # Check if we should flush now
+            current_time = time.time() * 1000  # ms
+            time_since_last = current_time - self._last_output_time
+
+            if time_since_last >= self._output_throttle_ms:
+                # Flush immediately
+                self._flush_output_buffer()
+            else:
+                # Schedule a delayed flush if not already scheduled
+                if self._output_flush_timer is None:
+                    remaining = self._output_throttle_ms - time_since_last
+                    self._output_flush_timer = QTimer.singleShot(int(remaining), self._flush_output_buffer)
+        except Exception as e:
+            # Log error to debug file
+            from datetime import datetime
+            log_file = Path(__file__).parent.parent / "gui_debug.log"
+            with open(log_file, 'a', encoding='utf-8') as f:
+                f.write(f"[{datetime.now().strftime('%H:%M:%S')}] ERROR in append_output: {e}\n")
+                import traceback
+                f.write(traceback.format_exc() + "\n")
 
     def _flush_output_buffer(self):
-        """Flush buffered output to console"""
-        import time
+        """Flush buffered output to console and combined output table"""
+        try:
+            import time
 
-        self._output_flush_timer = None
+            self._output_flush_timer = None
 
-        if not self._output_buffer:
-            return
+            if not self._output_buffer:
+                return
 
-        # Batch update - join all buffered lines
-        batch_text = '\n'.join(self._output_buffer)
-        self._output_buffer.clear()
+            # Process each line for the combined output table
+            for line in self._output_buffer:
+                if hasattr(self, 'results_tab_builder') and hasattr(self.results_tab_builder, 'add_scan_output_line'):
+                    self.results_tab_builder.add_scan_output_line(line)
 
-        # Update main output console only (debug tab is separate)
-        self.output_console.append(batch_text)
-        self.output_console.moveCursor(QTextCursor.End)
+            # Batch update - join all buffered lines for main console
+            batch_text = '\n'.join(self._output_buffer)
+            self._output_buffer.clear()
 
-        self._last_output_time = time.time() * 1000
+            # Update main output console
+            self.output_console.append(batch_text)
+            self.output_console.moveCursor(QTextCursor.End)
+
+            self._last_output_time = time.time() * 1000
+        except Exception as e:
+            # Log error to debug file
+            from datetime import datetime
+            log_file = Path(__file__).parent.parent / "gui_debug.log"
+            with open(log_file, 'a', encoding='utf-8') as f:
+                f.write(f"[{datetime.now().strftime('%H:%M:%S')}] ERROR in _flush_output_buffer: {e}\n")
+                import traceback
+                f.write(traceback.format_exc() + "\n")
 
     def update_progress(self, value, message):
         """Update progress bar and status"""
-        if value > 0:
-            self.progress_bar.setValue(value)
-        self.current_module_label.setText(message)
+        try:
+            if value > 0:
+                self.progress_bar.setValue(value)
+                # Also update the combined output tab progress bar
+                if hasattr(self, 'output_progress_bar'):
+                    self.output_progress_bar.setValue(value)
+            self.current_module_label.setText(message)
 
-        # Update the new progress tab builder if available
-        if hasattr(self, 'progress_tab_builder'):
-            # Update dashboard
-            self.progress_tab_builder.update_dashboard_stats(
-                current_module=message,
-                vulns=sum(self.vuln_counts.values()) if hasattr(self, 'vuln_counts') else 0
-            )
+            # Also update the combined output tab current module label
+            if hasattr(self, 'output_current_module'):
+                self.output_current_module.setText(message)
 
-            # Add activity log
-            if "Testing:" in message or "Running module:" in message:
-                module_name = message.replace("Testing:", "").replace("Running module:", "").strip()
-                self.progress_tab_builder.add_activity_log(f"Started: {module_name}", "info")
-                self.progress_tab_builder.update_module_status(module_name, "running")
-            elif "Completed" in message:
-                self.progress_tab_builder.add_activity_log(message, "success")
-            elif "Crawling" in message:
-                self.progress_tab_builder.add_activity_log(message, "info")
+            # Update the new progress tab builder if available
+            if hasattr(self, 'progress_tab_builder'):
+                # Update dashboard
+                self.progress_tab_builder.update_dashboard_stats(
+                    current_module=message,
+                    vulns=sum(self.vuln_counts.values()) if hasattr(self, 'vuln_counts') else 0
+                )
+
+                # Add activity log and update module cards
+                # Handle "Running: ModuleName" messages from scan thread
+                if message.startswith("Running:"):
+                    module_name = message.replace("Running:", "").strip()
+                    self.progress_tab_builder.add_activity_log(f"Started: {module_name}", "info")
+                    self.progress_tab_builder.update_module_status(module_name, "running", progress=0)
+                    # Track last running module for completion marking
+                    self._last_running_module = module_name
+
+                # Handle "Completed X/Y modules" messages
+                elif "Completed" in message and "/" in message:
+                    import re
+                    match = re.search(r'Completed\s*(\d+)/(\d+)', message)
+                    if match:
+                        completed = int(match.group(1))
+                        total = int(match.group(2))
+                        # Mark last running module as complete
+                        if hasattr(self, '_last_running_module') and self._last_running_module:
+                            self.progress_tab_builder.update_module_status(
+                                self._last_running_module, "complete", progress=100
+                            )
+                    self.progress_tab_builder.add_activity_log(message, "success")
+
+                # Handle legacy patterns
+                elif "Testing:" in message or "Running module:" in message:
+                    module_name = message.replace("Testing:", "").replace("Running module:", "").strip()
+                    self.progress_tab_builder.add_activity_log(f"Started: {module_name}", "info")
+                    self.progress_tab_builder.update_module_status(module_name, "running")
+                    self._last_running_module = module_name
+
+                elif "Crawling" in message:
+                    self.progress_tab_builder.add_activity_log(message, "info")
+
+                elif "Scanning:" in message:
+                    self.progress_tab_builder.add_activity_log(message, "info")
+
+        except Exception as e:
+            # Log error to debug file
+            from datetime import datetime
+            log_file = Path(__file__).parent.parent / "gui_debug.log"
+            with open(log_file, 'a', encoding='utf-8') as f:
+                f.write(f"[{datetime.now().strftime('%H:%M:%S')}] ERROR in update_progress: {e}\n")
+                import traceback
+                f.write(traceback.format_exc() + "\n")
 
     def update_time_display(self, elapsed_seconds, remaining_seconds):
         """Update time elapsed and remaining display"""
-        def format_time(seconds):
-            """Format seconds into MM:SS or HH:MM:SS"""
-            if seconds < 0:
-                return "∞"
-            hours = seconds // 3600
-            minutes = (seconds % 3600) // 60
-            secs = seconds % 60
-            if hours > 0:
-                return f"{hours}:{minutes:02d}:{secs:02d}"
-            return f"{minutes:02d}:{secs:02d}"
+        try:
+            def format_time(seconds):
+                """Format seconds into MM:SS or HH:MM:SS"""
+                if seconds < 0:
+                    return "∞"
+                hours = seconds // 3600
+                minutes = (seconds % 3600) // 60
+                secs = seconds % 60
+                if hours > 0:
+                    return f"{hours}:{minutes:02d}:{secs:02d}"
+                return f"{minutes:02d}:{secs:02d}"
 
-        elapsed_str = format_time(elapsed_seconds)
-        remaining_str = format_time(remaining_seconds)
+            elapsed_str = format_time(elapsed_seconds)
+            remaining_str = format_time(remaining_seconds)
 
-        # Update time label (if exists)
-        if hasattr(self, 'time_elapsed_label'):
-            self.time_elapsed_label.setText(f"⏱️ Elapsed: {elapsed_str}")
+            # Update time label (if exists)
+            if hasattr(self, 'time_elapsed_label'):
+                self.time_elapsed_label.setText(f"⏱️ Elapsed: {elapsed_str}")
 
-        if hasattr(self, 'time_remaining_label'):
-            if remaining_seconds < 0:
-                self.time_remaining_label.setText("⏳ Time Left: Unlimited")
-            elif remaining_seconds == 0:
-                self.time_remaining_label.setText("⏳ Time Left: 00:00 (limit reached)")
-                self.time_remaining_label.setStyleSheet("color: #ef4444; font-weight: bold;")
-            else:
-                self.time_remaining_label.setText(f"⏳ Time Left: {remaining_str}")
-                # Change color when less than 1 minute remaining
-                if remaining_seconds < 60:
-                    self.time_remaining_label.setStyleSheet("color: #f97316; font-weight: bold;")
-                elif remaining_seconds < 300:
-                    self.time_remaining_label.setStyleSheet("color: #eab308;")
+            # Update combined output tab time elapsed
+            if hasattr(self, 'output_time_elapsed'):
+                self.output_time_elapsed.setText(f"Elapsed: {elapsed_str}")
+
+            if hasattr(self, 'time_remaining_label'):
+                if remaining_seconds < 0:
+                    self.time_remaining_label.setText("⏳ Time Left: Unlimited")
+                elif remaining_seconds == 0:
+                    self.time_remaining_label.setText("⏳ Time Left: 00:00 (limit reached)")
+                    self.time_remaining_label.setStyleSheet("color: #ef4444; font-weight: bold;")
                 else:
-                    self.time_remaining_label.setStyleSheet("color: #22c55e;")
+                    self.time_remaining_label.setText(f"⏳ Time Left: {remaining_str}")
+                    # Change color when less than 1 minute remaining
+                    if remaining_seconds < 60:
+                        self.time_remaining_label.setStyleSheet("color: #f97316; font-weight: bold;")
+                    elif remaining_seconds < 300:
+                        self.time_remaining_label.setStyleSheet("color: #eab308;")
+                    else:
+                        self.time_remaining_label.setStyleSheet("color: #22c55e;")
+
+            # Update combined output tab time remaining
+            if hasattr(self, 'output_time_remaining'):
+                if remaining_seconds < 0:
+                    self.output_time_remaining.setText("Remaining: Unlimited")
+                elif remaining_seconds == 0:
+                    self.output_time_remaining.setText("Remaining: 00:00")
+                else:
+                    self.output_time_remaining.setText(f"Remaining: {remaining_str}")
+        except Exception as e:
+            # Log error to debug file
+            from datetime import datetime
+            log_file = Path(__file__).parent.parent / "gui_debug.log"
+            with open(log_file, 'a', encoding='utf-8') as f:
+                f.write(f"[{datetime.now().strftime('%H:%M:%S')}] ERROR in update_time_display: {e}\n")
+                import traceback
+                f.write(traceback.format_exc() + "\n")
 
     def update_target_profile(self, profile_data):
         """Update target profile panel with new profile data"""
-        if hasattr(self, 'results_tab_builder') and hasattr(self.results_tab_builder, 'update_target_profile'):
-            self.results_tab_builder.update_target_profile(profile_data)
-            self.output_console.append("[+] Target profile updated")
-        elif hasattr(self, 'target_profile_panel'):
-            self.target_profile_panel.update_profile(profile_data)
-            self.output_console.append("[+] Target profile updated")
-
-        # Update progress tab if available
-        if hasattr(self, 'progress_tab_builder') and hasattr(self.progress_tab_builder, 'update_time_display'):
-            self.progress_tab_builder.update_time_display(elapsed_str, remaining_str)
+        try:
+            if hasattr(self, 'results_tab_builder') and hasattr(self.results_tab_builder, 'update_target_profile'):
+                self.results_tab_builder.update_target_profile(profile_data)
+                self.output_console.append("[+] Target profile updated")
+            elif hasattr(self, 'target_profile_panel'):
+                self.target_profile_panel.update_profile(profile_data)
+                self.output_console.append("[+] Target profile updated")
+        except Exception as e:
+            # Log error to debug file
+            from datetime import datetime
+            log_file = Path(__file__).parent.parent / "gui_debug.log"
+            with open(log_file, 'a', encoding='utf-8') as f:
+                f.write(f"[{datetime.now().strftime('%H:%M:%S')}] ERROR in update_target_profile: {e}\n")
+                import traceback
+                f.write(traceback.format_exc() + "\n")
 
     def _update_scan_time(self):
         """Update scan time display from timer (fallback if scan_thread doesn't emit)"""
@@ -2185,6 +2490,193 @@ class DominatorGUI(QMainWindow):
         self.scheduler_status_timer.timeout.connect(self.update_scheduler_status)
         self.scheduler_status_timer.start(60000)  # Update every minute
 
+    # ========== Subdomain Scan Menu Handlers ==========
+
+    def run_subdomain_enumeration(self):
+        """Run subdomain enumeration for the target"""
+        target = self.target_input.toPlainText().strip()
+        if not target:
+            QMessageBox.warning(self, "No Target", "Please enter a target URL first.")
+            return
+
+        # Extract domain from URL
+        from urllib.parse import urlparse
+        try:
+            parsed = urlparse(target if target.startswith('http') else f'https://{target}')
+            domain = parsed.netloc or parsed.path.split('/')[0]
+            domain = domain.replace('www.', '')
+        except:
+            domain = target
+
+        # Confirm
+        reply = QMessageBox.question(
+            self, "Enumerate Subdomains",
+            f"This will enumerate subdomains for: {domain}\n\n"
+            "The enumeration will use passive techniques (crt.sh, DNS records).\n\n"
+            "Continue?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            # Set the enum_subdomains checkbox and start scan
+            if hasattr(self, 'enum_subdomains_cb'):
+                self.enum_subdomains_cb.setChecked(True)
+            if hasattr(self, 'scan_subdomains_cb'):
+                self.scan_subdomains_cb.setChecked(False)
+            self.output_console.append(f"[*] Starting subdomain enumeration for: {domain}")
+            self.start_scan()
+
+    def run_subdomain_scan(self):
+        """Enumerate subdomains and then scan them"""
+        target = self.target_input.toPlainText().strip()
+        if not target:
+            QMessageBox.warning(self, "No Target", "Please enter a target URL first.")
+            return
+
+        # Extract domain
+        from urllib.parse import urlparse
+        try:
+            parsed = urlparse(target if target.startswith('http') else f'https://{target}')
+            domain = parsed.netloc or parsed.path.split('/')[0]
+            domain = domain.replace('www.', '')
+        except:
+            domain = target
+
+        reply = QMessageBox.question(
+            self, "Scan Subdomains",
+            f"This will:\n"
+            f"1. Enumerate subdomains for: {domain}\n"
+            f"2. Scan all discovered subdomains\n\n"
+            "This may take a while. Continue?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            # Enable both enumeration and scanning
+            if hasattr(self, 'enum_subdomains_cb'):
+                self.enum_subdomains_cb.setChecked(True)
+            if hasattr(self, 'scan_subdomains_cb'):
+                self.scan_subdomains_cb.setChecked(True)
+            self.output_console.append(f"[*] Starting subdomain enumeration + scan for: {domain}")
+            self.start_scan()
+
+    def run_subdomain_takeover_check(self):
+        """Check for subdomain takeover vulnerabilities"""
+        target = self.target_input.toPlainText().strip()
+        if not target:
+            QMessageBox.warning(self, "No Target", "Please enter a target URL first.")
+            return
+
+        reply = QMessageBox.question(
+            self, "Subdomain Takeover Check",
+            "This will check for subdomain takeover vulnerabilities.\n\n"
+            "The scan will look for:\n"
+            "- Dangling DNS records (CNAME pointing to unregistered services)\n"
+            "- Expired cloud resources (S3, Azure, etc.)\n"
+            "- Unclaimed service endpoints\n\n"
+            "Continue?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            if hasattr(self, 'enum_subdomains_cb'):
+                self.enum_subdomains_cb.setChecked(True)
+            if hasattr(self, 'subdomain_takeover_cb'):
+                self.subdomain_takeover_cb.setChecked(True)
+            self.output_console.append("[*] Starting subdomain takeover check...")
+            self.start_scan()
+
+    def run_quick_scan(self):
+        """Run a fast scan with minimal payloads"""
+        target = self.target_input.toPlainText().strip()
+        if not target:
+            QMessageBox.warning(self, "No Target", "Please enter a target URL first.")
+            return
+
+        reply = QMessageBox.question(
+            self, "Quick Scan",
+            "Quick Scan mode will:\n"
+            "- Use reduced payload sets\n"
+            "- Skip time-consuming tests\n"
+            "- Focus on high-confidence vulnerabilities\n\n"
+            "This is faster but may miss some vulnerabilities.\n\n"
+            "Continue?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            if hasattr(self, 'fast_mode_cb'):
+                self.fast_mode_cb.setChecked(True)
+            if hasattr(self, 'payload_limit_spin'):
+                self.payload_limit_spin.setValue(5)  # Minimal payloads
+            self.output_console.append("[*] Starting quick scan (fast mode)...")
+            self.start_scan()
+
+    def run_profile_only_scan(self):
+        """Profile the target without sending attack payloads"""
+        target = self.target_input.toPlainText().strip()
+        if not target:
+            QMessageBox.warning(self, "No Target", "Please enter a target URL first.")
+            return
+
+        reply = QMessageBox.question(
+            self, "Profile Only",
+            "Profile Only mode will:\n"
+            "- Crawl the target\n"
+            "- Identify technologies\n"
+            "- Discover endpoints and parameters\n"
+            "- NOT send any attack payloads\n\n"
+            "This is safe for initial reconnaissance.\n\n"
+            "Continue?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            if hasattr(self, 'profile_only_cb'):
+                self.profile_only_cb.setChecked(True)
+            self.output_console.append("[*] Starting profile-only scan (no attacks)...")
+            self.start_scan()
+
+    # ========== End Subdomain Scan Menu Handlers ==========
+
+    def view_debug_log(self):
+        """Open the debug log file"""
+        log_file = Path(__file__).parent.parent / "gui_debug.log"
+        if log_file.exists():
+            import platform
+            import subprocess
+            if platform.system() == 'Windows':
+                os.startfile(str(log_file))
+            elif platform.system() == 'Darwin':
+                subprocess.call(['open', str(log_file)])
+            else:
+                subprocess.call(['xdg-open', str(log_file)])
+        else:
+            QMessageBox.information(self, "Debug Log", "No debug log file exists yet.\nIt will be created when an error occurs.")
+
+    def clear_debug_log(self):
+        """Clear the debug log file"""
+        log_file = Path(__file__).parent.parent / "gui_debug.log"
+        try:
+            if log_file.exists():
+                log_file.unlink()
+            QMessageBox.information(self, "Debug Log", "Debug log cleared successfully.")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to clear debug log: {e}")
+
+    def toggle_debug_mode(self, checked):
+        """Toggle debug mode"""
+        self.debug_mode = checked
+        if checked:
+            self.output_console.append("[DEBUG] Debug mode enabled - verbose output active")
+            # Write to log
+            log_file = Path(__file__).parent.parent / "gui_debug.log"
+            from datetime import datetime
+            with open(log_file, 'a', encoding='utf-8') as f:
+                f.write(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Debug mode enabled\n")
+        else:
+            self.output_console.append("[DEBUG] Debug mode disabled")
+
     def show_about(self):
         """Show about dialog"""
         about_text = """
@@ -2217,16 +2709,14 @@ class DominatorGUI(QMainWindow):
         # Extract modules from command
         modules = []
         if "--all" in command:
-            # All 20 modules
-            modules = ["Command Injection", "CSRF", "Directory Brute Force", "DOM XSS", "Environment Files & API Keys",
-                      "File Upload", "Git Exposure", "IDOR", "LFI", "PHP Object Injection", "Open Redirect", "RFI",
-                      "SQL Injection", "SSRF", "SSTI", "Weak Credentials", "XPath Injection", "XSS", "XXE", "OOB Detection"]
+            # Get ALL modules dynamically from modules directory
+            modules = self._get_all_module_names()
         elif "-m" in command:
             # Specific modules
             m_index = command.index("-m")
             if m_index + 1 < len(command):
                 module_str = command[m_index + 1]
-                modules = [m.strip() for m in module_str.split(',')]
+                modules = [m.strip().replace('_', ' ').title() for m in module_str.split(',')]
 
         # Update the new progress tab builder if available
         if hasattr(self, 'progress_tab_builder'):
@@ -2235,8 +2725,60 @@ class DominatorGUI(QMainWindow):
             self.progress_tab_builder.enable_controls(True)
             self.progress_tab_builder.add_activity_log(f"Scan started with {len(modules)} modules", "info")
 
-    def update_time_display(self):
-        """Update elapsed time and estimates"""
+    def _get_all_module_names(self):
+        """Get all available module names from the modules directory"""
+        modules = []
+        modules_dir = Path(__file__).parent.parent / "modules"
+
+        if not modules_dir.exists():
+            return modules
+
+        for module_path in sorted(modules_dir.iterdir()):
+            if not module_path.is_dir() or module_path.name.startswith('_'):
+                continue
+
+            # Skip utility modules
+            if module_path.name in ['oob_detection', '__pycache__']:
+                continue
+
+            # Get module name from config or derive from folder name
+            config_file = module_path / "config.json"
+            toml_file = module_path / "config.toml"
+            name = module_path.name.replace('_', ' ').title()
+
+            # Try to load config for actual name
+            if toml_file.exists():
+                try:
+                    import tomllib
+                    with open(toml_file, 'rb') as f:
+                        config = tomllib.load(f)
+                        if config.get('enabled', True):
+                            name = config.get('name', name)
+                            modules.append(name)
+                        continue
+                except:
+                    pass
+
+            if config_file.exists():
+                try:
+                    import json
+                    with open(config_file, 'r', encoding='utf-8') as f:
+                        config = json.load(f)
+                        if config.get('enabled', True):
+                            name = config.get('name', name)
+                            modules.append(name)
+                        continue
+                except:
+                    pass
+
+            # Default - add module if has module.py
+            if (module_path / "module.py").exists():
+                modules.append(name)
+
+        return modules
+
+    def _update_time_display_legacy(self):
+        """Update elapsed time and estimates (legacy method for old Progress tab)"""
         if not self.scan_start_time:
             return
 
@@ -2357,6 +2899,7 @@ class DominatorGUI(QMainWindow):
 def handle_exception(exc_type, exc_value, exc_tb):
     """Global exception handler to catch uncaught exceptions"""
     import traceback
+    from datetime import datetime
     from PyQt5.QtWidgets import QMessageBox
 
     # Don't catch keyboard interrupt
@@ -2366,15 +2909,35 @@ def handle_exception(exc_type, exc_value, exc_tb):
 
     # Log the error
     error_msg = ''.join(traceback.format_exception(exc_type, exc_value, exc_tb))
-    print(f"\n[CRITICAL ERROR]\n{error_msg}")
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Try to show a message box
+    # Print to console
+    print(f"\n{'='*60}")
+    print(f"[CRITICAL ERROR] {timestamp}")
+    print(f"{'='*60}")
+    print(error_msg)
+    print(f"{'='*60}\n")
+
+    # Write to debug log file
+    try:
+        log_file = Path(__file__).parent.parent / "gui_debug.log"
+        with open(log_file, 'a', encoding='utf-8') as f:
+            f.write(f"\n{'='*60}\n")
+            f.write(f"[ERROR] {timestamp}\n")
+            f.write(f"{'='*60}\n")
+            f.write(error_msg)
+            f.write(f"{'='*60}\n")
+        print(f"[DEBUG] Error logged to: {log_file}")
+    except Exception as log_err:
+        print(f"[DEBUG] Failed to write log file: {log_err}")
+
+    # Try to show a message box with more details
     try:
         msg = QMessageBox()
         msg.setIcon(QMessageBox.Critical)
         msg.setWindowTitle("Dominator - Critical Error")
-        msg.setText("An unexpected error occurred.")
-        msg.setInformativeText(str(exc_value))
+        msg.setText(f"An unexpected error occurred:\n\n{exc_type.__name__}: {exc_value}")
+        msg.setInformativeText("Check gui_debug.log for full details.\nClick 'Show Details' for traceback.")
         msg.setDetailedText(error_msg)
         msg.setStandardButtons(QMessageBox.Ok)
         msg.exec_()

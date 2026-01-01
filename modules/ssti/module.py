@@ -9,6 +9,7 @@ from typing import List, Dict, Any
 from core.base_module import BaseModule
 from core.logger import get_logger
 import re
+import urllib.parse
 
 logger = get_logger(__name__)
 
@@ -20,24 +21,48 @@ class SSTIModule(BaseModule):
         """Initialize SSTI module"""
         super().__init__(module_path, payload_limit=payload_limit)
 
-        # Expected results for math payloads
+        import random
+        import string
+
+        # Generate UNIQUE random markers to avoid false positives
+        # Use large numbers that are unlikely to appear naturally
+        self.num1 = random.randint(10000, 99999)
+        self.num2 = random.randint(10000, 99999)
+        self.expected_math = str(self.num1 * self.num2)  # Large result like "123456789"
+
+        # CRITICAL: For string tests, the expected result must NOT appear in the payload
+        # BAD:  payload = {{"SSTItest"}} expected = "SSTItest" <- appears in payload!
+        # GOOD: payload = {{7*191919}} expected = "1343433" <- only appears if evaluated
+        self.marker = ''.join(random.choices(string.ascii_lowercase, k=10))
+
+        # Math-only payloads - expected result NEVER appears in payload itself
         self.math_checks = {
-            '{{7*7}}': '49',
-            '${7*7}': '49',
-            '#{7*7}': '49',
-            '*{7*7}': '49',
-            '@{7*7}': '49',
-            '<%= 7*7 %>': '49',
+            # Jinja2/Twig - {{num1*num2}}
+            f'{{{{{self.num1}*{self.num2}}}}}': self.expected_math,
+            # Freemarker/SpEL - ${num1*num2}
+            f'${{{self.num1}*{self.num2}}}': self.expected_math,
+            # Thymeleaf - #{num1*num2}
+            f'#{{{self.num1}*{self.num2}}}': self.expected_math,
+            # Velocity - *{num1*num2}
+            f'*{{{self.num1}*{self.num2}}}': self.expected_math,
+            # ERB - <%= num1*num2 %>
+            f'<%= {self.num1}*{self.num2} %>': self.expected_math,
+            # Mako - ${num1*num2}
+            f'${{{self.num1}*{self.num2}}}': self.expected_math,
         }
 
-        # Template engine signatures
-        self.engine_signatures = [
-            'Twig', 'twig', 'Jinja2', 'jinja', 'Smarty',
-            'Freemarker', 'freemarker', 'Velocity',
-            'ERB', 'Mako', 'Handlebars'
+        # Template engine error signatures (indicates template is being processed)
+        self.error_signatures = [
+            'Twig_Error', 'Twig\\Error', 'twig error',
+            'jinja2.exceptions', 'jinja2.TemplateSyntaxError',
+            'freemarker.core', 'FreeMarkerException',
+            'org.apache.velocity', 'VelocityException',
+            'ActionView::Template::Error',  # Rails ERB
+            'mako.exceptions', 'MakoException',
+            'TemplateSyntaxError', 'UndefinedError',
         ]
 
-        logger.info(f"SSTI module loaded: {len(self.payloads)} payloads")
+        logger.info(f"SSTI module loaded: {len(self.payloads)} payloads, math check: {self.num1}*{self.num2}={self.expected_math}")
 
     def scan(self, targets: List[Dict[str, Any]], http_client: Any) -> List[Dict[str, Any]]:
         """
@@ -76,9 +101,13 @@ class SSTIModule(BaseModule):
             # Test each parameter
             for param_name in params:
                 logger.debug(f"Testing SSTI in parameter: {param_name} via {method}")
+                found_in_param = False
 
-                # First, test with math expressions (safe detection)
+                # Test with math expressions (safe detection)
                 for payload, expected in self.math_checks.items():
+                    if found_in_param:
+                        break
+
                     test_params = params.copy()
                     test_params[param_name] = payload
 
@@ -91,164 +120,118 @@ class SSTIModule(BaseModule):
                     if not response:
                         continue
 
-                    # PASSIVE ANALYSIS: Check for path disclosure, DB errors in response
+                    # PASSIVE ANALYSIS
                     self.analyze_payload_response(response, url, payload)
 
                     response_text = getattr(response, 'text', '')
 
-                    # IMPROVED DETECTION: Reduce false positives
-                    # Check if expression was evaluated
-                    if expected in response_text and expected not in baseline_text:
-                        # ANTI-FALSE-POSITIVE checks:
+                    # STRICT DETECTION - the expected result should NEVER be in the payload
+                    # So if expected is in response, it MUST have been computed
 
-                        # 1. Check if payload is reflected but NOT evaluated
-                        if payload in response_text:
-                            # Payload is present in response
-                            # Check if it appears OUTSIDE of template delimiters
-                            # If payload appears as-is, it's just reflection, NOT execution
+                    # Check 1: Expected result appears in response but NOT in baseline
+                    if expected not in response_text:
+                        continue
 
-                            # Count occurrences
-                            payload_count = response_text.count(payload)
-                            result_count = response_text.count(expected)
+                    if expected in baseline_text:
+                        # Result was already in baseline - not caused by our injection
+                        continue
 
-                            # If result doesn't appear MORE than payload, it's reflection
-                            if result_count <= payload_count:
-                                logger.debug(f"SSTI false positive: payload reflected but not evaluated")
-                                continue
+                    # Check 2: CRITICAL - Verify payload is NOT just reflected
+                    # If payload appears in response (in error msg, etc), it's reflection
+                    payload_reflected = self._is_payload_reflected(payload, response_text)
 
-                        # 2. Context validation - check if result appears in dangerous context
-                        # For SSTI, we expect the RESULT (49) to appear where payload was
-                        # Find where payload would be in response
-                        if not self._validate_ssti_context(payload, expected, response_text, baseline_text):
-                            logger.debug(f"SSTI false positive: result not in injection context")
-                            continue
+                    if payload_reflected:
+                        logger.debug(f"SSTI: Payload reflected in response (error message?) - skipping")
+                        continue
 
-                        # 3. Check if "49" is just a random number (common in HTML)
-                        # Look for patterns like: <td>49</td>, "count":49, etc.
-                        # These are NOT SSTI - just normal data
-                        if self._is_likely_false_positive(expected, response_text):
-                            logger.debug(f"SSTI false positive: result appears in normal HTML/JSON context")
-                            continue
+                    # Check 3: The expected number should not be part of normal page content
+                    # Since we use large numbers like 123456789, this is unlikely
+                    if self._is_likely_coincidence(expected, response_text):
+                        logger.debug(f"SSTI: Result appears to be coincidental - skipping")
+                        continue
 
-                        # Passed all checks - likely real SSTI
-                        confidence = 0.85
+                    # PASSED ALL CHECKS - This is real SSTI
+                    confidence = 0.95  # High confidence since math was evaluated
 
-                        # Boost confidence if we can confirm evaluation
-                        if not payload in response_text:
-                            # Payload NOT in response, but result IS = clear evaluation
-                            confidence = 0.95
+                    evidence = f"Template expression evaluated!\n"
+                    evidence += f"Payload: {payload}\n"
+                    evidence += f"Expected result: {expected}\n"
+                    evidence += f"The mathematical expression was computed server-side.\n"
+                    evidence += f"Baseline did NOT contain '{expected}'."
 
-                        evidence = f"Template injection detected. Payload '{payload}' evaluated to '{expected}' in response."
-                        evidence += f"\n\nBaseline response did NOT contain '{expected}', but after injection it appears."
-                        evidence += f"\n\nThis indicates server-side template evaluation of user input."
+                    result = self.create_result(
+                        vulnerable=True,
+                        url=url,
+                        parameter=param_name,
+                        payload=payload,
+                        evidence=evidence,
+                        description="Server-Side Template Injection (SSTI) vulnerability detected. "
+                                  "Application evaluates user input as template code.",
+                        confidence=confidence,
+                        method=method,
+                        response=response_text[:3000]
+                    )
 
-                        result = self.create_result(
-                            vulnerable=True,
-                            url=url,
-                            parameter=param_name,
-                            payload=payload,
-                            evidence=evidence,
-                            description="Server-Side Template Injection (SSTI) vulnerability detected. "
-                                      "Application evaluates user input as template code.",
-                            confidence=confidence
-                        )
+                    result['cwe'] = self.config.get('cwe', 'CWE-94')
+                    result['owasp'] = self.config.get('owasp', 'A03:2021')
+                    result['cvss'] = self.config.get('cvss', '9.8')
 
-                        # Add metadata
-                        result['cwe'] = self.config.get('cwe', 'CWE-94')
-                        result['owasp'] = self.config.get('owasp', 'A03:2021')
-                        result['cvss'] = self.config.get('cvss', '9.8')
-
-                        results.append(result)
-                        logger.info(f"✓ SSTI found in {url} "
-                                  f"(parameter: {param_name}, confidence: {confidence:.2f})")
-
-                        # Found SSTI in this parameter, move to next
-                        break
-
-                # If already found, skip other payloads for this param
-                if any(r['parameter'] == param_name and r['url'] == url for r in results):
+                    results.append(result)
+                    logger.info(f"✓ SSTI found in {url} (parameter: {param_name})")
+                    found_in_param = True
                     break
 
         logger.info(f"SSTI scan complete: {len(results)} vulnerabilities found")
         return results
 
-    def _validate_ssti_context(self, payload: str, expected: str, response_text: str,
-                               baseline_text: str) -> bool:
+    def _is_payload_reflected(self, payload: str, response_text: str) -> bool:
         """
-        Validate that the result appears in the context where payload was injected
-        IMPROVED: Better detection with fewer false negatives
+        Check if the payload is reflected in the response (e.g., in error messages)
 
-        Returns True if this looks like real SSTI, False if false positive
+        This catches cases like:
+        - SQL error: syntax error near '{{12345*67890}}'
+        - Error: Invalid input '{{12345*67890}}'
         """
-        # CRITICAL: If baseline didn't have the result but response does, likely SSTI
-        expected_in_baseline = expected in baseline_text
-        expected_in_response = expected in response_text
+        # Check raw payload
+        if payload in response_text:
+            return True
 
-        if not expected_in_baseline and expected_in_response:
-            # Result appeared ONLY after injection - strong indicator
-            # But still check for obvious false positives
+        # Check URL-encoded payload
+        if urllib.parse.quote(payload) in response_text:
+            return True
 
-            # Count occurrences
-            baseline_count = baseline_text.count(expected)
-            response_count = response_text.count(expected)
+        # Check HTML-encoded payload
+        import html
+        if html.escape(payload) in response_text:
+            return True
 
-            # If response has MORE occurrences than baseline, likely injection worked
-            if response_count > baseline_count:
+        # Check partial payload (the distinctive parts)
+        # For {{12345*67890}} check if "12345*67890" appears
+        inner_match = re.search(r'[\{\$\#\*<][{\%=]?\s*(.+?)\s*[\}\%>]', payload)
+        if inner_match:
+            inner = inner_match.group(1)
+            if inner in response_text:
                 return True
 
-        # Find positions of expected result
-        result_positions = [m.start() for m in re.finditer(re.escape(expected), response_text)]
+        return False
 
-        if not result_positions:
-            return False
-
-        # Check if result appears in user-controlled context
-        # Look for the result appearing outside of common HTML/JSON structures
-        valid_contexts = 0
-        for pos in result_positions:
-            # Extract context around result
-            start = max(0, pos - 80)
-            end = min(len(response_text), pos + 80)
-            context = response_text[start:end]
-
-            # Skip if result is in OBVIOUS data structures (strict matching only)
-            false_positive_patterns = [
-                r'<td[^>]*>\s*' + re.escape(expected) + r'\s*</td>',  # Table cell ONLY
-                r'"count":\s*' + re.escape(expected),  # JSON count field
-                r'"total":\s*' + re.escape(expected),  # JSON total field
-                r'value="' + re.escape(expected) + '"',  # Exact input value
-            ]
-
-            is_false_positive = any(re.search(pattern, context) for pattern in false_positive_patterns)
-
-            if not is_false_positive:
-                # Result appears outside of obvious structures - likely SSTI
-                valid_contexts += 1
-
-        # If we found at least one valid context, consider it SSTI
-        # IMPROVED: More lenient - if ANY occurrence looks valid, pass
-        return valid_contexts > 0
-
-    def _is_likely_false_positive(self, expected: str, response_text: str) -> bool:
+    def _is_likely_coincidence(self, expected: str, response_text: str) -> bool:
         """
-        Check if the expected result appears in contexts that indicate false positive
+        Check if the expected result appearing is likely a coincidence
 
-        Common false positives:
-        - Pagination: "Page 49 of 100"
-        - Counts: "49 items found"
-        - Prices: "$49.99"
-        - Dates: "2049"
+        For large numbers like 123456789, this is very unlikely
         """
-        # Patterns that indicate this is NOT SSTI
-        false_positive_patterns = [
-            r'\b' + re.escape(expected) + r'\s+(?:items|results|found|total|pages)',
-            r'(?:page|item|product)\s+' + re.escape(expected),
-            r'\$\s*' + re.escape(expected),  # Price
-            r'\b20' + re.escape(expected),  # Year 2049
-            r'<(?:td|th|li|span|div)[^>]*>\s*' + re.escape(expected) + r'\s*</(?:td|th|li|span|div)>',
+        # Our expected results are 8-10 digit numbers from multiplication
+        # These are extremely unlikely to appear by coincidence
+
+        # Check if it appears in obvious data patterns
+        patterns = [
+            rf'id["\s:=]+{re.escape(expected)}',  # ID field
+            rf'phone["\s:=]+.*{re.escape(expected)}',  # Phone number
+            rf'\${re.escape(expected)}',  # Price
         ]
 
-        for pattern in false_positive_patterns:
+        for pattern in patterns:
             if re.search(pattern, response_text, re.IGNORECASE):
                 return True
 

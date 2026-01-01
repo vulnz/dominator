@@ -33,6 +33,18 @@ class AdvancedTabBuilder:
         rotation9_group = self._create_rotation9_group()
         layout.addWidget(rotation9_group)
 
+        # WAF Detection & Bypass
+        waf_group = self._create_waf_group()
+        layout.addWidget(waf_group)
+
+        # Subdomain Enumeration
+        subdomain_group = self._create_subdomain_group()
+        layout.addWidget(subdomain_group)
+
+        # Exclusions
+        exclusion_group = self._create_exclusion_group()
+        layout.addWidget(exclusion_group)
+
         # Authentication
         auth_group = self._create_auth_group()
         layout.addWidget(auth_group)
@@ -50,20 +62,120 @@ class AdvancedTabBuilder:
 
     def _create_rotation9_group(self):
         """Create ROTATION 9 features group"""
-        rotation9_group = QGroupBox("ROTATION 9 Features")
+        rotation9_group = QGroupBox("🎚️ Scan Mode")
         rotation9_layout = QGridLayout()
 
-        self.gui.recon_only_cb = QCheckBox("Recon Only Mode (Passive scanning only)")
+        self.gui.recon_only_cb = QCheckBox("🔍 Recon Only Mode (Passive scanning only)")
         rotation9_layout.addWidget(self.gui.recon_only_cb, 0, 0, 1, 2)
 
-        self.gui.rotate_agent_cb = QCheckBox("Rotate User-Agent (26 modern browsers)")
+        self.gui.rotate_agent_cb = QCheckBox("🔄 Rotate User-Agent (26 modern browsers)")
         rotation9_layout.addWidget(self.gui.rotate_agent_cb, 1, 0, 1, 2)
 
-        self.gui.single_page_cb = QCheckBox("Single Page Mode (No crawling)")
+        self.gui.single_page_cb = QCheckBox("📄 Single Page Mode (No crawling)")
         rotation9_layout.addWidget(self.gui.single_page_cb, 2, 0, 1, 2)
+
+        self.gui.fast_mode_cb = QCheckBox("⚡ Fast Scan Mode (Reduced payloads, faster)")
+        rotation9_layout.addWidget(self.gui.fast_mode_cb, 3, 0, 1, 2)
+
+        self.gui.profile_only_cb = QCheckBox("📊 Profile Only (Target profiling, no attack)")
+        rotation9_layout.addWidget(self.gui.profile_only_cb, 4, 0, 1, 2)
 
         rotation9_group.setLayout(rotation9_layout)
         return rotation9_group
+
+    def _create_waf_group(self):
+        """Create WAF Detection & Bypass group"""
+        waf_group = QGroupBox("🛡️ WAF Detection & Bypass")
+        waf_layout = QGridLayout()
+
+        self.gui.waf_detect_cb = QCheckBox("Enable WAF Detection")
+        self.gui.waf_detect_cb.setToolTip("Automatically detect Web Application Firewall")
+        waf_layout.addWidget(self.gui.waf_detect_cb, 0, 0)
+
+        self.gui.waf_bypass_cb = QCheckBox("Enable WAF Bypass Mode")
+        self.gui.waf_bypass_cb.setToolTip("Use WAF bypass techniques when WAF is detected")
+        waf_layout.addWidget(self.gui.waf_bypass_cb, 0, 1)
+
+        self.gui.browser_mode_cb = QCheckBox("Headless Browser Mode")
+        self.gui.browser_mode_cb.setToolTip("Use headless browser for WAF bypass (slower but stealthier)")
+        waf_layout.addWidget(self.gui.browser_mode_cb, 1, 0)
+
+        self.gui.waf_detect_only_cb = QCheckBox("WAF Detection Only (Exit after detection)")
+        self.gui.waf_detect_only_cb.setToolTip("Run WAF detection and exit without scanning")
+        waf_layout.addWidget(self.gui.waf_detect_only_cb, 1, 1)
+
+        waf_group.setLayout(waf_layout)
+        return waf_group
+
+    def _create_subdomain_group(self):
+        """Create Subdomain Enumeration group"""
+        subdomain_group = QGroupBox("🌍 Subdomain Enumeration")
+        subdomain_layout = QGridLayout()
+
+        self.gui.enum_subdomains_cb = QCheckBox("Enumerate Subdomains")
+        self.gui.enum_subdomains_cb.setToolTip("Discover subdomains before scanning")
+        subdomain_layout.addWidget(self.gui.enum_subdomains_cb, 0, 0)
+
+        self.gui.scan_subdomains_cb = QCheckBox("Scan Discovered Subdomains")
+        self.gui.scan_subdomains_cb.setToolTip("Include discovered subdomains in vulnerability scan")
+        subdomain_layout.addWidget(self.gui.scan_subdomains_cb, 0, 1)
+
+        self.gui.subdomain_takeover_cb = QCheckBox("Check Subdomain Takeover")
+        self.gui.subdomain_takeover_cb.setToolTip("Check discovered subdomains for takeover vulnerabilities")
+        subdomain_layout.addWidget(self.gui.subdomain_takeover_cb, 1, 0)
+
+        self.gui.passive_subdomain_cb = QCheckBox("Passive Only (No brute-force)")
+        self.gui.passive_subdomain_cb.setToolTip("Only use passive enumeration (CT logs, archives)")
+        subdomain_layout.addWidget(self.gui.passive_subdomain_cb, 1, 1)
+
+        # Subdomain limit
+        subdomain_layout.addWidget(QLabel("Max Subdomains:"), 2, 0)
+        self.gui.subdomain_limit_spin = QSpinBox()
+        self.gui.subdomain_limit_spin.setRange(1, 500)
+        self.gui.subdomain_limit_spin.setValue(50)
+        self.gui.subdomain_limit_spin.setToolTip("Maximum number of subdomains to scan")
+        subdomain_layout.addWidget(self.gui.subdomain_limit_spin, 2, 1)
+
+        # Wordlist
+        subdomain_layout.addWidget(QLabel("Subdomain Wordlist:"), 3, 0)
+        self.gui.subdomain_wordlist_input = QLineEdit()
+        self.gui.subdomain_wordlist_input.setPlaceholderText("Path to custom wordlist (optional)")
+        subdomain_layout.addWidget(self.gui.subdomain_wordlist_input, 3, 1)
+
+        subdomain_group.setLayout(subdomain_layout)
+        return subdomain_group
+
+    def _create_exclusion_group(self):
+        """Create Exclusion options group"""
+        exclusion_group = QGroupBox("🚫 Exclusions")
+        exclusion_layout = QGridLayout()
+
+        exclusion_layout.addWidget(QLabel("Exclude Paths:"), 0, 0)
+        self.gui.exclude_paths_input = QLineEdit()
+        self.gui.exclude_paths_input.setPlaceholderText("/logout,/delete,/admin/* (comma-separated)")
+        self.gui.exclude_paths_input.setToolTip("URL paths to exclude from scanning")
+        exclusion_layout.addWidget(self.gui.exclude_paths_input, 0, 1)
+
+        exclusion_layout.addWidget(QLabel("Exclude IPs:"), 1, 0)
+        self.gui.exclude_ips_input = QLineEdit()
+        self.gui.exclude_ips_input.setPlaceholderText("192.168.1.1,10.0.0.0/8 (comma-separated)")
+        self.gui.exclude_ips_input.setToolTip("IP addresses or CIDR ranges to exclude")
+        exclusion_layout.addWidget(self.gui.exclude_ips_input, 1, 1)
+
+        exclusion_layout.addWidget(QLabel("Exclude Subdomains:"), 2, 0)
+        self.gui.exclude_subdomains_input = QLineEdit()
+        self.gui.exclude_subdomains_input.setPlaceholderText("mail,vpn,admin (comma-separated)")
+        self.gui.exclude_subdomains_input.setToolTip("Subdomain prefixes to exclude")
+        exclusion_layout.addWidget(self.gui.exclude_subdomains_input, 2, 1)
+
+        exclusion_layout.addWidget(QLabel("Exclude Extensions:"), 3, 0)
+        self.gui.exclude_extensions_input = QLineEdit()
+        self.gui.exclude_extensions_input.setPlaceholderText(".pdf,.zip,.exe,.jpg (comma-separated)")
+        self.gui.exclude_extensions_input.setToolTip("File extensions to exclude from scanning")
+        exclusion_layout.addWidget(self.gui.exclude_extensions_input, 3, 1)
+
+        exclusion_group.setLayout(exclusion_layout)
+        return exclusion_group
 
     def _create_auth_group(self):
         """Create authentication group"""

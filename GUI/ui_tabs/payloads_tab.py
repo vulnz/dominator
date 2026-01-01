@@ -3,10 +3,65 @@ Custom Payloads Tab Builder
 Handles custom payload entry for different vulnerability modules.
 """
 
+from pathlib import Path
+import json
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QGroupBox, QLabel, QLineEdit, QTextEdit, QPushButton, QComboBox
 )
+
+
+def get_all_modules():
+    """Get all available modules from the modules directory"""
+    modules = ["All Modules"]
+
+    # Find modules directory
+    script_dir = Path(__file__).parent.parent.parent  # Go up to dominator root
+    modules_dir = script_dir / "modules"
+
+    if not modules_dir.exists():
+        return modules
+
+    for module_path in sorted(modules_dir.iterdir()):
+        if not module_path.is_dir() or module_path.name.startswith('_'):
+            continue
+
+        # Skip utility modules
+        if module_path.name in ['oob_detection']:
+            continue
+
+        config_file = module_path / "config.json"
+        toml_file = module_path / "config.toml"
+
+        # Get module name
+        module_id = module_path.name
+        name = module_id.replace('_', ' ').title()
+        enabled = True
+
+        # Try to load config
+        config = {}
+        if toml_file.exists():
+            try:
+                import tomllib
+                with open(toml_file, 'rb') as f:
+                    config = tomllib.load(f)
+            except:
+                pass
+        if not config and config_file.exists():
+            try:
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+            except:
+                pass
+
+        if config:
+            name = config.get('name', name)
+            enabled = config.get('enabled', True)
+
+        if enabled:
+            modules.append(f"{name} ({module_id})")
+
+    return modules
 
 
 class PayloadsTabBuilder:
@@ -66,20 +121,8 @@ class PayloadsTabBuilder:
         module_selector_layout.addWidget(QLabel("Apply payloads to:"))
 
         self.gui.payload_target_module = QComboBox()
-        self.gui.payload_target_module.addItems([
-            "All Modules",
-            "SQL Injection (sqli)",
-            "Cross-Site Scripting (xss)",
-            "Server-Side Template Injection (ssti)",
-            "Command Injection (cmdi)",
-            "LDAP Injection (ldap)",
-            "XPath Injection (xpath)",
-            "Local File Inclusion (lfi)",
-            "Remote File Inclusion (rfi)",
-            "XML External Entity (xxe)",
-            "Server-Side Request Forgery (ssrf)",
-            "PHP Object Injection (php_object_injection)"
-        ])
+        # Dynamically load all available modules
+        self.gui.payload_target_module.addItems(get_all_modules())
         self.gui.payload_target_module.setStyleSheet("""
             QComboBox {
                 background-color: #f5f5f5;
@@ -239,7 +282,7 @@ class PayloadsTabBuilder:
             }
         """)
         view_existing_btn.setToolTip("Open Modules tab to view/edit existing payloads for each module")
-        view_existing_btn.clicked.connect(lambda: self.gui.tabs.setCurrentIndex(8))
+        view_existing_btn.clicked.connect(lambda: self.gui.tabs.setCurrentIndex(4))  # TAB_MODULES = 4
         button_layout.addWidget(view_existing_btn)
 
         button_layout.addStretch()

@@ -147,6 +147,7 @@ class XSSModule(BaseModule):
                         detected, confidence, evidence = self._detect_xss_improved(payload, response)
 
                         if detected:
+                            response_text = getattr(response, 'text', '')[:5000]
                             result = self.create_result(
                                 vulnerable=True,
                                 url=url,
@@ -155,7 +156,9 @@ class XSSModule(BaseModule):
                                 evidence=f"Vulnerable URL: {test_url}\n\nOriginal segment: '{segment}'\nInjected payload: '{payload}'\n\n{evidence}",
                                 description=f"Path-based Cross-Site Scripting (XSS) vulnerability detected in URL path segment. "
                                            f"The URL path segment at position {segment_index} ('{segment}') reflects user input without sanitization.",
-                                confidence=confidence
+                                confidence=confidence,
+                                method='GET',
+                                response=response_text
                             )
 
                             result['cwe'] = self.config.get('cwe', 'CWE-79')
@@ -226,6 +229,7 @@ class XSSModule(BaseModule):
                             # Prepend full URL to evidence
                             evidence_with_url = f"Vulnerable URL: {full_url_with_payload}\n\n{evidence}"
 
+                            response_text = getattr(response, 'text', '')[:5000]
                             result = self.create_result(
                                 vulnerable=True,
                                 url=url,
@@ -234,7 +238,9 @@ class XSSModule(BaseModule):
                                 evidence=evidence_with_url,
                                 description="Reflected Cross-Site Scripting (XSS) vulnerability detected. "
                                            "User input is reflected in HTML output without proper sanitization.",
-                                confidence=confidence
+                                confidence=confidence,
+                                method=method,
+                                response=response_text
                             )
 
                             # Add metadata from config
@@ -592,7 +598,9 @@ class XSSModule(BaseModule):
                             evidence=evidence,
                             description="Stored Cross-Site Scripting (XSS) vulnerability detected. "
                                       "User input is stored persistently and reflected without sanitization.",
-                            confidence=confidence
+                            confidence=confidence,
+                            method='POST',
+                            response=get_text[:5000]
                         )
 
                         result['cwe'] = 'CWE-79'
